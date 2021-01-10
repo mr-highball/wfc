@@ -93,10 +93,12 @@ type
     FRules: TGraphRules;
     FVal: TGraphValue;
     function GetExists(const ADirection : TGraphDirection): Boolean;
+    function GetRule(const ADirection : TGraphDirection): TGraphRule;
   strict protected
     function IndexOfDirection(const ADirection : TGraphDirection) : Integer;
   public
     property Value : TGraphValue read FVal write FVal;
+    property Rule[const ADirection : TGraphDirection] : TGraphRule read GetRule; default;
     property Rules : TGraphRules read FRules write FRules;
     property Exists[const ADirection : TGraphDirection] : Boolean read GetExists;
 
@@ -129,6 +131,11 @@ type
       TPlaneCoord = TPair<X, Y>;
       TPlane = TDictionary<TPlaneCoord, TGraphEntry>;
       TPlanes = TDictionary<Z, TPlane>;
+      TDimension = record
+        X : X;
+        Y : Y;
+        Z : Z;
+      end;
 
       { TParentedGraphRuleGroup }
       (*
@@ -141,6 +148,7 @@ type
         property Parent : TGraph read FParent write FParent;
       end;
   strict private
+    FDimension: TDimension;
     FRules: TGraphRuleGroups;
     FSel: TValueSelectionCallback;
     FEntries : TGraphEntries;
@@ -154,6 +162,7 @@ type
     property SelectionCallback : TValueSelectionCallback read FSel write FSel;
     property Entry[const X, Y, Z : UInt64] : TGraphEntry read GetEntry;
     property Planes : TPlanes read FPlanes;
+    property Dimension : TDimension read FDimension;
 
     function Reshape(const X, Y, Z : UInt64) : TGraph;
     function AddValue(const AValue : TGraphValue) : TParentedGraphRuleGroup;
@@ -193,6 +202,11 @@ begin
   Result := IndexOfDirection(ADirection) >= 0;
 end;
 
+function TGraphRuleGroup.GetRule(const ADirection : TGraphDirection): TGraphRule;
+begin
+  Result := FRules[IndexOfDirection(ADirection)];
+end;
+
 function TGraphRuleGroup.IndexOfDirection(const ADirection: TGraphDirection): Integer;
 var
   I: Integer;
@@ -213,7 +227,7 @@ var
 begin
   Result := Self;
 
-  //check for direction existance first then append if so
+  //check for direction existence first then append if so
   if Exists[ADirection] then
   begin
     I := IndexOfDirection(ADirection);
@@ -229,6 +243,7 @@ begin
 
   //insert value and then upsert to rules
   Insert(AValue, LVals, Length(LVals));
+  LRule.Value := LVals;
   Insert(LRule, FRules, I);
 end;
 
@@ -339,6 +354,20 @@ var
   LPlane : TPlane;
   LCoord : TPlaneCoord;
   I, J, K: Integer;
+
+  function InBounds(const AIndex : Integer) : Boolean;
+  begin
+    Result := (AIndex >= 0) and (AIndex < FEntries.Count);
+  end;
+
+  function GetNeighbor(const AIndex : Integer) : TGraphEntry;
+  begin
+    if InBounds(AIndex) then
+      Exit(FEntries[AIndex])
+    else
+      Exit(nil);
+  end;
+
 begin
   Result := Self;
 
@@ -376,11 +405,27 @@ begin
     FPlanes.Add(I, LPlane);
   end;
 
-  //now that everything has been shaped, we need to properly assigne neighbors
-  //todo...
+  //now that everything has been shaped, we need to properly assign neighbors
+  for I := 0 to Z do
+    for J := 0 to Y do
+      for K := 0 to X do
+      begin
+        LEntry := FEntries[CoordToIndex(X, Y, Z)];
+        LEntry[gdNorth] := GetNeighbor(CoordToIndex(X, Succ(Y), Z));
+        LEntry[gdEast] := GetNeighbor(CoordToIndex(Succ(X), Y, Z));
+        LEntry[gdSouth] := GetNeighbor(CoordToIndex(X, Pred(Y), Z));
+        LEntry[gdWest] := GetNeighbor(CoordToIndex(Pred(X), Y, Z));
+        LEntry[gdUp] := GetNeighbor(CoordToIndex(X, Y, Succ(Z)));
+        LEntry[gdDown] := GetNeighbor(CoordToIndex(X, Y, Pred(Z)));
+      end;
+
+  //update dimensions
+  FDimension.X := X;
+  FDimension.Y := Y;
+  FDimension.Z := Z;
 end;
 
-function TGraph.AddValue(const AValue: TGraphValue): TGraph.TParentedGraphRuleGroup;
+function TGraph.AddValue(const AValue: TGraphValue): TParentedGraphRuleGroup;
 begin
   //if exists, just return it
   if FRules.ContainsKey(AValue) then
@@ -389,7 +434,7 @@ begin
   else
   begin
     Result := TParentedGraphRuleGroup.Create(AValue);
-    FRules.Add(Result);
+    FRules.Add(AValue, Result);
   end;
 end;
 

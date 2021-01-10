@@ -63,10 +63,48 @@ begin
   WriteLn(Format('TestEntrySetValue::[success]-%s', [BoolToStr(LSuccess, True)]));
 end;
 
+(*
+  tests that a rule can be added to a rule group
+*)
+procedure TestRuleGroupNewRule;
+var
+  LGroup: TGraphRuleGroup;
+  LSuccess: Boolean;
+begin
+  LGroup := TGraphRuleGroup.Create;
+  LGroup.NewRule(gdNorth, 'test');
+  LSuccess := LGroup.Exists[gdNorth] and (LGroup[gdNorth].Value[0] = 'test');
+
+  LGroup.Free;
+
+  WriteLn(Format('TestRuleGroupNewRule::[success]-%s', [BoolToStr(LSuccess, True)]));
+end;
+
+(*
+  tests that multiple rules can be added to a rule group
+*)
+procedure TestRuleGroupNewMultiRule;
+var
+  LGroup: TGraphRuleGroup;
+  LSuccess: Boolean;
+begin
+  LGroup := TGraphRuleGroup.Create;
+  LGroup.NewRule(gdNorth, 'test').NewRule(gdEast, 'test2');
+  LSuccess := LGroup.Exists[gdNorth]
+    and (LGroup[gdNorth].Value[0] = 'test')
+    and (LGroup[gdEast].Value[0] = 'test2');
+
+  LGroup.Free;
+
+  WriteLn(Format('TestRuleGroupNewMultiRule::[success]-%s', [BoolToStr(LSuccess, True)]));
+end;
+
 begin
   TestEntryNullNeighbors;
   TestEntrySetNeighbor;
   TestEntrySetValue;
+  TestRuleGroupNewRule;
+  TestRuleGroupNewMultiRule;
 
   //wait for user to close
   ReadLn;
