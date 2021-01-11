@@ -104,6 +104,7 @@ type
 
     function NewRule(const ADirection : TGraphDirection;
       const AValue : TGraphValue) : TGraphRuleGroup; overload;
+
     function NewRule(const ADirection : TGraphDirection;
       const AValues : TGraphValues) : TGraphRuleGroup; overload;
 
@@ -114,8 +115,12 @@ type
   //collection of rule groups
   TGraphRuleGroups = TObjectDictionary<TGraphValue, TGraphRuleGroup>;
 
+  //forward
+  TGraph = class;
+
   //callback for entry selection after filtering for only valid values
-  TValueSelectionCallback = function(const AEntry : TGraphEntry;
+  TValueSelectionCallback = function(const AGraph : TGraph;
+    const AEntry : TGraphEntry;
     const AValid : TGraphValues) : TGraphValue;
 
   { TGraph }
@@ -131,10 +136,11 @@ type
       TPlaneCoord = TPair<X, Y>;
       TPlane = TDictionary<TPlaneCoord, TGraphEntry>;
       TPlanes = TDictionary<Z, TPlane>;
+
       TDimension = record
-        X : X;
-        Y : Y;
-        Z : Z;
+        Width : X;
+        Height : Y;
+        Depth : Z;
       end;
 
       { TParentedGraphRuleGroup }
@@ -158,14 +164,55 @@ type
     function CoordToIndex(const X, Y, Z : UInt64) : Integer;
   strict protected
   public
+    (*
+      all parented rule groups defined in the graph
+    *)
     property RuleGroups : TGraphRuleGroups read FRules write FRules;
+
+    (*
+      callback that can be set to determine selection of valid values
+      after rules have been run
+    *)
     property SelectionCallback : TValueSelectionCallback read FSel write FSel;
-    property Entry[const X, Y, Z : UInt64] : TGraphEntry read GetEntry;
+
+    (*
+      returns graph entry by (x, y, z) coordinates
+    *)
+    property Entry[const X, Y, Z : UInt64] : TGraphEntry read GetEntry; default;
+
+    (*
+      2D planes "stacked" in the Z direction
+    *)
     property Planes : TPlanes read FPlanes;
+
+    (*
+      dimension of the graph
+        - Width is X along plane
+        - Height is Y along plane
+        - Depth is amount of planes in Z
+    *)
     property Dimension : TDimension read FDimension;
 
-    function Reshape(const X, Y, Z : UInt64) : TGraph;
+    (*
+      reshapes the dimension of this graph
+        @AWidth - X units, 1 based
+        @AHeight - Y units, 1 based
+        @ADepth - Z units, 1 based
+    *)
+    function Reshape(const AWidth, AHeight, ADepth : UInt64) : TGraph;
+
+    (*
+      adds a value to be used
+        @AValue - a unique user defined value
+        @Result - parented rule group to define adjacency rules
+    *)
     function AddValue(const AValue : TGraphValue) : TParentedGraphRuleGroup;
+
+    (*
+      once all values and rules have been apply, this will
+      execute the rules against each graph entry
+    *)
+    function Run : TGraph;
 
     constructor Create; virtual;
     destructor Destroy; override;
@@ -183,7 +230,7 @@ implementation
 uses
   Math;
 
-function DefSelCall(const AEntry : TGraphEntry;
+function DefSelCall(const {%H-}AGraph : TGraph; const AEntry : TGraphEntry;
   const AValid : TGraphValues) : TGraphValue;
 begin
   if Length(AValid) < 1 then
@@ -345,15 +392,18 @@ end;
 
 function TGraph.CoordToIndex(const X, Y, Z: UInt64): Integer;
 begin
-  Result := Pred(Succ(X) * Succ(Y) * Succ(Z));
+  //need to work a formula out for indexing to flattened list... placeholder bad math below
+  //alternatively could just use the plane construct and make this easy
+  //(((width * height * Z) - 1) + ((x + 1) * (y + 1) - 1)) ==>
+  Result := PRed(Pred((Dimension.Width * Dimension.Height * Z)) + (X * Y));
 end;
 
-function TGraph.Reshape(const X, Y, Z: UInt64): TGraph;
+function TGraph.Reshape(const AWidth, AHeight, ADepth: UInt64): TGraph;
 var
   LEntry: TGraphEntry;
   LPlane : TPlane;
   LCoord : TPlaneCoord;
-  I, J, K: Integer;
+  Z, Y, X: Integer;
 
   function InBounds(const AIndex : Integer) : Boolean;
   begin
@@ -376,17 +426,17 @@ begin
   FPlanes.Clear;
 
   //now create entries starting on the lowest plane
-  for I := 0 to Z do
+  for Z := 0 to Pred(ADepth) do
   begin
     //now setup our graph structure (this is exposed to users for ease)
     //starting with this plane
     LPlane := TPlane.Create;
 
     //starting in "bottom" to "top"
-    for J := 0 to Y do
+    for Y := 0 to Pred(AHeight) do
     begin
       //"left" to "right"
-      for K := 0 to X do
+      for X := 0 to Pred(AWidth) do
       begin
         //create and add to the managed list
         LEntry := TGraphEntry.Create;
@@ -402,13 +452,13 @@ begin
     end;
 
     //add the completed plane to the planes collection
-    FPlanes.Add(I, LPlane);
+    FPlanes.Add(Z, LPlane);
   end;
 
   //now that everything has been shaped, we need to properly assign neighbors
-  for I := 0 to Z do
-    for J := 0 to Y do
-      for K := 0 to X do
+  for Z := 0 to Pred(ADepth) do
+    for Y := 0 to Pred(AHeight) do
+      for X := 0 to Pred(AWidth) do
       begin
         LEntry := FEntries[CoordToIndex(X, Y, Z)];
         LEntry[gdNorth] := GetNeighbor(CoordToIndex(X, Succ(Y), Z));
@@ -420,9 +470,9 @@ begin
       end;
 
   //update dimensions
-  FDimension.X := X;
-  FDimension.Y := Y;
-  FDimension.Z := Z;
+  FDimension.Width := AWidth;
+  FDimension.Height := AHeight;
+  FDimension.Depth := ADepth;
 end;
 
 function TGraph.AddValue(const AValue: TGraphValue): TParentedGraphRuleGroup;
@@ -436,6 +486,12 @@ begin
     Result := TParentedGraphRuleGroup.Create(AValue);
     FRules.Add(AValue, Result);
   end;
+end;
+
+function TGraph.Run: TGraph;
+begin
+  Result := Self;
+  //todo... do all the stuff...
 end;
 
 constructor TGraph.Create;

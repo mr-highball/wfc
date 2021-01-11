@@ -99,12 +99,74 @@ begin
   WriteLn(Format('TestRuleGroupNewMultiRule::[success]-%s', [BoolToStr(LSuccess, True)]));
 end;
 
+(*
+  tests that a value can be added to the graph
+*)
+procedure TestGraphAddValue;
+var
+  LGraph: TGraph;
+  LSuccess: Boolean;
+  LGroup: TGraphRuleGroup;
+begin
+  LGraph := TGraph.Create;
+  LGroup := LGraph.AddValue('test');
+  LSuccess := Assigned(LGroup) and (LGraph.RuleGroups.Count > 0);
+
+  LGraph.Free;
+
+  WriteLn(Format('TestGraphAddValue::[success]-%s', [BoolToStr(LSuccess, True)]));
+end;
+
+(*
+  tests we can reshape the graph
+*)
+procedure TestGraphReshape;
+var
+  LGraph: TGraph;
+  LSuccess: Boolean;
+begin
+  LGraph := TGraph.Create.Reshape({width} 10, {height} 10, {depth} 2);
+  LSuccess := Assigned(LGraph.Planes)
+    and (LGraph.Planes.Count = 2) //z direction
+    and (LGraph.Planes[0].Count = 100) //x * y
+    and (LGraph.Dimension.Width = 10)
+    and (LGraph.Dimension.Height = 10)
+    and (LGraph.Dimension.Depth = 2);
+
+  LGraph.Free;
+
+  WriteLn(Format('TestGraphReshape::[success]-%s', [BoolToStr(LSuccess, True)]));
+end;
+
+(*
+  tests that neighbors are correctly assigned
+*)
+procedure TestGraphNeighbors;
+var
+  LGraph: TGraph;
+  LSuccess: Boolean;
+  LEntry, LEastNeighbor: TGraphEntry;
+begin
+  LGraph := TGraph.Create.Reshape({width} 2, {height} 2, {depth} 2);
+  LEntry := LGraph[{x} 0, {y} 0, {z} 0];
+  LEastNeighbor := LGraph[{x} 0, {y} 1, {z} 0];
+  LUpNeighbor := LGraph[{x} 0, {y} 0, {z} 1];
+  LSuccess := False;
+
+  LGraph.Free;
+
+  WriteLn(Format('TestGraphNeighbors::[success]-%s', [BoolToStr(LSuccess, True)]));
+end;
+
 begin
   TestEntryNullNeighbors;
   TestEntrySetNeighbor;
   TestEntrySetValue;
   TestRuleGroupNewRule;
   TestRuleGroupNewMultiRule;
+  TestGraphAddValue;
+  TestGraphReshape;
+  TestGraphNeighbors;
 
   //wait for user to close
   ReadLn;
