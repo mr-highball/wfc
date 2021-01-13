@@ -145,13 +145,15 @@ procedure TestGraphNeighbors;
 var
   LGraph: TGraph;
   LSuccess: Boolean;
-  LEntry, LEastNeighbor: TGraphEntry;
+  LEntry, LEastNeighbor, LUpNeighbor: TGraphEntry;
 begin
   LGraph := TGraph.Create.Reshape({width} 2, {height} 2, {depth} 2);
   LEntry := LGraph[{x} 0, {y} 0, {z} 0];
   LEastNeighbor := LGraph[{x} 0, {y} 1, {z} 0];
   LUpNeighbor := LGraph[{x} 0, {y} 0, {z} 1];
-  LSuccess := False;
+
+  LSuccess := (LEntry[gdEast].ID = LEastNeighbor.ID)
+    and (LEntry[gdUp].ID = LUpNeighbor.ID);
 
   LGraph.Free;
 

@@ -51,6 +51,7 @@ type
       TNeighbors = TArray<TGraphEntry>;
   strict private
     FEmpty: Boolean;
+    FID: String;
     FVal: TGraphValue;
     FNeighbors : TNeighbors;
 
@@ -68,10 +69,12 @@ type
     procedure DoBeforeSetValue(const {%H-}AValue : TGraphValue); virtual;
     procedure DoAfterSetValue(const {%H-}AValue : TGraphValue); virtual;
     procedure DoReset; virtual;
+    function DoGenerateID : String; virtual;
   public
     property Value : TGraphValue read FVal write SetValue;
     property Empty : Boolean read FEmpty;
     property Neighbor[const ADirection : TGraphDirection] : TGraphEntry read GetNeighbor write SetNeighbor; default;
+    property ID : String read FID write FID;
 
     procedure Reset;
     constructor Create; virtual;
@@ -358,6 +361,11 @@ begin
   FEmpty := True;
 end;
 
+function TGraphEntry.DoGenerateID: String;
+begin
+  Result := TGuid.NewGuid().ToString();
+end;
+
 procedure TGraphEntry.Reset;
 begin
   DoReset;
@@ -380,6 +388,7 @@ constructor TGraphEntry.Create;
 begin
   SetLength(FNeighbors, Succ(Ord(High(TGraphDirection))));
   Reset;
+  FID := DoGenerateID;
 end;
 
 { TGraph }
@@ -392,10 +401,9 @@ end;
 
 function TGraph.CoordToIndex(const X, Y, Z: UInt64): Integer;
 begin
-  //need to work a formula out for indexing to flattened list... placeholder bad math below
-  //alternatively could just use the plane construct and make this easy
-  //(((width * height * Z) - 1) + ((x + 1) * (y + 1) - 1)) ==>
-  Result := PRed(Pred((Dimension.Width * Dimension.Height * Z)) + (X * Y));
+  //index into the "flattened" graph for a quicker lookup than going
+  //through the planes collection
+  Result := (FDimension.Width * FDimension.Height * Z) + X + (Y * FDimension.Width);
 end;
 
 function TGraph.Reshape(const AWidth, AHeight, ADepth: UInt64): TGraph;
@@ -424,6 +432,11 @@ begin
   //first clear the list and planes collections
   FEntries.Clear;
   FPlanes.Clear;
+
+  //update dimensions
+  FDimension.Width := AWidth;
+  FDimension.Height := AHeight;
+  FDimension.Depth := ADepth;
 
   //now create entries starting on the lowest plane
   for Z := 0 to Pred(ADepth) do
@@ -460,6 +473,7 @@ begin
     for Y := 0 to Pred(AHeight) do
       for X := 0 to Pred(AWidth) do
       begin
+        //todo - make sure this is assigning neighbors properly
         LEntry := FEntries[CoordToIndex(X, Y, Z)];
         LEntry[gdNorth] := GetNeighbor(CoordToIndex(X, Succ(Y), Z));
         LEntry[gdEast] := GetNeighbor(CoordToIndex(Succ(X), Y, Z));
@@ -468,11 +482,6 @@ begin
         LEntry[gdUp] := GetNeighbor(CoordToIndex(X, Y, Succ(Z)));
         LEntry[gdDown] := GetNeighbor(CoordToIndex(X, Y, Pred(Z)));
       end;
-
-  //update dimensions
-  FDimension.Width := AWidth;
-  FDimension.Height := AHeight;
-  FDimension.Depth := ADepth;
 end;
 
 function TGraph.AddValue(const AValue: TGraphValue): TParentedGraphRuleGroup;
