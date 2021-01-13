@@ -149,7 +149,7 @@ var
 begin
   LGraph := TGraph.Create.Reshape({width} 2, {height} 2, {depth} 2);
   LEntry := LGraph[{x} 0, {y} 0, {z} 0];
-  LEastNeighbor := LGraph[{x} 0, {y} 1, {z} 0];
+  LEastNeighbor := LGraph[{x} 1, {y} 0, {z} 0];
   LUpNeighbor := LGraph[{x} 0, {y} 0, {z} 1];
 
   LSuccess := (LEntry[gdEast].ID = LEastNeighbor.ID)

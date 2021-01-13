@@ -165,7 +165,11 @@ type
 
     function GetEntry(const X, Y, Z : UInt64): TGraphEntry;
     function CoordToIndex(const X, Y, Z : UInt64) : Integer;
+    function InBounds(const AIndex : Integer) : Boolean;
   strict protected
+    procedure DoGetStartCoord(out X, Y : UInt64); virtual;
+    function DoGetSelection(const AEntry : TGraphEntry) : TGraphValue;
+    procedure DoValidate(const AEntry : TGraphEntry; out Values : TGraphValues);
   public
     (*
       all parented rule groups defined in the graph
@@ -406,17 +410,44 @@ begin
   Result := (FDimension.Width * FDimension.Height * Z) + X + (Y * FDimension.Width);
 end;
 
+function TGraph.InBounds(const AIndex: Integer): Boolean;
+begin
+  Result := (AIndex >= 0) and (AIndex < FEntries.Count);
+end;
+
+procedure TGraph.DoGetStartCoord(out X, Y: UInt64);
+begin
+  //base we'll just use a random approach, but this can be overridden
+  Randomize;
+  X := RandomRange(0, FDimension.Width);
+  Y := RandomRange(0, FDimension.Height);
+end;
+
+function TGraph.DoGetSelection(const AEntry: TGraphEntry): TGraphValue;
+var
+  LValues: TGraphValues;
+begin
+  if not Assigned(FSel) then
+    raise Exception.Create('DoGetSelection::selection callback cannot be nil');
+
+  //get the valid rules for this entry
+  DoValidate(AEntry, LValues);
+
+  //pass the rules to the callback for determining the value of this entry
+  Result := FSel(Self, AEntry, LValues);
+end;
+
+procedure TGraph.DoValidate(const AEntry: TGraphEntry; out Values: TGraphValues);
+begin
+  //todo -
+end;
+
 function TGraph.Reshape(const AWidth, AHeight, ADepth: UInt64): TGraph;
 var
   LEntry: TGraphEntry;
   LPlane : TPlane;
   LCoord : TPlaneCoord;
   Z, Y, X: Integer;
-
-  function InBounds(const AIndex : Integer) : Boolean;
-  begin
-    Result := (AIndex >= 0) and (AIndex < FEntries.Count);
-  end;
 
   function GetNeighbor(const AIndex : Integer) : TGraphEntry;
   begin
@@ -473,7 +504,6 @@ begin
     for Y := 0 to Pred(AHeight) do
       for X := 0 to Pred(AWidth) do
       begin
-        //todo - make sure this is assigning neighbors properly
         LEntry := FEntries[CoordToIndex(X, Y, Z)];
         LEntry[gdNorth] := GetNeighbor(CoordToIndex(X, Succ(Y), Z));
         LEntry[gdEast] := GetNeighbor(CoordToIndex(Succ(X), Y, Z));
@@ -498,9 +528,31 @@ begin
 end;
 
 function TGraph.Run: TGraph;
+var
+  X, Y, Z : UInt64;
+  LIndex: Integer;
+  LEntry : TGraphEntry;
 begin
   Result := Self;
   //todo... do all the stuff...
+
+  //either bottom up or top down for the starting plane
+  //...
+
+  //now find the starting location
+  DoGetStartCoord(X, Y);
+
+  //get the entry
+  LIndex := CoordToIndex(X, Y, Z);
+
+  //check for a valid index and continue if not (should always be true)
+  //if not InBounds(LIndex) then
+  //  Continue
+
+  LEntry := FEntries[LIndex];
+
+  //get and assign the selection
+  LEntry.Value := DoGetSelection(LEntry);
 end;
 
 constructor TGraph.Create;
