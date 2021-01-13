@@ -160,6 +160,42 @@ begin
   WriteLn(Format('TestGraphNeighbors::[success]-%s', [BoolToStr(LSuccess, True)]));
 end;
 
+(*
+  tests that we can run wfc on the graph in 2 dimensions
+*)
+procedure TestGraphRun2D;
+var
+  LGraph: TGraph;
+  LSuccess: Boolean;
+  LEntry, LEastNeighbor, LUpNeighbor: TGraphEntry;
+begin
+  LGraph := TGraph.Create.Reshape({width} 5, {height} 5, {depth} 1);
+
+  LSuccess := False;
+
+  LGraph.Free;
+
+  WriteLn(Format('TestGraphRun2D::[success]-%s', [BoolToStr(LSuccess, True)]));
+end;
+
+(*
+  tests that we can run wfc on the graph in 2 dimensions
+*)
+procedure TestGraphRun3D;
+var
+  LGraph: TGraph;
+  LSuccess: Boolean;
+  LEntry, LEastNeighbor, LUpNeighbor: TGraphEntry;
+begin
+  LGraph := TGraph.Create.Reshape({width} 5, {height} 5, {depth} 3);
+
+  LSuccess := False;
+
+  LGraph.Free;
+
+  WriteLn(Format('TestGraphRun3D::[success]-%s', [BoolToStr(LSuccess, True)]));
+end;
+
 begin
   TestEntryNullNeighbors;
   TestEntrySetNeighbor;
@@ -169,6 +205,9 @@ begin
   TestGraphAddValue;
   TestGraphReshape;
   TestGraphNeighbors;
+  TestGraphRun2D;
+  TestGraphRun3D;
+
 
   //wait for user to close
   ReadLn;
