@@ -126,6 +126,11 @@ type
     const AEntry : TGraphEntry;
     const AValid : TGraphValues) : TGraphValue;
 
+  (*
+    determines the mode for the plane selection process during a graph instance run
+  *)
+  TGraphRunMode = (rmBottomUp, rmTopDown);
+
   { TGraph }
   (*
     a graph used to perform the wave function collapse algorithm
@@ -158,10 +163,12 @@ type
       end;
   strict private
     FDimension: TDimension;
+    FMode: TGraphRunMode;
     FRules: TGraphRuleGroups;
     FSel: TValueSelectionCallback;
     FEntries : TGraphEntries;
     FPlanes : TPlanes;
+    FWrap: Boolean;
 
     function GetEntry(const X, Y, Z : UInt64): TGraphEntry;
     function CoordToIndex(const X, Y, Z : UInt64) : Integer;
@@ -191,6 +198,21 @@ type
       2D planes "stacked" in the Z direction
     *)
     property Planes : TPlanes read FPlanes;
+
+    (*
+      when enabled, neighbor assignment for entries on the external bounds
+      of the graph will "wrap" around. this will result in neighbors never
+      being nil, and can result in an entry to be a neighbor to itself.
+      if this is not desired set this to false, but nil checking will have
+      to be done before accessing member variables
+    *)
+    property WrapNeighbors : Boolean read FWrap write FWrap default True;
+
+    (*
+      controls the behavior for selecting plane processing order during
+      running the graph
+    *)
+    property Mode : TGraphRunMode read FMode write FMode default rmBottomUp;
 
     (*
       dimension of the graph
@@ -505,12 +527,30 @@ begin
       for X := 0 to Pred(AWidth) do
       begin
         LEntry := FEntries[CoordToIndex(X, Y, Z)];
+
         LEntry[gdNorth] := GetNeighbor(CoordToIndex(X, Succ(Y), Z));
+        if FWrap and (not Assigned(LEntry[gdNorth])) then
+          LEntry[gdNorth] := GetNeighbor(CoordToIndex(X, 0, Z));
+
         LEntry[gdEast] := GetNeighbor(CoordToIndex(Succ(X), Y, Z));
+        if FWrap and (not Assigned(LEntry[gdEast])) then
+          LEntry[gdEast] := GetNeighbor(CoordToIndex(0, Y, Z));
+
         LEntry[gdSouth] := GetNeighbor(CoordToIndex(X, Pred(Y), Z));
+        if FWrap and (not Assigned(LEntry[gdSouth])) then
+          LEntry[gdSouth] := GetNeighbor(CoordToIndex(X, Pred(FDimension.Height), Z));
+
         LEntry[gdWest] := GetNeighbor(CoordToIndex(Pred(X), Y, Z));
+        if FWrap and (not Assigned(LEntry[gdWest])) then
+          LEntry[gdWest] := GetNeighbor(CoordToIndex(Pred(FDimension.Width), Y, Z));
+
         LEntry[gdUp] := GetNeighbor(CoordToIndex(X, Y, Succ(Z)));
+        if FWrap and (not Assigned(LEntry[gdUp])) then
+          LEntry[gdUp] := GetNeighbor(CoordToIndex(X, Y, 0));
+
         LEntry[gdDown] := GetNeighbor(CoordToIndex(X, Y, Pred(Z)));
+        if FWrap and (not Assigned(LEntry[gdDown])) then
+          LEntry[gdDown] := GetNeighbor(CoordToIndex(X, Y, Pred(FDimension.Depth)));
       end;
 end;
 
@@ -529,30 +569,44 @@ end;
 
 function TGraph.Run: TGraph;
 var
-  X, Y, Z : UInt64;
-  LIndex: Integer;
-  LEntry : TGraphEntry;
+  I: Integer;
+
+  procedure RunPlane(const Z : UInt64);
+  var
+    X, Y: UInt64;
+    LEntry : TGraphEntry;
+    LIndex: Integer;
+  begin
+    //now find the starting location
+    DoGetStartCoord(X, Y);
+
+    //get the entry
+    LIndex := CoordToIndex(X, Y, Z);
+
+    //check for a valid index and continue if not (should always be true)
+    //if not InBounds(LIndex) then
+    //  Continue
+
+    LEntry := FEntries[LIndex];
+
+    //get and assign the selection
+    LEntry.Value := DoGetSelection(LEntry);
+
+    //todo... do all the stuff...
+  end;
+
 begin
   Result := Self;
-  //todo... do all the stuff...
 
-  //either bottom up or top down for the starting plane
-  //...
-
-  //now find the starting location
-  DoGetStartCoord(X, Y);
-
-  //get the entry
-  LIndex := CoordToIndex(X, Y, Z);
-
-  //check for a valid index and continue if not (should always be true)
-  //if not InBounds(LIndex) then
-  //  Continue
-
-  LEntry := FEntries[LIndex];
-
-  //get and assign the selection
-  LEntry.Value := DoGetSelection(LEntry);
+  //handle the different run modes and pass the current plane to the Runplane helper
+  if FMode = rmBottomUp then
+    for I := 0 to Pred(FDimension.Depth) do
+      RunPlane(I)
+  else if FMode = rmTopDown then
+    for I := Pred(FDimension.Depth) downto 0 do
+      RunPlane(I)
+  else
+    raise Exception.Create('Run::run mode not implemented');
 end;
 
 constructor TGraph.Create;

@@ -167,7 +167,6 @@ procedure TestGraphRun2D;
 var
   LGraph: TGraph;
   LSuccess: Boolean;
-  LEntry, LEastNeighbor, LUpNeighbor: TGraphEntry;
 begin
   LGraph := TGraph.Create.Reshape({width} 5, {height} 5, {depth} 1);
 
@@ -185,7 +184,6 @@ procedure TestGraphRun3D;
 var
   LGraph: TGraph;
   LSuccess: Boolean;
-  LEntry, LEastNeighbor, LUpNeighbor: TGraphEntry;
 begin
   LGraph := TGraph.Create.Reshape({width} 5, {height} 5, {depth} 3);
 
