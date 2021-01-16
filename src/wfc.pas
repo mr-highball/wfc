@@ -175,8 +175,8 @@ type
     function InBounds(const AIndex : Integer) : Boolean;
   strict protected
     procedure DoGetStartCoord(out X, Y : UInt64); virtual;
-    function DoGetSelection(const AEntry : TGraphEntry) : TGraphValue;
-    procedure DoValidate(const AEntry : TGraphEntry; out Values : TGraphValues);
+    function DoGetSelection(const AEntry : TGraphEntry; const Z, APrevZ : UInt64) : TGraphValue;
+    procedure DoValidate(const AEntry : TGraphEntry; const Z, APrevZ : UInt64; out Values : TGraphValues);
   public
     (*
       all parented rule groups defined in the graph
@@ -445,7 +445,8 @@ begin
   Y := RandomRange(0, FDimension.Height);
 end;
 
-function TGraph.DoGetSelection(const AEntry: TGraphEntry): TGraphValue;
+function TGraph.DoGetSelection(const AEntry: TGraphEntry; const Z,
+  APrevZ: UInt64): TGraphValue;
 var
   LValues: TGraphValues;
 begin
@@ -453,13 +454,14 @@ begin
     raise Exception.Create('DoGetSelection::selection callback cannot be nil');
 
   //get the valid rules for this entry
-  DoValidate(AEntry, LValues);
+  DoValidate(AEntry, Z, APrevZ, LValues);
 
   //pass the rules to the callback for determining the value of this entry
   Result := FSel(Self, AEntry, LValues);
 end;
 
-procedure TGraph.DoValidate(const AEntry: TGraphEntry; out Values: TGraphValues);
+procedure TGraph.DoValidate(const AEntry: TGraphEntry; const Z, APrevZ: UInt64;
+  out Values: TGraphValues);
 begin
   //todo -
 end;
@@ -571,11 +573,38 @@ function TGraph.Run: TGraph;
 var
   I: Integer;
 
-  procedure RunPlane(const Z : UInt64);
+  procedure RunPlane(const Z, APrevZ : UInt64);
   var
     X, Y: UInt64;
     LEntry : TGraphEntry;
     LIndex: Integer;
+
+    function IsValidPrevZ(const Z : UInt64) : Boolean;
+    begin
+      Result := (FDimension.Depth > 0) and  (Z <= FDimension.Depth);
+    end;
+
+    procedure UpdateEntriesFromLoc(const AEntry : TGraphEntry);
+    begin
+      if not Assigned(AEntry) then
+        Exit;
+
+      //get and assign the selection
+      if LEntry.Empty then
+        LEntry.Value := DoGetSelection(LEntry, Z, APrevZ)
+      //otherwise we've already encountered this entry
+      else
+        Exit;
+
+      //recurse with each neighbor
+      UpdateEntriesFromLoc(LEntry[gdNorth]);
+      UpdateEntriesFromLoc(LEntry[gdEast]);
+      UpdateEntriesFromLoc(LEntry[gdSouth]);
+      UpdateEntriesFromLoc(LEntry[gdWest]);
+      UpdateEntriesFromLoc(LEntry[gdUp]);
+      UpdateEntriesFromLoc(LEntry[gdDown]);
+    end;
+
   begin
     //now find the starting location
     DoGetStartCoord(X, Y);
@@ -584,27 +613,28 @@ var
     LIndex := CoordToIndex(X, Y, Z);
 
     //check for a valid index and continue if not (should always be true)
-    //if not InBounds(LIndex) then
-    //  Continue
+    if not InBounds(LIndex) then
+      raise Exception.Create(Format('RunPlane::invalid coordinates [x]-%d, [y]-%d, [z]-%d', [X, Y, Z]));
 
     LEntry := FEntries[LIndex];
 
-    //get and assign the selection
-    LEntry.Value := DoGetSelection(LEntry);
-
-    //todo... do all the stuff...
+    //starting at this entry, we'll update the plane
+    UpdateEntriesFromLoc(LEntry)
   end;
 
 begin
   Result := Self;
 
+  for I := 0 to Pred(FEntries.Count) do
+    FEntries[I].Reset;
+
   //handle the different run modes and pass the current plane to the Runplane helper
   if FMode = rmBottomUp then
     for I := 0 to Pred(FDimension.Depth) do
-      RunPlane(I)
+      RunPlane(I, Pred(I))
   else if FMode = rmTopDown then
     for I := Pred(FDimension.Depth) downto 0 do
-      RunPlane(I)
+      RunPlane(I, Succ(I))
   else
     raise Exception.Create('Run::run mode not implemented');
 end;
