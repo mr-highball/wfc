@@ -175,8 +175,12 @@ type
     function InBounds(const AIndex : Integer) : Boolean;
   strict protected
     procedure DoGetStartCoord(out X, Y : UInt64); virtual;
-    function DoGetSelection(const AEntry : TGraphEntry; const Z, APrevZ : UInt64) : TGraphValue;
-    procedure DoValidate(const AEntry : TGraphEntry; const Z, APrevZ : UInt64; out Values : TGraphValues);
+    function DoGetSelection(const AEntry : TGraphEntry; const Z, APrevZ : UInt64) : TGraphValue; virtual;
+
+    (*
+      can be overridden to validate the rules that are allowed for a graph entry
+    *)
+    procedure DoValidate(const AEntry : TGraphEntry; const Z, APrevZ : UInt64; out Values : TGraphValues); virtual;
   public
     (*
       all parented rule groups defined in the graph
@@ -463,7 +467,22 @@ end;
 procedure TGraph.DoValidate(const AEntry: TGraphEntry; const Z, APrevZ: UInt64;
   out Values: TGraphValues);
 begin
-  //todo -
+  //todo - validate rules for a given entry
+
+  //default case for a non-empty entry is to use the value it was assigned
+  if not AEntry.Empty then
+  begin
+    SetLength(Result, 1);
+    Result[0] := AEntry.Value;
+
+    //todo - do we need to exit here or check for neighbors values?
+    Exit;
+  end;
+
+  //first get all of the possible states we can be in
+  //...
+
+
 end;
 
 function TGraph.Reshape(const AWidth, AHeight, ADepth: UInt64): TGraph;
