@@ -4,6 +4,23 @@ uses
   SysUtils,
   wfc;
 
+procedure SimplePrintGraph(const AGraph : TGraph);
+var
+  X, Z, Y: Integer;
+begin
+  for Z := 0 to Pred(AGraph.Dimension.Depth) do
+  begin
+    WriteLn('================',Z,'================');
+    for Y := 0 to Pred(AGraph.Dimension.Height) do
+    begin
+      WriteLn('---------------------------');
+      for X := 0 to Pred(AGraph.Dimension.Width) do
+        Write(AGraph[X, Y, Z].Value, '|');
+      WriteLn('');
+    end;
+  end;
+end;
+
 (*
   tests that when an entry is created all directions are accounted for
   and are nil to start
@@ -167,39 +184,37 @@ procedure TestGraphRun2D;
 var
   LGraph: TGraph;
   LSuccess: Boolean;
-  I, J: Integer;
 begin
   LGraph := TGraph.Create.Reshape({width} 5, {height} 5, {depth} 1);
 
+  //default "none" state can be anywhere
+  LGraph.AddValue('-').NewRule(AllDirections, ['A', 'B', 'C', 'D', '-']);
+
   //add simple rules (A & B from any direction)
   LGraph.AddValue('A')
-    .NewRule(AllDirections, 'B')
-    .NewRule(AllDirections, 'NONE'); //allow next to none space too
+    .NewRule(AllDirections, ['A', 'B']);
 
-  //B & C (E & W)
+  //B & C (E & W), itself everywhere
   LGraph.AddValue('B')
     .NewRule([gdEast, gdWest], 'C')
-    .NewRule(AllDirections, 'NONE'); //allow next to none space too
+    .NewRule(AllDirections, 'B');
+
+  //A or B (N & S)
+  LGraph.AddValue('C')
+    .NewRule([gdNorth, gdSouth], ['A', 'B']);
 
   //D all alone
-  LGraph.AddValue('D')
-    .NewRule(AllDirections, 'NONE');
+  LGraph.AddValue('D').NewRule(AllDirections, 'D');
 
   //run the graph
   LGraph.Run;
-  for I := 0 to Pred(5) do
-  begin
-    WriteLn('---------------------------');
-    for J := 0 to Pred(5) do
-      Write(LGraph[I, J, 0].Value, '|');
-    WriteLn('');
-  end;
 
   LSuccess := False;
 
-  LGraph.Free;
-
   WriteLn(Format('TestGraphRun2D::[success]-%s', [BoolToStr(LSuccess, True)]));
+  SimplePrintGraph(LGraph);
+
+  LGraph.Free;
 end;
 
 (*

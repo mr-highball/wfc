@@ -37,7 +37,6 @@ type
   //user defined value
   TGraphValue = String;
   TGraphValues = TArray<TGraphValue>;
-  TGraphValuesHelper = TArrayHelper<TGraphValue>;
 
   //all posible "directions" to move from a single point on the graph
   TGraphDirection = (gdNorth, gdEast, gdSouth, gdWest, gdUp, gdDown);
@@ -175,7 +174,7 @@ type
   strict private
     FDimension: TDimension;
     FMode: TGraphRunMode;
-    FRules: TGraphRuleGroups;
+    FRuleGroups: TGraphRuleGroups;
     FValues : TGraphValues;
     FSel: TValueSelectionCallback;
     FEntries : TGraphEntries;
@@ -198,7 +197,7 @@ type
     (*
       all parented rule groups defined in the graph
     *)
-    property RuleGroups : TGraphRuleGroups read FRules write FRules;
+    property RuleGroups : TGraphRuleGroups read FRuleGroups;
 
     (*
       callback that can be set to determine selection of valid values
@@ -282,6 +281,11 @@ var
   *)
   function InverseOfDir(const ADirection : TGraphDirection) : TGraphDirection; inline;
 
+  (*
+    checks if a value is held in a graph values array
+  *)
+  function ContainsGraphValue(const AValues : TGraphValues; const AValue : TGraphValue) : Boolean; inline;
+
 const
   AllDirections : TGraphDirections = [gdNorth, gdEast, gdSouth, gdWest, gdUp, gdDown];
 
@@ -297,7 +301,7 @@ begin
   else
   begin
     Randomize;
-    Result := AValid[Low(AValid), RandomRange(Low(AValid), Length(AValid))];
+    Result := AValid[RandomRange(Low(AValid), Length(AValid))];
   end;
 end;
 
@@ -317,6 +321,23 @@ begin
     Exit(gdUp);
 end;
 
+function ContainsGraphValue(const AValues: TGraphValues;
+  const AValue: TGraphValue): Boolean;
+var
+  I: Integer;
+begin
+  if Length(AValues) < 1 then
+    Exit(False)
+  else
+  begin
+    for I := 0 to High(AValues) do
+      if AValues[I] = AValue then
+        Exit(True);
+  end;
+
+  Exit(False)
+end;
+
 { TGraph.TParentedGraphRuleGroup }
 
 procedure TGraph.TParentedGraphRuleGroup.DoNewRule(
@@ -324,7 +345,6 @@ procedure TGraph.TParentedGraphRuleGroup.DoNewRule(
 var
   LDir: TGraphDirection;
   LDirs : TGraphDirections = [];
-  LResult : TBinarySearchResult;
 begin
   inherited DoNewRule(ADirections, AValue);
 
@@ -332,7 +352,7 @@ begin
   for LDir in ADirections do
     Include(LDirs, InverseOfDir(LDir));
 
-  if not TGraphValuesHelper.BinarySearch(Parent.FValues, AValue, LResult) then
+  if not Parent.RuleGroups.ContainsKey(AValue) then
     Parent.AddValue(AValue).NewRule(LDirs, Value);
 end;
 
@@ -369,6 +389,8 @@ var
 begin
   for LDir in ADirections do
   begin
+    LVals := Default(TGraphValues);
+
     //check for direction existence first then append if so
     if Exists[LDir] then
     begin
@@ -383,9 +405,14 @@ begin
       LRule.Key := LDir;
     end;
 
-    //insert value and then upsert to rules
-    Insert(AValue, LVals, Length(LVals));
-    LRule.Value := LVals;
+    //insert rule value if we haven't already done so
+    if not ContainsGraphValue(LVals, AValue) then
+    begin
+      Insert(AValue, LVals, Length(LVals));
+      LRule.Value := LVals;
+    end;
+
+    //upsert
     Insert(LRule, FRules, I);
   end;
 end;
@@ -425,6 +452,10 @@ end;
 
 procedure TGraphEntry.SetValue(const AValue: TGraphValue);
 begin
+  //don't trigger when we aren't changing value
+  if AValue = FVal then
+    Exit;
+
   DoBeforeSetValue(AValue);
   FVal := AValue;
   FEmpty := False;
@@ -531,6 +562,11 @@ begin
   //get the valid rules for this entry
   DoValidate(AEntry, Z, APrevZ, LValues);
 
+  //in the case that we started with values but removed all valid options
+  //we should just return the default empty state
+  if Length(LValues) < 1 then
+    Exit(AEntry.Value);
+
   //pass the rules to the callback for determining the value of this entry
   Result := FSel(Self, AEntry, LValues);
 end;
@@ -545,7 +581,6 @@ procedure TGraph.DoValidate(const AEntry: TGraphEntry; const Z, APrevZ: UInt64;
     LDir: TGraphDirection;
     LRuleVals, LVals : TGraphValues;
     I: Integer;
-    LResult: TBinarySearchResult;
   begin
     LVals := Default(TGraphValues);
 
@@ -557,7 +592,10 @@ procedure TGraph.DoValidate(const AEntry: TGraphEntry; const Z, APrevZ: UInt64;
     if ANeighbor.Empty then
       Exit;
 
-    LGroup := FRules[ANeighbor.Value];
+    if not FRuleGroups.ContainsKey(ANeighbor.Value) then
+      Exit;
+
+    LGroup := FRuleGroups[ANeighbor.Value];
 
     //if we have rules for the direction, we'll
     //use to validate. we flip because we are working "backwards" from neighbors
@@ -577,7 +615,7 @@ procedure TGraph.DoValidate(const AEntry: TGraphEntry; const Z, APrevZ: UInt64;
 
       //iterate the current value list and check to see what values we have left
       for I := 0 to High(Values) do
-        if TGraphValuesHelper.BinarySearch(LRuleVals, Values[I], LResult) then
+        if ContainsGraphValue(LRuleVals, Values[I]) then
           Insert(Values[I], LVals, Length(LVals));
 
       //lastly, set the output values to our local validated values
@@ -705,8 +743,8 @@ end;
 function TGraph.AddValue(const AValue: TGraphValue): TParentedGraphRuleGroup;
 begin
   //if exists, just return it
-  if FRules.ContainsKey(AValue) then
-    Result := TParentedGraphRuleGroup(FRules[AValue])
+  if FRuleGroups.ContainsKey(AValue) then
+    Result := TParentedGraphRuleGroup(FRuleGroups[AValue])
   //otherwise create a new group for the rule
   else
   begin
@@ -716,7 +754,7 @@ begin
     //then create a parented rule group to hold the rules
     Result := TParentedGraphRuleGroup.Create(AValue);
     Result.Parent := Self;
-    FRules.Add(AValue, Result);
+    FRuleGroups.Add(AValue, Result);
   end;
 end;
 
@@ -729,73 +767,91 @@ var
     X, Y: UInt64;
     LEntry : TGraphEntry;
     LIndex: Integer;
-
-    function IsValidPrevZ(const Z : UInt64) : Boolean;
-    begin
-      Result := (FDimension.Depth > 0) and  (Z <= FDimension.Depth);
-    end;
+    LVisited : TList<TGraphEntry>;
 
     procedure UpdateEntriesFromLoc(const AEntry : TGraphEntry);
     begin
       if not Assigned(AEntry) then
         Exit;
 
-      //get and assign the selection
-      if LEntry.Empty then
-        LEntry.Value := DoGetSelection(LEntry, Z, APrevZ)
-      //otherwise we've already encountered this entry
+      //we'll keep track of which entries we've already visited and bail if
+      //we encounter them again
+      if LVisited.IndexOf(AEntry) >= 0 then
+        Exit
       else
-        Exit;
+        LVisited.Add(AEntry);
+
+      //get and assign the selection
+      if AEntry.Empty then
+        AEntry.Value := DoGetSelection(AEntry, Z, APrevZ);
 
       //recurse with each neighbor
-      UpdateEntriesFromLoc(LEntry[gdNorth]);
-      UpdateEntriesFromLoc(LEntry[gdEast]);
-      UpdateEntriesFromLoc(LEntry[gdSouth]);
-      UpdateEntriesFromLoc(LEntry[gdWest]);
-      UpdateEntriesFromLoc(LEntry[gdUp]);
-      UpdateEntriesFromLoc(LEntry[gdDown]);
+      UpdateEntriesFromLoc(AEntry[gdNorth]);
+      UpdateEntriesFromLoc(AEntry[gdEast]);
+      UpdateEntriesFromLoc(AEntry[gdSouth]);
+      UpdateEntriesFromLoc(AEntry[gdWest]);
+      UpdateEntriesFromLoc(AEntry[gdUp]);
+      UpdateEntriesFromLoc(AEntry[gdDown]);
     end;
 
   begin
-    //now find the starting location
-    DoGetStartCoord(X, Y);
+    LVisited := TList<TGraphEntry>.Create;
 
-    //get the entry
-    LIndex := CoordToIndex(X, Y, Z);
+    try
+      //now find the starting location
+      DoGetStartCoord(X, Y);
 
-    //check for a valid index and continue if not (should always be true)
-    if not InBounds(LIndex) then
-      raise Exception.Create(Format('RunPlane::invalid coordinates [x]-%d, [y]-%d, [z]-%d', [X, Y, Z]));
+      //get the entry
+      LIndex := CoordToIndex(X, Y, Z);
 
-    LEntry := FEntries[LIndex];
+      //check for a valid index and continue if not (should always be true)
+      if not InBounds(LIndex) then
+        raise Exception.Create(Format('RunPlane::invalid coordinates [x]-%d, [y]-%d, [z]-%d', [X, Y, Z]));
 
-    //starting at this entry, we'll update the plane
-    UpdateEntriesFromLoc(LEntry)
+      LEntry := FEntries[LIndex];
+
+      //starting at this entry, we'll update the plane
+      UpdateEntriesFromLoc(LEntry)
+    finally
+      LVisited.Free;
+    end;
   end;
 
 begin
   Result := Self;
 
-  for I := 0 to Pred(FEntries.Count) do
-    FEntries[I].Reset;
-
   //handle the different run modes and pass the current plane to the Runplane helper
   if FMode = rmBottomUp then
     for I := 0 to Pred(FDimension.Depth) do
-      RunPlane(I, Pred(I))
+    begin
+      if I = 0 then
+        RunPlane(I, I)
+      else
+        RunPlane(I, Pred(I));
+    end
   else if FMode = rmTopDown then
     for I := Pred(FDimension.Depth) downto 0 do
-      RunPlane(I, Succ(I))
+    begin
+      if I = Pred(FDimension.Depth) then
+        RunPlane(I, I)
+      else
+        RunPlane(I, Succ(I));
+    end
   else
     raise Exception.Create('Run::run mode not implemented');
 end;
 
 function TGraph.Reset: TGraph;
+var
+  I: Integer;
 begin
   Result := Self;
-  FRules.Clear;
+  FRuleGroups.Clear;
   SetLength(FValues, 0);
   Reshape(0, 0, 0);
+
+  for I := 0 to Pred(FEntries.Count) do
+    FEntries[I].Reset;
 end;
 
 constructor TGraph.Create;
@@ -803,14 +859,14 @@ begin
   FSel := DefaultSelection;
   FEntries := TGraphEntries.Create;
   FPlanes := TPlanes.Create;
-  FRules := TGraphRuleGroups.Create;
+  FRuleGroups := TGraphRuleGroups.Create;
 end;
 
 destructor TGraph.Destroy;
 begin
   FEntries.Free;
   FPlanes.Free;
-  FRules.Free;
+  FRuleGroups.Free;
   inherited Destroy;
 end;
 
