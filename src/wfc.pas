@@ -37,9 +37,11 @@ type
   //user defined value
   TGraphValue = String;
   TGraphValues = TArray<TGraphValue>;
+  TGraphValuesHelper = TArrayHelper<TGraphValue>;
 
   //all posible "directions" to move from a single point on the graph
   TGraphDirection = (gdNorth, gdEast, gdSouth, gdWest, gdUp, gdDown);
+  TGraphDirections = set of TGraphDirection;
 
   { TGraphEntry }
   (*
@@ -99,16 +101,22 @@ type
     function GetRule(const ADirection : TGraphDirection): TGraphRule;
   strict protected
     function IndexOfDirection(const ADirection : TGraphDirection) : Integer;
+
+    (*
+      can be overridden to handle additional logic for adding new rules
+    *)
+    procedure DoNewRule(const ADirections : TGraphDirections;
+      const AValue : TGraphValue); virtual;
   public
     property Value : TGraphValue read FVal write FVal;
     property Rule[const ADirection : TGraphDirection] : TGraphRule read GetRule; default;
     property Rules : TGraphRules read FRules write FRules;
     property Exists[const ADirection : TGraphDirection] : Boolean read GetExists;
 
-    function NewRule(const ADirection : TGraphDirection;
+    function NewRule(const ADirections : TGraphDirections;
       const AValue : TGraphValue) : TGraphRuleGroup; overload;
 
-    function NewRule(const ADirection : TGraphDirection;
+    function NewRule(const ADirections : TGraphDirections;
       const AValues : TGraphValues) : TGraphRuleGroup; overload;
 
     constructor Create; virtual; overload;
@@ -158,6 +166,9 @@ type
       TParentedGraphRuleGroup = class(TGraphRuleGroup)
       strict private
         FParent: TGraph;
+      strict protected
+        procedure DoNewRule(const ADirections: TGraphDirections;
+          const AValue: TGraphValue); override;
       public
         property Parent : TGraph read FParent write FParent;
       end;
@@ -165,6 +176,7 @@ type
     FDimension: TDimension;
     FMode: TGraphRunMode;
     FRules: TGraphRuleGroups;
+    FValues : TGraphValues;
     FSel: TValueSelectionCallback;
     FEntries : TGraphEntries;
     FPlanes : TPlanes;
@@ -175,7 +187,8 @@ type
     function InBounds(const AIndex : Integer) : Boolean;
   strict protected
     procedure DoGetStartCoord(out X, Y : UInt64); virtual;
-    function DoGetSelection(const AEntry : TGraphEntry; const Z, APrevZ : UInt64) : TGraphValue; virtual;
+    function DoGetSelection(const AEntry : TGraphEntry;
+      const Z, APrevZ : UInt64) : TGraphValue; virtual;
 
     (*
       can be overridden to validate the rules that are allowed for a graph entry
@@ -235,7 +248,7 @@ type
     function Reshape(const AWidth, AHeight, ADepth : UInt64) : TGraph;
 
     (*
-      adds a value to be used
+      adds a value to be used and returns the new rule group
         @AValue - a unique user defined value
         @Result - parented rule group to define adjacency rules
     *)
@@ -246,6 +259,11 @@ type
       execute the rules against each graph entry
     *)
     function Run : TGraph;
+
+    (*
+      clears all rules and reshapes to empty (0, 0, 0)
+    *)
+    function Reset : TGraph;
 
     constructor Create; virtual;
     destructor Destroy; override;
@@ -258,6 +276,14 @@ var
     own callback, or set this on the graph instance
   *)
   DefaultSelection : TValueSelectionCallback;
+
+  (*
+    returns opposite direction
+  *)
+  function InverseOfDir(const ADirection : TGraphDirection) : TGraphDirection; inline;
+
+const
+  AllDirections : TGraphDirections = [gdNorth, gdEast, gdSouth, gdWest, gdUp, gdDown];
 
 implementation
 uses
@@ -273,6 +299,41 @@ begin
     Randomize;
     Result := AValid[Low(AValid), RandomRange(Low(AValid), Length(AValid))];
   end;
+end;
+
+function InverseOfDir(const ADirection: TGraphDirection): TGraphDirection;
+begin
+  if ADirection = gdNorth then
+    Exit(gdSouth)
+  else if ADirection = gdEast then
+    Exit(gdWest)
+  else if ADirection = gdSouth then
+    Exit(gdNorth)
+  else if ADirection = gdWest then
+    Exit(gdEast)
+  else if ADirection = gdUp then
+    Exit(gdDown)
+  else
+    Exit(gdUp);
+end;
+
+{ TGraph.TParentedGraphRuleGroup }
+
+procedure TGraph.TParentedGraphRuleGroup.DoNewRule(
+  const ADirections: TGraphDirections; const AValue: TGraphValue);
+var
+  LDir: TGraphDirection;
+  LDirs : TGraphDirections = [];
+  LResult : TBinarySearchResult;
+begin
+  inherited DoNewRule(ADirections, AValue);
+
+  //after a rule has been added we need to add the "inverse" for any new values
+  for LDir in ADirections do
+    Include(LDirs, InverseOfDir(LDir));
+
+  if not TGraphValuesHelper.BinarySearch(Parent.FValues, AValue, LResult) then
+    Parent.AddValue(AValue).NewRule(LDirs, Value);
 end;
 
 { TGraphRuleGroup }
@@ -298,36 +359,46 @@ begin
       Exit(I);
 end;
 
-function TGraphRuleGroup.NewRule(const ADirection: TGraphDirection;
-  const AValue: TGraphValue): TGraphRuleGroup;
+procedure TGraphRuleGroup.DoNewRule(const ADirections: TGraphDirections;
+  const AValue: TGraphValue);
 var
   LRule : TGraphRule;
   LVals : TGraphValues;
   I: Integer;
+  LDir: TGraphDirection;
 begin
-  Result := Self;
+  for LDir in ADirections do
+  begin
+    //check for direction existence first then append if so
+    if Exists[LDir] then
+    begin
+      I := IndexOfDirection(LDir);
+      LRule := FRules[I];
+      LVals := LRule.Value;
+    end
+    //otherwise no direction/rules set so insert to end of rules
+    else
+    begin
+      I := Length(FRules);
+      LRule.Key := LDir;
+    end;
 
-  //check for direction existence first then append if so
-  if Exists[ADirection] then
-  begin
-    I := IndexOfDirection(ADirection);
-    LRule := FRules[I];
-    LVals := LRule.Value;
-  end
-  //otherwise no direction/rules set so insert to end of rules
-  else
-  begin
-    I := Length(FRules);
-    LRule.Key := ADirection;
+    //insert value and then upsert to rules
+    Insert(AValue, LVals, Length(LVals));
+    LRule.Value := LVals;
+    Insert(LRule, FRules, I);
   end;
-
-  //insert value and then upsert to rules
-  Insert(AValue, LVals, Length(LVals));
-  LRule.Value := LVals;
-  Insert(LRule, FRules, I);
 end;
 
-function TGraphRuleGroup.NewRule(const ADirection: TGraphDirection;
+
+function TGraphRuleGroup.NewRule(const ADirections: TGraphDirections;
+  const AValue: TGraphValue): TGraphRuleGroup;
+begin
+  Result := Self;
+  DoNewRule(ADirections, AValue);
+end;
+
+function TGraphRuleGroup.NewRule(const ADirections: TGraphDirections;
   const AValues: TGraphValues): TGraphRuleGroup;
 var
   I: Integer;
@@ -335,7 +406,7 @@ begin
   Result := Self;
 
   for I := 0 to High(AValues) do
-    NewRule(ADirection, AValues[I]);
+    NewRule(ADirections, AValues[I]);
 end;
 
 constructor TGraphRuleGroup.Create;
@@ -466,23 +537,79 @@ end;
 
 procedure TGraph.DoValidate(const AEntry: TGraphEntry; const Z, APrevZ: UInt64;
   out Values: TGraphValues);
-begin
-  //todo - validate rules for a given entry
 
+  procedure TrimValuesForNeighbor(const ANeighbor : TGraphEntry;
+    const ADirection : TGraphDirection);
+  var
+    LGroup : TGraphRuleGroup;
+    LDir: TGraphDirection;
+    LRuleVals, LVals : TGraphValues;
+    I: Integer;
+    LResult: TBinarySearchResult;
+  begin
+    LVals := Default(TGraphValues);
+
+    //no neighbor, get out
+    if not Assigned(ANeighbor) then
+      Exit;
+
+    //neighbor has no value to validate against
+    if ANeighbor.Empty then
+      Exit;
+
+    LGroup := FRules[ANeighbor.Value];
+
+    //if we have rules for the direction, we'll
+    //use to validate. we flip because we are working "backwards" from neighbors
+    //that have been assigned already (todo - this comment might not make sense, clean it up)
+    LDir := InverseOfDir(ADirection);
+
+    if LGroup.Exists[LDir] then
+    begin
+      LRuleVals := LGroup[LDir].Value;
+
+      //note:
+      //  no rules, means any state is possible. for users to specifically
+      //  state "nothing" should be allowed, a user defined value representing "nothing"
+      //  should be introduced
+      if Length(LRuleVals) < 1 then
+        Exit;
+
+      //iterate the current value list and check to see what values we have left
+      for I := 0 to High(Values) do
+        if TGraphValuesHelper.BinarySearch(LRuleVals, Values[I], LResult) then
+          Insert(Values[I], LVals, Length(LVals));
+
+      //lastly, set the output values to our local validated values
+      Values := LVals
+    end;
+  end;
+
+begin
   //default case for a non-empty entry is to use the value it was assigned
   if not AEntry.Empty then
   begin
-    SetLength(Result, 1);
-    Result[0] := AEntry.Value;
+    SetLength(Values, 1);
+    Values[0] := AEntry.Value;
 
     //todo - do we need to exit here or check for neighbors values?
     Exit;
   end;
 
-  //first get all of the possible states we can be in
-  //...
+  //first get all of the possible states we can be in by setting to all values
+  Values := FValues;
 
+  //get the rule group for each of the entry's neighbors on the same plane
+  TrimValuesForNeighbor(AEntry[gdNorth], gdNorth);
+  TrimValuesForNeighbor(AEntry[gdEast], gdEast);
+  TrimValuesForNeighbor(AEntry[gdSouth], gdSouth);
+  TrimValuesForNeighbor(AEntry[gdWest], gdWest);
 
+  //now depending on the previous Z we either will look "up" or "down"
+  if APrevZ < Z then
+    TrimValuesForNeighbor(AEntry[gdUp], gdUp) //moving top -> bottom
+  else if APrevZ > Z then
+    TrimValuesForNeighbor(AEntry[gdDown], gdDown); //moving bottom -> top
 end;
 
 function TGraph.Reshape(const AWidth, AHeight, ADepth: UInt64): TGraph;
@@ -583,7 +710,12 @@ begin
   //otherwise create a new group for the rule
   else
   begin
+    //first insert to the values collection (we do this for ease of lookup)
+    Insert(AValue, FValues, Length(FValues));
+
+    //then create a parented rule group to hold the rules
     Result := TParentedGraphRuleGroup.Create(AValue);
+    Result.Parent := Self;
     FRules.Add(AValue, Result);
   end;
 end;
@@ -656,6 +788,14 @@ begin
       RunPlane(I, Succ(I))
   else
     raise Exception.Create('Run::run mode not implemented');
+end;
+
+function TGraph.Reset: TGraph;
+begin
+  Result := Self;
+  FRules.Clear;
+  SetLength(FValues, 0);
+  Reshape(0, 0, 0);
 end;
 
 constructor TGraph.Create;

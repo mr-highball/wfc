@@ -72,7 +72,7 @@ var
   LSuccess: Boolean;
 begin
   LGroup := TGraphRuleGroup.Create;
-  LGroup.NewRule(gdNorth, 'test');
+  LGroup.NewRule([gdNorth], 'test');
   LSuccess := LGroup.Exists[gdNorth] and (LGroup[gdNorth].Value[0] = 'test');
 
   LGroup.Free;
@@ -89,7 +89,7 @@ var
   LSuccess: Boolean;
 begin
   LGroup := TGraphRuleGroup.Create;
-  LGroup.NewRule(gdNorth, 'test').NewRule(gdEast, 'test2');
+  LGroup.NewRule([gdNorth], 'test').NewRule([gdEast], 'test2');
   LSuccess := LGroup.Exists[gdNorth]
     and (LGroup[gdNorth].Value[0] = 'test')
     and (LGroup[gdEast].Value[0] = 'test2');
@@ -167,8 +167,33 @@ procedure TestGraphRun2D;
 var
   LGraph: TGraph;
   LSuccess: Boolean;
+  I, J: Integer;
 begin
   LGraph := TGraph.Create.Reshape({width} 5, {height} 5, {depth} 1);
+
+  //add simple rules (A & B from any direction)
+  LGraph.AddValue('A')
+    .NewRule(AllDirections, 'B')
+    .NewRule(AllDirections, 'NONE'); //allow next to none space too
+
+  //B & C (E & W)
+  LGraph.AddValue('B')
+    .NewRule([gdEast, gdWest], 'C')
+    .NewRule(AllDirections, 'NONE'); //allow next to none space too
+
+  //D all alone
+  LGraph.AddValue('D')
+    .NewRule(AllDirections, 'NONE');
+
+  //run the graph
+  LGraph.Run;
+  for I := 0 to Pred(5) do
+  begin
+    WriteLn('---------------------------');
+    for J := 0 to Pred(5) do
+      Write(LGraph[I, J, 0].Value, '|');
+    WriteLn('');
+  end;
 
   LSuccess := False;
 
