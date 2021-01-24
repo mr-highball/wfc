@@ -183,6 +183,7 @@ type
 
     function GetEntry(const X, Y, Z : UInt64): TGraphEntry;
     function CoordToIndex(const X, Y, Z : UInt64) : Integer;
+    function GetRuleGroup(const AValue : TGraphValue): TParentedGraphRuleGroup;
     function InBounds(const AIndex : Integer) : Boolean;
   strict protected
     procedure DoGetStartCoord(out X, Y : UInt64); virtual;
@@ -209,6 +210,11 @@ type
       returns graph entry by (x, y, z) coordinates
     *)
     property Entry[const X, Y, Z : UInt64] : TGraphEntry read GetEntry; default;
+
+    (*
+      gets the rule group for the value
+    *)
+    property Rules[const AValue : TGraphValue] : TParentedGraphRuleGroup read GetRuleGroup;
 
     (*
       2D planes "stacked" in the Z direction
@@ -536,6 +542,11 @@ begin
   //index into the "flattened" graph for a quicker lookup than going
   //through the planes collection
   Result := (FDimension.Width * FDimension.Height * Z) + X + (Y * FDimension.Width);
+end;
+
+function TGraph.GetRuleGroup(const AValue : TGraphValue): TParentedGraphRuleGroup;
+begin
+  Result := TParentedGraphRuleGroup(FRuleGroups[AValue]);
 end;
 
 function TGraph.InBounds(const AIndex: Integer): Boolean;

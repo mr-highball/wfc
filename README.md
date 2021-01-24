@@ -33,8 +33,8 @@ LGraph.AddValue('C')
   .NewRule([gdNorth, gdSouth], ['A', 'B']); 
   
 (*
-  when you're finished defining constraints and all of you
-  possible values (states) then just run and the result can 
+  when you're finished defining constraints and all of the
+  possible values (states), then just run and the result can be 
   persisted or you can access the completed graph directly
 *)
 LGraph.Run();
