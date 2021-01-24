@@ -45,7 +45,8 @@ begin
   LWorld := TGraph.Create;
   try
     //set our shape to be 2D and size it appropriately for the console window
-    LWorld.Reshape({width} 50, {height} 30, {depth} 1);
+    LWorld.Reshape({width} 80, {height} 25, {depth} 1);
+    //LWorld.WrapNeighbors := False;
 
     //"coast" can have "sea" to the right (east)
     //and "land" to the left (west)
