@@ -133,6 +133,9 @@ type
     const AEntry : TGraphEntry;
     const AValid : TGraphValues) : TGraphValue;
 
+  TInvalidStateCallback = procedure(const AGraph : TGraph;
+    const AEntry : TGraphEntry; var AValue : TGraphValue);
+
   (*
     determines the mode for the plane selection process during a graph instance run
   *)
@@ -173,6 +176,7 @@ type
       end;
   strict private
     FDimension: TDimension;
+    FInv: TInvalidStateCallback;
     FMode: TGraphRunMode;
     FRuleGroups: TGraphRuleGroups;
     FValues : TGraphValues;
@@ -186,6 +190,7 @@ type
     function GetRuleGroup(const AValue : TGraphValue): TParentedGraphRuleGroup;
     function InBounds(const AIndex : Integer) : Boolean;
   strict protected
+    function DoHandleInvalidState(const AEntry : TGraphEntry) : TGraphValue;
     procedure DoGetStartCoord(out X, Y : UInt64); virtual;
     function DoGetSelection(const AEntry : TGraphEntry;
       const Z, APrevZ : UInt64) : TGraphValue; virtual;
@@ -205,6 +210,12 @@ type
       after rules have been run
     *)
     property SelectionCallback : TValueSelectionCallback read FSel write FSel;
+
+    (*
+      when an invalid state occurs for selecting values, this callback will
+      be called and give a chance to change the value to use
+    *)
+    property InvalidStateCallback : TInvalidStateCallback read FInv write FInv;
 
     (*
       returns graph entry by (x, y, z) coordinates
@@ -554,6 +565,16 @@ begin
   Result := (AIndex >= 0) and (AIndex < FEntries.Count);
 end;
 
+function TGraph.DoHandleInvalidState(const AEntry: TGraphEntry): TGraphValue;
+begin
+  //default to the current value
+  Result := AEntry.Value;
+
+  //when we have the callback assigned then use it
+  if Assigned(FInv) then
+    FInv(Self, AEntry, Result);
+end;
+
 procedure TGraph.DoGetStartCoord(out X, Y: UInt64);
 begin
   //base we'll just use a random approach, but this can be overridden
@@ -574,9 +595,9 @@ begin
   DoValidate(AEntry, Z, APrevZ, LValues);
 
   //in the case that we started with values but removed all valid options
-  //we should just return the default empty state
+  //invoke the invalid state handler
   if Length(LValues) < 1 then
-    Exit(AEntry.Value);
+    Exit(DoHandleInvalidState(AEntry));
 
   //pass the rules to the callback for determining the value of this entry
   Result := FSel(Self, AEntry, LValues);
@@ -822,7 +843,7 @@ var
       LEntry := FEntries[LIndex];
 
       //starting at this entry, we'll update the plane
-      UpdateEntriesFromLoc(LEntry)
+      UpdateEntriesFromLoc(LEntry);
     finally
       LVisited.Free;
     end;

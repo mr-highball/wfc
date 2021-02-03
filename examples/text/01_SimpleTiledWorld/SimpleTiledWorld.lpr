@@ -1,3 +1,5 @@
+{$Mode delphi}
+
 (*
   below example uses the following article describing a simple world
   with Land, Coast, Sea and Mountains that have constraints for
@@ -8,6 +10,7 @@
 *)
 program SimpleTiledWorld;
 uses
+  math,
   crt, //colors for console
   wfc; //library code
 
@@ -39,6 +42,17 @@ begin
   end;
 end;
 
+(*
+  the rules we have in place allow for invalid board states, so we could
+  either fix the rules to handle all cases, or provide a default with this
+*)
+procedure InvalidHandler(const AGraph : TGraph; const AEntry : TGraphEntry;
+  var AValue : TGraphValue);
+begin
+  //just use land or sea when no other solution
+  AValue := TArray<String>.Create('L', 'S')[RandomRange(0, 2)];
+end;
+
 var
   LWorld : TGraph;
 begin
@@ -47,6 +61,8 @@ begin
     //set our shape to be 2D and size it appropriately for the console window
     LWorld.Reshape({width} 80, {height} 25, {depth} 1);
     //LWorld.WrapNeighbors := False;
+
+    LWorld.InvalidStateCallback := InvalidHandler;
 
     //"coast" can have "sea" to the right (east)
     //and "land" to the left (west)
@@ -63,10 +79,11 @@ begin
       .NewRule(AllDirections, 'L');
 
     //"mountain" isn't really defined on the article even though
-    //the tile is there, so we'll just say it needs to be bordered
-    //by land or next to another mountain
+    //the tile is there, so we'll just say it needs be to the west of cost
+    //or west/east of another mountain and east of land
     LWorld.AddValue('M')
-      .NewRule([gdWest, gdEast], 'L')
+      .NewRule([gdEast, gdWest], 'L')
+      .NewRule([gdEast], 'C')
       .NewRule(AllDirections, 'M');
 
     //run the graph
