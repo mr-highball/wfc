@@ -1,0 +1,68 @@
+object MainForm: TMainForm
+  Left = 702
+  Height = 381
+  Top = 402
+  Width = 1623
+  Caption = 'MainForm'
+  ClientHeight = 381
+  ClientWidth = 1623
+  DesignTimePPI = 192
+  OnCreate = FormCreate
+  LCLVersion = '2.1.0.0'
+  object pnl_ctrls: TPanel
+    Left = 0
+    Height = 100
+    Top = 281
+    Width = 1623
+    Align = alBottom
+    BevelOuter = bvNone
+    ClientHeight = 100
+    ClientWidth = 1623
+    TabOrder = 0
+    object btn_play: TButton
+      AnchorSideTop.Control = pnl_ctrls
+      AnchorSideTop.Side = asrCenter
+      AnchorSideRight.Control = pnl_ctrls
+      AnchorSideRight.Side = asrBottom
+      Left = 1498
+      Height = 50
+      Top = 25
+      Width = 120
+      Anchors = [akTop, akRight]
+      BorderSpacing.Right = 5
+      Caption = 'Play'
+      TabOrder = 0
+    end
+    object btn_generate: TButton
+      AnchorSideTop.Control = btn_play
+      AnchorSideRight.Control = btn_play
+      Left = 1368
+      Height = 50
+      Top = 25
+      Width = 120
+      Anchors = [akTop, akRight]
+      BorderSpacing.Right = 10
+      Caption = 'Generate'
+      TabOrder = 1
+    end
+  end
+  object memo_notes: TMemo
+    Left = 0
+    Height = 281
+    Top = 0
+    Width = 300
+    Align = alLeft
+    Lines.Strings = (
+      ''
+    )
+    TabOrder = 1
+  end
+  object pnl_piano: TPanel
+    Left = 300
+    Height = 281
+    Top = 0
+    Width = 1323
+    Align = alClient
+    TabOrder = 2
+  end
+end
