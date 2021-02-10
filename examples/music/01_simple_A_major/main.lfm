@@ -1,68 +1,76 @@
 object MainForm: TMainForm
   Left = 702
-  Height = 381
+  Height = 190
   Top = 402
-  Width = 1623
+  Width = 812
   Caption = 'MainForm'
-  ClientHeight = 381
-  ClientWidth = 1623
-  DesignTimePPI = 192
+  ClientHeight = 190
+  ClientWidth = 812
   OnCreate = FormCreate
+  OnDestroy = FormDestroy
   LCLVersion = '2.1.0.0'
   object pnl_ctrls: TPanel
     Left = 0
-    Height = 100
-    Top = 281
-    Width = 1623
+    Height = 50
+    Top = 140
+    Width = 812
     Align = alBottom
     BevelOuter = bvNone
-    ClientHeight = 100
-    ClientWidth = 1623
+    ClientHeight = 50
+    ClientWidth = 812
+    ParentFont = False
     TabOrder = 0
     object btn_play: TButton
       AnchorSideTop.Control = pnl_ctrls
       AnchorSideTop.Side = asrCenter
       AnchorSideRight.Control = pnl_ctrls
       AnchorSideRight.Side = asrBottom
-      Left = 1498
-      Height = 50
-      Top = 25
-      Width = 120
+      Left = 750
+      Height = 25
+      Top = 13
+      Width = 60
       Anchors = [akTop, akRight]
-      BorderSpacing.Right = 5
+      BorderSpacing.Right = 2
       Caption = 'Play'
+      OnClick = btn_playClick
+      ParentFont = False
       TabOrder = 0
     end
     object btn_generate: TButton
       AnchorSideTop.Control = btn_play
       AnchorSideRight.Control = btn_play
-      Left = 1368
-      Height = 50
-      Top = 25
-      Width = 120
+      Left = 685
+      Height = 25
+      Top = 13
+      Width = 60
       Anchors = [akTop, akRight]
-      BorderSpacing.Right = 10
+      BorderSpacing.Right = 5
       Caption = 'Generate'
+      OnClick = btn_generateClick
+      ParentFont = False
       TabOrder = 1
     end
   end
   object memo_notes: TMemo
     Left = 0
-    Height = 281
+    Height = 140
     Top = 0
-    Width = 300
+    Width = 150
     Align = alLeft
     Lines.Strings = (
       ''
     )
+    ParentFont = False
+    ScrollBars = ssAutoBoth
     TabOrder = 1
   end
   object pnl_piano: TPanel
-    Left = 300
-    Height = 281
+    Left = 150
+    Height = 140
     Top = 0
-    Width = 1323
+    Width = 662
     Align = alClient
+    ParentFont = False
     TabOrder = 2
   end
 end
