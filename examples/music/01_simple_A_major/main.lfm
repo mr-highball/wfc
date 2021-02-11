@@ -73,4 +73,10 @@ object MainForm: TMainForm
     ParentFont = False
     TabOrder = 2
   end
+  object timer_audio: TTimer
+    Interval = 5
+    OnTimer = timer_audioTimer
+    Left = 688
+    Top = 32
+  end
 end

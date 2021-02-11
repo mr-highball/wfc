@@ -31,11 +31,13 @@ type
     memo_notes: TMemo;
     pnl_piano: TPanel;
     pnl_ctrls: TPanel;
+    timer_audio: TTimer;
     procedure btn_generateClick(Sender: TObject);
     procedure btn_playClick(Sender: TObject);
     procedure FormCreate(Sender: TObject);
     procedure FormDestroy(Sender: TObject);
-  private
+    procedure timer_audioTimer(Sender: TObject);
+  strict private
     FPiano: TPianoKeyboard;
     FRecorder: TWaveRecorder;
     FTempo : Double;
@@ -53,10 +55,24 @@ type
       Shift: TShiftState; X, Y: Integer);
     {$EndRegion}
   protected
+    type
+
+      { TPianoGraph }
+      (*
+        specialized graph to start at the beginning bar
+      *)
+      TPianoGraph = class(TGraph)
+      strict protected
+        procedure DoGetStartCoord(out X, Y: UInt64); override;
+      public
+      end;
+  protected
     procedure InitWFC(const AGraph : TGraph); virtual;
+    procedure DoAddMusicNotes(const AMusic : TPianoMusic); virtual;
   public
     procedure GenerateMusic;
     procedure PlayMusic;
+    procedure StopMusic;
   end;
 
 var
@@ -66,18 +82,40 @@ implementation
 
 {$R *.lfm}
 
+{ TMainForm.TPianoGraph }
+
+procedure TMainForm.TPianoGraph.DoGetStartCoord(out X, Y: UInt64);
+begin
+  //always start at the beginning note for our piano demo
+  X := 0;
+  Y := 0;
+end;
+
 { TMainForm }
 
 procedure TMainForm.FormCreate(Sender: TObject);
 begin
   InitPiano;
-  FGraph := TGraph.Create;
+  FGraph := TPianoGraph.Create;
   InitWFC(FGraph);
 end;
 
 procedure TMainForm.FormDestroy(Sender: TObject);
 begin
   FGraph.Free;
+end;
+
+procedure TMainForm.timer_audioTimer(Sender: TObject);
+const
+  TimeOffset = 0.1;
+var
+  LTime: Double;
+  Minutes, Seconds: Integer;
+begin
+  LTime := AudioTime;
+  FPiano.Music.Play(LTime + TimeOffset);
+  if FPiano.Music.Stopped then
+    StopMusic;
 end;
 
 procedure TMainForm.btn_generateClick(Sender: TObject);
@@ -168,6 +206,7 @@ begin
     must come after it's prior note on the scale
   *)
   AGraph.Reshape({width = notes} 24, {height = 0-note/1-duration?} 1, {depth} 1); //todo - should be use height to hold the duration? or would this be better for implementing the passes idea? for now use 1 dimension or use Z?
+  AGraph.WrapNeighbors := False;
   AGraph.AddValue('A').NewRule([gdEast], 'B').NewRule([gdWest], 'A+');
   AGraph.AddValue('B').NewRule([gdEast], 'C#');
   AGraph.AddValue('C#').NewRule([gdEast], 'D');
@@ -178,11 +217,39 @@ begin
   AGraph.AddValue('A+').NewRule([gdEast], 'A');
 end;
 
+procedure TMainForm.DoAddMusicNotes(const AMusic: TPianoMusic);
+var
+  LLine: String;
+  I, LNote: Integer;
+begin
+  for I := 0 to Pred(memo_notes.Lines.Count) do
+  begin
+    LLine := memo_notes.Lines[I];
+    if LLine = 'A' then
+      LNote := noteA
+    else if LLine = 'B' then
+      LNote := noteB
+    else if LLine = 'C#' then
+      LNote := noteCsharp
+    else if LLine = 'D' then
+      LNote := noteD
+    else if LLine = 'E' then
+      LNote := noteE
+    else if LLine = 'F#' then
+      LNote := noteFsharp
+    else if LLine = 'G#' then
+      LNote := noteGsharp
+    else if LLine = 'A+' then
+      LNote := noteA + 12;
+
+    AMusic.Add(LNote, I, Succ(I));
+  end;
+end;
+
 procedure TMainForm.GenerateMusic;
 var
   I: Integer;
 begin
-  //todo - generate dank tunes
   memo_notes.Clear;
   FGraph.Reset;
   InitWFC(FGraph);
@@ -194,7 +261,17 @@ end;
 
 procedure TMainForm.PlayMusic;
 begin
-  //todo - play our dank tunes
+  AudioReset;
+  FPiano.Music.Clear;
+  FPiano.Reset;
+  DoAddMusicNotes(FPiano.Music);
+  timer_audio.Enabled := True;
+end;
+
+procedure TMainForm.StopMusic;
+begin
+  timer_audio.Enabled := False;
+  FPiano.Reset;
 end;
 
 end.
