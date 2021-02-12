@@ -10,7 +10,7 @@ uses
   Forms,
   Controls,
   Graphics,
-  Dialogs, ExtCtrls, StdCtrls,
+  Dialogs, ExtCtrls, StdCtrls, ComCtrls,
   wfc,
   Audio,
   Piano,
@@ -20,23 +20,28 @@ uses
 type
 
 
-  { TMainForm }
+  { TSimpleMusicForm }
   (*
     an example showing how we can use a commonly used scale (A Major)
-    to generate a simple musical track
+    to generate a simple musical track and can also be used as a base class
+    for other music demos
   *)
-  TMainForm = class(TForm)
+  TSimpleMusicForm = class(TForm)
+    btn_stop: TButton;
     btn_play: TButton;
     btn_generate: TButton;
     memo_notes: TMemo;
     pnl_piano: TPanel;
     pnl_ctrls: TPanel;
     timer_audio: TTimer;
+    track_piano_size: TTrackBar;
     procedure btn_generateClick(Sender: TObject);
     procedure btn_playClick(Sender: TObject);
+    procedure btn_stopClick(Sender: TObject);
     procedure FormCreate(Sender: TObject);
     procedure FormDestroy(Sender: TObject);
     procedure timer_audioTimer(Sender: TObject);
+    procedure track_piano_sizeChange(Sender: TObject);
   strict private
     FPiano: TPianoKeyboard;
     FRecorder: TWaveRecorder;
@@ -67,50 +72,69 @@ type
       public
       end;
   protected
+    (*
+      responsible for initializing the wfc graph and can
+      be overridden in children if a different behavior is desired
+    *)
     procedure InitWFC(const AGraph : TGraph); virtual;
+
+    (*
+      can be overridden to add notes differently then the default way
+    *)
     procedure DoAddMusicNotes(const AMusic : TPianoMusic); virtual;
   public
+
+    (*
+      uses wfc to generate music
+    *)
     procedure GenerateMusic;
+
+    (*
+      after generate has been called, this will play music on the piano
+    *)
     procedure PlayMusic;
+
+    (*
+      stops the currently playing music
+    *)
     procedure StopMusic;
   end;
 
 var
-  MainForm: TMainForm;
+  SimpleMusicForm: TSimpleMusicForm;
 
 implementation
 
 {$R *.lfm}
 
-{ TMainForm.TPianoGraph }
+{ TSimpleMusicForm.TPianoGraph }
 
-procedure TMainForm.TPianoGraph.DoGetStartCoord(out X, Y: UInt64);
+procedure TSimpleMusicForm.TPianoGraph.DoGetStartCoord(out X, Y: UInt64);
 begin
   //always start at the beginning note for our piano demo
   X := 0;
   Y := 0;
 end;
 
-{ TMainForm }
+{ TSimpleMusicForm }
 
-procedure TMainForm.FormCreate(Sender: TObject);
+procedure TSimpleMusicForm.FormCreate(Sender: TObject);
 begin
   InitPiano;
   FGraph := TPianoGraph.Create;
   InitWFC(FGraph);
 end;
 
-procedure TMainForm.FormDestroy(Sender: TObject);
+procedure TSimpleMusicForm.FormDestroy(Sender: TObject);
 begin
   FGraph.Free;
 end;
 
-procedure TMainForm.timer_audioTimer(Sender: TObject);
+procedure TSimpleMusicForm.timer_audioTimer(Sender: TObject);
 const
   TimeOffset = 0.1;
 var
   LTime: Double;
-  Minutes, Seconds: Integer;
 begin
   LTime := AudioTime;
   FPiano.Music.Play(LTime + TimeOffset);
@@ -118,25 +142,39 @@ begin
     StopMusic;
 end;
 
-procedure TMainForm.btn_generateClick(Sender: TObject);
+procedure TSimpleMusicForm.track_piano_sizeChange(Sender: TObject);
+begin
+  //there may be a better way to get the piano visual control to scale
+  //but to avoid any more digging, here's a simple slider which will use
+  //the scale factor to update the size
+  FPiano.ScaleFactor := track_piano_size.Position / 100;
+end;
+
+procedure TSimpleMusicForm.btn_generateClick(Sender: TObject);
 begin
   GenerateMusic;
 end;
 
-procedure TMainForm.btn_playClick(Sender: TObject);
+procedure TSimpleMusicForm.btn_playClick(Sender: TObject);
 begin
   PlayMusic;
 end;
 
-procedure TMainForm.InitPiano;
+procedure TSimpleMusicForm.btn_stopClick(Sender: TObject);
 begin
+  StopMusic;
+end;
+
+procedure TSimpleMusicForm.InitPiano;
+begin
+  //initialize the settings for a piano to show on screen
   AudioInit;
   FTempo := 1;
   FPiano := TPianoKeyboard.Create(Self);
   FPiano.Parent := pnl_piano;
   FPiano.Align := alClient;
   FPiano.SetMargin(Rect(0, 1, 0, 0));
-  FPiano.ScaleFactor := 0.5;
+  FPiano.ScaleFactor := 0.35;
   FPiano.OnKeyToggle := PianoKeyToggle;
   FPiano.OnMouseDown := PianoMouseDown;
   FPiano.OnMouseMove := PianoMouseMove;
@@ -147,16 +185,16 @@ begin
   FRecorder := TWaveRecorder.Create;
 end;
 
-procedure TMainForm.PianoKeyToggle(Sender: TObject; Key: Integer; Down: Boolean);
+procedure TSimpleMusicForm.PianoKeyToggle(Sender: TObject; Key: Integer; Down: Boolean);
 begin
-  //here's where we actually play with the piano
+  //here's where we actually play with the piano via user inputs
   if Down then
     AudioVoice(Key, FPiano.KeyToFrequency(Key), FPiano.Music.Velocity, FPiano.Music.Time)
   else
     AudioVoice(Key, 0, 0);
 end;
 
-procedure TMainForm.PianoMouseDown(Sender: TObject; Button: TMouseButton;
+procedure TSimpleMusicForm.PianoMouseDown(Sender: TObject; Button: TMouseButton;
   Shift: TShiftState; X, Y: Integer);
 begin
   if Button = mbLeft then
@@ -167,7 +205,7 @@ begin
   end;
 end;
 
-procedure TMainForm.PianoMouseMove(Sender: TObject; Shift: TShiftState; X,
+procedure TSimpleMusicForm.PianoMouseMove(Sender: TObject; Shift: TShiftState; X,
   Y: Integer);
 var
   I: Integer;
@@ -184,7 +222,7 @@ begin
   end;
 end;
 
-procedure TMainForm.PianoMouseUp(Sender: TObject; Button: TMouseButton;
+procedure TSimpleMusicForm.PianoMouseUp(Sender: TObject; Button: TMouseButton;
   Shift: TShiftState; X, Y: Integer);
 begin
   if (Button = mbLeft) and FMouseDown then
@@ -195,7 +233,7 @@ begin
   end;
 end;
 
-procedure TMainForm.InitWFC(const AGraph: TGraph);
+procedure TSimpleMusicForm.InitWFC(const AGraph: TGraph);
 begin
   (*
     below we'll setup the A Major scale and use 6 bars (4/4) in the width direction
@@ -217,11 +255,13 @@ begin
   AGraph.AddValue('A+').NewRule([gdEast], 'A');
 end;
 
-procedure TMainForm.DoAddMusicNotes(const AMusic: TPianoMusic);
+procedure TSimpleMusicForm.DoAddMusicNotes(const AMusic: TPianoMusic);
 var
   LLine: String;
   I, LNote: Integer;
 begin
+  //todo - currently only handling a major, but expand this to any note
+  //       as well as handling the octaves with + signs
   for I := 0 to Pred(memo_notes.Lines.Count) do
   begin
     LLine := memo_notes.Lines[I];
@@ -240,13 +280,13 @@ begin
     else if LLine = 'G#' then
       LNote := noteGsharp
     else if LLine = 'A+' then
-      LNote := noteA + 12;
+      LNote := noteA + 12; //notes are just integers, and 12 notes until a octave, but fix this up to allow more than one octave
 
     AMusic.Add(LNote, I, Succ(I));
   end;
 end;
 
-procedure TMainForm.GenerateMusic;
+procedure TSimpleMusicForm.GenerateMusic;
 var
   I: Integer;
 begin
@@ -255,11 +295,12 @@ begin
   InitWFC(FGraph);
   FGraph.Run;
 
+  //for now we will just add the note to the memo control
   for I := 0 to Pred(FGraph.Dimension.Width) do
     memo_notes.Lines.Add(FGraph[I, 0, 0].Value);
 end;
 
-procedure TMainForm.PlayMusic;
+procedure TSimpleMusicForm.PlayMusic;
 begin
   AudioReset;
   FPiano.Music.Clear;
@@ -268,8 +309,9 @@ begin
   timer_audio.Enabled := True;
 end;
 
-procedure TMainForm.StopMusic;
+procedure TSimpleMusicForm.StopMusic;
 begin
+  //soundshop uses a timer to play the music, so we mimic this and enable here
   timer_audio.Enabled := False;
   FPiano.Reset;
 end;

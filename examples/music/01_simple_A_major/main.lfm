@@ -1,11 +1,12 @@
-object MainForm: TMainForm
+object SimpleMusicForm: TSimpleMusicForm
   Left = 702
   Height = 190
   Top = 402
   Width = 812
-  Caption = 'MainForm'
+  Caption = 'WFC Music by Highball'
   ClientHeight = 190
   ClientWidth = 812
+  Color = clWhite
   OnCreate = FormCreate
   OnDestroy = FormDestroy
   LCLVersion = '2.1.0.0'
@@ -38,8 +39,8 @@ object MainForm: TMainForm
     end
     object btn_generate: TButton
       AnchorSideTop.Control = btn_play
-      AnchorSideRight.Control = btn_play
-      Left = 685
+      AnchorSideRight.Control = btn_stop
+      Left = 620
       Height = 25
       Top = 13
       Width = 60
@@ -50,13 +51,46 @@ object MainForm: TMainForm
       ParentFont = False
       TabOrder = 1
     end
+    object btn_stop: TButton
+      AnchorSideTop.Control = btn_play
+      AnchorSideRight.Control = btn_play
+      Left = 685
+      Height = 25
+      Top = 13
+      Width = 60
+      Anchors = [akTop, akRight]
+      BorderSpacing.Right = 5
+      Caption = 'Stop'
+      OnClick = btn_stopClick
+      ParentFont = False
+      TabOrder = 2
+    end
+    object track_piano_size: TTrackBar
+      AnchorSideLeft.Control = pnl_ctrls
+      AnchorSideTop.Control = btn_play
+      AnchorSideRight.Control = btn_generate
+      Left = 0
+      Height = 25
+      Hint = 'adjusts the piano size'
+      Top = 13
+      Width = 320
+      Max = 100
+      OnChange = track_piano_sizeChange
+      Position = 35
+      Anchors = [akTop, akLeft, akRight]
+      BorderSpacing.Right = 300
+      ParentShowHint = False
+      ShowHint = True
+      TabOrder = 3
+    end
   end
   object memo_notes: TMemo
-    Left = 0
-    Height = 140
-    Top = 0
+    Left = 5
+    Height = 130
+    Top = 5
     Width = 150
     Align = alLeft
+    BorderSpacing.Around = 5
     Lines.Strings = (
       ''
     )
@@ -65,11 +99,12 @@ object MainForm: TMainForm
     TabOrder = 1
   end
   object pnl_piano: TPanel
-    Left = 150
-    Height = 140
-    Top = 0
-    Width = 662
+    Left = 165
+    Height = 120
+    Top = 10
+    Width = 637
     Align = alClient
+    BorderSpacing.Around = 10
     ParentFont = False
     TabOrder = 2
   end
