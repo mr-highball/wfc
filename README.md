@@ -44,6 +44,8 @@ LGraph.Run();
 
 1. download and install lazarus if you don't already have it (http://www.lazarus-ide.org)
 1. git clone this repo
+    * some examples have submodule dependencies so if you want to clone this repo and bring in all of those do a `git clone --recursive`
+    * if you already cloned you can update submodules with `git submodule update --init --recursive`
 1. open wfc_test.lpr and attempt to compile/run (F9 Key)
     * this project shows some basic usage of the library
     * also, by going to `Toolbar -> Project\Project Options\Paths` you can copy the `other units` text to include in your own project
