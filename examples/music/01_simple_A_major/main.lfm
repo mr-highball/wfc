@@ -1,24 +1,25 @@
 object SimpleMusicForm: TSimpleMusicForm
   Left = 702
-  Height = 190
+  Height = 380
   Top = 402
-  Width = 812
+  Width = 1624
   Caption = 'WFC Music by Highball'
-  ClientHeight = 190
-  ClientWidth = 812
+  ClientHeight = 380
+  ClientWidth = 1624
   Color = clWhite
+  DesignTimePPI = 192
   OnCreate = FormCreate
   OnDestroy = FormDestroy
   LCLVersion = '2.1.0.0'
   object pnl_ctrls: TPanel
     Left = 0
-    Height = 50
-    Top = 140
-    Width = 812
+    Height = 100
+    Top = 280
+    Width = 1624
     Align = alBottom
     BevelOuter = bvNone
-    ClientHeight = 50
-    ClientWidth = 812
+    ClientHeight = 100
+    ClientWidth = 1624
     ParentFont = False
     TabOrder = 0
     object btn_play: TButton
@@ -26,12 +27,12 @@ object SimpleMusicForm: TSimpleMusicForm
       AnchorSideTop.Side = asrCenter
       AnchorSideRight.Control = pnl_ctrls
       AnchorSideRight.Side = asrBottom
-      Left = 750
-      Height = 25
-      Top = 13
-      Width = 60
+      Left = 1500
+      Height = 50
+      Top = 25
+      Width = 120
       Anchors = [akTop, akRight]
-      BorderSpacing.Right = 2
+      BorderSpacing.Right = 4
       Caption = 'Play'
       OnClick = btn_playClick
       ParentFont = False
@@ -40,12 +41,12 @@ object SimpleMusicForm: TSimpleMusicForm
     object btn_generate: TButton
       AnchorSideTop.Control = btn_play
       AnchorSideRight.Control = btn_stop
-      Left = 620
-      Height = 25
-      Top = 13
-      Width = 60
+      Left = 1240
+      Height = 50
+      Top = 25
+      Width = 120
       Anchors = [akTop, akRight]
-      BorderSpacing.Right = 5
+      BorderSpacing.Right = 10
       Caption = 'Generate'
       OnClick = btn_generateClick
       ParentFont = False
@@ -54,12 +55,12 @@ object SimpleMusicForm: TSimpleMusicForm
     object btn_stop: TButton
       AnchorSideTop.Control = btn_play
       AnchorSideRight.Control = btn_play
-      Left = 685
-      Height = 25
-      Top = 13
-      Width = 60
+      Left = 1370
+      Height = 50
+      Top = 25
+      Width = 120
       Anchors = [akTop, akRight]
-      BorderSpacing.Right = 5
+      BorderSpacing.Right = 10
       Caption = 'Stop'
       OnClick = btn_stopClick
       ParentFont = False
@@ -70,27 +71,28 @@ object SimpleMusicForm: TSimpleMusicForm
       AnchorSideTop.Control = btn_play
       AnchorSideRight.Control = btn_generate
       Left = 0
-      Height = 25
+      Height = 50
       Hint = 'adjusts the piano size'
-      Top = 13
-      Width = 320
+      Top = 25
+      Width = 640
       Max = 100
       OnChange = track_piano_sizeChange
       Position = 35
       Anchors = [akTop, akLeft, akRight]
-      BorderSpacing.Right = 300
+      BorderSpacing.Right = 600
+      ParentFont = False
       ParentShowHint = False
       ShowHint = True
       TabOrder = 3
     end
   end
   object memo_notes: TMemo
-    Left = 5
-    Height = 130
-    Top = 5
-    Width = 150
+    Left = 10
+    Height = 260
+    Top = 10
+    Width = 300
     Align = alLeft
-    BorderSpacing.Around = 5
+    BorderSpacing.Around = 10
     Lines.Strings = (
       ''
     )
@@ -99,19 +101,19 @@ object SimpleMusicForm: TSimpleMusicForm
     TabOrder = 1
   end
   object pnl_piano: TPanel
-    Left = 165
-    Height = 120
-    Top = 10
-    Width = 637
+    Left = 330
+    Height = 240
+    Top = 20
+    Width = 1274
     Align = alClient
-    BorderSpacing.Around = 10
+    BorderSpacing.Around = 20
     ParentFont = False
     TabOrder = 2
   end
   object timer_audio: TTimer
     Interval = 5
     OnTimer = timer_audioTimer
-    Left = 688
-    Top = 32
+    Left = 1376
+    Top = 64
   end
 end

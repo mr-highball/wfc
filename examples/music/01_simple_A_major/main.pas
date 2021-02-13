@@ -104,8 +104,18 @@ var
   SimpleMusicForm: TSimpleMusicForm;
 
 implementation
+uses
+  StrUtils;
 
 {$R *.lfm}
+
+function CountOccurences( const SubText: string;
+                          const Text: string): Integer;
+begin
+  Result := Pos(SubText, Text);
+  if Result > 0 then
+    Result := (Length(Text) - Length(StringReplace(Text, SubText, '', [rfReplaceAll]))) div  Length(subtext);
+end;
 
 { TSimpleMusicForm.TPianoGraph }
 
@@ -260,29 +270,43 @@ var
   LLine: String;
   I, LNote: Integer;
 begin
-  //todo - currently only handling a major, but expand this to any note
-  //       as well as handling the octaves with + signs
+  //check the memo for the notes and handle all possbilities including octaves
   for I := 0 to Pred(memo_notes.Lines.Count) do
   begin
     LLine := memo_notes.Lines[I];
+    LLine := ReplaceStr(LLine, '+', '');
+
     if LLine = 'A' then
       LNote := noteA
+    else if LLine = 'A#' then
+      LNote := noteAsharp
     else if LLine = 'B' then
       LNote := noteB
+    else if LLine = 'C' then
+      LNote := noteC
     else if LLine = 'C#' then
       LNote := noteCsharp
     else if LLine = 'D' then
       LNote := noteD
+    else if LLine = 'D#' then
+      LNote := noteDsharp
     else if LLine = 'E' then
       LNote := noteE
+    else if LLine = 'F' then
+      LNote := noteF
     else if LLine = 'F#' then
       LNote := noteFsharp
-    else if LLine = 'G#' then
+    else if LLine = 'G' then
       LNote := noteGsharp
-    else if LLine = 'A+' then
-      LNote := noteA + 12; //notes are just integers, and 12 notes until a octave, but fix this up to allow more than one octave
+    else if LLine = 'G#' then
+      LNote := noteGsharp;
 
-    AMusic.Add(LNote, I, Succ(I));
+    LLine := memo_notes.Lines[I];
+
+    //notes are just integers, and 12 notes until a octave, so use + signs for this
+    LNote := LNote + (CountOccurences('+', LLine) * 12);
+
+    AMusic.Add(LNote, I, 1); //todo - hard coded duration needs changing
   end;
 end;
 
