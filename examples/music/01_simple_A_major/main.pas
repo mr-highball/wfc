@@ -1,3 +1,26 @@
+(*
+MIT License
+
+Copyright (c) 2021 mr-highball
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+*)
 unit main;
 
 {$mode delphi}{$H+}
@@ -10,7 +33,7 @@ uses
   Forms,
   Controls,
   Graphics,
-  Dialogs, ExtCtrls, StdCtrls, ComCtrls,
+  Dialogs, ExtCtrls, StdCtrls, ComCtrls, Spin,
   wfc,
   Audio,
   Piano,
@@ -31,8 +54,10 @@ type
     btn_play: TButton;
     btn_generate: TButton;
     memo_notes: TMemo;
+    pnl_main: TPanel;
     pnl_piano: TPanel;
     pnl_ctrls: TPanel;
+    edit_note_count: TSpinEdit;
     timer_audio: TTimer;
     track_piano_size: TTrackBar;
     procedure btn_generateClick(Sender: TObject);
@@ -98,6 +123,8 @@ type
       stops the currently playing music
     *)
     procedure StopMusic;
+
+    constructor Create(TheOwner: TComponent); override;
   end;
 
 var
@@ -253,7 +280,7 @@ begin
     Lastly, our constraints will simply allow us to play the scale so each note
     must come after it's prior note on the scale
   *)
-  AGraph.Reshape({width = notes} 24, {height = 0-note/1-duration?} 1, {depth} 1); //todo - should be use height to hold the duration? or would this be better for implementing the passes idea? for now use 1 dimension or use Z?
+  AGraph.Reshape({width = notes} edit_note_count.Value, {height = 0-note/1-duration?} 1, {depth} 1); //todo - should be use height to hold the duration? or would this be better for implementing the passes idea? for now use 1 dimension or use Z?
   AGraph.WrapNeighbors := False;
   AGraph.AddValue('A').NewRule([gdEast], 'B').NewRule([gdWest], 'A+');
   AGraph.AddValue('B').NewRule([gdEast], 'C#');
@@ -338,6 +365,14 @@ begin
   //soundshop uses a timer to play the music, so we mimic this and enable here
   timer_audio.Enabled := False;
   FPiano.Reset;
+end;
+
+constructor TSimpleMusicForm.Create(TheOwner: TComponent);
+begin
+  inherited Create(TheOwner);
+  btn_generate.OnClick := btn_generateClick();
+  btn_play.OnClick := btn_playClick();
+  btn_stop.OnClick := btn_stopClick();
 end;
 
 end.

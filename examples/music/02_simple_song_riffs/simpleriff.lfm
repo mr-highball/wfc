@@ -1,0 +1,53 @@
+inherited SimpleRiff: TSimpleRiff
+  Height = 211
+  ClientHeight = 211
+  inherited pnl_ctrls: TPanel
+    Top = 161
+  end
+  inherited pnl_main: TPanel
+    Height = 131
+    Top = 30
+    ClientHeight = 131
+    inherited memo_notes: TMemo
+      Height = 121
+      Lines.Strings = (
+        ''
+      )
+    end
+    inherited pnl_piano: TPanel
+      Height = 111
+    end
+  end
+  object pnl_song_selection: TPanel[2]
+    Left = 0
+    Height = 30
+    Top = 0
+    Width = 812
+    Align = alTop
+    BevelOuter = bvNone
+    ClientHeight = 30
+    ClientWidth = 812
+    TabOrder = 2
+    object combo_songs: TCheckComboBox
+      AnchorSideLeft.Control = pnl_song_selection
+      AnchorSideTop.Control = pnl_song_selection
+      AnchorSideTop.Side = asrCenter
+      AnchorSideRight.Side = asrBottom
+      Left = 10
+      Height = 24
+      Top = 3
+      Width = 145
+      BorderSpacing.Left = 5
+      BorderSpacing.Around = 5
+      ItemHeight = 16
+      Items.Strings = (
+        'Mary Had a Little Lamb'
+        'Test Song II'
+        'Test Song III'
+      )
+      TabOrder = 0
+    end
+  end
+  inherited timer_audio: TTimer[3]
+  end
+end
