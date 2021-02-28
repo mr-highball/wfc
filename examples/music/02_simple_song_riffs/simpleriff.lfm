@@ -34,8 +34,8 @@ inherited SimpleRiff: TSimpleRiff
       AnchorSideTop.Side = asrCenter
       AnchorSideRight.Side = asrBottom
       Left = 10
-      Height = 24
-      Top = 3
+      Height = 22
+      Top = 4
       Width = 145
       BorderSpacing.Left = 5
       BorderSpacing.Around = 5

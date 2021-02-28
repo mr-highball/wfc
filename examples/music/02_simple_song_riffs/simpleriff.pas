@@ -48,10 +48,17 @@ type
     combo_songs: TCheckComboBox;
     pnl_song_selection: TPanel;
   private
+    const
+      SONG_MARY = 'Mary Had a Little Lamb';
+      SONG_BRIDGE = 'London Bridge is Falling Down';
+      SONG_HOT_CROSS = 'Hot Cross Buns';
+  private
   protected
     procedure InitWFC(const AGraph: TGraph); override;
     procedure DoInitializeSongList(const AItems : TStrings); virtual;
+    procedure DoInitializeWFCForSong(const ASong : String; const AGraph : TGraph); virtual;
   public
+    constructor Create(TheOwner: TComponent); override;
   end;
 
 var
@@ -64,15 +71,56 @@ implementation
 { TSimpleRiff }
 
 procedure TSimpleRiff.InitWFC(const AGraph: TGraph);
+var
+  I: Integer;
 begin
   inherited;
+  for I := 0 to Pred(combo_songs.Items.Count) do
+    if combo_songs.Checked[I] then
+      DoInitializeWFCForSong(combo_songs.Items[I], AGraph);
 end;
 
 procedure TSimpleRiff.DoInitializeSongList(const AItems: TStrings);
 begin
-  AItems.Add('Mary Had a Little Lamb');
-  AItems.Add('Test Song I');
-  AItems.Add('Test Song II');
+  AItems.Add(SONG_MARY);
+  AItems.Add(SONG_BRIDGE);
+  AItems.Add(SONG_HOT_CROSS);
+end;
+
+procedure TSimpleRiff.DoInitializeWFCForSong(const ASong: String;
+  const AGraph: TGraph);
+
+  procedure InitMary;
+  begin
+
+  end;
+
+  procedure InitBridge;
+  begin
+
+  end;
+
+  procedure InitHotCross;
+  begin
+
+  end;
+
+begin
+  if ASong = SONG_MARY then
+    InitMary
+  else if ASong = SONG_BRIDGE then
+    InitBridge
+  else if ASong = SONG_HOT_CROSS then
+    InitHotCross
+  else
+    ShowMessage('unrecognized song [' + ASong + ']');
+end;
+
+constructor TSimpleRiff.Create(TheOwner: TComponent);
+begin
+  inherited Create(TheOwner);
+  combo_songs.Clear;
+  DoInitializeSongList(combo_songs.Items);
 end;
 
 end.
