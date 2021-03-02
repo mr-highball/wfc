@@ -317,7 +317,7 @@ begin
     Result := AEntry.Value
   else
   begin
-    Randomize;
+    RandSeed := Random(MaxInt);
     Result := AValid[RandomRange(Low(AValid), Length(AValid))];
   end;
 end;
@@ -578,7 +578,7 @@ end;
 procedure TGraph.DoGetStartCoord(out X, Y: UInt64);
 begin
   //base we'll just use a random approach, but this can be overridden
-  Randomize;
+  RandSeed := Random(MaxInt);
   X := RandomRange(0, FDimension.Width);
   Y := RandomRange(0, FDimension.Height);
 end;

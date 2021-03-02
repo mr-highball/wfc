@@ -159,7 +159,7 @@ procedure TSimpleMusicForm.FormCreate(Sender: TObject);
 begin
   InitPiano;
   FGraph := TPianoGraph.Create;
-  InitWFC(FGraph);
+  //InitWFC(FGraph);
 end;
 
 procedure TSimpleMusicForm.FormDestroy(Sender: TObject);
@@ -324,7 +324,7 @@ begin
     else if LLine = 'F#' then
       LNote := noteFsharp
     else if LLine = 'G' then
-      LNote := noteGsharp
+      LNote := noteG
     else if LLine = 'G#' then
       LNote := noteGsharp;
 

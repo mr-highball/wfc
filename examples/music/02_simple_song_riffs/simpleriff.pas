@@ -74,7 +74,8 @@ procedure TSimpleRiff.InitWFC(const AGraph: TGraph);
 var
   I: Integer;
 begin
-  inherited;
+  AGraph.Reshape({width = notes} edit_note_count.Value, {height = 0-note/1-duration?} 1, {depth} 1); //todo - should be use height to hold the duration? or would this be better for implementing the passes idea? for now use 1 dimension or use Z?
+  AGraph.WrapNeighbors := False;
   for I := 0 to Pred(combo_songs.Items.Count) do
     if combo_songs.Checked[I] then
       DoInitializeWFCForSong(combo_songs.Items[I], AGraph);
@@ -90,9 +91,18 @@ end;
 procedure TSimpleRiff.DoInitializeWFCForSong(const ASong: String;
   const AGraph: TGraph);
 
+  (*
+    all possible notes and their neighbors for Mary Had a Little Lamb
+  *)
   procedure InitMary;
   begin
-
+    AGraph
+      .AddValue('E')
+        .NewRule([gdEast, gdWest], 'D')
+        .NewRule([gdEast, gdWest], 'E')
+        .NewRule([gdEast, gdWest], 'G');
+     AGraph.AddValue('D').NewRule([gdEast, gdWest], 'C');
+     AGraph.AddValue('G').NewRule([gdEast, gdWest], 'G');
   end;
 
   procedure InitBridge;
