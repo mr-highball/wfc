@@ -105,14 +105,31 @@ procedure TSimpleRiff.DoInitializeWFCForSong(const ASong: String;
      AGraph.AddValue('G').NewRule([gdEast, gdWest], 'G');
   end;
 
+  (*
+    all possible notes and their neighbors for London Bridge is Falling Down
+  *)
   procedure InitBridge;
   begin
-
+    AGraph
+      .AddValue('D')
+        .NewRule([gdEast, gdWest], 'E')
+        .NewRule([gdEast, gdWest], 'C')
+        .NewRule([gdEast, gdWest], 'A')
+        .NewRule([gdEast], 'B');
+    AGraph.Rules['C'].NewRule([gdEast, gdWest], 'B');
+    AGraph.Rules['B'].NewRule([gdWest], 'A');
   end;
 
+  (*
+    all possible notes and their neighbors for Hot Cross Buns
+  *)
   procedure InitHotCross;
   begin
-
+    AGraph
+      .AddValue('E')
+        .NewRule([gdEast, gdWest], 'D')
+        .NewRule([gdEast, gdWest], 'C');
+    AGraph.Rules['D'].NewRule([gdEast, gdWest], 'C');
   end;
 
 begin

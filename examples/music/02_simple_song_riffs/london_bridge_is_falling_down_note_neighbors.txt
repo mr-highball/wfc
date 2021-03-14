@@ -1,0 +1,12 @@
+below are the notes in London Bridge is Falling Down and all possible neighbors.
+for the corresponding image, we don't include the accompaniment
+
+D
+  * E, East, West
+  * C, East, West
+  * A, East, West
+  * B, East
+C
+  * B, East, West
+B
+  * A, West

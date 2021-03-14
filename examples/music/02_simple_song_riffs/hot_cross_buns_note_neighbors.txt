@@ -1,0 +1,7 @@
+below are the notes in Hot Cross Buns and all possible neighbors
+
+E
+  * D, East
+  * C, West
+D
+  * C, East, West
