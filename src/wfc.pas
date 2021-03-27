@@ -187,8 +187,11 @@ type
 
     function GetEntry(const X, Y, Z : UInt64): TGraphEntry;
     function CoordToIndex(const X, Y, Z : UInt64) : Integer;
+    function GetPass: String;
+    function GetPassIndex: Integer;
     function GetRuleGroup(const AValue : TGraphValue): TParentedGraphRuleGroup;
     function InBounds(const AIndex : Integer) : Boolean;
+    procedure SetPass(const AValue: String);
   strict protected
     function DoHandleInvalidState(const AEntry : TGraphEntry) : TGraphValue;
     procedure DoGetStartCoord(out X, Y : UInt64); virtual;
@@ -256,10 +259,21 @@ type
     property Dimension : TDimension read FDimension;
 
     (*
+      a user defined "label" to identify the pass this graph instance is on
+    *)
+    property CurrentPass : String read GetPass write SetPass;
+
+    (*
+      the internal index associated with the CurrentPass property
+    *)
+    property CurrentPassIndex : Integer read GetPassIndex;
+
+    (*
       reshapes the dimension of this graph
         @AWidth - X units, 1 based
         @AHeight - Y units, 1 based
         @ADepth - Z units, 1 based
+        @Result - return "this" graph instance
     *)
     function Reshape(const AWidth, AHeight, ADepth : UInt64) : TGraph;
 
@@ -271,13 +285,25 @@ type
     function AddValue(const AValue : TGraphValue) : TParentedGraphRuleGroup;
 
     (*
+      "switches" the graph to the pass specified by the caller. a "pass"
+      can have it's own set of rules / constraints defined and will be
+      run sequentially. dimensions will be the same as the "first pass"
+        @APass - the pass label to switch to
+        @PassIndex - index to the labeled pass
+        @Result - returns "this" graph instance
+    *)
+    function SwitchToPass(const APass : String; out PassIndex : Integer) : TGraph;
+
+    (*
       once all values and rules have been apply, this will
       execute the rules against each graph entry
+        @Result - return "this" graph instance
     *)
     function Run : TGraph;
 
     (*
       clears all rules and reshapes to empty (0, 0, 0)
+        @Result - return "this" graph instance
     *)
     function Reset : TGraph;
 
@@ -555,6 +581,16 @@ begin
   Result := (FDimension.Width * FDimension.Height * Z) + X + (Y * FDimension.Width);
 end;
 
+function TGraph.GetPass: String;
+begin
+  //todo - get the current pass label
+end;
+
+function TGraph.GetPassIndex: Integer;
+begin
+  //todo - get the current pass index
+end;
+
 function TGraph.GetRuleGroup(const AValue : TGraphValue): TParentedGraphRuleGroup;
 begin
   Result := TParentedGraphRuleGroup(FRuleGroups[AValue]);
@@ -563,6 +599,11 @@ end;
 function TGraph.InBounds(const AIndex: Integer): Boolean;
 begin
   Result := (AIndex >= 0) and (AIndex < FEntries.Count);
+end;
+
+procedure TGraph.SetPass(const AValue: String);
+begin
+  //todo set the pass label
 end;
 
 function TGraph.DoHandleInvalidState(const AEntry: TGraphEntry): TGraphValue;
@@ -790,6 +831,23 @@ begin
   end;
 end;
 
+function TGraph.SwitchToPass(const APass: String; out PassIndex: Integer): TGraph;
+begin
+  Result := Self
+
+  //todo - determine if we have the current pass label (existing)
+  //...
+
+  //todo - switch to label if we have and update PassIndex
+  //...
+
+  //todo - on new label, initialize a new PassIndex, copying dimensions to structure
+  //...
+
+  //todo - update CurrentPass AND CurrentPassIndex
+  //...
+end;
+
 function TGraph.Run: TGraph;
 var
   I: Integer;
@@ -888,6 +946,8 @@ end;
 
 constructor TGraph.Create;
 begin
+  FPass := '';
+  FPassIndex := 0;
   FSel := DefaultSelection;
   FEntries := TGraphEntries.Create;
   FPlanes := TPlanes.Create;
