@@ -1,5 +1,8 @@
 program wfc_test;
 
+{$Mode delphi}
+{$ModeSwitch nestedprocvars}
+
 uses
   SysUtils,
   wfc;
@@ -234,6 +237,81 @@ begin
   WriteLn(Format('TestGraphRun3D::[success]-%s', [BoolToStr(LSuccess, True)]));
 end;
 
+(*
+  tests when adding a new pass that the TotalPassCount property correctly is updated
+*)
+procedure TestTotalPassCount;
+var
+  LGraph: TGraph;
+  LSuccess: Boolean;
+  I: Integer;
+begin
+  LGraph := TGraph.Create.Reshape({width} 5, {height} 5, {depth} 3);
+  LGraph.SwitchToPass('test', I);
+
+  LSuccess := LGraph.TotalPassCount = 2;
+
+  LGraph.Free;
+
+  WriteLn(Format('TestTotalPassCount::[success]-%s', [BoolToStr(LSuccess, True)]));
+end;
+
+(*
+  tests when adding a new pass CurrentPass and CurrentPassIndex are correct
+  as well as correct when no passes have been added
+*)
+procedure TestCurrentPassProps;
+var
+  LGraph: TGraph;
+  LSuccess: Boolean;
+  I: Integer;
+begin
+  LGraph := TGraph.Create.Reshape({width} 5, {height} 5, {depth} 3);
+
+  //test default first by labeling and ensuring index is 0
+  LGraph.CurrentPass := 'first';
+  LSuccess := (LGraph.CurrentPass = 'first') and (LGraph.CurrentPassIndex = 0);
+
+  //if default was successful, then switch to the second pass and test
+  if LSuccess then
+  begin
+    LGraph.SwitchToPass('second', I);
+    LSuccess := (LGraph.CurrentPass = 'second') and (LGraph.CurrentPassIndex = I) and (I = 1);
+  end;
+
+  LGraph.Free;
+
+  WriteLn(Format('TestCurrentPassProps::[success]-%s', [BoolToStr(LSuccess, True)]));
+end;
+
+(*
+  tests when adding a new pass that the TotalPassCount property correctly is updated
+*)
+procedure TestForEachPass;
+var
+  LGraph: TGraph;
+  LSuccess: Boolean;
+  I: Integer;
+  LLoopCount : Integer;
+
+  procedure Loop(const AGraph : TGraph; const APass : String; const AIndex : Integer);
+  begin
+    Inc(LLoopCount);
+  end;
+
+begin
+  LGraph := TGraph.Create.Reshape({width} 5, {height} 5, {depth} 3);
+  LGraph.SwitchToPass('test', I);
+  LLoopCount := 0;
+
+  LGraph.ForEachPass(Loop);
+  LSuccess := LLoopCount = 2;
+
+  LGraph.Free;
+
+  WriteLn(Format('TestForEachPass::[success]-%s', [BoolToStr(LSuccess, True)]));
+end;
+
 begin
   TestEntryNullNeighbors;
   TestEntrySetNeighbor;
@@ -243,8 +321,11 @@ begin
   TestGraphAddValue;
   TestGraphReshape;
   TestGraphNeighbors;
-  TestGraphRun2D;
-  TestGraphRun3D;
+  TestTotalPassCount;
+  TestCurrentPassProps;
+  TestForEachPass;
+  TestGraphRun2D; //todo - fully implement test
+  TestGraphRun3D; //todo - fully implement test
 
 
   //wait for user to close
