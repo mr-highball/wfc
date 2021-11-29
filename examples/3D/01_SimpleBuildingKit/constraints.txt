@@ -1,0 +1,61 @@
+_should_ be the fully parts list with all the rotations explicitly written out. 
+
+**basic constraints**
+
+* ground & base parts will _share_ the same z
+* mid walls will start immediately after base parts (not ground) 
+* mid can also have mid pieces below or above
+* top parts start above a mid parts
+* top parts can have roof parts **only** above
+* roof tile share the z with top parts
+* roof tiles can share adjacency with other roof tiles
+* roof tiles can be NORTH of roof walls
+ 
+
+**naming convention**
+
+```
+gr_000 (ground)
+
+bw_000 (base wall 0 rotation)
+bw_090 (base wall 90 rotation)
+bw_180 (base wall 180 rotation)
+bw_270 (base wall 270 rotation)
+
+br_000 (base corner 0 rotation)
+br_090 (base corner 90 rotation)
+br_180 (base corner 180 rotation)
+br_270 (base corner 270 rotation)
+
+mw_000 (mid wall 0 rotation)
+mw_090 (mid wall 90 rotation)
+mw_180 (mid wall 180 rotation)
+mw_270 (mid wall 270 rotation)
+
+mr_000 (mid corner 0 rotation)
+mr_090 (mid corner 90 rotation)
+mr_180 (mid corner 180 rotation)
+mr_270 (mid corner 270 rotation)
+
+tw_000 (top wall 0 rotation)
+tw_090 (top wall 90 rotation)
+tw_180 (top wall 180 rotation)
+tw_270 (top wall 270 rotation)
+
+tr_000 (top corner 0 rotation)
+tr_090 (top corner 90 rotation)
+tr_180 (top corner 180 rotation)
+tr_270 (top corner 270 rotation)
+
+rw_000 (roof wall 0 rotation)
+rw_090 (roof wall 90 rotation)
+rw_180 (roof wall 180 rotation)
+rw_270 (roof wall 270 rotation)
+
+rr_000 (roof corner 0 rotation)
+rr_090 (roof corner 90 rotation)
+rr_180 (roof corner 180 rotation)
+rr_270 (roof corner 270 rotation)
+
+rf_000 (roof)
+```
