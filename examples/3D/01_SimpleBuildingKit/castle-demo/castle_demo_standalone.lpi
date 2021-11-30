@@ -33,7 +33,7 @@
         <PackageName Value="castle_base"/>
       </Item2>
     </RequiredPackages>
-    <Units Count="6">
+    <Units Count="7">
       <Unit0>
         <Filename Value="castle_demo_standalone.lpr"/>
         <IsPartOfProject Value="True"/>
@@ -49,6 +49,7 @@
       <Unit3>
         <Filename Value="gamestatemain.pas"/>
         <IsPartOfProject Value="True"/>
+        <UnitName Value="GameStateMain"/>
       </Unit3>
       <Unit4>
         <Filename Value="code/gameinitialize.pas"/>
@@ -58,6 +59,10 @@
         <Filename Value="code/gamestatemain.pas"/>
         <IsPartOfProject Value="True"/>
       </Unit5>
+      <Unit6>
+        <Filename Value="code/wfc.buildkit.pas"/>
+        <IsPartOfProject Value="True"/>
+      </Unit6>
     </Units>
   </ProjectOptions>
   <CompilerOptions>
@@ -66,8 +71,8 @@
       <Filename Value="castle-demo"/>
     </Target>
     <SearchPaths>
-      <IncludeFiles Value="code"/>
-      <OtherUnitFiles Value="code"/>
+      <IncludeFiles Value="code;$(ProjOutDir)"/>
+      <OtherUnitFiles Value="code;../../../../src"/>
       <UnitOutputDirectory Value="castle-engine-output/standalone/lazarus-lib/$(TargetCPU)-$(TargetOS)"/>
     </SearchPaths>
     <Parsing>

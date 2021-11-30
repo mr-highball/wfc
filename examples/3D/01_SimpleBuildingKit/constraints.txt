@@ -1,4 +1,4 @@
-_should_ be the fully parts list with all the rotations explicitly written out. 
+_should_ be the full parts list with all the rotations explicitly written out. 
 
 **basic constraints**
 
@@ -58,4 +58,6 @@ rr_180 (roof corner 180 rotation)
 rr_270 (roof corner 270 rotation)
 
 rf_000 (roof)
+
+em_000 (empty space block in between buildings)
 ```

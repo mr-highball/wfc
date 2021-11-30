@@ -7,8 +7,12 @@ unit GameStateMain;
 
 interface
 
-uses Classes,
-  CastleUIState, CastleComponentSerialize, CastleUIControls, CastleControls,
+uses
+  Classes,
+  CastleUIState,
+  CastleComponentSerialize,
+  CastleUIControls,
+  CastleControls,
   CastleKeysMouse;
 
 type
