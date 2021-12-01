@@ -99,7 +99,7 @@ begin
   Result.Mode := rmBottomUp;
 
   //shape to the caller's specifications
-  Result.Reshape(AWidth, AHeight, ADepth)
+  Result.Reshape(AWidth, AHeight, ADepth);
 
   //----------------------------------------------------------------------------
   //ground constraints

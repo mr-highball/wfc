@@ -313,6 +313,7 @@ uses
 function DefSelCall(const {%H-}AGraph : TGraph; const AEntry : TGraphEntry;
   const AValid : TGraphValues) : TGraphValue;
 begin
+  Randomize;
   if Length(AValid) < 1 then
     Result := AEntry.Value
   else
