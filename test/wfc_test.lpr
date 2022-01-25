@@ -189,18 +189,13 @@ begin
   //initialize the graph
   LGraph := TGraph.Create.Reshape({width} 2, {height} 2, {depth} 2);
   LGraph.WrapNeighbors := False;
-  LGraph.AddValue('0').NewRule([gdDown], 'U', True).NewRule([gdWest], 'E', True);
 
-  //initialize our 'seed' entry
+  //initialize our 'seed' entry with a rule that requires a specific neighbor set
+  LGraph.AddValue('0').NewRule([gdDown], 'U', True).NewRule([gdWest], 'E', True);
   LEntry := LGraph[{x} 0, {y} 0, {z} 0];
   LEntry.Value := '0';
 
-  //add the "required" rules
-  {
-    I believe something funky is going on with the new rule additions since
-    we're getting things like '0' appearing random places even though there's
-    an explicit set to be required below a 'U' and left of an 'E'
-  }
+  //add the "required" rules for the neighbors
   LGraph.AddValue('E').NewRule([gdEast], '0', True); //must be east of 0
   LGraph.AddValue('U').NewRule([gdUp], '0', True); //must be up from 0
 
@@ -214,7 +209,7 @@ begin
   LSuccess := (LEastNeighbor.Value = 'E')
     and (LUpNeighbor.Value = 'U');
 
-  SimplePrintGraph(LGraph);
+  //SimplePrintGraph(LGraph); //debug
 
   LGraph.Free;
 
@@ -281,14 +276,14 @@ begin
 end;
 
 begin
-  //TestEntryNullNeighbors;
-  //TestEntrySetNeighbor;
-  //TestEntrySetValue;
-  //TestRuleGroupNewRule;
-  //TestRuleGroupNewMultiRule;
-  //TestGraphAddValue;
-  //TestGraphReshape;
-  //TestGraphNeighbors;
+  TestEntryNullNeighbors;
+  TestEntrySetNeighbor;
+  TestEntrySetValue;
+  TestRuleGroupNewRule;
+  TestRuleGroupNewMultiRule;
+  TestGraphAddValue;
+  TestGraphReshape;
+  TestGraphNeighbors;
   TestRequireRule;
 
   //TestGraphRun2D;

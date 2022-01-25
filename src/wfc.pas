@@ -98,6 +98,7 @@ type
     FRules: TGraphRules;
     FVal: TGraphValue;
     function GetExists(const ADirection : TGraphDirection): Boolean;
+    function GetHasRequired: Boolean;
     function GetRule(const ADirection : TGraphDirection): TGraphRule;
   strict protected
     function IndexOfDirection(const ADirection : TGraphDirection) : Integer;
@@ -112,6 +113,11 @@ type
     property Rule[const ADirection : TGraphDirection] : TGraphRule read GetRule; default;
     property Rules : TGraphRules read FRules write FRules;
     property Exists[const ADirection : TGraphDirection] : Boolean read GetExists;
+
+    (*
+      true if at least one rule for this value is required
+    *)
+    property HasRequired : Boolean read GetHasRequired;
 
     function NewRule(const ADirections : TGraphDirections;
       const AValue : TGraphValue; const ARequireRule : Boolean = False) : TGraphRuleGroup; overload;
@@ -381,6 +387,16 @@ end;
 function TGraphRuleGroup.GetExists(const ADirection : TGraphDirection): Boolean;
 begin
   Result := IndexOfDirection(ADirection) >= 0;
+end;
+
+function TGraphRuleGroup.GetHasRequired: Boolean;
+var
+  I: Integer;
+begin
+  for I := 0 to High(FRules) do
+    if TRequireRule(FRules[I].Info) then
+      Exit(True);
+  Exit(False);
 end;
 
 function TGraphRuleGroup.GetRule(const ADirection : TGraphDirection): TGraphRule;
@@ -677,6 +693,8 @@ procedure TGraph.DoValidate(const AEntry: TGraphEntry; const Z, APrevZ: UInt64;
     end;
   end;
 
+var
+  I: Integer;
 begin
   //default case for a non-empty entry is to use the value it was assigned
   if not AEntry.Empty then
@@ -689,7 +707,10 @@ begin
   end;
 
   //first get all of the possible states we can be in by setting to all values
-  Values := FValues;
+  //that don't have explicit requirements
+  for I := 0 to High(FValues) do
+    if not FRuleGroups[FValues[I]].HasRequired then
+      Insert(FValues[I], Values, Length(Values));
 
   //get the rule group for each of the entry's neighbors on the same plane
   TrimValuesForNeighbor(AEntry[gdNorth], gdNorth);
@@ -840,13 +861,6 @@ var
       UpdateEntriesFromLoc(AEntry[gdEast]);
       UpdateEntriesFromLoc(AEntry[gdSouth]);
       UpdateEntriesFromLoc(AEntry[gdWest]);
-
-      //todo - do we need to run different z levels? think not since trim neighbors will validate against z
-      //depending on the shift in z we'll run the "prior" plane's neighbor
-      //if Z > APrevZ then
-      //  UpdateEntriesFromLoc(AEntry[gdDown])
-      //else if Z < APrevZ then
-      //  UpdateEntriesFromLoc(AEntry[gdUp]);
     end;
 
   begin
