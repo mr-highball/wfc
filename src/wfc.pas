@@ -83,9 +83,10 @@ type
 
   //collection of entries
   TGraphEntries = TObjectList<TGraphEntry>;
+  TRequireRule = Boolean;
 
   //for a particular value, what the accepted states are for each direction
-  TGraphRule = TPair<TGraphDirection, TGraphValues>;
+  TGraphRule = TPair<TGraphDirection, TGraphValues, TRequireRule>;
   TGraphRules = array of TGraphRule;
 
   { TGraphRuleGroup }
@@ -105,7 +106,7 @@ type
       can be overridden to handle additional logic for adding new rules
     *)
     procedure DoNewRule(const ADirections : TGraphDirections;
-      const AValue : TGraphValue); virtual;
+      const AValue : TGraphValue; const ARequireRule : Boolean); virtual;
   public
     property Value : TGraphValue read FVal write FVal;
     property Rule[const ADirection : TGraphDirection] : TGraphRule read GetRule; default;
@@ -113,10 +114,10 @@ type
     property Exists[const ADirection : TGraphDirection] : Boolean read GetExists;
 
     function NewRule(const ADirections : TGraphDirections;
-      const AValue : TGraphValue) : TGraphRuleGroup; overload;
+      const AValue : TGraphValue; const ARequireRule : Boolean = False) : TGraphRuleGroup; overload;
 
     function NewRule(const ADirections : TGraphDirections;
-      const AValues : TGraphValues) : TGraphRuleGroup; overload;
+      const AValues : TGraphValues; const ARequireRule : Boolean = False) : TGraphRuleGroup; overload;
 
     constructor Create; virtual; overload;
     constructor Create(const AValue : TGraphValue); virtual; overload;
@@ -170,7 +171,7 @@ type
         FParent: TGraph;
       strict protected
         procedure DoNewRule(const ADirections: TGraphDirections;
-          const AValue: TGraphValue); override;
+          const AValue: TGraphValue; const ARequireRule : Boolean); override;
       public
         property Parent : TGraph read FParent write FParent;
       end;
@@ -359,12 +360,13 @@ end;
 { TGraph.TParentedGraphRuleGroup }
 
 procedure TGraph.TParentedGraphRuleGroup.DoNewRule(
-  const ADirections: TGraphDirections; const AValue: TGraphValue);
+  const ADirections: TGraphDirections; const AValue: TGraphValue;
+  const ARequireRule: Boolean);
 var
   LDir: TGraphDirection;
   LDirs : TGraphDirections = [];
 begin
-  inherited DoNewRule(ADirections, AValue);
+  inherited DoNewRule(ADirections, AValue, ARequireRule);
 
   //after a rule has been added we need to add the "inverse" for any new values
   for LDir in ADirections do
@@ -398,13 +400,16 @@ begin
 end;
 
 procedure TGraphRuleGroup.DoNewRule(const ADirections: TGraphDirections;
-  const AValue: TGraphValue);
+  const AValue: TGraphValue; const ARequireRule: Boolean);
 var
   LRule : TGraphRule;
   LVals : TGraphValues;
   I: Integer;
   LDir: TGraphDirection;
 begin
+  //info will designate required status
+  LRule.Info := ARequireRule;
+
   for LDir in ADirections do
   begin
     LVals := Default(TGraphValues);
@@ -437,21 +442,21 @@ end;
 
 
 function TGraphRuleGroup.NewRule(const ADirections: TGraphDirections;
-  const AValue: TGraphValue): TGraphRuleGroup;
+  const AValue: TGraphValue; const ARequireRule: Boolean): TGraphRuleGroup;
 begin
   Result := Self;
-  DoNewRule(ADirections, AValue);
+  DoNewRule(ADirections, AValue, ARequireRule);
 end;
 
 function TGraphRuleGroup.NewRule(const ADirections: TGraphDirections;
-  const AValues: TGraphValues): TGraphRuleGroup;
+  const AValues: TGraphValues; const ARequireRule: Boolean): TGraphRuleGroup;
 var
   I: Integer;
 begin
   Result := Self;
 
   for I := 0 to High(AValues) do
-    NewRule(ADirections, AValues[I]);
+    NewRule(ADirections, AValues[I], ARequireRule);
 end;
 
 constructor TGraphRuleGroup.Create;
@@ -607,13 +612,20 @@ end;
 procedure TGraph.DoValidate(const AEntry: TGraphEntry; const Z, APrevZ: UInt64;
   out Values: TGraphValues);
 
+  (*
+    for each neighbor provided, this method will whittle down
+    the values out param of invalid states until we're either left with
+    valid state(s) or an empty collection (invalid state)
+  *)
   procedure TrimValuesForNeighbor(const ANeighbor : TGraphEntry;
     const ADirection : TGraphDirection);
   var
     LGroup : TGraphRuleGroup;
     LDir: TGraphDirection;
+    LRule : TGraphRule;
     LRuleVals, LVals : TGraphValues;
     I: Integer;
+    LRequired: Boolean;
   begin
     LVals := Default(TGraphValues);
 
@@ -632,12 +644,22 @@ procedure TGraph.DoValidate(const AEntry: TGraphEntry; const Z, APrevZ: UInt64;
 
     //if we have rules for the direction, we'll
     //use to validate. we flip because we are working "backwards" from neighbors
-    //that have been assigned already (todo - this comment might not make sense, clean it up)
+    //that have been assigned already to determine what's valid for "this" entry
     LDir := InverseOfDir(ADirection);
 
     if LGroup.Exists[LDir] then
     begin
+      LRule := LGroup.Rule[LDir];
       LRuleVals := LGroup[LDir].Value;
+
+      //get neighbor's required rule set for the direction
+      //to see if we need the 'this' entry to have certain values
+      LRequired := False;
+      LGroup := FRuleGroups[ANeighbor.Value];
+
+      if TRequireRule(LRule.Info) then
+        if Length(LRuleVals) > 0 then
+          LRequired := True;
 
       //note:
       //  no rules, means any state is possible. for users to specifically
@@ -646,10 +668,14 @@ procedure TGraph.DoValidate(const AEntry: TGraphEntry; const Z, APrevZ: UInt64;
       if Length(LRuleVals) < 1 then
         Exit;
 
+      //when required, values will be explicitly set to the neighbors
+      if LRequired then
+        LVals := LRuleVals
       //iterate the current value list and check to see what values we have left
-      for I := 0 to High(Values) do
-        if ContainsGraphValue(LRuleVals, Values[I]) then
-          Insert(Values[I], LVals, Length(LVals));
+      else
+        for I := 0 to High(Values) do
+          if ContainsGraphValue(LRuleVals, Values[I]) then
+            Insert(Values[I], LVals, Length(LVals));
 
       //lastly, set the output values to our local validated values
       Values := LVals
