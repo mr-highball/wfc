@@ -178,7 +178,52 @@ begin
 end;
 
 (*
+  tests that when a rule requirement is specified it is enforced
+*)
+procedure TestRequireRule;
+var
+  LGraph: TGraph;
+  LSuccess: Boolean;
+  LEntry, LEastNeighbor, LUpNeighbor, LOrphan: TGraphEntry;
+begin
+  //initialize the graph
+  LGraph := TGraph.Create.Reshape({width} 2, {height} 2, {depth} 2);
+  LGraph.WrapNeighbors := False;
+  LGraph.AddValue('0').NewRule([gdDown], 'U', True).NewRule([gdWest], 'E', True);
+
+  //initialize our 'seed' entry
+  LEntry := LGraph[{x} 0, {y} 0, {z} 0];
+  LEntry.Value := '0';
+
+  //add the "required" rules
+  {
+    I believe something funky is going on with the new rule additions since
+    we're getting things like '0' appearing random places even though there's
+    an explicit set to be required below a 'U' and left of an 'E'
+  }
+  LGraph.AddValue('E').NewRule([gdEast], '0', True); //must be east of 0
+  LGraph.AddValue('U').NewRule([gdUp], '0', True); //must be up from 0
+
+  LEastNeighbor := LEntry.Neighbor[gdEast];
+  LUpNeighbor := LEntry.Neighbor[gdUp];
+  LOrphan := LUpNeighbor.Neighbor[gdEast];
+
+  //run the graph with our "seeded" entry value
+  LGraph.Run;
+
+  LSuccess := (LEastNeighbor.Value = 'E')
+    and (LUpNeighbor.Value = 'U');
+
+  SimplePrintGraph(LGraph);
+
+  LGraph.Free;
+
+  WriteLn(Format('TestRequireRule::[success]-%s', [BoolToStr(LSuccess, True)]));
+end;
+
+(*
   tests that we can run wfc on the graph in 2 dimensions
+  todo - fix test
 *)
 procedure TestGraphRun2D;
 var
@@ -219,6 +264,7 @@ end;
 
 (*
   tests that we can run wfc on the graph in 2 dimensions
+  todo - implement test
 *)
 procedure TestGraphRun3D;
 var
@@ -235,16 +281,18 @@ begin
 end;
 
 begin
-  TestEntryNullNeighbors;
-  TestEntrySetNeighbor;
-  TestEntrySetValue;
-  TestRuleGroupNewRule;
-  TestRuleGroupNewMultiRule;
-  TestGraphAddValue;
-  TestGraphReshape;
-  TestGraphNeighbors;
-  TestGraphRun2D;
-  TestGraphRun3D;
+  //TestEntryNullNeighbors;
+  //TestEntrySetNeighbor;
+  //TestEntrySetValue;
+  //TestRuleGroupNewRule;
+  //TestRuleGroupNewMultiRule;
+  //TestGraphAddValue;
+  //TestGraphReshape;
+  //TestGraphNeighbors;
+  TestRequireRule;
+
+  //TestGraphRun2D;
+  //TestGraphRun3D;
 
 
   //wait for user to close

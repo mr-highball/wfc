@@ -373,7 +373,7 @@ begin
     Include(LDirs, InverseOfDir(LDir));
 
   if not Parent.RuleGroups.ContainsKey(AValue) then
-    Parent.AddValue(AValue).NewRule(LDirs, Value);
+    Parent.AddValue(AValue).NewRule(LDirs, Value, ARequireRule);
 end;
 
 { TGraphRuleGroup }
@@ -621,7 +621,6 @@ procedure TGraph.DoValidate(const AEntry: TGraphEntry; const Z, APrevZ: UInt64;
     const ADirection : TGraphDirection);
   var
     LGroup : TGraphRuleGroup;
-    LDir: TGraphDirection;
     LRule : TGraphRule;
     LRuleVals, LVals : TGraphValues;
     I: Integer;
@@ -640,22 +639,18 @@ procedure TGraph.DoValidate(const AEntry: TGraphEntry; const Z, APrevZ: UInt64;
     if not FRuleGroups.ContainsKey(ANeighbor.Value) then
       Exit;
 
+    //get the rule group of the neighbor we'll be using to trim our values with
     LGroup := FRuleGroups[ANeighbor.Value];
 
-    //if we have rules for the direction, we'll
-    //use to validate. we flip because we are working "backwards" from neighbors
-    //that have been assigned already to determine what's valid for "this" entry
-    LDir := InverseOfDir(ADirection);
-
-    if LGroup.Exists[LDir] then
+    //check to see if the neighbor contains rules for the direction it is (relational to this entry)
+    if LGroup.Exists[ADirection] then
     begin
-      LRule := LGroup.Rule[LDir];
-      LRuleVals := LGroup[LDir].Value;
+      LRule := LGroup.Rule[ADirection];
+      LRuleVals := LGroup[ADirection].Value;
 
       //get neighbor's required rule set for the direction
       //to see if we need the 'this' entry to have certain values
       LRequired := False;
-      LGroup := FRuleGroups[ANeighbor.Value];
 
       if TRequireRule(LRule.Info) then
         if Length(LRuleVals) > 0 then
@@ -701,12 +696,8 @@ begin
   TrimValuesForNeighbor(AEntry[gdEast], gdEast);
   TrimValuesForNeighbor(AEntry[gdSouth], gdSouth);
   TrimValuesForNeighbor(AEntry[gdWest], gdWest);
-
-  //now depending on the previous Z we either will look "up" or "down"
-  if APrevZ < Z then
-    TrimValuesForNeighbor(AEntry[gdUp], gdUp) //moving top -> bottom
-  else if APrevZ > Z then
-    TrimValuesForNeighbor(AEntry[gdDown], gdDown); //moving bottom -> top
+  TrimValuesForNeighbor(AEntry[gdUp], gdUp); //moving top -> bottom
+  TrimValuesForNeighbor(AEntry[gdDown], gdDown); //moving bottom -> top
 end;
 
 function TGraph.Reshape(const AWidth, AHeight, ADepth: UInt64): TGraph;
@@ -849,8 +840,13 @@ var
       UpdateEntriesFromLoc(AEntry[gdEast]);
       UpdateEntriesFromLoc(AEntry[gdSouth]);
       UpdateEntriesFromLoc(AEntry[gdWest]);
-      UpdateEntriesFromLoc(AEntry[gdUp]);
-      UpdateEntriesFromLoc(AEntry[gdDown]);
+
+      //todo - do we need to run different z levels? think not since trim neighbors will validate against z
+      //depending on the shift in z we'll run the "prior" plane's neighbor
+      //if Z > APrevZ then
+      //  UpdateEntriesFromLoc(AEntry[gdDown])
+      //else if Z < APrevZ then
+      //  UpdateEntriesFromLoc(AEntry[gdUp]);
     end;
 
   begin
