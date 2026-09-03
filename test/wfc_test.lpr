@@ -42,6 +42,16 @@ type
       read FRegisteredDuringInitialization;
   end;
 
+  TInvalidStartGraph = class(TGraph)
+  strict protected
+    procedure DoGetStartCoord(out X, Y: TGraphCoordinate); override;
+  end;
+
+  TFixedStartGraph = class(TGraph)
+  strict protected
+    procedure DoGetStartCoord(out X, Y: TGraphCoordinate); override;
+  end;
+
 const
   MAX_CAPTURED_PASSES = 16;
 
@@ -61,9 +71,12 @@ var
   GInitializeNestedPass: Boolean = False;
   GInitializeRenamePass: Boolean = False;
   GInitializeSetMode: Boolean = False;
+  GInitializeSetSeed: Boolean = False;
   GInitializeSetWrap: Boolean = False;
   GEntryCreateCount: Integer = 0;
   GFailEntryCreateAt: Integer = 0;
+  GTraversalCount: Integer = 0;
+  GTraversalIndices: array[0..Pred(MAX_CAPTURED_PASSES)] of Integer;
 
 function TTestGraph.DoCreateEntry: TGraphEntry;
 begin
@@ -90,6 +103,8 @@ begin
     SwitchToPass('nested-by-initializer');
   if GInitializeSetMode then
     Mode := rmTopDown;
+  if GInitializeSetSeed then
+    Seed := $12345678;
   if GInitializeSetWrap then
     WrapNeighbors := False;
   if (GFailPassInitializeAt > 0)
@@ -123,6 +138,18 @@ begin
   FInitializedConfiguration := FConfiguration;
   FRegisteredDuringInitialization :=
     PassGraph[CurrentPassIndex] = Self;
+end;
+
+procedure TInvalidStartGraph.DoGetStartCoord(out X, Y: TGraphCoordinate);
+begin
+  X := Dimension.Width;
+  Y := 0;
+end;
+
+procedure TFixedStartGraph.DoGetStartCoord(out X, Y: TGraphCoordinate);
+begin
+  X := 0;
+  Y := 0;
 end;
 
 procedure Check(const ACondition: Boolean; const AMessage: String);
@@ -208,6 +235,49 @@ begin
   Result := 'outside-domain';
 end;
 
+function SelectRandomAfterSwitch(const AGraph: TGraph;
+  const {%H-}AEntry: TGraphEntry;
+  const AValid: TGraphValues): TGraphValue;
+begin
+  if AGraph.CurrentPassIndex = 0 then
+    AGraph.SwitchToPass(1)
+  else
+    AGraph.SwitchToPass(0);
+  Result := AValid[AGraph.RandomIndex(Length(AValid))];
+end;
+
+function SelectAndMutateSeed(const AGraph: TGraph;
+  const {%H-}AEntry: TGraphEntry;
+  const AValid: TGraphValues): TGraphValue;
+begin
+  AGraph.Seed := $12345678;
+  Result := AValid[0];
+end;
+
+function SelectAndCaptureTraversal(const {%H-}AGraph: TGraph;
+  const AEntry: TGraphEntry;
+  const AValid: TGraphValues): TGraphValue;
+begin
+  if GTraversalCount < MAX_CAPTURED_PASSES then
+    GTraversalIndices[GTraversalCount] := AEntry.Index;
+  Inc(GTraversalCount);
+  Result := AValid[0];
+end;
+
+function SelectAndMutateNeighbor(const AGraph: TGraph;
+  const AEntry: TGraphEntry;
+  const AValid: TGraphValues): TGraphValue;
+var
+  LRootEntry: TGraphEntry;
+begin
+  if AEntry.Index = 2 then
+  begin
+    LRootEntry := AGraph.Entry[0, 0, 0];
+    LRootEntry[gdEast] := nil;
+  end;
+  Result := AValid[0];
+end;
+
 procedure ReplaceInvalidWithNone(const {%H-}AGraph: TGraph;
   const {%H-}AEntry: TGraphEntry; var AValue: TGraphValue);
 begin
@@ -240,6 +310,76 @@ begin
     GCapturedPassIndices[I] := -1;
     GCapturedPassGraphs[I] := nil;
   end;
+end;
+
+function SnapshotPass(const AGraph: TGraph;
+  const APassIndex: Integer): String;
+var
+  X, Y, Z: Integer;
+  LPass: TGraph;
+begin
+  Result := '';
+  LPass := AGraph.PassGraph[APassIndex];
+  for Z := 0 to Integer(LPass.Dimension.Depth) - 1 do
+  begin
+    for Y := 0 to Integer(LPass.Dimension.Height) - 1 do
+    begin
+      for X := 0 to Integer(LPass.Dimension.Width) - 1 do
+        Result := Result + LPass.Entry[X, Y, Z].Value;
+      Result := Result + '/';
+    end;
+    Result := Result + '|';
+  end;
+end;
+
+function SnapshotPipeline(const AGraph: TGraph): String;
+var
+  I: Integer;
+begin
+  Result := '';
+  for I := 0 to Pred(AGraph.TotalPassCount) do
+    Result := Result + IntToStr(I) + ':' + SnapshotPass(AGraph, I) + '#';
+end;
+
+function NewSeededFixture(const ASeed: TGraphSeed): TGraph;
+begin
+  Result := TGraph.Create;
+  Result.Seed := ASeed;
+  Result.Reshape(5, 3, 2);
+  Result.WrapNeighbors := False;
+  Result.CurrentPass := 'random-grid';
+  Result.AddValue('Q');
+  Result.AddValue('A');
+  Result.AddValue('Z');
+end;
+
+function NewSeededPassFixture(const ASeed: TGraphSeed): TGraph;
+begin
+  Result := TGraph.Create;
+  Result.Seed := ASeed;
+  Result.Reshape(6, 2, 1);
+  Result.WrapNeighbors := False;
+  Result.CurrentPass := 'terrain';
+  Result.AddValue('L');
+  Result.AddValue('W');
+  Result.SwitchToPass('foliage');
+  Result.AddValue('T').RequirePrevious('L');
+  Result.AddValue('.');
+  Result.SwitchToPass('copy');
+end;
+
+function NewTwoPassRandomFixture(const ASeed: TGraphSeed): TGraph;
+begin
+  Result := TGraph.Create;
+  Result.Seed := ASeed;
+  Result.Reshape(4, 2, 1);
+  Result.WrapNeighbors := False;
+  Result.CurrentPass := 'first';
+  Result.AddValue('A');
+  Result.AddValue('B');
+  Result.SwitchToPass('second');
+  Result.AddValue('X');
+  Result.AddValue('Y');
 end;
 
 procedure CapturePass(const AGraph: TGraph; const APass: String;
@@ -294,8 +434,439 @@ begin
   end;
 end;
 
+procedure TestPortableRandomSource;
+const
+  PASS_ZERO_GOLDEN: array[0..4] of Integer = (
+    1207838001, 2068637377, 804576980, 1434489320, 682523572);
+  PASS_ONE_GOLDEN: array[0..4] of Integer = (
+    1831489428, 1235882772, 1527468314, 1521803337, 23774112);
+  PASS_TWO_GOLDEN: array[0..4] of Integer = (
+    1897658175, 1111398514, 1235936229, 1708237457, 1148126430);
+  SEED_ZERO_GOLDEN: array[0..4] of Integer = (
+    590474650, 1492349913, 534184656, 1965128666, 1242937530);
+  SEED_ONE_GOLDEN: array[0..4] of Integer = (
+    49361508, 1256767595, 249573063, 662742859, 1621684536);
+  SEED_MAX_GOLDEN: array[0..4] of Integer = (
+    798449634, 608112268, 2016217309, 1385297694, 693014667);
+var
+  I: Integer;
+  LAutomatic: TGraph;
+  LAutomaticSeed: TGraphSeed;
+  LGraph: TGraph;
+  LRaised: Boolean;
+begin
+  Check(WFC_RANDOM_ALGORITHM_VERSION = 1,
+    'the portable random algorithm has an explicit replay version');
+  LGraph := TGraph.Create;
+  try
+    LGraph.SwitchToPass('second');
+    LGraph.SwitchToPass('third');
+    LGraph.Seed := $DEADBEEF;
+    Check((LGraph.Seed = $DEADBEEF)
+      and (LGraph.PassGraph[0].Seed = $DEADBEEF)
+      and (LGraph.PassGraph[1].Seed = $DEADBEEF)
+      and (LGraph.PassGraph[2].Seed = $DEADBEEF),
+      'the public seed is shared by the complete pipeline');
+
+    Check(LGraph.PassGraph[0].RandomIndex(1) = 0,
+      'a singleton bound returns zero without needing a choice');
+    for I := 0 to High(PASS_ZERO_GOLDEN) do
+      Check(LGraph.PassGraph[0].RandomIndex(High(Integer))
+        = PASS_ZERO_GOLDEN[I],
+        Format('pass zero matches portable random vector %d', [I]));
+    for I := 0 to High(PASS_ONE_GOLDEN) do
+      Check(LGraph.PassGraph[1].RandomIndex(High(Integer))
+        = PASS_ONE_GOLDEN[I],
+        Format('pass one matches jumped random vector %d', [I]));
+    for I := 0 to High(PASS_TWO_GOLDEN) do
+      Check(LGraph.PassGraph[2].RandomIndex(High(Integer))
+        = PASS_TWO_GOLDEN[I],
+        Format('pass two matches twice-jumped random vector %d', [I]));
+
+    LGraph.Seed := 0;
+    for I := 0 to High(SEED_ZERO_GOLDEN) do
+      Check(LGraph.PassGraph[0].RandomIndex(High(Integer))
+        = SEED_ZERO_GOLDEN[I],
+        Format('seed zero matches portable random vector %d', [I]));
+    LGraph.Seed := 1;
+    for I := 0 to High(SEED_ONE_GOLDEN) do
+      Check(LGraph.PassGraph[0].RandomIndex(High(Integer))
+        = SEED_ONE_GOLDEN[I],
+        Format('seed one matches portable random vector %d', [I]));
+    LGraph.Seed := High(TGraphSeed);
+    for I := 0 to High(SEED_MAX_GOLDEN) do
+      Check(LGraph.PassGraph[0].RandomIndex(High(Integer))
+        = SEED_MAX_GOLDEN[I],
+        Format('maximum seed matches portable random vector %d', [I]));
+
+    LGraph.Seed := $DEADBEEF;
+    Check(LGraph.PassGraph[0].RandomIndex(1500000000) = 568637377,
+      'bounded sampling rejects a biased draw before returning a value');
+
+    LGraph.Seed := $DEADBEEF;
+    Check(LGraph.PassGraph[0].RandomIndex(High(Integer))
+      = PASS_ZERO_GOLDEN[0],
+      'assigning a seed rewinds existing pass streams');
+    Check(LGraph.PassGraph[1].RandomIndex(High(Integer))
+      = PASS_ONE_GOLDEN[0],
+      'rewinding one pipeline restores every independent pass stream');
+
+    LGraph.Seed := $DEADBEEF;
+    for I := 1 to 32 do
+      LGraph.PassGraph[0].RandomIndex(High(Integer));
+    Check(LGraph.PassGraph[1].RandomIndex(High(Integer))
+      = PASS_ONE_GOLDEN[0],
+      'draws from one pass cannot perturb another pass stream');
+
+    LGraph.PassGraph[1].CurrentPass := 'renamed-second';
+    LGraph.Seed := $DEADBEEF;
+    Check(LGraph.PassGraph[1].RandomIndex(High(Integer))
+      = PASS_ONE_GOLDEN[0],
+      'renaming a pass does not change its index-derived stream');
+
+    LRaised := False;
+    try
+      LGraph.RandomIndex(0);
+    except
+      on E: Exception do
+        LRaised := True;
+    end;
+    Check(LRaised, 'RandomIndex rejects a zero bound');
+    LRaised := False;
+    try
+      LGraph.RandomIndex(-1);
+    except
+      on E: Exception do
+        LRaised := True;
+    end;
+    Check(LRaised, 'RandomIndex rejects a negative bound');
+
+    LGraph.Reset;
+    Check(LGraph.Seed = $DEADBEEF,
+      'Reset preserves the pipeline seed');
+    Check(LGraph.RandomIndex(High(Integer)) = PASS_ZERO_GOLDEN[0],
+      'the reset pass starts from the same pass-zero stream');
+  finally
+    LGraph.Free;
+  end;
+
+  LAutomatic := TGraph.Create;
+  try
+    LAutomaticSeed := LAutomatic.Seed;
+    for I := 1 to 32 do
+      System.Random(1000);
+    Check(LAutomatic.Seed = LAutomaticSeed,
+      'an automatic seed is captured once on first read');
+    LAutomatic.SwitchToPass('second');
+    Check((LAutomatic.Seed = LAutomaticSeed)
+      and (LAutomatic.PassGraph[0].Seed = LAutomaticSeed)
+      and (LAutomatic.PassGraph[1].Seed = LAutomaticSeed),
+      'materializing passes preserves the captured automatic seed');
+  finally
+    LAutomatic.Free;
+  end;
+end;
+
+{$IFNDEF PAS2JS}
+procedure TestExplicitSeedHostRandomIsolation;
+var
+  LActual: LongInt;
+  LExpected: LongInt;
+  LGraph: TGraph;
+  LSavedRandSeed: Cardinal;
+begin
+  LGraph := nil;
+  LSavedRandSeed := System.RandSeed;
+  try
+    System.RandSeed := 123456789;
+    LExpected := System.Random(1000000);
+
+    System.RandSeed := 123456789;
+    LGraph := TGraph.Create;
+    LGraph.Seed := $DEADBEEF;
+    LActual := System.Random(1000000);
+
+    Check(LActual = LExpected,
+      'assigning an explicit seed does not consume the host random stream');
+  finally
+    LGraph.Free;
+    System.RandSeed := LSavedRandSeed;
+  end;
+end;
+{$ENDIF}
+
+procedure TestSeededReplay;
+var
+  I: Integer;
+  LFirst: TGraph;
+  LFirstSnapshot: String;
+  LOtherSeedSnapshot: String;
+  LSecond: TGraph;
+begin
+  LFirst := NewSeededFixture($DEADBEEF);
+  LSecond := NewSeededFixture($DEADBEEF);
+  try
+    LFirst.Run;
+    LFirstSnapshot := SnapshotPipeline(LFirst);
+
+    //Neither unrelated RTL draws nor random calls made outside Run are part
+    //of the graph-owned replay stream.
+    for I := 1 to 64 do
+      System.Random(1000);
+    LSecond.RandomIndex(High(Integer));
+    LSecond.Run;
+    Check(SnapshotPipeline(LSecond) = LFirstSnapshot,
+      'same seed and model replay across independent graph instances');
+
+    LFirst.Run;
+    Check(SnapshotPipeline(LFirst) = LFirstSnapshot,
+      'every Run rewinds its graph-owned random streams');
+
+    LFirst.Seed := $CAFEBABE;
+    LFirst.Run;
+    LOtherSeedSnapshot := SnapshotPipeline(LFirst);
+    Check(LOtherSeedSnapshot <> LFirstSnapshot,
+      'a different explicit seed changes the generated fixture');
+
+    LFirst.Seed := $DEADBEEF;
+    LFirst.Run;
+    Check(SnapshotPipeline(LFirst) = LFirstSnapshot,
+      'restoring the original seed restores the exact fixture');
+
+    LFirst.SwitchToPass('later-copy');
+    LFirst.Run;
+    Check(SnapshotPass(LFirst, 0) = SnapshotPass(LSecond, 0),
+      'appending a later pass cannot perturb earlier pass output');
+    Check(SnapshotPass(LFirst, 1) = SnapshotPass(LFirst, 0),
+      'the appended definitionless pass copies the replayed output');
+
+    Check(LFirstSnapshot =
+      '0:ZAZZA/QQZQA/ZZAQZ/|ZAZAA/ZZQQA/ZQZQQ/|#',
+      'the seeded 3D fixture matches its canonical replay vector');
+  finally
+    LSecond.Free;
+    LFirst.Free;
+  end;
+end;
+
+procedure TestSeededMultiPassReplay;
+var
+  LGraph: TGraph;
+  LSnapshot: String;
+begin
+  LGraph := NewSeededPassFixture($DEADBEEF);
+  try
+    LGraph.Run;
+    LSnapshot := SnapshotPipeline(LGraph);
+    Check(SnapshotPass(LGraph, 2) = SnapshotPass(LGraph, 1),
+      'a seeded definitionless pass copies the preceding result');
+    LGraph.Run;
+    Check(SnapshotPipeline(LGraph) = LSnapshot,
+      'terrain, constrained foliage, and copy passes replay together');
+    Check(LSnapshot =
+      '0:LWLWLL/WWLWLL/|#1:.....T/.....T/|#2:.....T/.....T/|#',
+      'the seeded multi-pass fixture matches its canonical replay vector');
+  finally
+    LGraph.Free;
+  end;
+end;
+
+procedure TestSeededWrappedTopDownReplay;
+var
+  LGraph: TGraph;
+  LSnapshot: String;
+begin
+  LGraph := NewSeededFixture($DEADBEEF);
+  try
+    LGraph.WrapNeighbors := True;
+    LGraph.Mode := rmTopDown;
+    LGraph.Run;
+    LSnapshot := SnapshotPipeline(LGraph);
+    LGraph.Run;
+    Check(SnapshotPipeline(LGraph) = LSnapshot,
+      'wrapped top-down generation replays on consecutive runs');
+    Check(LSnapshot =
+      '0:QZAZA/ZQAQZ/ZQAQZ/|ZAQZA/QQZQZ/ZZAAZ/|#',
+      'wrapped top-down generation matches its canonical replay vector');
+  finally
+    LGraph.Free;
+  end;
+end;
+
+procedure TestRandomCallbackPassIdentity;
+var
+  I: Integer;
+  LBaseline: TGraph;
+  LSwitching: TGraph;
+begin
+  LBaseline := NewTwoPassRandomFixture($DEADBEEF);
+  LSwitching := NewTwoPassRandomFixture($DEADBEEF);
+  try
+    for I := 0 to Pred(LSwitching.TotalPassCount) do
+      LSwitching.PassGraph[I].SelectionCallback := SelectRandomAfterSwitch;
+    LBaseline.Run;
+    LSwitching.Run;
+    Check(SnapshotPipeline(LSwitching) = SnapshotPipeline(LBaseline),
+      'root RandomIndex stays bound to the pass being solved after a callback switch');
+  finally
+    LSwitching.Free;
+    LBaseline.Free;
+  end;
+end;
+
+procedure TestSeedMutationDuringRun;
+var
+  LGraph: TGraph;
+  LRaised: Boolean;
+begin
+  LGraph := NewSeededFixture($DEADBEEF);
+  try
+    LGraph.SelectionCallback := SelectAndMutateSeed;
+    LRaised := False;
+    try
+      LGraph.Run;
+    except
+      on E: Exception do
+        LRaised := True;
+    end;
+    Check(LRaised, 'callbacks cannot change the seed during Run');
+    Check((LGraph.Seed = $DEADBEEF)
+      and (LGraph.TotalPassCount = 1)
+      and (LGraph.CurrentPassIndex = 0),
+      'a rejected seed mutation leaves pipeline identity and seed intact');
+  finally
+    LGraph.Free;
+  end;
+end;
+
+procedure TestLargeIterativeTraversal;
+var
+  LGenerated: Integer;
+  LGraph: TGraph;
+  X, Y: Integer;
+begin
+  LGraph := TGraph.Create;
+  try
+    LGraph.Seed := 1;
+    LGraph.Reshape(128, 128, 1);
+    LGraph.WrapNeighbors := False;
+    LGraph.AddValue('A');
+    LGraph.Run;
+
+    LGenerated := 0;
+    for Y := 0 to 127 do
+      for X := 0 to 127 do
+        if LGraph.Entry[X, Y, 0].Generated
+          and (LGraph.Entry[X, Y, 0].Value = 'A') then
+          Inc(LGenerated);
+    Check(LGenerated = 128 * 128,
+      'iterative traversal visits a large plane without recursion limits');
+  finally
+    LGraph.Free;
+  end;
+end;
+
+procedure TestInvalidStartCoordinate;
+var
+  LGraph: TGraph;
+  LRaised: Boolean;
+begin
+  LGraph := TInvalidStartGraph.Create;
+  try
+    LGraph.Reshape(2, 2, 1);
+    LGraph.WrapNeighbors := False;
+    LGraph.AddValue('A');
+    LRaised := False;
+    try
+      LGraph.Run;
+    except
+      on E: ERangeError do
+        LRaised := True;
+    end;
+    Check(LRaised,
+      'an out-of-range start coordinate cannot alias another graph row');
+    Check(LGraph.Entry[0, 0, 0].Empty
+      and LGraph.Entry[1, 0, 0].Empty
+      and LGraph.Entry[0, 1, 0].Empty
+      and LGraph.Entry[1, 1, 0].Empty,
+      'an invalid start coordinate is rejected before generation begins');
+  finally
+    LGraph.Free;
+  end;
+end;
+
+procedure TestIterativeTraversalCompatibility;
+var
+  LDirection: TGraphDirection;
+  LEntry: TGraphEntry;
+  LExternal: TGraphEntry;
+  LGraph: TGraph;
+  X, Y: Integer;
+begin
+  LGraph := TFixedStartGraph.Create;
+  try
+    LGraph.Reshape(2, 2, 1);
+    LGraph.WrapNeighbors := False;
+    LGraph.AddValue('A');
+    LGraph.SelectionCallback := SelectAndCaptureTraversal;
+    GTraversalCount := 0;
+    LGraph.Run;
+    Check((GTraversalCount = 4)
+      and (GTraversalIndices[0] = 0)
+      and (GTraversalIndices[1] = 2)
+      and (GTraversalIndices[2] = 3)
+      and (GTraversalIndices[3] = 1),
+      'iterative traversal preserves the legacy north/east/south/west DFS order');
+  finally
+    LGraph.Free;
+  end;
+
+  LGraph := TFixedStartGraph.Create;
+  try
+    LGraph.Reshape(2, 2, 1);
+    LGraph.WrapNeighbors := False;
+    LGraph.AddValue('A');
+    for Y := 0 to 1 do
+      for X := 0 to 1 do
+      begin
+        LEntry := LGraph.Entry[X, Y, 0];
+        for LDirection := Low(TGraphDirection) to High(TGraphDirection) do
+          LEntry[LDirection] := nil;
+      end;
+    LEntry := LGraph.Entry[0, 0, 0];
+    LEntry[gdNorth] := LGraph.Entry[0, 1, 0];
+    LEntry[gdEast] := LGraph.Entry[1, 0, 0];
+    LGraph.SelectionCallback := SelectAndMutateNeighbor;
+    LGraph.Run;
+    Check(LGraph.Entry[0, 0, 0].Generated
+      and LGraph.Entry[0, 1, 0].Generated
+      and LGraph.Entry[1, 0, 0].Empty,
+      'later neighbors are read after earlier DFS subtrees and callback mutations');
+  finally
+    LGraph.Free;
+  end;
+
+  LExternal := TGraphEntry.Create;
+  LGraph := TFixedStartGraph.Create;
+  try
+    LGraph.Reshape(1, 1, 1);
+    LGraph.WrapNeighbors := False;
+    LGraph.AddValue('A');
+    LGraph.SelectionCallback := SelectFirstValid;
+    LEntry := LGraph.Entry[0, 0, 0];
+    LEntry[gdNorth] := LExternal;
+    LGraph.Run;
+    Check(LExternal.Generated and (LExternal.Value = 'A'),
+      'iterative traversal retains public links to entries outside graph storage');
+  finally
+    LGraph.Free;
+    LExternal.Free;
+  end;
+end;
+
 procedure TestRuleGroup;
 var
+  LDirection: TGraphDirection;
   LGroup: TGraphRuleGroup;
 begin
   LGroup := TGraphRuleGroup.Create;
@@ -322,6 +893,18 @@ begin
     LGroup.NewRule([gdUp], 'required-value', True);
     Check(LGroup.HasRequired, 'required rules are reported by the group');
     Check(LGroup[gdUp].Info, 'the required flag is retained');
+
+    LGroup.NewRule(AllDirections, 'all-directions-value');
+    for LDirection := Low(TGraphDirection) to High(TGraphDirection) do
+      if LGroup.Exists[LDirection] then
+        Check(ContainsGraphValue(LGroup[LDirection].Value,
+          'all-directions-value'),
+          Format('one call retains its value for direction %d',
+            [Ord(LDirection)]))
+      else
+        Check(False,
+          Format('one call creates a distinct rule for direction %d',
+            [Ord(LDirection)]));
   finally
     LGroup.Free;
   end;
@@ -1262,6 +1845,7 @@ begin
   GInitializeNestedPass := False;
   GInitializeRenamePass := False;
   GInitializeSetMode := False;
+  GInitializeSetSeed := False;
   GInitializeSetWrap := False;
   GFailPassInitializeAt := 0;
   LGraph := TTestGraph.Create;
@@ -1304,6 +1888,23 @@ begin
       and (LGraph.CurrentPassIndex = 1),
       'a rolled-back pass label can be created normally afterward');
 
+    LGraph.Seed := $DEADBEEF;
+    GInitializeSetSeed := True;
+    LRaised := False;
+    try
+      LGraph.Reset;
+    except
+      on E: Exception do
+        LRaised := True;
+    end;
+    GInitializeSetSeed := False;
+    Check(LRaised,
+      'a reset initializer cannot mutate the pipeline seed');
+    Check((LGraph.Seed = $DEADBEEF)
+      and (LGraph.TotalPassCount = 2)
+      and (LGraph.CurrentPass = 'candidate'),
+      'failed seed mutation preserves the old pipeline and seed');
+
     LGraph.Mode := rmBottomUp;
     LGraph.WrapNeighbors := True;
     GInitializeSetMode := True;
@@ -1341,6 +1942,7 @@ begin
     GInitializeNestedPass := False;
     GInitializeRenamePass := False;
     GInitializeSetMode := False;
+    GInitializeSetSeed := False;
     GInitializeSetWrap := False;
     GFailPassInitializeAt := 0;
     LGraph.Free;
@@ -1352,6 +1954,21 @@ begin
   WriteLn('=====================');
 
   RunTest('graph entry lifecycle', @TestGraphEntry);
+  RunTest('portable seeded random source', @TestPortableRandomSource);
+  {$IFNDEF PAS2JS}
+  RunTest('explicit seed host random isolation',
+    @TestExplicitSeedHostRandomIsolation);
+  {$ENDIF}
+  RunTest('seeded replay', @TestSeededReplay);
+  RunTest('seeded multi-pass replay', @TestSeededMultiPassReplay);
+  RunTest('seeded wrapped top-down replay',
+    @TestSeededWrappedTopDownReplay);
+  RunTest('random callback pass identity', @TestRandomCallbackPassIdentity);
+  RunTest('seed mutation during run', @TestSeedMutationDuringRun);
+  RunTest('large iterative traversal', @TestLargeIterativeTraversal);
+  RunTest('invalid start coordinate', @TestInvalidStartCoordinate);
+  RunTest('iterative traversal compatibility',
+    @TestIterativeTraversalCompatibility);
   RunTest('rule group basics', @TestRuleGroup);
   RunTest('public compatibility types', @TestCompatibilityTypes);
   RunTest('inverse rule generation', @TestInverseRules);

@@ -25,6 +25,11 @@ The repository already contains the beginnings of the ecosystem:
 - an operational first pass-pipeline slice: stable labeled passes, isolated
   rules and values, sequential execution, prior-output copying, and
   same-coordinate constraints against the immediately preceding pass;
+- a versioned portable random source with an explicit pipeline seed,
+  independent index-derived pass streams, run-to-run rewind, and matching
+  native/pas2js golden fixtures;
+- stack-safe iterative traversal of large planes while preserving the legacy
+  solver's north/east/south/west depth-first order;
 - a console tiled-world example;
 - two music experiments, including manually inferred note adjacency;
 - building-kit constraints, a console renderer, and a Castle Game Engine
@@ -41,11 +46,14 @@ It is not yet the finished system described above:
   prepare/validate/commit behavior, named overlay layers, dependency graphs,
   rollback, selective regeneration, and cross-layer diagnostics remain to be
   built;
-- the 2D, 3D, text, and examples index documentation is mostly empty;
+- the examples index now records targets, dependencies, build commands, and
+  honest completion status, but full per-example tutorials, invariants,
+  expected output, and troubleshooting guides remain to be written;
 - the Castle example does not yet render generated building geometry, and the
   building-kit demo currently runs with a depth of one;
-- there is no interactive pas2js demo, browser test host, or stable
-  native/browser trace-parity suite;
+- there is no interactive pas2js demo, browser test host, or complete stable
+  native/pas2js decision-trace parity suite (canonical seeded value fixtures
+  do already match);
 - the conformance runner is not yet wired into a one-command build or CI;
 - music playback currently depends on the GPL-licensed SoundShop submodule,
   which cannot be a required dependency of an MIT-only demo distribution

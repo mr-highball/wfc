@@ -132,11 +132,11 @@ callbacks operate on that pass. Pipeline operations such as `Run`, `Reshape`,
 `SwitchToPass`, `WrapNeighbors`, and `Mode` forward to the root. `Reset` is the
 exception: call it on the root graph. Calling it through `PassGraph` raises
 `EInvalidOperation` rather than destroying the receiver during its own method
-call. Root `Reset` preserves the first pass's callbacks and pipeline-wide mode
-and wrapping settings while clearing dimensions, rules, values, and additional
-passes. Reset prepares and initializes its replacement pass before discarding
-the old pipeline; if the initialization hook raises, the old passes,
-dimensions, values, and selected pass remain intact.
+call. Root `Reset` preserves the first pass's callbacks, the pipeline `Seed`,
+and pipeline-wide mode and wrapping settings while clearing dimensions, rules,
+values, and additional passes. Reset prepares and initializes its replacement
+pass before discarding the old pipeline; if the initialization hook raises,
+the old passes, dimensions, values, selected pass, and seed remain intact.
 
 `ForEachPass` is available when every pass should be inspected or configured.
 It visits passes in index order and restores the caller's selected pass even
@@ -166,11 +166,12 @@ through a `PassGraph`.
 The coordinator:
 
 1. saves the pass selected by the caller;
-2. visits passes from index `0` through `TotalPassCount - 1`;
-3. clears that pass's prior generated values, while retaining caller-assigned
+2. rewinds every pass's random stream from the pipeline `Seed`;
+3. visits passes from index `0` through `TotalPassCount - 1`;
+4. clears that pass's prior generated values, while retaining caller-assigned
    locks, then runs each pass that has value or rule definitions;
-4. copies the preceding output into a pass with no definitions;
-5. restores the pass selected by the caller, even if an exception occurs.
+5. copies the preceding output into a pass with no definitions;
+6. restores the pass selected by the caller, even if an exception occurs.
 
 A selection or invalid-state callback may inspect or switch passes through the
 root graph. After that callback returns, the coordinator resumes the pass it
@@ -302,6 +303,30 @@ water -> none
 The terrain entries remain unchanged because foliage owns a different set of
 entries.
 
+## deterministic pass streams
+
+`Seed` belongs to the complete pipeline. Each pass receives its own portable
+random stream derived from that seed and its stable zero-based index. Renaming
+a pass or appending a later pass therefore does not change an existing pass's
+stream. Extra random choices in one pass do not advance another pass's stream,
+although changed output can still change the valid domains seen later.
+
+Every `Run` rewinds all streams. Calls to `RandomIndex` outside a run cannot
+perturb the next generated result, and `Reset` keeps the same seed. During a
+callback, `AGraph.RandomIndex` consumes the stream for the pass currently being
+solved even if that callback temporarily switches `CurrentPass`.
+
+Set an explicit seed whenever a result must replay across processes or
+targets:
+
+```pascal
+LGraph.Seed := $DEADBEEF;
+LGraph.Run;
+```
+
+The exact contract, algorithm version, custom callback rules, and limits are
+documented in [deterministic generation](determinism.md).
+
 ## current limitations
 
 The implemented pass behavior is intentionally small and sequential:
@@ -332,6 +357,6 @@ FPC and pas2js. The same `TGraph`, `SwitchToPass`, `PassGraph`, `ForEachPass`,
 
 The host program is responsible only for presentation: a console, Lazarus
 form, canvas, WebAudio player, or other UI can read the same pass results. For
-cross-target examples and tests, use an explicit deterministic selection
-callback and compare pass values rather than relying on platform random-number
-implementations to choose the same sequence.
+cross-target examples and tests, assign an explicit `Seed`, route any
+randomness used by custom callbacks through `AGraph.RandomIndex`, and compare
+pass values in stable pass/index order.

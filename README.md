@@ -12,9 +12,10 @@ modular 3D structures, music, text, and other discrete design problems.
 
 > **Project status:** the original API and its greedy traversal solver remain
 > available, and the first operational multi-pass contract now works on native
-> FPC and pas2js. A reference propagating WFC solver, richer cross-layer
-> constraints, polished domain libraries, and complete native/browser demos
-> are planned and tracked in the [roadmap](ROADMAP.md).
+> FPC and pas2js with portable seeded replay. A reference propagating WFC
+> solver, richer cross-layer constraints, polished domain libraries, and
+> complete native/browser demos are planned and tracked in the
+> [roadmap](ROADMAP.md).
 
 ## Features
 
@@ -24,6 +25,9 @@ modular 3D structures, music, text, and other discrete design problems.
 - stable, labeled, zero-based passes with isolated values, rules, and outputs
 - sequential pipeline execution with selected-pass restoration
 - empty-pass copying and same-coordinate constraints on the previous pass
+- explicit pipeline seeds with stable, independent per-pass random streams
+- matching seeded golden fixtures on native FPC and pas2js/Node
+- iterative traversal without a graph-sized call stack
 - extension hooks for custom graph and entry behavior
 - one Pascal core for native FPC and pas2js
 
@@ -53,22 +57,35 @@ end;
 
 For a complete terrain-to-foliage pipeline, including `SwitchToPass`,
 `PassGraph`, and `RequirePrevious`, see [pass-system semantics](docs/passes.md).
+For exact replay behavior, callback requirements, and algorithm versioning,
+see [deterministic generation](docs/determinism.md).
 
 ## Build and test
 
 Add `src` to the unit search path, then compile the conformance runner:
 
 ```text
-fpc -B -Mdelphi -Fusrc test/wfc_test.lpr
+fpc -B -Mdelphi -Sa -Cr -Co -Ci -Fusrc -FUbuild/native/units -FEbuild/native/bin test/wfc_test.lpr
 ```
 
-Run the produced `test/wfc_test` executable (`wfc_test.exe` on Windows). It
-returns a nonzero exit code when a check fails. The same test source also
-compiles for a Node.js pas2js target.
+Run the produced `build/native/bin/wfc_test` executable (`wfc_test.exe` on
+Windows). It returns a nonzero exit code when a check fails. The same test
+source also compiles for a Node.js pas2js target and checks the same seeded
+output vectors. A configured pas2js RTL toolchain can use:
 
-Lazarus can open `test/wfc_test.lpr` directly. Some older demos have optional
-submodule dependencies; clone with `--recursive` only when those demos are
-needed.
+```text
+pas2js -B -Tnodejs -Mdelphi -Fusrc -FUbuild/pas2js/units -FEbuild/pas2js test/wfc_test.lpr
+node build/pas2js/wfc_test.js
+```
+
+Create the output directories first. A compiler executable without its
+matching pas2js RTL unit paths is not sufficient.
+
+Lazarus can open `test/wfc_test.lpi`. The core, conformance suite, tiled-world
+example, and building-kit console need no submodule. The two legacy music
+experiments require Lazarus/LCL, SDL2, and the optional GPL-3.0 SoundShop
+submodule; they are not part of the dependency-free MIT build path. See the
+[examples index](examples/README.md) for exact status and commands.
 
 ## Direction
 

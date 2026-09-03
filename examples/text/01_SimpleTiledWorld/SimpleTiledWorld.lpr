@@ -10,9 +10,28 @@
 *)
 program SimpleTiledWorld;
 uses
-  math,
+  SysUtils,
+  {$IFDEF PAS2JS}
+  NodeJSApp, //installs ParamCount/ParamStr from Node's process.argv
+  {$ENDIF}
+  {$IFNDEF PAS2JS}
   crt, //colors for console
+  {$ENDIF}
   wfc; //library code
+
+procedure SetTileColor(const AValue: TGraphValue);
+begin
+  {$IFNDEF PAS2JS}
+  if AValue = 'L' then
+    TextColor(Green)
+  else if AValue = 'S' then
+    TextColor(Cyan)
+  else if AValue = 'C' then
+    TextColor(Yellow)
+  else if AValue = 'M' then
+    TextColor(Brown);
+  {$ENDIF}
+end;
 
 procedure RenderWorld(const AWorld : TGraph);
 var
@@ -27,15 +46,7 @@ begin
     begin
       LVal := AWorld[X, Y, 0].Value;
 
-      if LVal = 'L' then
-        TextColor(Green)
-      else if LVal = 'S' then
-        TextColor(Cyan)
-      else if LVal = 'C' then
-        TextColor(Yellow)
-      else if LVal = 'M' then
-        TextColor(Brown);
-
+      SetTileColor(LVal);
       Write(LVal);
     end;
     WriteLn('');
@@ -49,8 +60,11 @@ end;
 procedure InvalidHandler(const AGraph : TGraph; const AEntry : TGraphEntry;
   var AValue : TGraphValue);
 begin
-  //just use land or sea when no other solution
-  AValue := TArray<String>.Create('L', 'S')[RandomRange(0, 2)];
+  //Use the graph-owned stream so an explicit Seed replays this recovery too.
+  if AGraph.RandomIndex(2) = 0 then
+    AValue := 'L'
+  else
+    AValue := 'S';
 end;
 
 var
@@ -58,6 +72,10 @@ var
 begin
   LWorld := TGraph.Create;
   try
+    //An optional decimal or Pascal-style hexadecimal seed replays a world.
+    if ParamCount > 0 then
+      LWorld.Seed := TGraphSeed(StrToQWord(ParamStr(1)));
+
     //set our shape to be 2D and size it appropriately for the console window
     LWorld.Reshape({width} 80, {height} 25, {depth} 1);
     //LWorld.WrapNeighbors := False;
@@ -87,6 +105,7 @@ begin
       .NewRule(AllDirections, 'M');
 
     //run the graph
+    WriteLn('Seed: ', LWorld.Seed);
     LWorld.Run;
 
     //now call our helper print function to display the world
@@ -95,7 +114,10 @@ begin
     LWorld.Free;
   end;
 
-  //wait for user to close
-  ReadLn;
+  {$IFNDEF PAS2JS}
+  //An explicit seed also acts as a noninteractive native smoke-test mode.
+  if ParamCount = 0 then
+    ReadLn;
+  {$ENDIF}
 end.
 

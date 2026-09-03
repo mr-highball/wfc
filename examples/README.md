@@ -1,0 +1,76 @@
+# examples
+
+The examples are a mixture of runnable demonstrations and early experiments.
+This index distinguishes what works now from the ecosystem still described in
+the [roadmap](../ROADMAP.md).
+
+| Area | Entry point | Targets | Current proof and dependencies |
+| --- | --- | --- | --- |
+| Text-rendered 2D world | `text/01_SimpleTiledWorld/SimpleTiledWorld.lpr` | Native FPC, pas2js/Node | Builds and runs from the same Pascal source, prints and accepts an optional replay seed, and needs no external dependency. This is world generation rendered as text, not a text-prediction model. |
+| Building-kit console | `3D/01_SimpleBuildingKit/tester.lpr` | Native FPC | Builds without Castle Game Engine, but currently generates and renders a depth-one slice. It does not yet prove vertical 3D constraints. |
+| Castle viewer shell | `3D/01_SimpleBuildingKit/castle-demo/` | Native Castle Game Engine | The project shell and assets exist, but its game state does not yet call WFC or render generated building geometry. |
+| A-major music experiment | `music/01_simple_A_major/simple_a_major.lpi` | Native Lazarus/LCL | Legacy optional experiment using the SoundShop submodule and SDL2 playback. |
+| Learned-riff music experiment | `music/02_simple_song_riffs/simple_song_riffs.lpi` | Native Lazarus/LCL | Legacy optional experiment using manually inferred note adjacency, SoundShop, and SDL2 playback. |
+| Dedicated 2D visual demo | — | — | Not implemented yet; the tiled-world console currently exercises the 2D topology. |
+
+There is not yet an HTML/browser UI, a text-prediction demo, a depth-greater-
+than-one building demonstration, or a connected Castle visualization.
+pas2js/Node proves that the Pascal core and tiled-world host transpile and run;
+it should not be confused with a finished web demo.
+
+## dependency-free builds
+
+Create the named `units` and `bin` output directories before compiling. From
+the repository root, the native tiled world is:
+
+```text
+fpc -B -Mdelphi -Sa -Cr -Co -Ci -Fusrc -FUbuild/examples/text/native/units -FEbuild/examples/text/native/bin examples/text/01_SimpleTiledWorld/SimpleTiledWorld.lpr
+```
+
+With a configured pas2js RTL installation, the same source targets Node.js:
+
+```text
+pas2js -B -Tnodejs -Mdelphi -Fusrc -FUbuild/examples/text/pas2js/units -FEbuild/examples/text/pas2js/bin examples/text/01_SimpleTiledWorld/SimpleTiledWorld.lpr
+node build/examples/text/pas2js/bin/SimpleTiledWorld.js
+```
+
+Pass an optional unsigned 32-bit seed as the first argument on either target,
+for example `SimpleTiledWorld.exe 3735928559` or
+`node SimpleTiledWorld.js 3735928559`.
+
+The native building-kit console additionally needs its unit directory:
+
+```text
+fpc -B -Mdelphi -Sa -Cr -Co -Ci -Fusrc -Fuexamples/3D/01_SimpleBuildingKit/castle-demo/code -FUbuild/examples/3d/native/units -FEbuild/examples/3d/native/bin examples/3D/01_SimpleBuildingKit/tester.lpr
+```
+
+These commands keep new compiler output under the ignored `build` tree.
+
+## optional legacy music experiments
+
+Initialize their playback dependency only when working on these examples:
+
+```text
+git submodule update --init --recursive examples/music/SoundShop
+```
+
+Then build their Lazarus projects with `lazbuild` or open the `.lpi` files in
+Lazarus:
+
+```text
+lazbuild -B --no-write-project examples/music/01_simple_A_major/simple_a_major.lpi
+lazbuild -B --no-write-project examples/music/02_simple_song_riffs/simple_song_riffs.lpi
+```
+
+Both require an SDL2 shared library at runtime. SoundShop is GPL-3.0, so this
+playback integration remains optional and separate from the dependency-free
+MIT path. A standard ecosystem demo must replace it or clearly preserve that
+license boundary.
+
+## Castle shell
+
+The Castle project may be compiled from its own directory with Castle Game
+Engine's editor or `castle-engine compile`, or through its Lazarus project when
+the Castle packages are registered. It is retained as a viewer starting point,
+not presented as a working WFC demonstration yet. Asset provenance and the
+generated-geometry connection remain roadmap work.

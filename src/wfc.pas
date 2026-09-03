@@ -47,6 +47,14 @@ type
   {$ELSE}
   TGraphCoordinate = UInt64;
   {$ENDIF}
+  TGraphSeed = Cardinal;
+
+const
+  //Increment when seed expansion, pass-stream derivation, bounded sampling,
+  //or the built-in generator changes in a replay-incompatible way.
+  WFC_RANDOM_ALGORITHM_VERSION = 1;
+
+type
 
   TGraphPosition = record
     X : TGraphCoordinate;
@@ -268,6 +276,12 @@ type
     type
       TEntryStorageArray = array of TGraphEntries;
       TPlaneStorageArray = array of TPlanes;
+      TRandomState = record
+        S0: Cardinal;
+        S1: Cardinal;
+        S2: Cardinal;
+        S3: Cardinal;
+      end;
   strict private
     FDimension: TDimension;
     FInv: TInvalidStateCallback;
@@ -286,7 +300,24 @@ type
     FPassIndex : Integer;
     FInitializingPass: Boolean;
     FRunning: Boolean;
+    FSeed: TGraphSeed;
+    FSeedInitialized: Boolean;
+    FRandomState: TRandomState;
+    FExecutingPassIndex: Integer;
 
+    function AddUInt32(const A, B: Cardinal): Cardinal;
+    function MultiplyUInt32(const A, B: Cardinal): Cardinal;
+    function RotateLeft32(const AValue: Cardinal;
+      const ACount: Integer): Cardinal;
+    function MixSeedWord(const AValue: Cardinal): Cardinal;
+    procedure SeedRandomState(const ASeed: TGraphSeed;
+      out AState: TRandomState);
+    function AdvanceRandomState(var AState: TRandomState): Cardinal;
+    procedure JumpRandomState(var AState: TRandomState);
+    procedure BuildPassRandomState(const APassIndex: Integer;
+      out AState: TRandomState);
+    procedure EnsureSeedInitialized;
+    procedure RewindRandomStates;
     procedure EnsureInitialPass;
     function NewPlanes: TPlanes;
     function GetActivePassGraph: TGraph;
@@ -305,6 +336,7 @@ type
     function GetRuleGroup(const AValue : TGraphValue): TParentedGraphRuleGroup;
     function GetRuleGroups: TGraphRuleGroups;
     function GetSelectionCallback: TValueSelectionCallback;
+    function GetSeed: TGraphSeed;
     function GetTotalPassCount: Integer;
     function InBounds(const AIndex : Integer) : Boolean;
     procedure LinkNeighbors;
@@ -314,6 +346,7 @@ type
     procedure SetMode(const AValue: TGraphRunMode);
     procedure SetPass(const AValue: String);
     procedure SetSelectionCallback(const AValue: TValueSelectionCallback);
+    procedure SetSeed(const AValue: TGraphSeed);
     procedure SetWrapNeighbors(const AValue: Boolean);
     procedure CopyValuesFrom(const ASource: TGraph);
     function HasDefinition: Boolean;
@@ -388,6 +421,14 @@ type
       running the graph
     *)
     property Mode : TGraphRunMode read FMode write SetMode default rmBottomUp;
+
+    (*
+      pipeline seed used by the built-in portable random source. every pass
+      receives a stable independent stream derived from this seed and its
+      zero-based pass index. unless explicitly assigned first, an automatic
+      seed is captured on the first read or pass materialization
+    *)
+    property Seed : TGraphSeed read GetSeed write SetSeed;
 
     (*
       dimension of the graph
@@ -466,6 +507,13 @@ type
     function SwitchToPass(const AIndex : Integer) : TGraph; overload;
 
     (*
+      returns an unbiased value in 0..Pred(ACount) from the current pass's
+      portable stream. callbacks should use this instead of System.Random
+      when replay across native FPC and pas2js matters
+    *)
+    function RandomIndex(const ACount: Integer): Integer;
+
+    (*
       once all values and rules have been apply, this will
       execute the rules against each graph entry
         @Result - return "this" graph instance
@@ -507,8 +555,12 @@ const
   AllDirections : TGraphDirections = [gdNorth, gdEast, gdSouth, gdWest, gdUp, gdDown];
 
 implementation
-uses
-  Math;
+
+type
+  TGraphTraversalFrame = record
+    Entry: TGraphEntry;
+    NextDirection: Integer;
+  end;
 
 {$IFNDEF PAS2JS}
 type
@@ -530,13 +582,21 @@ begin
 end;
 {$ENDIF}
 
-function DefSelCall(const {%H-}AGraph : TGraph; const AEntry : TGraphEntry;
+function DefSelCall(const AGraph : TGraph; const AEntry : TGraphEntry;
   const AValid : TGraphValues) : TGraphValue;
 begin
   if Length(AValid) < 1 then
     Result := AEntry.Value
   else
-    Result := AValid[RandomRange(Low(AValid), Length(AValid))];
+    Result := AValid[AGraph.RandomIndex(Length(AValid))];
+end;
+
+function AutomaticGraphSeed: TGraphSeed;
+begin
+  //Retain the original stochastic-by-default behavior without ever using the
+  //RTL random source during generation. Persist Graph.Seed to replay a run.
+  Result := Cardinal(System.Random($10000))
+    or (Cardinal(System.Random($10000)) shl 16);
 end;
 
 function InverseOfDir(const ADirection: TGraphDirection): TGraphDirection;
@@ -774,7 +834,13 @@ begin
     if I < Length(FRules) then
       FRules[I] := LRule
     else
-      Insert(LRule, FRules, I);
+    begin
+      //Appending through SetLength gives pas2js a distinct record slot for
+      //every direction. Insert otherwise aliases its record object when one
+      //NewRule call contains multiple directions.
+      SetLength(FRules, Succ(I));
+      FRules[I] := LRule;
+    end;
   end;
 end;
 
@@ -952,6 +1018,169 @@ end;
 
 { TGraph }
 
+function TGraph.AddUInt32(const A, B: Cardinal): Cardinal;
+var
+  LHigh: Cardinal;
+  LLow: Cardinal;
+begin
+  //Use 16-bit lanes so checked native builds and JavaScript agree on the
+  //low 32 bits of wrapping addition.
+  LLow := (A and $FFFF) + (B and $FFFF);
+  LHigh := (A shr 16) + (B shr 16) + (LLow shr 16);
+  Result := ((LHigh and $FFFF) shl 16) or (LLow and $FFFF);
+end;
+
+function TGraph.MultiplyUInt32(const A, B: Cardinal): Cardinal;
+var
+  LAHigh, LALow: Cardinal;
+  LBHigh, LBLow: Cardinal;
+  LCross: Cardinal;
+  LLowProduct: Cardinal;
+begin
+  //Only the low 32 bits are required by Murmur3 fmix32. Every intermediate
+  //product stays below 2^32, which avoids precision loss in pas2js.
+  LALow := A and $FFFF;
+  LAHigh := A shr 16;
+  LBLow := B and $FFFF;
+  LBHigh := B shr 16;
+  LLowProduct := LALow * LBLow;
+  LCross := ((LALow * LBHigh) and $FFFF)
+    + ((LAHigh * LBLow) and $FFFF);
+  Result := AddUInt32(LLowProduct, (LCross and $FFFF) shl 16);
+end;
+
+function TGraph.RotateLeft32(const AValue: Cardinal;
+  const ACount: Integer): Cardinal;
+begin
+  Result := (AValue shl ACount) or (AValue shr (32 - ACount));
+end;
+
+function TGraph.MixSeedWord(const AValue: Cardinal): Cardinal;
+begin
+  //MurmurHash3 fmix32 provides a portable avalanche from the public scalar
+  //seed into each lane of the xoshiro state.
+  Result := AValue xor (AValue shr 16);
+  Result := MultiplyUInt32(Result, $85EBCA6B);
+  Result := Result xor (Result shr 13);
+  Result := MultiplyUInt32(Result, $C2B2AE35);
+  Result := Result xor (Result shr 16);
+end;
+
+procedure TGraph.SeedRandomState(const ASeed: TGraphSeed;
+  out AState: TRandomState);
+begin
+  AState.S0 := MixSeedWord(ASeed xor $A511E9B3);
+  AState.S1 := MixSeedWord(ASeed xor $63D83595);
+  AState.S2 := MixSeedWord(ASeed xor $B8D9C6AB);
+  AState.S3 := MixSeedWord(ASeed xor $9E3779B9);
+end;
+
+function TGraph.AdvanceRandomState(var AState: TRandomState): Cardinal;
+var
+  T: Cardinal;
+begin
+  //xoshiro128++ 1.0 by David Blackman and Sebastiano Vigna. Its reference
+  //implementation is dedicated to the public domain. AddUInt32 supplies the
+  //specified uint32 wrapping behavior on both supported targets.
+  Result := AddUInt32(
+    RotateLeft32(AddUInt32(AState.S0, AState.S3), 7), AState.S0);
+  T := AState.S1 shl 9;
+
+  AState.S2 := AState.S2 xor AState.S0;
+  AState.S3 := AState.S3 xor AState.S1;
+  AState.S1 := AState.S1 xor AState.S2;
+  AState.S0 := AState.S0 xor AState.S3;
+  AState.S2 := AState.S2 xor T;
+  AState.S3 := RotateLeft32(AState.S3, 11);
+end;
+
+procedure TGraph.JumpRandomState(var AState: TRandomState);
+const
+  JUMP: array[0..3] of Cardinal = (
+    $8764000B, $F542D2D3, $6FA035C3, $77F2DB5B);
+var
+  B, I: Integer;
+  LS0, LS1, LS2, LS3: Cardinal;
+begin
+  //The reference jump is equivalent to 2^64 calls and gives each pass a
+  //non-overlapping subsequence while retaining stable index-based identity.
+  LS0 := 0;
+  LS1 := 0;
+  LS2 := 0;
+  LS3 := 0;
+  for I := 0 to High(JUMP) do
+    for B := 0 to 31 do
+    begin
+      if (JUMP[I] and (Cardinal(1) shl B)) <> 0 then
+      begin
+        LS0 := LS0 xor AState.S0;
+        LS1 := LS1 xor AState.S1;
+        LS2 := LS2 xor AState.S2;
+        LS3 := LS3 xor AState.S3;
+      end;
+      AdvanceRandomState(AState);
+    end;
+
+  AState.S0 := LS0;
+  AState.S1 := LS1;
+  AState.S2 := LS2;
+  AState.S3 := LS3;
+end;
+
+procedure TGraph.BuildPassRandomState(const APassIndex: Integer;
+  out AState: TRandomState);
+var
+  I: Integer;
+begin
+  if APassIndex < 0 then
+    raise ERangeError.CreateFmt(
+      'BuildPassRandomState::invalid pass index [%d]', [APassIndex]);
+
+  EnsureSeedInitialized;
+  SeedRandomState(FSeed, AState);
+  for I := 1 to APassIndex do
+    JumpRandomState(AState);
+end;
+
+procedure TGraph.EnsureSeedInitialized;
+begin
+  if Assigned(FPassRoot) then
+  begin
+    FPassRoot.EnsureSeedInitialized;
+    FSeed := FPassRoot.FSeed;
+    FSeedInitialized := True;
+    Exit;
+  end;
+
+  if FSeedInitialized then
+    Exit;
+  FSeed := AutomaticGraphSeed;
+  FSeedInitialized := True;
+  SeedRandomState(FSeed, FRandomState);
+end;
+
+procedure TGraph.RewindRandomStates;
+var
+  I: Integer;
+  LState: TRandomState;
+begin
+  if Assigned(FPassRoot) then
+  begin
+    FPassRoot.RewindRandomStates;
+    Exit;
+  end;
+
+  EnsureSeedInitialized;
+  SeedRandomState(FSeed, LState);
+  for I := 0 to Pred(FPasses.Count) do
+  begin
+    FPasses[I].FSeed := FSeed;
+    FPasses[I].FSeedInitialized := True;
+    FPasses[I].FRandomState := LState;
+    JumpRandomState(LState);
+  end;
+end;
+
 procedure TGraph.EnsureInitialPass;
 var
   LGraph: TGraph;
@@ -1094,6 +1323,17 @@ end;
 function TGraph.GetSelectionCallback: TValueSelectionCallback;
 begin
   Result := GetActivePassGraph.FSel;
+end;
+
+function TGraph.GetSeed: TGraphSeed;
+begin
+  if Assigned(FPassRoot) then
+    Result := FPassRoot.GetSeed
+  else
+  begin
+    EnsureSeedInitialized;
+    Result := FSeed;
+  end;
 end;
 
 function TGraph.GetTotalPassCount: Integer;
@@ -1265,6 +1505,27 @@ begin
   GetActivePassGraph.FSel := AValue;
 end;
 
+procedure TGraph.SetSeed(const AValue: TGraphSeed);
+begin
+  if Assigned(FPassRoot) then
+  begin
+    FPassRoot.SetSeed(AValue);
+    Exit;
+  end;
+  if FInitializingPass then
+    raise EInvalidOperation.Create(
+      'SetSeed::cannot change the pipeline seed during pass initialization');
+  if FRunning then
+    raise EInvalidOperation.Create(
+      'SetSeed::cannot change the pipeline seed while it is running');
+
+  FSeed := AValue;
+  FSeedInitialized := True;
+  SeedRandomState(FSeed, FRandomState);
+  if FPasses.Count > 0 then
+    RewindRandomStates;
+end;
+
 procedure TGraph.SetWrapNeighbors(const AValue: Boolean);
 var
   I: Integer;
@@ -1392,9 +1653,10 @@ end;
 
 procedure TGraph.DoGetStartCoord(out X, Y: TGraphCoordinate);
 begin
-  //base we'll just use a random approach, but this can be overridden
-  X := RandomRange(0, FDimension.Width);
-  Y := RandomRange(0, FDimension.Height);
+  //The base traversal uses the pass-owned stream. Derived implementations can
+  //override this, but should use RandomIndex to retain replay guarantees.
+  X := RandomIndex(Integer(FDimension.Width));
+  Y := RandomIndex(Integer(FDimension.Height));
 end;
 
 function TGraph.DoGetSelection(const AEntry: TGraphEntry; const Z,
@@ -1935,6 +2197,40 @@ begin
   Result := SwitchToPass(PassLabelFromIndex(AIndex), I);
 end;
 
+function TGraph.RandomIndex(const ACount: Integer): Integer;
+var
+  LBound: Cardinal;
+  LGraph: TGraph;
+  LThreshold: Cardinal;
+  LValue: Cardinal;
+begin
+  if ACount <= 0 then
+    raise ERangeError.CreateFmt(
+      'RandomIndex::count must be positive [%d]', [ACount]);
+  if ACount = 1 then
+    Exit(0);
+
+  if Assigned(FPassRoot) then
+    LGraph := Self
+  else
+  begin
+    EnsureInitialPass;
+    if FRunning and (FExecutingPassIndex >= 0) then
+      LGraph := FPasses[FExecutingPassIndex]
+    else
+      LGraph := FPasses[FCurPassIndex];
+  end;
+
+  LBound := Cardinal(ACount);
+  //Rejection sampling removes modulo bias. This form avoids negating an
+  //unsigned value, so native overflow checks and pas2js use the same math.
+  LThreshold := ((High(Cardinal) mod LBound) + 1) mod LBound;
+  repeat
+    LValue := LGraph.AdvanceRandomState(LGraph.FRandomState);
+  until LValue >= LThreshold;
+  Result := Integer(LValue mod LBound);
+end;
+
 procedure TGraph.ValidateAssignedEntry(const AEntry: TGraphEntry;
   const Z, APrevZ: TGraphCoordinate);
 var
@@ -1968,43 +2264,54 @@ var
   I: Integer;
 
   procedure RunPlane(const Z, APrevZ : TGraphCoordinate);
+  const
+    TRAVERSAL_DIRECTIONS: array[0..3] of TGraphDirection =
+      (gdNorth, gdEast, gdSouth, gdWest);
   var
+    LDirection: TGraphDirection;
     X, Y: TGraphCoordinate;
     LEntry : TGraphEntry;
+    LFrame: TGraphTraversalFrame;
     LIndex: Integer;
-    LVisited : TList<TGraphEntry>;
+    LStack: TList<TGraphTraversalFrame>;
+    LStackIndex: Integer;
+    LVisited: TDictionary<TGraphEntry, Boolean>;
 
-    procedure UpdateEntriesFromLoc(const AEntry : TGraphEntry);
+    procedure EnterEntry(const AEntry: TGraphEntry);
+    var
+      LNewFrame: TGraphTraversalFrame;
     begin
-      if not Assigned(AEntry) then
+      if not Assigned(AEntry) or LVisited.ContainsKey(AEntry) then
         Exit;
 
-      //we'll keep track of which entries we've already visited and bail if
-      //we encounter them again
-      if LVisited.IndexOf(AEntry) >= 0 then
-        Exit
-      else
-        LVisited.Add(AEntry);
-
-      //get and assign the selection
+      LVisited.Add(AEntry, True);
       if AEntry.Empty then
         AEntry.SetGeneratedValue(DoGetSelection(AEntry, Z, APrevZ))
       else
         ValidateAssignedEntry(AEntry, Z, APrevZ);
 
-      //recurse with each neighbor
-      UpdateEntriesFromLoc(AEntry[gdNorth]);
-      UpdateEntriesFromLoc(AEntry[gdEast]);
-      UpdateEntriesFromLoc(AEntry[gdSouth]);
-      UpdateEntriesFromLoc(AEntry[gdWest]);
+      LNewFrame.Entry := AEntry;
+      LNewFrame.NextDirection := 0;
+      LStack.Add(LNewFrame);
     end;
 
   begin
-    LVisited := TList<TGraphEntry>.Create;
-
+    LStack := nil;
+    LVisited := nil;
     try
+      LStack := TList<TGraphTraversalFrame>.Create;
+      LVisited := TDictionary<TGraphEntry, Boolean>.Create;
+
       //now find the starting location
       DoGetStartCoord(X, Y);
+
+      //Validate coordinates before flattening them. Checking only the final
+      //index lets X = Width alias the next row and can overflow on wide native
+      //coordinate types before InBounds gets a chance to reject it.
+      if (X >= FDimension.Width) or (Y >= FDimension.Height) then
+        raise ERangeError.CreateFmt(
+          'RunPlane::invalid coordinates [x]-%d, [y]-%d, [z]-%d',
+          [X, Y, Z]);
 
       //get the entry
       LIndex := CoordToIndex(X, Y, Z);
@@ -2015,10 +2322,30 @@ var
 
       LEntry := FEntries[LIndex];
 
-      //starting at this entry, we'll update the plane
-      UpdateEntriesFromLoc(LEntry);
+      //Use explicit traversal frames instead of recursive calls. A frame reads
+      //each neighbor only after the preceding subtree has completed, exactly
+      //matching the historical N/E/S/W depth-first behavior even when a
+      //callback changes a public neighbor link. Object-keyed visited state
+      //also retains support for custom links outside the built-in entry list.
+      EnterEntry(LEntry);
+      while LStack.Count > 0 do
+      begin
+        LStackIndex := Pred(LStack.Count);
+        LFrame := LStack[LStackIndex];
+        if LFrame.NextDirection > High(TRAVERSAL_DIRECTIONS) then
+        begin
+          LStack.Delete(LStackIndex);
+          Continue;
+        end;
+
+        LDirection := TRAVERSAL_DIRECTIONS[LFrame.NextDirection];
+        Inc(LFrame.NextDirection);
+        LStack[LStackIndex] := LFrame;
+        EnterEntry(LFrame.Entry[LDirection]);
+      end;
     finally
       LVisited.Free;
+      LStack.Free;
     end;
   end;
 
@@ -2072,10 +2399,15 @@ begin
 
   LSavedPassIndex := FCurPassIndex;
   FRunning := True;
+  FExecutingPassIndex := -1;
 
   try
+    //Every execution starts from the same per-pass streams. Random calls made
+    //outside Run therefore cannot perturb a replay.
+    RewindRandomStates;
     for I := 0 to Pred(TotalPassCount) do
     begin
+      FExecutingPassIndex := I;
       FCurPassIndex := I;
       FCurPass := PassLabelFromIndex(I);
       LGraph := PassGraph[I];
@@ -2094,6 +2426,7 @@ begin
       FCurPass := PassLabelFromIndex(I);
     end;
   finally
+    FExecutingPassIndex := -1;
     FCurPassIndex := LSavedPassIndex;
     FCurPass := PassLabelFromIndex(LSavedPassIndex);
     FRunning := False;
@@ -2210,6 +2543,10 @@ begin
   FPassRoot := nil;
   FInitializingPass := False;
   FRunning := False;
+  FSeed := 0;
+  FSeedInitialized := False;
+  SeedRandomState(FSeed, FRandomState);
+  FExecutingPassIndex := -1;
 end;
 
 constructor TGraph.CreatePass(const ARoot: TGraph;
@@ -2220,6 +2557,9 @@ begin
   InitializeStorage;
   FPassRoot := ARoot;
   FPassIndex := APassIndex;
+  ARoot.BuildPassRandomState(APassIndex, FRandomState);
+  FSeed := ARoot.FSeed;
+  FSeedInitialized := True;
   FMode := ARoot.FMode;
   FWrap := ARoot.FWrap;
 
