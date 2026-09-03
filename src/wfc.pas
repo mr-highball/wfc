@@ -24,7 +24,9 @@ SOFTWARE.
 unit wfc;
 
 {$mode delphi}
+{$IFNDEF PAS2JS}
 {$ModeSwitch nestedprocvars}
+{$ENDIF}
 
 interface
 
@@ -38,6 +40,19 @@ type
   //user defined value
   TGraphValue = String;
   TGraphValues = TArray<TGraphValue>;
+  //native builds retain the original UInt64 API; pas2js uses Cardinal because
+  //its RTL does not implement UInt64. storage is bounded by Integer on both.
+  {$IFDEF PAS2JS}
+  TGraphCoordinate = Cardinal;
+  {$ELSE}
+  TGraphCoordinate = UInt64;
+  {$ENDIF}
+
+  TGraphPosition = record
+    X : TGraphCoordinate;
+    Y : TGraphCoordinate;
+    Z : TGraphCoordinate;
+  end;
 
   //all posible "directions" to move from a single point on the graph
   TGraphDirection = (gdNorth, gdEast, gdSouth, gdWest, gdUp, gdDown);
@@ -53,7 +68,10 @@ type
       TNeighbors = TArray<TGraphEntry>;
   strict private
     FEmpty: Boolean;
+    FGenerated: Boolean;
     FID: String;
+    FIndex: Integer;
+    FPosition: TGraphPosition;
     FVal: TGraphValue;
     FNeighbors : TNeighbors;
 
@@ -61,6 +79,12 @@ type
     procedure SetNeighbor(const ADirection : TGraphDirection;
       const AValue: TGraphEntry);
     procedure SetValue(const AValue: TGraphValue);
+  private
+    procedure AssignValue(const AValue: TGraphValue;
+      const AGenerated: Boolean);
+    procedure InitializePosition(const AIndex: Integer;
+      const AX, AY, AZ: TGraphCoordinate);
+    procedure SetGeneratedValue(const AValue: TGraphValue);
   strict protected
     (*
       below methods can be overridden if additional function needs to be
@@ -75,9 +99,13 @@ type
   public
     property Value : TGraphValue read FVal write SetValue;
     property Empty : Boolean read FEmpty;
+    property Generated : Boolean read FGenerated;
     property Neighbor[const ADirection : TGraphDirection] : TGraphEntry read GetNeighbor write SetNeighbor; default;
     property ID : String read FID write FID;
+    property Index : Integer read FIndex;
+    property Position : TGraphPosition read FPosition;
 
+    procedure ClearValue;
     procedure Reset;
     constructor Create; virtual;
   end;
@@ -87,7 +115,19 @@ type
   TRequireRule = Boolean;
 
   //for a particular value, what the accepted states are for each direction
+  //Native FPC retains the original three-parameter TPair identity. pas2js
+  //only provides a two-parameter TPair, so it uses the equivalent record.
+  {$IFDEF PAS2JS}
+  TGraphRule = record
+    Key : TGraphDirection;
+    Value : TGraphValues;
+    Info : TRequireRule;
+    constructor Create(const AKey: TGraphDirection;
+      const AValue: TGraphValues; const AInfo: TRequireRule = False);
+  end;
+  {$ELSE}
   TGraphRule = TPair<TGraphDirection, TGraphValues, TRequireRule>;
+  {$ENDIF}
   TGraphRules = array of TGraphRule;
 
   { TGraphRuleGroup }
@@ -97,6 +137,7 @@ type
   TGraphRuleGroup = class(TObject)
   strict private
     FRules: TGraphRules;
+    FPreviousValues: TGraphValues;
     FVal: TGraphValue;
     function GetExists(const ADirection : TGraphDirection): Boolean;
     function GetHasRequired: Boolean;
@@ -109,11 +150,15 @@ type
     *)
     procedure DoNewRule(const ADirections : TGraphDirections;
       const AValue : TGraphValue; const ARequireRule : Boolean); virtual;
+    procedure DoRequirePrevious(const AValue : TGraphValue); virtual;
+    procedure UpsertRule(const ADirections : TGraphDirections;
+      const AValue : TGraphValue; const ARequireRule : Boolean);
   public
     property Value : TGraphValue read FVal write FVal;
     property Rule[const ADirection : TGraphDirection] : TGraphRule read GetRule; default;
     property Rules : TGraphRules read FRules write FRules;
     property Exists[const ADirection : TGraphDirection] : Boolean read GetExists;
+    property PreviousValues : TGraphValues read FPreviousValues;
 
     (*
       true if at least one rule for this value is required
@@ -126,6 +171,13 @@ type
     function NewRule(const ADirections : TGraphDirections;
       const AValues : TGraphValues; const ARequireRule : Boolean = False) : TGraphRuleGroup; overload;
 
+    (*
+      allows this value only when the entry at the same coordinate in the
+      immediately preceding pass contains one of the supplied values
+    *)
+    function RequirePrevious(const AValue : TGraphValue) : TGraphRuleGroup; overload;
+    function RequirePrevious(const AValues : TGraphValues) : TGraphRuleGroup; overload;
+
     constructor Create; virtual; overload;
     constructor Create(const AValue : TGraphValue); virtual; overload;
   end;
@@ -135,6 +187,7 @@ type
 
   //forward
   TGraph = class;
+  TGraphClass = class of TGraph;
 
   //callback for entry selection after filtering for only valid values
   TValueSelectionCallback = function(const AGraph : TGraph;
@@ -149,11 +202,18 @@ type
   *)
   TGraphRunMode = (rmBottomUp, rmTopDown);
 
-  (*
-    a nested callback that is run in place of a for loop
-  *)
+  TForEachPassCallback = procedure(const AGraph : TGraph;
+    const APass : String; const APassIndex : Integer);
+
+  TForEachPassMethod = procedure(const AGraph : TGraph;
+    const APass : String; const APassIndex : Integer) of object;
+
+  {$IFNDEF PAS2JS}
+  //deprecated native compatibility type; portable code should use the plain
+  //procedure or object-method callback overloads above
   TForEachPassNestedCallback = procedure(const AGraph : TGraph;
     const APass : String; const APassIndex : Integer) is nested;
+  {$ENDIF}
 
   { TGraph }
   (*
@@ -162,13 +222,21 @@ type
   TGraph = class(TObject)
   public
     type
-      X = UInt64;
-      Y = UInt64;
-      Z = UInt64;
+      X = TGraphCoordinate;
+      Y = TGraphCoordinate;
+      Z = TGraphCoordinate;
       TPlaneCoord = TPair<X, Y>;
       TPlane = TDictionary<TPlaneCoord, TGraphEntry>;
+      {$IFDEF PAS2JS}
+      TPlanes = TObjectDictionary<Z, TPlane>;
+      //pas2js cannot alias this nested generic reliably, so expose the same
+      //constructible collection surface through a thin descendant.
+      TPlanesList = class(TObjectList<TPlanes>);
+      {$ELSE}
+      //retain the exact native types exposed by the original public API
       TPlanes = TDictionary<Z, TPlane>;
       TPlanesList = TObjectList<TPlanes>;
+      {$ENDIF}
 
       TDimension = record
         Width : X;
@@ -186,6 +254,9 @@ type
       strict protected
         procedure DoNewRule(const ADirections: TGraphDirections;
           const AValue: TGraphValue; const ARequireRule : Boolean); override;
+        procedure DoRequirePrevious(
+          const AValue: TGraphValue); override;
+        procedure SynchronizeInverseRules;
       public
         property Parent : TGraph read FParent write FParent;
       end;
@@ -193,6 +264,10 @@ type
     type
       TPassList = TObjectList<TGraph>;
       TPassLookup = TDictionary<String, Integer>;
+  strict private
+    type
+      TEntryStorageArray = array of TGraphEntries;
+      TPlaneStorageArray = array of TPlanes;
   strict private
     FDimension: TDimension;
     FInv: TInvalidStateCallback;
@@ -207,48 +282,87 @@ type
     FPassLookup : TPassLookup;
     FCurPass : String;
     FCurPassIndex : Integer;
+    FPassRoot : TGraph;
+    FPassIndex : Integer;
+    FInitializingPass: Boolean;
+    FRunning: Boolean;
 
-    function GetEntry(const X, Y, Z : UInt64): TGraphEntry;
-    function CoordToIndex(const X, Y, Z : UInt64) : Integer;
+    procedure EnsureInitialPass;
+    function NewPlanes: TPlanes;
+    function GetActivePassGraph: TGraph;
+    procedure BuildStorage(const AWidth, AHeight, ADepth: TGraphCoordinate;
+      out AEntries: TGraphEntries; out APlanes: TPlanes);
+    procedure ClearGeneratedValues;
+    function GetEntry(const X, Y, Z : TGraphCoordinate): TGraphEntry;
+    function CoordToIndex(const X, Y, Z : TGraphCoordinate) : Integer;
+    function CoordToIndexFor(const X, Y, Z, AWidth,
+      AHeight: TGraphCoordinate): Integer;
+    function GetInvalidStateCallback: TInvalidStateCallback;
     function GetPass: String;
+    function GetPassGraph(const AIndex : Integer): TGraph;
     function GetPassIndex: Integer;
+    function GetPlanes: TPlanes;
     function GetRuleGroup(const AValue : TGraphValue): TParentedGraphRuleGroup;
+    function GetRuleGroups: TGraphRuleGroups;
+    function GetSelectionCallback: TValueSelectionCallback;
     function GetTotalPassCount: Integer;
     function InBounds(const AIndex : Integer) : Boolean;
+    procedure LinkNeighbors;
+    procedure LinkNeighborsFor(const AEntries: TGraphEntries;
+      const ADimension: TDimension; const AWrap: Boolean);
+    procedure SetInvalidStateCallback(const AValue: TInvalidStateCallback);
+    procedure SetMode(const AValue: TGraphRunMode);
     procedure SetPass(const AValue: String);
+    procedure SetSelectionCallback(const AValue: TValueSelectionCallback);
+    procedure SetWrapNeighbors(const AValue: Boolean);
+    procedure CopyValuesFrom(const ASource: TGraph);
+    function HasDefinition: Boolean;
+    procedure InitializeStorage;
+    function ReshapeOne(const AWidth, AHeight,
+      ADepth: TGraphCoordinate): TGraph;
+    function RunOnePass: TGraph;
+    procedure ValidateAssignedEntry(const AEntry: TGraphEntry;
+      const Z, APrevZ: TGraphCoordinate);
+    procedure ValidateDimensions(const AWidth, AHeight,
+      ADepth: TGraphCoordinate);
   strict protected
+    function DoCreateEntry: TGraphEntry; virtual;
+    function DoCreatePass(const APassIndex: Integer): TGraph; virtual;
+    //initialize fields owned by a derived graph on each pass instance
+    procedure DoInitializePass; virtual;
     function PassLabelFromIndex(const AIndex : Integer) : String;
     function DoHandleInvalidState(const AEntry : TGraphEntry) : TGraphValue;
-    procedure DoGetStartCoord(out X, Y : UInt64); virtual;
+    procedure DoGetStartCoord(out X, Y : TGraphCoordinate); virtual;
     function DoGetSelection(const AEntry : TGraphEntry;
-      const Z, APrevZ : UInt64) : TGraphValue; virtual;
+      const Z, APrevZ : TGraphCoordinate) : TGraphValue; virtual;
 
     (*
       can be overridden to validate the rules that are allowed for a graph entry
     *)
-    procedure DoValidate(const AEntry : TGraphEntry; const Z, APrevZ : UInt64; out Values : TGraphValues); virtual;
+    procedure DoValidate(const AEntry : TGraphEntry;
+      const Z, APrevZ : TGraphCoordinate; out Values : TGraphValues); virtual;
   public
     (*
       all parented rule groups defined in the graph
     *)
-    property RuleGroups : TGraphRuleGroups read FRuleGroups;
+    property RuleGroups : TGraphRuleGroups read GetRuleGroups;
 
     (*
       callback that can be set to determine selection of valid values
       after rules have been run
     *)
-    property SelectionCallback : TValueSelectionCallback read FSel write FSel;
+    property SelectionCallback : TValueSelectionCallback read GetSelectionCallback write SetSelectionCallback;
 
     (*
       when an invalid state occurs for selecting values, this callback will
       be called and give a chance to change the value to use
     *)
-    property InvalidStateCallback : TInvalidStateCallback read FInv write FInv;
+    property InvalidStateCallback : TInvalidStateCallback read GetInvalidStateCallback write SetInvalidStateCallback;
 
     (*
       returns graph entry by (x, y, z) coordinates
     *)
-    property Entry[const X, Y, Z : UInt64] : TGraphEntry read GetEntry; default;
+    property Entry[const X, Y, Z : TGraphCoordinate] : TGraphEntry read GetEntry; default;
 
     (*
       gets the rule group for the value
@@ -258,7 +372,7 @@ type
     (*
       2D planes "stacked" in the Z direction
     *)
-    property Planes : TPlanes read FPlanes;
+    property Planes : TPlanes read GetPlanes;
 
     (*
       when enabled, neighbor assignment for entries on the external bounds
@@ -267,13 +381,13 @@ type
       if this is not desired set this to false, but nil checking will have
       to be done before accessing member variables
     *)
-    property WrapNeighbors : Boolean read FWrap write FWrap default True;
+    property WrapNeighbors : Boolean read FWrap write SetWrapNeighbors default True;
 
     (*
       controls the behavior for selecting plane processing order during
       running the graph
     *)
-    property Mode : TGraphRunMode read FMode write FMode default rmBottomUp;
+    property Mode : TGraphRunMode read FMode write SetMode default rmBottomUp;
 
     (*
       dimension of the graph
@@ -299,13 +413,19 @@ type
     property TotalPassCount : Integer read GetTotalPassCount;
 
     (*
+      returns a pass graph without changing CurrentPass
+    *)
+    property PassGraph[const AIndex : Integer] : TGraph read GetPassGraph;
+
+    (*
       reshapes the dimension of this graph
         @AWidth - X units, 1 based
         @AHeight - Y units, 1 based
         @ADepth - Z units, 1 based
         @Result - return "this" graph instance
     *)
-    function Reshape(const AWidth, AHeight, ADepth : UInt64) : TGraph;
+    function Reshape(const AWidth, AHeight,
+      ADepth : TGraphCoordinate) : TGraph;
 
     (*
       adds a value to be used and returns the new rule group
@@ -320,7 +440,12 @@ type
         @ACallback - the user defined callback to execute
         @Result - returns "this" graph instance
     *)
-    function ForEachPass(const ACallback : TForEachPassNestedCallback) : TGraph;
+    function ForEachPass(const ACallback : TForEachPassCallback) : TGraph; overload;
+    function ForEachPass(const ACallback : TForEachPassMethod) : TGraph; overload;
+    {$IFNDEF PAS2JS}
+    function ForEachPass(
+      const ACallback : TForEachPassNestedCallback) : TGraph; overload;
+    {$ENDIF}
 
     (*
       "switches" the graph to the pass specified by the caller. a "pass"
@@ -353,6 +478,9 @@ type
     *)
     function Reset : TGraph;
 
+    //used by the virtual pass factory so derived graph classes are preserved
+    constructor CreatePass(const ARoot: TGraph;
+      const APassIndex: Integer); virtual;
     constructor Create; virtual;
     destructor Destroy; override;
   end;
@@ -382,17 +510,33 @@ implementation
 uses
   Math;
 
+{$IFNDEF PAS2JS}
+type
+  //TPlanes remains the original non-owning dictionary type for native source
+  //compatibility. Graph-created instances use this private owner so plane
+  //values are still released with their dictionary.
+  TOwnedGraphPlanes = class(TGraph.TPlanes)
+  public
+    destructor Destroy; override;
+  end;
+
+destructor TOwnedGraphPlanes.Destroy;
+var
+  LPlane: TGraph.TPlane;
+begin
+  for LPlane in Values do
+    LPlane.Free;
+  inherited Destroy;
+end;
+{$ENDIF}
+
 function DefSelCall(const {%H-}AGraph : TGraph; const AEntry : TGraphEntry;
   const AValid : TGraphValues) : TGraphValue;
 begin
-  Randomize;
   if Length(AValid) < 1 then
     Result := AEntry.Value
   else
-  begin
-    RandSeed := Random(MaxInt);
     Result := AValid[RandomRange(Low(AValid), Length(AValid))];
-  end;
 end;
 
 function InverseOfDir(const ADirection: TGraphDirection): TGraphDirection;
@@ -428,6 +572,18 @@ begin
   Exit(False)
 end;
 
+{ TGraphRule }
+
+{$IFDEF PAS2JS}
+constructor TGraphRule.Create(const AKey: TGraphDirection;
+  const AValue: TGraphValues; const AInfo: TRequireRule);
+begin
+  Key := AKey;
+  Value := AValue;
+  Info := AInfo;
+end;
+{$ENDIF}
+
 { TGraph.TParentedGraphRuleGroup }
 
 procedure TGraph.TParentedGraphRuleGroup.DoNewRule(
@@ -435,16 +591,108 @@ procedure TGraph.TParentedGraphRuleGroup.DoNewRule(
   const ARequireRule: Boolean);
 var
   LDir: TGraphDirection;
-  LDirs : TGraphDirections = [];
+  LRule: TGraphRule;
+  LTargetValue: TGraphValue;
 begin
   inherited DoNewRule(ADirections, AValue, ARequireRule);
 
-  //after a rule has been added we need to add the "inverse" for any new values
+  //Ensure every referenced value has a group before synchronizing. The
+  //fixed-point walk can then update rules without mutating the dictionary it
+  //is enumerating.
   for LDir in ADirections do
-    Include(LDirs, InverseOfDir(LDir));
+  begin
+    LRule := Rule[LDir];
+    for LTargetValue in LRule.Value do
+      Parent.AddValue(LTargetValue);
+  end;
 
-  if not Parent.RuleGroups.ContainsKey(AValue) then
-    Parent.AddValue(AValue).NewRule(LDirs, Value, ARequireRule);
+  SynchronizeInverseRules;
+end;
+
+procedure TGraph.TParentedGraphRuleGroup.SynchronizeInverseRules;
+var
+  I: Integer;
+  LBeforeContains: Boolean;
+  LBeforeInfo: Boolean;
+  LBaseGroup: TGraphRuleGroup;
+  LChanged: Boolean;
+  LDir: TGraphDirection;
+  LGroup: TParentedGraphRuleGroup;
+  LHadDirection: Boolean;
+  LInverseDir: TGraphDirection;
+  LRule: TGraphRule;
+  LRuleCount: Integer;
+  LReferencedValues: TGraphValues;
+  LTarget: TParentedGraphRuleGroup;
+  LTargetValue: TGraphValue;
+begin
+  //Required metadata is stored per direction, not per edge. Promoting one
+  //edge therefore promotes every value in that direction, which can in turn
+  //promote another inverse direction. Iterate to a fixed point so the public
+  //bidirectional rule model remains symmetric through the whole closure.
+  SetLength(LReferencedValues, 0);
+  for LBaseGroup in Parent.RuleGroups.Values do
+  begin
+    LGroup := TParentedGraphRuleGroup(LBaseGroup);
+    if not ContainsGraphValue(LReferencedValues, LGroup.Value) then
+      Insert(LGroup.Value, LReferencedValues, Length(LReferencedValues));
+    for I := 0 to High(LGroup.Rules) do
+    begin
+      LRule := LGroup.Rules[I];
+      for LTargetValue in LRule.Value do
+        if not ContainsGraphValue(LReferencedValues, LTargetValue) then
+          Insert(LTargetValue, LReferencedValues,
+            Length(LReferencedValues));
+    end;
+  end;
+  for LTargetValue in LReferencedValues do
+    Parent.AddValue(LTargetValue);
+
+  repeat
+    LChanged := False;
+    for LBaseGroup in Parent.RuleGroups.Values do
+    begin
+      LGroup := TParentedGraphRuleGroup(LBaseGroup);
+      LRuleCount := Length(LGroup.Rules);
+      for I := 0 to Pred(LRuleCount) do
+      begin
+        LRule := LGroup.Rules[I];
+        LDir := LRule.Key;
+        LInverseDir := InverseOfDir(LDir);
+        for LTargetValue in LRule.Value do
+        begin
+          LTarget := TParentedGraphRuleGroup(
+            Parent.RuleGroups[LTargetValue]);
+          LHadDirection := LTarget.Exists[LInverseDir];
+          if LHadDirection then
+          begin
+            LBeforeContains := ContainsGraphValue(
+              LTarget[LInverseDir].Value, LGroup.Value);
+            LBeforeInfo := LTarget[LInverseDir].Info;
+          end
+          else
+          begin
+            LBeforeContains := False;
+            LBeforeInfo := False;
+          end;
+
+          LTarget.UpsertRule([LInverseDir], LGroup.Value, LRule.Info);
+          if (not LHadDirection) or (not LBeforeContains)
+            or (LRule.Info and (not LBeforeInfo)) then
+            LChanged := True;
+        end;
+      end;
+    end;
+  until not LChanged;
+end;
+
+procedure TGraph.TParentedGraphRuleGroup.DoRequirePrevious(
+  const AValue: TGraphValue);
+begin
+  if Assigned(Parent) and (Parent.CurrentPassIndex = 0) then
+    raise EInvalidOperation.Create(
+      'RequirePrevious::pass zero has no preceding pass');
+  inherited DoRequirePrevious(AValue);
 end;
 
 { TGraphRuleGroup }
@@ -482,15 +730,18 @@ end;
 
 procedure TGraphRuleGroup.DoNewRule(const ADirections: TGraphDirections;
   const AValue: TGraphValue; const ARequireRule: Boolean);
+begin
+  UpsertRule(ADirections, AValue, ARequireRule);
+end;
+
+procedure TGraphRuleGroup.UpsertRule(const ADirections: TGraphDirections;
+  const AValue: TGraphValue; const ARequireRule: Boolean);
 var
   LRule : TGraphRule;
   LVals : TGraphValues;
   I: Integer;
   LDir: TGraphDirection;
 begin
-  //info will designate required status
-  LRule.Info := ARequireRule;
-
   for LDir in ADirections do
   begin
     LVals := Default(TGraphValues);
@@ -501,12 +752,15 @@ begin
       I := IndexOfDirection(LDir);
       LRule := FRules[I];
       LVals := LRule.Value;
+      LRule.Info := LRule.Info or ARequireRule;
     end
     //otherwise no direction/rules set so insert to end of rules
     else
     begin
       I := Length(FRules);
       LRule.Key := LDir;
+      LRule.Value := Default(TGraphValues);
+      LRule.Info := ARequireRule;
     end;
 
     //insert rule value if we haven't already done so
@@ -516,9 +770,18 @@ begin
       LRule.Value := LVals;
     end;
 
-    //upsert
-    Insert(LRule, FRules, I);
+    //upsert without duplicating an existing direction
+    if I < Length(FRules) then
+      FRules[I] := LRule
+    else
+      Insert(LRule, FRules, I);
   end;
+end;
+
+procedure TGraphRuleGroup.DoRequirePrevious(const AValue: TGraphValue);
+begin
+  if not ContainsGraphValue(FPreviousValues, AValue) then
+    Insert(AValue, FPreviousValues, Length(FPreviousValues));
 end;
 
 
@@ -540,10 +803,28 @@ begin
     NewRule(ADirections, AValues[I], ARequireRule);
 end;
 
+function TGraphRuleGroup.RequirePrevious(
+  const AValue: TGraphValue): TGraphRuleGroup;
+begin
+  Result := Self;
+  DoRequirePrevious(AValue);
+end;
+
+function TGraphRuleGroup.RequirePrevious(
+  const AValues: TGraphValues): TGraphRuleGroup;
+var
+  I: Integer;
+begin
+  Result := Self;
+  for I := 0 to High(AValues) do
+    DoRequirePrevious(AValues[I]);
+end;
+
 constructor TGraphRuleGroup.Create;
 begin
   FVal := '';
   SetLength(FRules, 0);
+  SetLength(FPreviousValues, 0);
 end;
 
 constructor TGraphRuleGroup.Create(const AValue: TGraphValue);
@@ -554,16 +835,56 @@ end;
 
 { TGraphEntry }
 
-procedure TGraphEntry.SetValue(const AValue: TGraphValue);
+procedure TGraphEntry.InitializePosition(const AIndex: Integer;
+  const AX, AY, AZ: TGraphCoordinate);
+begin
+  FIndex := AIndex;
+  FPosition.X := AX;
+  FPosition.Y := AY;
+  FPosition.Z := AZ;
+end;
+
+procedure TGraphEntry.ClearValue;
+begin
+  if FEmpty then
+  begin
+    FGenerated := False;
+    Exit;
+  end;
+
+  DoBeforeSetValue(TGraphValue.Empty);
+  FVal := TGraphValue.Empty;
+  FEmpty := True;
+  FGenerated := False;
+  DoAfterSetValue(FVal);
+end;
+
+procedure TGraphEntry.AssignValue(const AValue: TGraphValue;
+  const AGenerated: Boolean);
 begin
   //don't trigger when we aren't changing value
   if AValue = FVal then
+  begin
+    if not FEmpty then
+      FGenerated := AGenerated;
     Exit;
+  end;
 
   DoBeforeSetValue(AValue);
   FVal := AValue;
   FEmpty := False;
+  FGenerated := AGenerated;
   DoAfterSetValue(AValue);
+end;
+
+procedure TGraphEntry.SetValue(const AValue: TGraphValue);
+begin
+  AssignValue(AValue, False);
+end;
+
+procedure TGraphEntry.SetGeneratedValue(const AValue: TGraphValue);
+begin
+  AssignValue(AValue, True);
 end;
 
 procedure TGraphEntry.DoBeforeSetNeighbor(const ANeighbor: TGraphEntry);
@@ -595,6 +916,7 @@ begin
 
   FVal := TGraphValue.Empty;
   FEmpty := True;
+  FGenerated := False;
 end;
 
 function TGraphEntry.DoGenerateID: String;
@@ -623,43 +945,164 @@ end;
 constructor TGraphEntry.Create;
 begin
   SetLength(FNeighbors, Succ(Ord(High(TGraphDirection))));
+  FIndex := -1;
   Reset;
   FID := DoGenerateID;
 end;
 
 { TGraph }
 
-function TGraph.GetEntry(const X, Y, Z : UInt64): TGraphEntry;
+procedure TGraph.EnsureInitialPass;
+var
+  LGraph: TGraph;
 begin
+  if Assigned(FPassRoot) or (FPasses.Count > 0) then
+    Exit;
+  if FInitializingPass then
+    raise EInvalidOperation.Create(
+      'EnsureInitialPass::recursive pass construction is not supported');
+
+  FInitializingPass := True;
+  LGraph := nil;
+  try
+    LGraph := DoCreatePass(0);
+    FPassLookup.Add('', 0);
+    try
+      FPasses.Add(LGraph);
+    except
+      FPassLookup.Remove('');
+      raise;
+    end;
+    LGraph := nil;
+
+    try
+      FPasses[0].DoInitializePass;
+    except
+      FPasses.Delete(0);
+      FPassLookup.Remove('');
+      raise;
+    end;
+  finally
+    LGraph.Free;
+    FInitializingPass := False;
+  end;
+end;
+
+function TGraph.NewPlanes: TPlanes;
+begin
+  {$IFDEF PAS2JS}
+  Result := TPlanes.Create([doOwnsValues]);
+  {$ELSE}
+  Result := TOwnedGraphPlanes.Create;
+  {$ENDIF}
+end;
+
+function TGraph.GetActivePassGraph: TGraph;
+begin
+  //child graphs always operate on their own pass-local storage
+  if Assigned(FPassRoot) then
+    Exit(Self);
+
+  EnsureInitialPass;
+  Result := FPasses[FCurPassIndex];
+end;
+
+function TGraph.GetEntry(const X, Y, Z : TGraphCoordinate): TGraphEntry;
+var
+  LGraph: TGraph;
+begin
+  LGraph := GetActivePassGraph;
+  if LGraph <> Self then
+    Exit(LGraph.GetEntry(X, Y, Z));
+
+  if (X >= FDimension.Width)
+    or (Y >= FDimension.Height)
+    or (Z >= FDimension.Depth) then
+    raise ERangeError.CreateFmt(
+      'GetEntry::coordinates out of bounds [x]-%d, [y]-%d, [z]-%d',
+      [X, Y, Z]);
+
   //quicker lookup then using the planes collection
   Result := FEntries[CoordToIndex(X, Y, Z)];
 end;
 
-function TGraph.CoordToIndex(const X, Y, Z: UInt64): Integer;
+function TGraph.CoordToIndex(const X, Y, Z: TGraphCoordinate): Integer;
 begin
   //index into the "flattened" graph for a quicker lookup than going
   //through the planes collection
-  Result := (FDimension.Width * FDimension.Height * Z) + X + (Y * FDimension.Width);
+  Result := CoordToIndexFor(X, Y, Z, FDimension.Width,
+    FDimension.Height);
+end;
+
+function TGraph.CoordToIndexFor(const X, Y, Z, AWidth,
+  AHeight: TGraphCoordinate): Integer;
+begin
+  Result := (AWidth * AHeight * Z) + X + (Y * AWidth);
+end;
+
+function TGraph.GetInvalidStateCallback: TInvalidStateCallback;
+begin
+  Result := GetActivePassGraph.FInv;
 end;
 
 function TGraph.GetPass: String;
 begin
-  Exit(FCurPass);
+  if Assigned(FPassRoot) then
+    Exit(FPassRoot.PassLabelFromIndex(FPassIndex));
+
+  EnsureInitialPass;
+  Result := FCurPass;
+end;
+
+function TGraph.GetPassGraph(const AIndex: Integer): TGraph;
+begin
+  if Assigned(FPassRoot) then
+    Exit(FPassRoot.GetPassGraph(AIndex));
+
+  EnsureInitialPass;
+  if (AIndex < 0) or (AIndex >= TotalPassCount) then
+    raise ERangeError.CreateFmt(
+      'GetPassGraph::index out of bounds [%d]', [AIndex]);
+
+  Result := FPasses[AIndex];
 end;
 
 function TGraph.GetPassIndex: Integer;
 begin
-  Exit(Succ(FCurPassIndex)); //offset by one to account for first pass
+  if Assigned(FPassRoot) then
+    Exit(FPassIndex);
+
+  EnsureInitialPass;
+  Result := FCurPassIndex;
+end;
+
+function TGraph.GetPlanes: TPlanes;
+begin
+  Result := GetActivePassGraph.FPlanes;
 end;
 
 function TGraph.GetRuleGroup(const AValue : TGraphValue): TParentedGraphRuleGroup;
 begin
-  Result := TParentedGraphRuleGroup(FRuleGroups[AValue]);
+  Result := TParentedGraphRuleGroup(GetActivePassGraph.FRuleGroups[AValue]);
+end;
+
+function TGraph.GetRuleGroups: TGraphRuleGroups;
+begin
+  Result := GetActivePassGraph.FRuleGroups;
+end;
+
+function TGraph.GetSelectionCallback: TValueSelectionCallback;
+begin
+  Result := GetActivePassGraph.FSel;
 end;
 
 function TGraph.GetTotalPassCount: Integer;
 begin
-  Result := Succ(FPasses.Count);
+  if Assigned(FPassRoot) then
+    Exit(FPassRoot.GetTotalPassCount);
+
+  EnsureInitialPass;
+  Result := FPasses.Count;
 end;
 
 function TGraph.InBounds(const AIndex: Integer): Boolean;
@@ -667,10 +1110,140 @@ begin
   Result := (AIndex >= 0) and (AIndex < FEntries.Count);
 end;
 
+procedure TGraph.LinkNeighbors;
+begin
+  LinkNeighborsFor(FEntries, FDimension, FWrap);
+end;
+
+procedure TGraph.LinkNeighborsFor(const AEntries: TGraphEntries;
+  const ADimension: TDimension; const AWrap: Boolean);
+var
+  LEntry: TGraphEntry;
+  X, Y, Z: Integer;
+begin
+  if (ADimension.Width = 0)
+    or (ADimension.Height = 0)
+    or (ADimension.Depth = 0) then
+    Exit;
+
+  for Z := 0 to Integer(ADimension.Depth) - 1 do
+    for Y := 0 to Integer(ADimension.Height) - 1 do
+      for X := 0 to Integer(ADimension.Width) - 1 do
+      begin
+        LEntry := AEntries[CoordToIndexFor(X, Y, Z,
+          ADimension.Width, ADimension.Height)];
+
+        if Y + 1 < ADimension.Height then
+          LEntry[gdNorth] := AEntries[CoordToIndexFor(X, Y + 1, Z,
+            ADimension.Width, ADimension.Height)]
+        else if AWrap then
+          LEntry[gdNorth] := AEntries[CoordToIndexFor(X, 0, Z,
+            ADimension.Width, ADimension.Height)]
+        else
+          LEntry[gdNorth] := nil;
+
+        if X + 1 < ADimension.Width then
+          LEntry[gdEast] := AEntries[CoordToIndexFor(X + 1, Y, Z,
+            ADimension.Width, ADimension.Height)]
+        else if AWrap then
+          LEntry[gdEast] := AEntries[CoordToIndexFor(0, Y, Z,
+            ADimension.Width, ADimension.Height)]
+        else
+          LEntry[gdEast] := nil;
+
+        if Y > 0 then
+          LEntry[gdSouth] := AEntries[CoordToIndexFor(X, Y - 1, Z,
+            ADimension.Width, ADimension.Height)]
+        else if AWrap then
+          LEntry[gdSouth] := AEntries[CoordToIndexFor(
+            X, ADimension.Height - 1, Z,
+            ADimension.Width, ADimension.Height)]
+        else
+          LEntry[gdSouth] := nil;
+
+        if X > 0 then
+          LEntry[gdWest] := AEntries[CoordToIndexFor(X - 1, Y, Z,
+            ADimension.Width, ADimension.Height)]
+        else if AWrap then
+          LEntry[gdWest] := AEntries[CoordToIndexFor(
+            ADimension.Width - 1, Y, Z,
+            ADimension.Width, ADimension.Height)]
+        else
+          LEntry[gdWest] := nil;
+
+        if Z + 1 < ADimension.Depth then
+          LEntry[gdUp] := AEntries[CoordToIndexFor(X, Y, Z + 1,
+            ADimension.Width, ADimension.Height)]
+        else if AWrap then
+          LEntry[gdUp] := AEntries[CoordToIndexFor(X, Y, 0,
+            ADimension.Width, ADimension.Height)]
+        else
+          LEntry[gdUp] := nil;
+
+        if Z > 0 then
+          LEntry[gdDown] := AEntries[CoordToIndexFor(X, Y, Z - 1,
+            ADimension.Width, ADimension.Height)]
+        else if AWrap then
+          LEntry[gdDown] := AEntries[CoordToIndexFor(
+            X, Y, ADimension.Depth - 1,
+            ADimension.Width, ADimension.Height)]
+        else
+          LEntry[gdDown] := nil;
+      end;
+end;
+
+procedure TGraph.SetInvalidStateCallback(const AValue: TInvalidStateCallback);
+begin
+  GetActivePassGraph.FInv := AValue;
+end;
+
+procedure TGraph.SetMode(const AValue: TGraphRunMode);
+var
+  I: Integer;
+begin
+  if Assigned(FPassRoot) then
+  begin
+    FPassRoot.SetMode(AValue);
+    Exit;
+  end;
+  if FInitializingPass then
+    raise EInvalidOperation.Create(
+      'SetMode::cannot change pipeline settings during pass initialization');
+
+  EnsureInitialPass;
+  FMode := AValue;
+  for I := 0 to Pred(FPasses.Count) do
+    FPasses[I].FMode := AValue;
+end;
+
 procedure TGraph.SetPass(const AValue: String);
 var
   LPair : TPair<String, Integer>;
+  LPreviousLabel: String;
 begin
+  if Assigned(FPassRoot) then
+  begin
+    if FPassRoot.FInitializingPass then
+      raise EInvalidOperation.Create(
+        'SetPass::cannot rename a pass during pass initialization');
+    LPreviousLabel := FPassRoot.PassLabelFromIndex(FPassIndex);
+    if AValue = LPreviousLabel then
+      Exit;
+    if FPassRoot.FPassLookup.ContainsKey(AValue) then
+      raise Exception.Create('SetPass::pass label is already in use');
+
+    LPair := FPassRoot.FPassLookup.ExtractPair(LPreviousLabel);
+    LPair.Key := AValue;
+    FPassRoot.FPassLookup.Add(LPair.Key, LPair.Value);
+    if FPassRoot.FCurPassIndex = FPassIndex then
+      FPassRoot.FCurPass := AValue;
+    Exit;
+  end;
+  if FInitializingPass then
+    raise EInvalidOperation.Create(
+      'SetPass::cannot rename a pass during pass initialization');
+
+  EnsureInitialPass;
   //if the requested label is different than what we have, extract and update
   if AValue <> FCurPass then
   begin
@@ -680,47 +1253,154 @@ begin
 
     LPair := FPassLookup.ExtractPair(FCurPass);
     LPair.Key := AValue;
-    FPassLookup.Add(LPair);
+    FPassLookup.Add(LPair.Key, LPair.Value);
 
     //lastly update the current pass
     FCurPass := AValue;
   end;
 end;
 
+procedure TGraph.SetSelectionCallback(const AValue: TValueSelectionCallback);
+begin
+  GetActivePassGraph.FSel := AValue;
+end;
+
+procedure TGraph.SetWrapNeighbors(const AValue: Boolean);
+var
+  I: Integer;
+begin
+  if Assigned(FPassRoot) then
+  begin
+    FPassRoot.SetWrapNeighbors(AValue);
+    Exit;
+  end;
+  if FInitializingPass then
+    raise EInvalidOperation.Create(
+      'SetWrapNeighbors::cannot change pipeline settings during pass initialization');
+  if FRunning then
+    raise EInvalidOperation.Create(
+      'SetWrapNeighbors::cannot relink the graph while it is running');
+
+  EnsureInitialPass;
+  FWrap := AValue;
+  for I := 0 to Pred(FPasses.Count) do
+  begin
+    FPasses[I].FWrap := AValue;
+    FPasses[I].LinkNeighbors;
+  end;
+end;
+
+procedure TGraph.CopyValuesFrom(const ASource: TGraph);
+var
+  I: Integer;
+begin
+  if FEntries.Count <> ASource.FEntries.Count then
+    raise EInvalidOperation.Create(
+      'CopyValuesFrom::source and destination dimensions do not match');
+
+  for I := 0 to Pred(FEntries.Count) do
+  begin
+    //caller-assigned destination values are locks; a definitionless pass
+    //refreshes only its generated snapshot cells
+    if (not FEntries[I].Empty) and (not FEntries[I].Generated) then
+      Continue;
+
+    if ASource.FEntries[I].Empty then
+      FEntries[I].ClearValue
+    else
+      FEntries[I].SetGeneratedValue(ASource.FEntries[I].Value);
+  end;
+end;
+
+procedure TGraph.ClearGeneratedValues;
+var
+  I: Integer;
+begin
+  for I := 0 to Pred(FEntries.Count) do
+    if FEntries[I].Generated then
+      FEntries[I].ClearValue;
+end;
+
+function TGraph.HasDefinition: Boolean;
+begin
+  Result := (Length(FValues) > 0) or (FRuleGroups.Count > 0);
+end;
+
 function TGraph.PassLabelFromIndex(const AIndex: Integer): String;
 var
   LPair : TPair<String, Integer>;
 begin
+  if Assigned(FPassRoot) then
+    Exit(FPassRoot.PassLabelFromIndex(AIndex));
+
+  EnsureInitialPass;
   Result := '';
   for LPair in FPassLookup do
-    //internal we store offset index so pred the requested
-    if LPair.Value = Pred(AIndex) then
+    if LPair.Value = AIndex then
       Exit(LPair.Key);
 
   raise Exception.Create('PassLabelFromIndex::index out of bounds [' + IntToStr(AIndex) + ']');
 end;
 
+function TGraph.DoCreateEntry: TGraphEntry;
+begin
+  Result := TGraphEntry.Create;
+end;
+
+function TGraph.DoCreatePass(const APassIndex: Integer): TGraph;
+begin
+  Result := TGraphClass(ClassType).CreatePass(Self, APassIndex);
+end;
+
+procedure TGraph.DoInitializePass;
+begin
+  //derived graphs can initialize pass-local fields here; this hook runs for
+  //pass zero, later passes, and the replacement pass created by Reset
+end;
+
 function TGraph.DoHandleInvalidState(const AEntry: TGraphEntry): TGraphValue;
+var
+  LCallbackGraph: TGraph;
 begin
   //default to the current value
   Result := AEntry.Value;
 
   //when we have the callback assigned then use it
   if Assigned(FInv) then
-    FInv(Self, AEntry, Result);
+  begin
+    if Assigned(FPassRoot) then
+    begin
+      LCallbackGraph := FPassRoot;
+      FPassRoot.FCurPassIndex := FPassIndex;
+      FPassRoot.FCurPass := FPassRoot.PassLabelFromIndex(FPassIndex);
+      try
+        FInv(LCallbackGraph, AEntry, Result);
+      finally
+        //callbacks may inspect or switch passes, but solving resumes in the
+        //pass that owns this entry
+        FPassRoot.FCurPassIndex := FPassIndex;
+        FPassRoot.FCurPass := FPassRoot.PassLabelFromIndex(FPassIndex);
+      end;
+    end
+    else
+    begin
+      LCallbackGraph := Self;
+      FInv(LCallbackGraph, AEntry, Result);
+    end;
+  end;
 end;
 
-procedure TGraph.DoGetStartCoord(out X, Y: UInt64);
+procedure TGraph.DoGetStartCoord(out X, Y: TGraphCoordinate);
 begin
   //base we'll just use a random approach, but this can be overridden
-  RandSeed := Random(MaxInt);
   X := RandomRange(0, FDimension.Width);
   Y := RandomRange(0, FDimension.Height);
 end;
 
 function TGraph.DoGetSelection(const AEntry: TGraphEntry; const Z,
-  APrevZ: UInt64): TGraphValue;
+  APrevZ: TGraphCoordinate): TGraphValue;
 var
+  LCallbackGraph: TGraph;
   LValues: TGraphValues;
 begin
   if not Assigned(FSel) then
@@ -735,11 +1415,40 @@ begin
     Exit(DoHandleInvalidState(AEntry));
 
   //pass the rules to the callback for determining the value of this entry
-  Result := FSel(Self, AEntry, LValues);
+  if Assigned(FPassRoot) then
+  begin
+    LCallbackGraph := FPassRoot;
+    FPassRoot.FCurPassIndex := FPassIndex;
+    FPassRoot.FCurPass := FPassRoot.PassLabelFromIndex(FPassIndex);
+    try
+      Result := FSel(LCallbackGraph, AEntry, LValues);
+    finally
+      FPassRoot.FCurPassIndex := FPassIndex;
+      FPassRoot.FCurPass := FPassRoot.PassLabelFromIndex(FPassIndex);
+    end;
+  end
+  else
+  begin
+    LCallbackGraph := Self;
+    Result := FSel(LCallbackGraph, AEntry, LValues);
+  end;
+
+  if not ContainsGraphValue(LValues, Result) then
+  begin
+    Result := DoHandleInvalidState(AEntry);
+    if not ContainsGraphValue(LValues, Result) then
+      raise EInvalidOperation.CreateFmt(
+        'DoGetSelection::callback returned a value outside the valid domain in pass %d at entry %d',
+        [FPassIndex, AEntry.Index]);
+  end;
 end;
 
-procedure TGraph.DoValidate(const AEntry: TGraphEntry; const Z, APrevZ: UInt64;
-  out Values: TGraphValues);
+procedure TGraph.DoValidate(const AEntry: TGraphEntry;
+  const Z, APrevZ: TGraphCoordinate; out Values: TGraphValues);
+var
+  I: Integer;
+  LHasRequiredConstraint: Boolean;
+  LInitialValues: TGraphValues;
 
   (*
     for each neighbor provided, this method will whittle down
@@ -753,7 +1462,6 @@ procedure TGraph.DoValidate(const AEntry: TGraphEntry; const Z, APrevZ: UInt64;
     LRule : TGraphRule;
     LRuleVals, LVals : TGraphValues;
     I: Integer;
-    LRequired: Boolean;
   begin
     LVals := Default(TGraphValues);
 
@@ -777,14 +1485,6 @@ procedure TGraph.DoValidate(const AEntry: TGraphEntry; const Z, APrevZ: UInt64;
       LRule := LGroup.Rule[ADirection];
       LRuleVals := LGroup[ADirection].Value;
 
-      //get neighbor's required rule set for the direction
-      //to see if we need the 'this' entry to have certain values
-      LRequired := False;
-
-      if TRequireRule(LRule.Info) then
-        if Length(LRuleVals) > 0 then
-          LRequired := True;
-
       //note:
       //  no rules, means any state is possible. for users to specifically
       //  state "nothing" should be allowed, a user defined value representing "nothing"
@@ -792,38 +1492,93 @@ procedure TGraph.DoValidate(const AEntry: TGraphEntry; const Z, APrevZ: UInt64;
       if Length(LRuleVals) < 1 then
         Exit;
 
-      //when required, values will be explicitly set to the neighbors
-      if LRequired then
-        LVals := LRuleVals
-      //iterate the current value list and check to see what values we have left
-      else
-        for I := 0 to High(Values) do
-          if ContainsGraphValue(LRuleVals, Values[I]) then
-            Insert(Values[I], LVals, Length(LVals));
+      if TRequireRule(LRule.Info) then
+        LHasRequiredConstraint := True;
+
+      //Every active neighbor rule is conjunctive. Starting empty entries from
+      //the complete value set lets the first required rule force its values,
+      //while intersecting here prevents a later rule from reintroducing a
+      //candidate rejected by an earlier neighbor.
+      for I := 0 to High(Values) do
+        if ContainsGraphValue(LRuleVals, Values[I]) then
+          Insert(Values[I], LVals, Length(LVals));
 
       //lastly, set the output values to our local validated values
       Values := LVals
     end;
   end;
 
-var
-  I: Integer;
+  procedure RemoveUnforcedRequiredValues;
+  var
+    I: Integer;
+    LVals: TGraphValues;
+  begin
+    if (not AEntry.Empty) or LHasRequiredConstraint then
+      Exit;
+
+    LVals := Default(TGraphValues);
+    for I := 0 to High(Values) do
+      if not FRuleGroups[Values[I]].HasRequired then
+        Insert(Values[I], LVals, Length(LVals));
+    Values := LVals;
+  end;
+
+  procedure TrimValuesForPreviousPass;
+  var
+    LGroup: TGraphRuleGroup;
+    LPreviousEntry: TGraphEntry;
+    LPreviousGraph: TGraph;
+    LVals: TGraphValues;
+    I: Integer;
+  begin
+    if not Assigned(FPassRoot) or (FPassIndex < 1) then
+      Exit;
+
+    LPreviousGraph := FPassRoot.GetPassGraph(Pred(FPassIndex));
+    if not LPreviousGraph.InBounds(AEntry.Index) then
+      raise EInvalidOperation.Create(
+        'TrimValuesForPreviousPass::pass dimensions do not match');
+
+    LPreviousEntry := LPreviousGraph.FEntries[AEntry.Index];
+    LVals := Default(TGraphValues);
+
+    for I := 0 to High(Values) do
+    begin
+      if not FRuleGroups.ContainsKey(Values[I]) then
+      begin
+        Insert(Values[I], LVals, Length(LVals));
+        Continue;
+      end;
+
+      LGroup := FRuleGroups[Values[I]];
+      if (Length(LGroup.PreviousValues) = 0)
+        or ((not LPreviousEntry.Empty)
+          and ContainsGraphValue(LGroup.PreviousValues,
+            LPreviousEntry.Value)) then
+        Insert(Values[I], LVals, Length(LVals));
+    end;
+
+    Values := LVals;
+  end;
+
 begin
-  //default case for a non-empty entry is to use the value it was assigned
+  Values := Default(TGraphValues);
+  LHasRequiredConstraint := False;
+
+  //a caller-assigned entry is a fixed candidate, but it still has to satisfy
+  //directional and previous-pass constraints
   if not AEntry.Empty then
   begin
     SetLength(Values, 1);
     Values[0] := AEntry.Value;
-
-    //todo - do we need to exit here or check for neighbors values?
-    Exit;
+  end
+  else
+  begin
+    LInitialValues := Default(TGraphValues);
+    for I := 0 to High(FValues) do
+      Insert(FValues[I], LInitialValues, Length(LInitialValues));
+    Values := LInitialValues;
   end;
-
-  //first get all of the possible states we can be in by setting to all values
-  //that don't have explicit requirements
-  for I := 0 to High(FValues) do
-    if not FRuleGroups[FValues[I]].HasRequired then
-      Insert(FValues[I], Values, Length(Values));
 
   //get the rule group for each of the entry's neighbors on the same plane
   TrimValuesForNeighbor(AEntry[gdNorth], gdNorth);
@@ -832,100 +1587,196 @@ begin
   TrimValuesForNeighbor(AEntry[gdWest], gdWest);
   TrimValuesForNeighbor(AEntry[gdUp], gdUp); //moving top -> bottom
   TrimValuesForNeighbor(AEntry[gdDown], gdDown); //moving bottom -> top
+  RemoveUnforcedRequiredValues;
+  TrimValuesForPreviousPass;
 end;
 
-function TGraph.Reshape(const AWidth, AHeight, ADepth: UInt64): TGraph;
+procedure TGraph.ValidateDimensions(const AWidth, AHeight,
+  ADepth: TGraphCoordinate);
+var
+  LPlaneSize: TGraphCoordinate;
+begin
+  if (AWidth = 0) or (AHeight = 0) or (ADepth = 0) then
+    Exit;
+
+  if AWidth > TGraphCoordinate(High(Integer)) div AHeight then
+    raise ERangeError.Create('Reshape::graph contains too many entries');
+
+  LPlaneSize := AWidth * AHeight;
+  if LPlaneSize > TGraphCoordinate(High(Integer)) div ADepth then
+    raise ERangeError.Create('Reshape::graph contains too many entries');
+end;
+
+procedure TGraph.BuildStorage(const AWidth, AHeight,
+  ADepth: TGraphCoordinate; out AEntries: TGraphEntries;
+  out APlanes: TPlanes);
 var
   LEntry: TGraphEntry;
+  LEntries: TGraphEntries;
   LPlane : TPlane;
+  LPlanes: TPlanes;
   LCoord : TPlaneCoord;
+  LDimension: TDimension;
   Z, Y, X: Integer;
-
-  function GetNeighbor(const AIndex : Integer) : TGraphEntry;
-  begin
-    if InBounds(AIndex) then
-      Exit(FEntries[AIndex])
-    else
-      Exit(nil);
-  end;
-
 begin
-  Result := Self;
+  AEntries := nil;
+  APlanes := nil;
+  ValidateDimensions(AWidth, AHeight, ADepth);
 
-  //first clear the list and planes collections
-  FEntries.Clear;
-  FPlanes.Clear;
+  LEntries := TGraphEntries.Create(True);
+  LPlanes := NewPlanes;
+  try
+    LDimension.Width := AWidth;
+    LDimension.Height := AHeight;
+    LDimension.Depth := ADepth;
 
-  //update dimensions
-  FDimension.Width := AWidth;
-  FDimension.Height := AHeight;
-  FDimension.Depth := ADepth;
-
-  //now create entries starting on the lowest plane
-  for Z := 0 to Pred(ADepth) do
-  begin
-    //now setup our graph structure (this is exposed to users for ease)
-    //starting with this plane
-    LPlane := TPlane.Create;
-
-    //starting in "bottom" to "top"
-    for Y := 0 to Pred(AHeight) do
+    if (AWidth > 0) and (AHeight > 0) and (ADepth > 0) then
     begin
-      //"left" to "right"
-      for X := 0 to Pred(AWidth) do
+      //build the complete replacement off to the side so failures leave the
+      //currently committed graph untouched
+      for Z := 0 to Integer(ADepth) - 1 do
       begin
-        //create and add to the managed list
-        LEntry := TGraphEntry.Create;
-        FEntries.Add(LEntry);
+        LPlane := TPlane.Create;
+        try
+          LPlanes.Add(Z, LPlane);
+        except
+          LPlane.Free;
+          raise;
+        end;
 
-        //setup a coord (x, y) pair
-        LCoord.Key := X;
-        LCoord.Value := Y;
+        for Y := 0 to Integer(AHeight) - 1 do
+        begin
+          for X := 0 to Integer(AWidth) - 1 do
+          begin
+            LEntry := DoCreateEntry;
+            try
+              LEntry.InitializePosition(LEntries.Count, X, Y, Z);
+              LEntries.Add(LEntry);
+            except
+              LEntry.Free;
+              raise;
+            end;
 
-        //add coord and entry to the plane
-        LPlane.Add(LCoord, LEntry);
+            LCoord.Key := X;
+            LCoord.Value := Y;
+            LPlane.Add(LCoord, LEntry);
+          end;
+        end;
       end;
+
+      LinkNeighborsFor(LEntries, LDimension, FWrap);
     end;
 
-    //add the completed plane to the planes collection
-    FPlanes.Add(Z, LPlane);
+    AEntries := LEntries;
+    LEntries := nil;
+    APlanes := LPlanes;
+    LPlanes := nil;
+  finally
+    LPlanes.Free;
+    LEntries.Free;
+  end;
+end;
+
+function TGraph.ReshapeOne(const AWidth, AHeight,
+  ADepth: TGraphCoordinate): TGraph;
+var
+  LEntries, LOldEntries: TGraphEntries;
+  LPlanes, LOldPlanes: TPlanes;
+begin
+  Result := Self;
+  LEntries := nil;
+  LPlanes := nil;
+  BuildStorage(AWidth, AHeight, ADepth, LEntries, LPlanes);
+  try
+    LOldEntries := FEntries;
+    LOldPlanes := FPlanes;
+    FEntries := LEntries;
+    LEntries := nil;
+    FPlanes := LPlanes;
+    LPlanes := nil;
+    FDimension.Width := AWidth;
+    FDimension.Height := AHeight;
+    FDimension.Depth := ADepth;
+
+    LOldPlanes.Free;
+    LOldEntries.Free;
+  finally
+    LPlanes.Free;
+    LEntries.Free;
   end;
 
-  //now that everything has been shaped, we need to properly assign neighbors
-  for Z := 0 to Pred(ADepth) do
-    for Y := 0 to Pred(AHeight) do
-      for X := 0 to Pred(AWidth) do
-      begin
-        LEntry := FEntries[CoordToIndex(X, Y, Z)];
+end;
 
-        LEntry[gdNorth] := GetNeighbor(CoordToIndex(X, Succ(Y), Z));
-        if FWrap and (not Assigned(LEntry[gdNorth])) then
-          LEntry[gdNorth] := GetNeighbor(CoordToIndex(X, 0, Z));
+function TGraph.Reshape(const AWidth, AHeight,
+  ADepth: TGraphCoordinate): TGraph;
+var
+  I: Integer;
+  LEntries, LOldEntries: TEntryStorageArray;
+  LPlanes, LOldPlanes: TPlaneStorageArray;
+begin
+  if Assigned(FPassRoot) then
+    Exit(FPassRoot.Reshape(AWidth, AHeight, ADepth));
 
-        LEntry[gdEast] := GetNeighbor(CoordToIndex(Succ(X), Y, Z));
-        if FWrap and (not Assigned(LEntry[gdEast])) then
-          LEntry[gdEast] := GetNeighbor(CoordToIndex(0, Y, Z));
+  Result := Self;
+  if FInitializingPass then
+    raise EInvalidOperation.Create(
+      'Reshape::cannot reshape the pipeline during pass initialization');
+  if FRunning then
+    raise EInvalidOperation.Create(
+      'Reshape::cannot reshape the pass pipeline while it is running');
+  EnsureInitialPass;
+  ValidateDimensions(AWidth, AHeight, ADepth);
 
-        LEntry[gdSouth] := GetNeighbor(CoordToIndex(X, Pred(Y), Z));
-        if FWrap and (not Assigned(LEntry[gdSouth])) then
-          LEntry[gdSouth] := GetNeighbor(CoordToIndex(X, Pred(FDimension.Height), Z));
+  SetLength(LEntries, FPasses.Count);
+  SetLength(LPlanes, FPasses.Count);
+  SetLength(LOldEntries, FPasses.Count);
+  SetLength(LOldPlanes, FPasses.Count);
 
-        LEntry[gdWest] := GetNeighbor(CoordToIndex(Pred(X), Y, Z));
-        if FWrap and (not Assigned(LEntry[gdWest])) then
-          LEntry[gdWest] := GetNeighbor(CoordToIndex(Pred(FDimension.Width), Y, Z));
+  try
+    //prepare every pass before committing any of them
+    for I := 0 to Pred(FPasses.Count) do
+      FPasses[I].BuildStorage(AWidth, AHeight, ADepth,
+        LEntries[I], LPlanes[I]);
 
-        LEntry[gdUp] := GetNeighbor(CoordToIndex(X, Y, Succ(Z)));
-        if FWrap and (not Assigned(LEntry[gdUp])) then
-          LEntry[gdUp] := GetNeighbor(CoordToIndex(X, Y, 0));
+    for I := 0 to Pred(FPasses.Count) do
+    begin
+      LOldEntries[I] := FPasses[I].FEntries;
+      LOldPlanes[I] := FPasses[I].FPlanes;
+      FPasses[I].FEntries := LEntries[I];
+      LEntries[I] := nil;
+      FPasses[I].FPlanes := LPlanes[I];
+      LPlanes[I] := nil;
+      FPasses[I].FDimension.Width := AWidth;
+      FPasses[I].FDimension.Height := AHeight;
+      FPasses[I].FDimension.Depth := ADepth;
+    end;
 
-        LEntry[gdDown] := GetNeighbor(CoordToIndex(X, Y, Pred(Z)));
-        if FWrap and (not Assigned(LEntry[gdDown])) then
-          LEntry[gdDown] := GetNeighbor(CoordToIndex(X, Y, Pred(FDimension.Depth)));
-      end;
+    FDimension.Width := AWidth;
+    FDimension.Height := AHeight;
+    FDimension.Depth := ADepth;
+
+    for I := 0 to Pred(FPasses.Count) do
+    begin
+      LOldPlanes[I].Free;
+      LOldEntries[I].Free;
+    end;
+  finally
+    for I := 0 to High(LPlanes) do
+    begin
+      LPlanes[I].Free;
+      LEntries[I].Free;
+    end;
+  end;
 end;
 
 function TGraph.AddValue(const AValue: TGraphValue): TParentedGraphRuleGroup;
+var
+  LGraph: TGraph;
 begin
+  LGraph := GetActivePassGraph;
+  if LGraph <> Self then
+    Exit(LGraph.AddValue(AValue));
+
   //if exists, just return it
   if FRuleGroups.ContainsKey(AValue) then
     Result := TParentedGraphRuleGroup(FRuleGroups[AValue])
@@ -942,64 +1793,132 @@ begin
   end;
 end;
 
-function TGraph.ForEachPass(const ACallback: TForEachPassNestedCallback): TGraph;
+function TGraph.ForEachPass(const ACallback: TForEachPassCallback): TGraph;
 var
   I: Integer;
-  LLabels : TStringArray;
+  LSavedPassIndex: Integer;
 begin
+  if Assigned(FPassRoot) then
+    Exit(FPassRoot.ForEachPass(ACallback));
+
   Result := Self;
-  LLabels := Default(TStringArray);
 
   //callback must be assigned
   if not Assigned(ACallback) then
     Exit;
 
-  //build an index of labels
-  SetLength(LLabels, TotalPassCount);
-  for I := 0 to Pred(TotalPassCount) do
-    LLabels[I] := PassLabelFromIndex(I);
-
-  //now we have everything we need to call the methods
-  for I := 0 to Pred(TotalPassCount) do
-    if I = 0 then
-      ACallback(Self, LLabels[I], I) //this instance is first pass
-    else
-      ACallback(FPasses[Pred(I)], LLabels[I], I); //all others index into pass collection
+  LSavedPassIndex := FCurPassIndex;
+  try
+    for I := 0 to Pred(TotalPassCount) do
+      ACallback(PassGraph[I], PassLabelFromIndex(I), I);
+  finally
+    FCurPassIndex := LSavedPassIndex;
+    FCurPass := PassLabelFromIndex(LSavedPassIndex);
+  end;
 end;
+
+function TGraph.ForEachPass(const ACallback: TForEachPassMethod): TGraph;
+var
+  I: Integer;
+  LSavedPassIndex: Integer;
+begin
+  if Assigned(FPassRoot) then
+    Exit(FPassRoot.ForEachPass(ACallback));
+
+  Result := Self;
+  if not Assigned(ACallback) then
+    Exit;
+
+  LSavedPassIndex := FCurPassIndex;
+  try
+    for I := 0 to Pred(TotalPassCount) do
+      ACallback(PassGraph[I], PassLabelFromIndex(I), I);
+  finally
+    FCurPassIndex := LSavedPassIndex;
+    FCurPass := PassLabelFromIndex(LSavedPassIndex);
+  end;
+end;
+
+{$IFNDEF PAS2JS}
+function TGraph.ForEachPass(
+  const ACallback: TForEachPassNestedCallback): TGraph;
+var
+  I: Integer;
+  LSavedPassIndex: Integer;
+begin
+  if Assigned(FPassRoot) then
+    Exit(FPassRoot.ForEachPass(ACallback));
+
+  Result := Self;
+  if not Assigned(ACallback) then
+    Exit;
+
+  LSavedPassIndex := FCurPassIndex;
+  try
+    for I := 0 to Pred(TotalPassCount) do
+      ACallback(PassGraph[I], PassLabelFromIndex(I), I);
+  finally
+    FCurPassIndex := LSavedPassIndex;
+    FCurPass := PassLabelFromIndex(LSavedPassIndex);
+  end;
+end;
+{$ENDIF}
 
 function TGraph.SwitchToPass(const APass: String; out PassIndex: Integer): TGraph;
 var
   LGraph: TGraph;
 begin
+  if Assigned(FPassRoot) then
+    Exit(FPassRoot.SwitchToPass(APass, PassIndex));
+
   Result := Self;
+  if FInitializingPass then
+    raise EInvalidOperation.Create(
+      'SwitchToPass::cannot switch passes during pass initialization');
+  EnsureInitialPass;
 
   //determine if we have the current pass label (existing)
   //if so, then set the index
   if FPassLookup.ContainsKey(APass) then
-  begin
-    PassIndex := FPassLookup[APass];
-
-    //requested label was for "first" pass
-    if PassIndex < 0 then
-      PassIndex := 0;
-  end
+    PassIndex := FPassLookup[APass]
   else
   begin
+    if FRunning then
+      raise EInvalidOperation.Create(
+        'SwitchToPass::cannot create a pass while the pipeline is running');
+
     //on new label, initialize a new graph, copying dimensions
-    LGraph := TGraph.Create;
-    LGraph.Reshape(FDimension.Width, FDimension.Height, FDimension.Depth);
-
-    //add to the passes collection and set the index
-    PassIndex := Succ(FPasses.Add(LGraph)); //offset by 1 to for "first" pass not included in list
-
-    //add the label with the index to the map
-    FPassLookup.Add(APass, Pred(PassIndex));
+    PassIndex := TotalPassCount;
+    LGraph := nil;
+    FInitializingPass := True;
+    try
+      LGraph := DoCreatePass(PassIndex);
+      LGraph.ReshapeOne(FDimension.Width, FDimension.Height,
+        FDimension.Depth);
+      FPassLookup.Add(APass, PassIndex);
+      try
+        FPasses.Add(LGraph);
+      except
+        FPassLookup.Remove(APass);
+        raise;
+      end;
+      LGraph := nil;
+      try
+        FPasses[PassIndex].DoInitializePass;
+      except
+        FPasses.Delete(PassIndex);
+        FPassLookup.Remove(APass);
+        raise;
+      end;
+    finally
+      LGraph.Free;
+      FInitializingPass := False;
+    end;
   end;
-
 
   //update CurrentPass AND CurrentPassIndex
   FCurPass := APass;
-  FCurPassIndex := Pred(PassIndex); //ensure the internal index is always able to index straight to list
+  FCurPassIndex := PassIndex;
 end;
 
 function TGraph.SwitchToPass(const APass: String): TGraph;
@@ -1016,13 +1935,41 @@ begin
   Result := SwitchToPass(PassLabelFromIndex(AIndex), I);
 end;
 
-function TGraph.Run: TGraph;
+procedure TGraph.ValidateAssignedEntry(const AEntry: TGraphEntry;
+  const Z, APrevZ: TGraphCoordinate);
+var
+  LOriginalValue, LReplacement: TGraphValue;
+  LValues: TGraphValues;
+begin
+  DoValidate(AEntry, Z, APrevZ, LValues);
+  if ContainsGraphValue(LValues, AEntry.Value) then
+    Exit;
+
+  LOriginalValue := AEntry.Value;
+  LReplacement := DoHandleInvalidState(AEntry);
+  if LReplacement = LOriginalValue then
+    raise EInvalidOperation.CreateFmt(
+      'Run::locked value "%s" violates constraints in pass %d at entry %d',
+      [LOriginalValue, FPassIndex, AEntry.Index]);
+
+  AEntry.Value := LReplacement;
+  DoValidate(AEntry, Z, APrevZ, LValues);
+  if not ContainsGraphValue(LValues, LReplacement) then
+  begin
+    AEntry.Value := LOriginalValue;
+    raise EInvalidOperation.CreateFmt(
+      'Run::invalid-state replacement "%s" violates constraints in pass %d at entry %d',
+      [LReplacement, FPassIndex, AEntry.Index]);
+  end;
+end;
+
+function TGraph.RunOnePass: TGraph;
 var
   I: Integer;
 
-  procedure RunPlane(const Z, APrevZ : UInt64);
+  procedure RunPlane(const Z, APrevZ : TGraphCoordinate);
   var
-    X, Y: UInt64;
+    X, Y: TGraphCoordinate;
     LEntry : TGraphEntry;
     LIndex: Integer;
     LVisited : TList<TGraphEntry>;
@@ -1041,7 +1988,9 @@ var
 
       //get and assign the selection
       if AEntry.Empty then
-        AEntry.Value := DoGetSelection(AEntry, Z, APrevZ);
+        AEntry.SetGeneratedValue(DoGetSelection(AEntry, Z, APrevZ))
+      else
+        ValidateAssignedEntry(AEntry, Z, APrevZ);
 
       //recurse with each neighbor
       UpdateEntriesFromLoc(AEntry[gdNorth]);
@@ -1075,6 +2024,13 @@ var
 
 begin
   Result := Self;
+  ClearGeneratedValues;
+
+  if (FDimension.Width = 0)
+    or (FDimension.Height = 0)
+    or (FDimension.Depth = 0)
+    or (FEntries.Count = 0) then
+    Exit;
 
   //handle the different run modes and pass the current plane to the Runplane helper
   if FMode = rmBottomUp then
@@ -1097,38 +2053,202 @@ begin
     raise Exception.Create('Run::run mode not implemented');
 end;
 
-function TGraph.Reset: TGraph;
+function TGraph.Run: TGraph;
 var
   I: Integer;
+  LGraph: TGraph;
+  LSavedPassIndex: Integer;
 begin
-  Result := Self;
-  FRuleGroups.Clear;
-  SetLength(FValues, 0);
-  Reshape(0, 0, 0);
+  if Assigned(FPassRoot) then
+    Exit(FPassRoot.Run);
 
-  for I := 0 to Pred(FEntries.Count) do
-    FEntries[I].Reset;
+  Result := Self;
+  if FInitializingPass then
+    raise EInvalidOperation.Create(
+      'Run::cannot run the pipeline during pass initialization');
+  EnsureInitialPass;
+  if FRunning then
+    raise EInvalidOperation.Create('Run::the pass pipeline is already running');
+
+  LSavedPassIndex := FCurPassIndex;
+  FRunning := True;
+
+  try
+    for I := 0 to Pred(TotalPassCount) do
+    begin
+      FCurPassIndex := I;
+      FCurPass := PassLabelFromIndex(I);
+      LGraph := PassGraph[I];
+
+      if not LGraph.HasDefinition then
+      begin
+        if I > 0 then
+          LGraph.CopyValuesFrom(PassGraph[Pred(I)]);
+      end
+      else
+        LGraph.RunOnePass;
+
+      //selection callbacks are allowed to inspect or switch passes; the
+      //coordinator always resumes the pass currently being solved
+      FCurPassIndex := I;
+      FCurPass := PassLabelFromIndex(I);
+    end;
+  finally
+    FCurPassIndex := LSavedPassIndex;
+    FCurPass := PassLabelFromIndex(LSavedPassIndex);
+    FRunning := False;
+  end;
+end;
+
+function TGraph.Reset: TGraph;
+var
+  LInvalid: TInvalidStateCallback;
+  LNewPass: TGraph;
+  LNewPasses, LOldPasses: TPassList;
+  LNewLookup, LOldLookup: TPassLookup;
+  LOldDimension: TDimension;
+  LOldMode: TGraphRunMode;
+  LOldPass: String;
+  LOldPassIndex: Integer;
+  LOldWrap: Boolean;
+  LSelection: TValueSelectionCallback;
+begin
+  if Assigned(FPassRoot) then
+    raise EInvalidOperation.Create(
+      'Reset::call Reset on the pass pipeline root, not PassGraph');
+  if FInitializingPass then
+    raise EInvalidOperation.Create(
+      'Reset::cannot reset the pipeline during pass initialization');
+  if FRunning then
+    raise EInvalidOperation.Create(
+      'Reset::cannot reset the pass pipeline while it is running');
+
+  Result := Self;
+  EnsureInitialPass;
+  LSelection := FPasses[0].FSel;
+  LInvalid := FPasses[0].FInv;
+  LNewPass := nil;
+  LNewPasses := nil;
+  LNewLookup := nil;
+  FInitializingPass := True;
+  try
+    LNewPass := DoCreatePass(0);
+    LNewPasses := TPassList.Create(True);
+    LNewLookup := TPassLookup.Create;
+    LNewPass.FSel := LSelection;
+    LNewPass.FInv := LInvalid;
+    LNewLookup.Add('', 0);
+    try
+      LNewPasses.Add(LNewPass);
+    except
+      LNewLookup.Remove('');
+      raise;
+    end;
+    LNewPass := nil;
+
+    LOldPasses := FPasses;
+    LOldLookup := FPassLookup;
+    LOldDimension := FDimension;
+    LOldMode := FMode;
+    LOldPass := FCurPass;
+    LOldPassIndex := FCurPassIndex;
+    LOldWrap := FWrap;
+
+    FPasses := LNewPasses;
+    LNewPasses := nil;
+    FPassLookup := LNewLookup;
+    LNewLookup := nil;
+    FCurPass := '';
+    FCurPassIndex := 0;
+    FDimension.Width := 0;
+    FDimension.Height := 0;
+    FDimension.Depth := 0;
+    try
+      FPasses[0].DoInitializePass;
+    except
+      //Keep the failed replacement in the locals for cleanup, then restore
+      //the complete old pipeline before allowing the exception to escape.
+      LNewPasses := FPasses;
+      LNewLookup := FPassLookup;
+      FPasses := LOldPasses;
+      FPassLookup := LOldLookup;
+      FDimension := LOldDimension;
+      FMode := LOldMode;
+      FCurPass := LOldPass;
+      FCurPassIndex := LOldPassIndex;
+      FWrap := LOldWrap;
+      raise;
+    end;
+
+    LOldPasses.Free;
+    LOldLookup.Free;
+    FRuleGroups.Clear;
+    FEntries.Clear;
+    FPlanes.Clear;
+    SetLength(FValues, 0);
+  finally
+    LNewPass.Free;
+    LNewPasses.Free;
+    LNewLookup.Free;
+    FInitializingPass := False;
+  end;
+end;
+
+procedure TGraph.InitializeStorage;
+begin
+  FSel := DefaultSelection;
+  FEntries := TGraphEntries.Create(True);
+  FPlanes := NewPlanes;
+  FRuleGroups := TGraphRuleGroups.Create([doOwnsValues]);
+  FPasses := TPassList.Create(True);
+  FPassLookup := TPassLookup.Create;
+  FMode := rmBottomUp;
+  FWrap := True;
+  FCurPassIndex := 0;
+  FCurPass := '';
+  FPassIndex := 0;
+  FPassRoot := nil;
+  FInitializingPass := False;
+  FRunning := False;
+end;
+
+constructor TGraph.CreatePass(const ARoot: TGraph;
+  const APassIndex: Integer);
+var
+  LPrevious: TGraph;
+begin
+  InitializeStorage;
+  FPassRoot := ARoot;
+  FPassIndex := APassIndex;
+  FMode := ARoot.FMode;
+  FWrap := ARoot.FWrap;
+
+  if APassIndex > 0 then
+  begin
+    LPrevious := ARoot.GetPassGraph(Pred(APassIndex));
+    FSel := LPrevious.FSel;
+    FInv := LPrevious.FInv;
+  end
+  else
+  begin
+    FSel := ARoot.FSel;
+    FInv := ARoot.FInv;
+  end;
+
 end;
 
 constructor TGraph.Create;
 begin
-  FSel := DefaultSelection;
-  FEntries := TGraphEntries.Create;
-  FPlanes := TPlanes.Create;
-  FRuleGroups := TGraphRuleGroups.Create;
-  FPasses := TPassList.Create;
-  FPassLookup := TPassLookup.Create;
-  FCurPassIndex := -1;
-  FCurPass := '';
-  FPassLookup.Add(FCurPass, FCurPassIndex); //init the "first" pass in lookup
+  InitializeStorage;
 end;
 
 destructor TGraph.Destroy;
 begin
-  FEntries.Free;
-  FPlanes.Free;
-  FRuleGroups.Free;
   FPasses.Free;
+  FPassLookup.Free;
+  FRuleGroups.Free;
+  FPlanes.Free;
+  FEntries.Free;
   inherited Destroy;
 end;
 

@@ -1,58 +1,87 @@
-# wfc
-wave function collapse algorithm
+# WFC
 
-# Features
+WFC is a constraint-driven generation library written in Pascal for Free
+Pascal Compiler (FPC) and pas2js. It models user-defined values on a 2D or 3D
+graph, applies directional constraints, and supports ordered passes whose rules
+and results remain separate.
 
-some features at a glance...
+The pass system is the larger idea: generate terrain first, then foliage,
+roads, housing, or any other layer while constraining each stage from the
+result before it. The same approach can be specialized for world generation,
+modular 3D structures, music, text, and other discrete design problems.
 
-* 2D & 3D graph 
-* comfortable api to reshape and define constraints
-* generic user defined values
-* extendable classes if base behavior is not desired
+> **Project status:** the original API and its greedy traversal solver remain
+> available, and the first operational multi-pass contract now works on native
+> FPC and pas2js. A reference propagating WFC solver, richer cross-layer
+> constraints, polished domain libraries, and complete native/browser demos
+> are planned and tracked in the [roadmap](ROADMAP.md).
 
-# Sample
+## Features
 
-Below is a sample which shows a possible use for wfc:
+- 2D and 3D graph topology with optional wrapped boundaries
+- fluent rules over caller-defined string values
+- required directional rules and selection/invalid-state callbacks
+- stable, labeled, zero-based passes with isolated values, rules, and outputs
+- sequential pipeline execution with selected-pass restoration
+- empty-pass copying and same-coordinate constraints on the previous pass
+- extension hooks for custom graph and entry behavior
+- one Pascal core for native FPC and pas2js
+
+## Basic use
 
 ```pascal
-//easily define the shape (2D or 3D is supported)
-LGraph := TGraph.Create.Reshape({width} 5, {height} 5, {depth} 1);
+uses
+  wfc;
 
-(*
-  constraints are also very easy to add and the interface provide fluent setters.
-  in this case A's & B's can be present in "any direction" on the graph (north, east, up, down, etc...)
-*)
-LGraph.AddValue('A')
-  .NewRule(AllDirections, ['A', 'B']);
+var
+  Graph: TGraph;
+begin
+  Graph := TGraph.Create.Reshape(5, 5, 1);
+  try
+    Graph.AddValue('A')
+      .NewRule(AllDirections, ['A', 'B']);
 
-(*  
-  but here, we constrain to just a few directions 
-  A or B (N & S) of a "C"
-*)
-LGraph.AddValue('C')
-  .NewRule([gdNorth, gdSouth], ['A', 'B']); 
-  
-(*
-  when you're finished defining constraints and all of the
-  possible values (states), then just run and the result can be 
-  persisted or you can access the completed graph directly
-*)
-LGraph.Run();
+    Graph.AddValue('C')
+      .NewRule([gdNorth, gdSouth], ['A', 'B']);
+
+    Graph.Run;
+  finally
+    Graph.Free;
+  end;
+end;
 ```
 
-# How To Use
+For a complete terrain-to-foliage pipeline, including `SwitchToPass`,
+`PassGraph`, and `RequirePrevious`, see [pass-system semantics](docs/passes.md).
 
-1. download and install lazarus if you don't already have it (http://www.lazarus-ide.org)
-1. git clone this repo
-    * some examples have submodule dependencies so if you want to clone this repo and bring in all of those do a `git clone --recursive`
-    * if you already cloned you can update submodules with `git submodule update --init --recursive`
-1. open wfc_test.lpr and attempt to compile/run (F9 Key)
-    * this project shows some basic usage of the library
-    * also, by going to `Toolbar -> Project\Project Options\Paths` you can copy the `other units` text to include in your own project
-1. add `.\src` path to your project `other units`
+## Build and test
 
+Add `src` to the unit search path, then compile the conformance runner:
 
-**Tip Jar**
-  * :dollar: BTC - bc1q55qh7xptfgkp087sfr5ppfkqe2jpaa59s8u2lz
-  * :euro: LTC - LPbvTsFDZ6EdaLRhsvwbxcSfeUv1eZWGP6
+```text
+fpc -B -Mdelphi -Fusrc test/wfc_test.lpr
+```
 
+Run the produced `test/wfc_test` executable (`wfc_test.exe` on Windows). It
+returns a nonzero exit code when a check fails. The same test source also
+compiles for a Node.js pas2js target.
+
+Lazarus can open `test/wfc_test.lpr` directly. Some older demos have optional
+submodule dependencies; clone with `--recursive` only when those demos are
+needed.
+
+## Direction
+
+The [roadmap](ROADMAP.md) covers the reference solver, transactional pass
+pipeline, model learning and validation tools, 2D/3D/music/text ecosystems,
+pas2js playgrounds, reproducible research, documentation, and release
+provenance. Current examples are indexed under [examples](examples/README.md).
+
+## License
+
+WFC is released under the [MIT License](LICENSE).
+
+**Tip jar**
+
+- BTC: `bc1q55qh7xptfgkp087sfr5ppfkqe2jpaa59s8u2lz`
+- LTC: `LPbvTsFDZ6EdaLRhsvwbxcSfeUv1eZWGP6`

@@ -77,3 +77,8 @@ lib/
 *.json
 *.txt
 *.log
+
+# Local compiler and cross-target output
+/.build/
+/build/
+/test/wfc_test
