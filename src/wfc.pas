@@ -24,6 +24,7 @@ SOFTWARE.
 unit wfc;
 
 {$mode delphi}
+{$ModeSwitch nestedprocvars}
 
 interface
 
@@ -148,6 +149,12 @@ type
   *)
   TGraphRunMode = (rmBottomUp, rmTopDown);
 
+  (*
+    a nested callback that is run in place of a for loop
+  *)
+  TForEachPassNestedCallback = procedure(const AGraph : TGraph;
+    const APass : String; const APassIndex : Integer) is nested;
+
   { TGraph }
   (*
     a graph used to perform the wave function collapse algorithm
@@ -161,6 +168,7 @@ type
       TPlaneCoord = TPair<X, Y>;
       TPlane = TDictionary<TPlaneCoord, TGraphEntry>;
       TPlanes = TDictionary<Z, TPlane>;
+      TPlanesList = TObjectList<TPlanes>;
 
       TDimension = record
         Width : X;
@@ -181,6 +189,10 @@ type
       public
         property Parent : TGraph read FParent write FParent;
       end;
+  protected
+    type
+      TPassList = TObjectList<TGraph>;
+      TPassLookup = TDictionary<String, Integer>;
   strict private
     FDimension: TDimension;
     FInv: TInvalidStateCallback;
@@ -191,12 +203,21 @@ type
     FEntries : TGraphEntries;
     FPlanes : TPlanes;
     FWrap: Boolean;
+    FPasses : TPassList;
+    FPassLookup : TPassLookup;
+    FCurPass : String;
+    FCurPassIndex : Integer;
 
     function GetEntry(const X, Y, Z : UInt64): TGraphEntry;
     function CoordToIndex(const X, Y, Z : UInt64) : Integer;
+    function GetPass: String;
+    function GetPassIndex: Integer;
     function GetRuleGroup(const AValue : TGraphValue): TParentedGraphRuleGroup;
+    function GetTotalPassCount: Integer;
     function InBounds(const AIndex : Integer) : Boolean;
+    procedure SetPass(const AValue: String);
   strict protected
+    function PassLabelFromIndex(const AIndex : Integer) : String;
     function DoHandleInvalidState(const AEntry : TGraphEntry) : TGraphValue;
     procedure DoGetStartCoord(out X, Y : UInt64); virtual;
     function DoGetSelection(const AEntry : TGraphEntry;
@@ -263,10 +284,26 @@ type
     property Dimension : TDimension read FDimension;
 
     (*
+      a user defined "label" to identify the pass this graph instance is on
+    *)
+    property CurrentPass : String read GetPass write SetPass;
+
+    (*
+      the internal index associated with the CurrentPass property
+    *)
+    property CurrentPassIndex : Integer read GetPassIndex;
+
+    (*
+      the total number of passes including the first default pass
+    *)
+    property TotalPassCount : Integer read GetTotalPassCount;
+
+    (*
       reshapes the dimension of this graph
         @AWidth - X units, 1 based
         @AHeight - Y units, 1 based
         @ADepth - Z units, 1 based
+        @Result - return "this" graph instance
     *)
     function Reshape(const AWidth, AHeight, ADepth : UInt64) : TGraph;
 
@@ -278,13 +315,41 @@ type
     function AddValue(const AValue : TGraphValue) : TParentedGraphRuleGroup;
 
     (*
+      executes ACallback for each pass including the default first pass
+      and guarantees sequential iteration
+        @ACallback - the user defined callback to execute
+        @Result - returns "this" graph instance
+    *)
+    function ForEachPass(const ACallback : TForEachPassNestedCallback) : TGraph;
+
+    (*
+      "switches" the graph to the pass specified by the caller. a "pass"
+      can have it's own set of rules / constraints defined and will be
+      run sequentially. dimensions will be the same as the "first pass"
+        @APass - the pass label to switch to
+        @PassIndex - index to the labeled pass
+        @Result - returns "this" graph instance
+    *)
+    function SwitchToPass(const APass : String; out PassIndex : Integer) : TGraph; overload;
+    function SwitchToPass(const APass : String) : TGraph; overload;
+
+    (*
+      "switches" the graph to the pass by index. this call will fail if the
+      index is out of bounds
+        @AIndex - a valid index to a pass
+    *)
+    function SwitchToPass(const AIndex : Integer) : TGraph; overload;
+
+    (*
       once all values and rules have been apply, this will
       execute the rules against each graph entry
+        @Result - return "this" graph instance
     *)
     function Run : TGraph;
 
     (*
       clears all rules and reshapes to empty (0, 0, 0)
+        @Result - return "this" graph instance
     *)
     function Reset : TGraph;
 
@@ -577,14 +642,62 @@ begin
   Result := (FDimension.Width * FDimension.Height * Z) + X + (Y * FDimension.Width);
 end;
 
+function TGraph.GetPass: String;
+begin
+  Exit(FCurPass);
+end;
+
+function TGraph.GetPassIndex: Integer;
+begin
+  Exit(Succ(FCurPassIndex)); //offset by one to account for first pass
+end;
+
 function TGraph.GetRuleGroup(const AValue : TGraphValue): TParentedGraphRuleGroup;
 begin
   Result := TParentedGraphRuleGroup(FRuleGroups[AValue]);
 end;
 
+function TGraph.GetTotalPassCount: Integer;
+begin
+  Result := Succ(FPasses.Count);
+end;
+
 function TGraph.InBounds(const AIndex: Integer): Boolean;
 begin
   Result := (AIndex >= 0) and (AIndex < FEntries.Count);
+end;
+
+procedure TGraph.SetPass(const AValue: String);
+var
+  LPair : TPair<String, Integer>;
+begin
+  //if the requested label is different than what we have, extract and update
+  if AValue <> FCurPass then
+  begin
+    //dupes not allowed
+    if FPassLookup.ContainsKey(AValue) then
+      raise Exception.Create('SetPass::pass label is already in use');
+
+    LPair := FPassLookup.ExtractPair(FCurPass);
+    LPair.Key := AValue;
+    FPassLookup.Add(LPair);
+
+    //lastly update the current pass
+    FCurPass := AValue;
+  end;
+end;
+
+function TGraph.PassLabelFromIndex(const AIndex: Integer): String;
+var
+  LPair : TPair<String, Integer>;
+begin
+  Result := '';
+  for LPair in FPassLookup do
+    //internal we store offset index so pred the requested
+    if LPair.Value = Pred(AIndex) then
+      Exit(LPair.Key);
+
+  raise Exception.Create('PassLabelFromIndex::index out of bounds [' + IntToStr(AIndex) + ']');
 end;
 
 function TGraph.DoHandleInvalidState(const AEntry: TGraphEntry): TGraphValue;
@@ -829,6 +942,80 @@ begin
   end;
 end;
 
+function TGraph.ForEachPass(const ACallback: TForEachPassNestedCallback): TGraph;
+var
+  I: Integer;
+  LLabels : TStringArray;
+begin
+  Result := Self;
+  LLabels := Default(TStringArray);
+
+  //callback must be assigned
+  if not Assigned(ACallback) then
+    Exit;
+
+  //build an index of labels
+  SetLength(LLabels, TotalPassCount);
+  for I := 0 to Pred(TotalPassCount) do
+    LLabels[I] := PassLabelFromIndex(I);
+
+  //now we have everything we need to call the methods
+  for I := 0 to Pred(TotalPassCount) do
+    if I = 0 then
+      ACallback(Self, LLabels[I], I) //this instance is first pass
+    else
+      ACallback(FPasses[Pred(I)], LLabels[I], I); //all others index into pass collection
+end;
+
+function TGraph.SwitchToPass(const APass: String; out PassIndex: Integer): TGraph;
+var
+  LGraph: TGraph;
+begin
+  Result := Self;
+
+  //determine if we have the current pass label (existing)
+  //if so, then set the index
+  if FPassLookup.ContainsKey(APass) then
+  begin
+    PassIndex := FPassLookup[APass];
+
+    //requested label was for "first" pass
+    if PassIndex < 0 then
+      PassIndex := 0;
+  end
+  else
+  begin
+    //on new label, initialize a new graph, copying dimensions
+    LGraph := TGraph.Create;
+    LGraph.Reshape(FDimension.Width, FDimension.Height, FDimension.Depth);
+
+    //add to the passes collection and set the index
+    PassIndex := Succ(FPasses.Add(LGraph)); //offset by 1 to for "first" pass not included in list
+
+    //add the label with the index to the map
+    FPassLookup.Add(APass, Pred(PassIndex));
+  end;
+
+
+  //update CurrentPass AND CurrentPassIndex
+  FCurPass := APass;
+  FCurPassIndex := Pred(PassIndex); //ensure the internal index is always able to index straight to list
+end;
+
+function TGraph.SwitchToPass(const APass: String): TGraph;
+var
+  I : Integer;
+begin
+  Result := SwitchToPass(APass, I);
+end;
+
+function TGraph.SwitchToPass(const AIndex: Integer): TGraph;
+var
+  I : Integer;
+begin
+  Result := SwitchToPass(PassLabelFromIndex(AIndex), I);
+end;
+
 function TGraph.Run: TGraph;
 var
   I: Integer;
@@ -929,6 +1116,11 @@ begin
   FEntries := TGraphEntries.Create;
   FPlanes := TPlanes.Create;
   FRuleGroups := TGraphRuleGroups.Create;
+  FPasses := TPassList.Create;
+  FPassLookup := TPassLookup.Create;
+  FCurPassIndex := -1;
+  FCurPass := '';
+  FPassLookup.Add(FCurPass, FCurPassIndex); //init the "first" pass in lookup
 end;
 
 destructor TGraph.Destroy;
@@ -936,6 +1128,7 @@ begin
   FEntries.Free;
   FPlanes.Free;
   FRuleGroups.Free;
+  FPasses.Free;
   inherited Destroy;
 end;
 
