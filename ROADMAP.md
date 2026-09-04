@@ -67,7 +67,8 @@ The repository already contains the beginnings of the ecosystem:
 It is not yet the finished system described above:
 
 - the version-2 reference solver now supports scale-canonical integer weights,
-  but deterministic restarts, timing, a stable trace hash, richer explanations,
+  explicit zero-support adjacency, and caller-owned per-cell domains, but
+  deterministic restarts, timing, a stable trace hash, richer explanations,
   and more scalable domain representations remain to be built;
 - pass DAGs, named overlay layers, same-coordinate cross-layer requirements,
   selective regeneration, and structured dependency diagnostics are now
@@ -160,7 +161,8 @@ implementations.
 The version-2 solver now covers domains, fixed-point propagation, positive
 integer weights, deterministic Q16 Shannon observation with an exact
 unit-weight minimum-remaining-values path, locks, bounded backtracking,
-structured contradictions, independent validation, and atomic pass staging.
+structured contradictions, independent validation, atomic pass staging,
+explicit deny-all directions, and pass-local caller domain masks.
 Phase 1 stays open until deterministic restarts, timing, and native/pas2js
 stable trace-hash parity satisfy the exit gate below.
 
@@ -255,7 +257,9 @@ support open/wrapped boundaries and explicit D4 augmentation, checked-merge
 compatible models, store ordered source shapes in immutable model data, adapt
 representable models to `TGraph`, and round-trip strict canonical `.wfcm`
 documents using the `wfcm=1` and `wfcm=2` profiles on native FPC and pas2js.
-Portable single-sample and corpus fixtures prove those vertical slices. The
+The graph adapter now maps active zero-support rows to explicit denial instead
+of rejecting or widening them. Portable single-sample and corpus fixtures
+prove those vertical slices. The
 overlapping-pattern version-1 layer additionally extracts deterministic
 rectangular 2D payloads, supports open/wrapped heterogeneous sources and
 square-footprint D4 augmentation, compiles exact structural overlap, keeps

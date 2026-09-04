@@ -47,7 +47,8 @@ type
     rckAdjacency,
     rckPreviousPass,
     rckRequiredSupport,
-    rckFinalValidation
+    rckFinalValidation,
+    rckEntryDomain
   );
 
   TReferenceContradictionKindArray =

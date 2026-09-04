@@ -139,6 +139,11 @@ type
 
 const
   WFC_MODEL_MERGE_ALGORITHM_VERSION = 1;
+  //Identifies the conversion from immutable model relations to the public
+  //TGraph rule model, including explicit deny-all rows for finite learned
+  //support. Increment when adapter semantics or observable rule construction
+  //change incompatibly.
+  WFC_MODEL_GRAPH_ADAPTER_VERSION = 1;
 
 function MakeWfcModelSampleShape(const AWidth,
   AHeight: Integer): TWfcModelSampleShape;
@@ -825,6 +830,7 @@ type
   TGraphRuleMatrix = array of TGraphRules;
   TGraphDirectionArray = array of TGraphDirection;
   TGraphDirectionMatrix = array of TGraphDirectionArray;
+  TGraphDirectionsArray = array of TGraphDirections;
   TIntegerArray = array of Integer;
 var
   D: TWfcModelDirection;
@@ -832,6 +838,7 @@ var
   J: Integer;
   LGraphDirection: TGraphDirection;
   LGraphValues: TGraphValues;
+  LDenyAllDirections: TGraphDirectionsArray;
   LRuleCount: TIntegerArray;
   LRuleDirections: TGraphDirectionMatrix;
   LRuleSlots: TIntegerArray;
@@ -864,6 +871,9 @@ begin
     raise EWfcModel.Create('model must be assigned');
   if not Assigned(AGraph) then
     raise EWfcModel.Create('target graph must be assigned');
+  if AGraph.Running then
+    raise EWfcModel.Create(
+      'target graph pass cannot be modified while the pipeline is running');
   if AGraph.RuleGroups.Count <> 0 then
     raise EWfcModel.Create(
       'target graph pass must be empty before applying a model');
@@ -888,20 +898,6 @@ begin
           'model token conversion is not unique [%d, %d]', [J, I]);
   end;
 
-  for D := Low(TWfcModelDirection) to High(TWfcModelDirection) do
-    if D in AModel.Directions then
-      for I := 0 to Pred(AModel.ValueCount) do
-      begin
-        LTargetCount := 0;
-        for J := 0 to Pred(AModel.ValueCount) do
-          if AModel.RelationCount(D, I, J) > 0 then
-            Inc(LTargetCount);
-        if LTargetCount = 0 then
-          raise EWfcModel.CreateFmt(
-            'empty-support-not-representable: direction %d, source %d',
-            [Ord(D), I]);
-      end;
-
   //Build the complete public rule arrays before mutating the target graph.
   //Calling NewRule once per dense edge makes every call run inverse-rule
   //fixed-point synchronization over the model built so far. TWfcModel has
@@ -911,6 +907,7 @@ begin
   //TGraphRuleGroup.Rules ordering as well as solver semantics.
   SetLength(LRuleCount, AModel.ValueCount);
   SetLength(LRuleDirections, AModel.ValueCount);
+  SetLength(LDenyAllDirections, AModel.ValueCount);
   SetLength(LRuleSlots, AModel.ValueCount *
     (Ord(High(TGraphDirection)) + 1));
   for I := 0 to High(LRuleSlots) do
@@ -947,19 +944,24 @@ begin
       LGraphDirection := ModelDirectionToGraphDirection(D);
       for I := 0 to Pred(AModel.ValueCount) do
       begin
-        LSlot := LRuleSlots[RuleSlotIndex(I, LGraphDirection)];
         LTargetCount := 0;
         for J := 0 to Pred(AModel.ValueCount) do
           if AModel.RelationCount(D, I, J) > 0 then
             Inc(LTargetCount);
-        SetLength(LRules[I][LSlot].Value, LTargetCount);
-        LTargetCount := 0;
-        for J := 0 to Pred(AModel.ValueCount) do
-          if AModel.RelationCount(D, I, J) > 0 then
-          begin
-            LRules[I][LSlot].Value[LTargetCount] := LGraphValues[J];
-            Inc(LTargetCount);
-          end;
+        if LTargetCount = 0 then
+          Include(LDenyAllDirections[I], LGraphDirection)
+        else
+        begin
+          LSlot := LRuleSlots[RuleSlotIndex(I, LGraphDirection)];
+          SetLength(LRules[I][LSlot].Value, LTargetCount);
+          LTargetCount := 0;
+          for J := 0 to Pred(AModel.ValueCount) do
+            if AModel.RelationCount(D, I, J) > 0 then
+            begin
+              LRules[I][LSlot].Value[LTargetCount] := LGraphValues[J];
+              Inc(LTargetCount);
+            end;
+        end;
       end;
     end;
 
@@ -968,6 +970,15 @@ begin
 
   for I := 0 to Pred(AModel.ValueCount) do
     AGraph.Rules[LGraphValues[I]].Rules := LRules[I];
+
+  //An absent direction remains the graph's historical wildcard. Active model
+  //directions are finite: a source row with no learned targets therefore
+  //denies every present neighbor in that direction. Install these only after
+  //the finite rule arrays so nonempty models retain their exact public rule
+  //ordering.
+  for I := 0 to Pred(AModel.ValueCount) do
+    if LDenyAllDirections[I] <> [] then
+      AGraph.Rules[LGraphValues[I]].DenyAll(LDenyAllDirections[I]);
 end;
 
 end.

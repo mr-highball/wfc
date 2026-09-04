@@ -45,6 +45,8 @@ A complete replay identity consists of:
 - `WFC_RANDOM_ALGORITHM_VERSION`;
 - `WFC_SOLVER_ALGORITHM_VERSION` and `TGraphSolveOptions` when using
   `TrySolve`;
+- `WFC_GRAPH_MODEL_VERSION`, explicit denied directions, and canonical
+  pass-local entry domains;
 - `WFC_PIPELINE_ALGORITHM_VERSION`, pass modes, dependency edges, named
   requirements, and requested roots when using dependency planning or
   selective regeneration;
@@ -87,6 +89,10 @@ models also includes their ordered input list and the merge algorithm version.
 A canonical `.wfcm` document captures the resulting immutable shapes, weights,
 and relations directly. See [model learning and priming](learning.md) for that
 contract and its deliberate tokenization boundary.
+
+Applying a learned or overlapping model to a graph additionally includes
+`WFC_MODEL_GRAPH_ADAPTER_VERSION`. Active zero-support rows are explicit
+denials under that adapter version; inactive directions remain wildcards.
 
 Overlapping models additionally depend on footprint dimensions and
 `WFC_OVERLAPPING_2D_ALGORITHM_VERSION`. Canonical `.wfcp` stores source shapes,
@@ -153,7 +159,9 @@ sampling must increment `WFC_RANDOM_ALGORITHM_VERSION`. An incompatible change
 to reference-solver propagation, observation, candidate ordering, or
 backtracking must increment `WFC_SOLVER_ALGORITHM_VERSION`. Legacy traversal
 or built-in-selection changes must likewise receive an explicit compatibility
-version rather than silently reinterpreting existing replay inputs.
+version rather than silently reinterpreting existing replay inputs. An
+incompatible change to deny-all, entry-domain, or other graph-input semantics
+must increment `WFC_GRAPH_MODEL_VERSION`.
 An incompatible change to dependency planning, pass-mode staging, dirty-closure
 selection, or topological tie-breaking must increment
 `WFC_PIPELINE_ALGORITHM_VERSION` independently.
@@ -186,8 +194,9 @@ external callback state changed during the failed attempt remain changed.
 Every `TrySolve` also rewinds every pass stream before solving. It stages the
 complete pass pipeline, so a contradiction or backtrack-limit result leaves
 all entry values and `Generated` flags unchanged and restores the random states
-that existed before the call. Successful reports record all three algorithm
-versions. Reference observation ties use `Mode` Z order and then entry index;
+that existed before the call. Successful reports record the random, solver,
+graph-model, and pipeline versions. Reference observation ties use `Mode` Z
+order and then entry index;
 non-unit models use deterministic Q16 Shannon entropy, while canonical
 unit-weight models retain the exact minimum-domain path. Candidate order follows
 `AddValue` order from one weighted first ticket and then a frozen cyclic retry

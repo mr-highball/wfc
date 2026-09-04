@@ -64,16 +64,14 @@ round-trip failure, or invalid generated adjacency prints an actionable
 - every generated north, east, south, and west pair has positive support in
   the learned model.
 
-## current model boundary
+## finite support boundary
 
 An open sample can legitimately observe no neighbor for a particular
-token/direction pair. The current graph rule representation treats an absent or
-empty directional rule as unconstrained, so it cannot faithfully represent
-that zero-support row. `ApplyModelToGraph` therefore rejects such a model with
-the stable `empty-support-not-representable` diagnostic instead of silently
-broadening it. This demo deliberately uses a wrapped sample to remain exactly
-representable; callers training on open samples should inspect support or handle
-that rejection explicitly.
+token/direction pair. `ApplyModelToGraph` preserves that finite boundary as an
+explicit `DenyAll` direction; it does not widen a zero-support row into a
+wildcard. Directions outside the model rank remain unconstrained. This demo
+uses a wrapped sample so every observed token has cardinal support and applies
+the same wrapping policy to its output topology.
 
 This example uses the radius-one, cardinal, single-layer learner with one
 sample. Ordered heterogeneous corpora and deterministic model merging are

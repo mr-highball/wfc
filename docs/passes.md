@@ -1,8 +1,8 @@
 # passes
 
 A pass is a named stage of one graph. Each pass has the same shape, but keeps
-its own values, rules, entries, planes, and callbacks. Passes form an acyclic
-dependency graph. Both `Run` and `TrySolve` execute a stable topological plan;
+its own values, rules, entries, entry domains, planes, and callbacks. Passes
+form an acyclic dependency graph. Both `Run` and `TrySolve` execute a stable topological plan;
 the default legacy mode retains the original creation-order chain and
 immediately-previous-pass constraints.
 
@@ -154,15 +154,15 @@ and must not be freed by the caller. A pass graph reports its own stable label
 and index through `CurrentPass` and `CurrentPassIndex`; the root graph reports
 the pass currently selected by the coordinator.
 
-Pass-local operations such as `AddValue`, entry access, rules, planes, and
-callbacks operate on that pass. Pipeline operations such as `Run`, `Reshape`,
-`SwitchToPass`, `WrapNeighbors`, and `Mode` forward to the root. `Reset` is the
+Pass-local operations such as `AddValue`, entry access, allowed-value domains,
+rules, planes, and callbacks operate on that pass. Pipeline operations such as
+`Run`, `Reshape`, `SwitchToPass`, `WrapNeighbors`, and `Mode` forward to the root. `Reset` is the
 exception: call it on the root graph. Calling it through `PassGraph` raises
 `EInvalidOperation` rather than destroying the receiver during its own method
 call. Root `Reset` preserves the first pass's callbacks, the pipeline `Seed`,
 and pipeline-wide mode and wrapping settings while clearing dimensions, rules,
-values and their weights, and additional passes. Reset prepares and initializes
-its replacement pass before discarding the old pipeline; if the initialization
+values and their weights, entry domains, and additional passes. Reset prepares
+and initializes its replacement pass before discarding the old pipeline; if the initialization
 hook raises, the old passes, dimensions, values, selected pass, and seed remain
 intact.
 
@@ -223,6 +223,15 @@ Assigning a generated value to `Entry.Value` again, even without changing its
 text, promotes it to a lock. `ClearValue` removes either kind of value and
 allows generation at that cell.
 
+`SetAllowedValues(X, Y, Z, Values)` adds a caller-owned initial domain without
+assigning a value. It is pass-local, canonicalized into that pass's `AddValue`
+order, and persists when values are cleared or regenerated. `Run` and
+`TrySolve` both intersect it with locks and other constraints. An assigned
+empty array is an explicit contradiction; `ClearAllowedValues` removes the
+domain instead. `HasAllowedValues` and `CopyAllowedValues` provide unambiguous,
+detached inspection. Reshaping replaces the entry storage and clears domains
+from every pass. Domain mutation while a pipeline is running is rejected.
+
 If a lock violates its constraints, `InvalidStateCallback` may provide a valid
 replacement. Without a repair, `Run` raises `EInvalidOperation`; it never
 silently retains the invalid value.
@@ -261,12 +270,12 @@ because it has no input. Only after every pass validates does `TrySolve` commit
 new generated values.
 
 A contradiction or exhausted backtrack limit returns `False` with structured
-evidence and leaves all passes, the caller's selected pass, and pre-call random
-states unchanged. Malformed model or topology data raises an exception before
-entry commit. Legacy selection/invalid-state callbacks and traversal hooks are
-not invoked by `TrySolve`; `Run` remains available when that extension model is
-required. Exact algorithm, constraint, counter, and error semantics are in the
-[reference solver documentation](solver.md).
+evidence and leaves all pass entries and caller domains, the caller's selected
+pass, and pre-call random states unchanged. Malformed model or topology data
+raises an exception before entry commit. Legacy selection/invalid-state
+callbacks and traversal hooks are not invoked by `TrySolve`; `Run` remains
+available when that extension model is required. Exact algorithm, constraint,
+counter, and error semantics are in the [reference solver documentation](solver.md).
 
 The reusable [2D world ecosystem](world2d.md) applies this transaction to a
 typed terrain → biome → foliage pipeline. Its separate validator and portable

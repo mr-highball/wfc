@@ -1,3 +1,26 @@
+(*
+MIT License
+
+Copyright (c) 2021 mr-highball
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+*)
 program wfc_test;
 
 {$Mode delphi}{$H+}
@@ -134,6 +157,11 @@ var
   GCommitRandomGraph: TGraph = nil;
   GCommitRandomPassIndex: Integer = -1;
   GCommitRandomDrawCount: Integer = 0;
+  GCommitDomainGraph: TGraph = nil;
+  GCommitDomainMutationCount: Integer = 0;
+  GCommitResetEntryEnabled: Boolean = False;
+  GCommitResetEntryCount: Integer = 0;
+  GInvalidResetEntryCount: Integer = 0;
   GCapturedWeightCount: Integer = 0;
   GCapturedWeights: array[0..Pred(MAX_CAPTURED_PASSES)] of TGraphWeight;
 
@@ -241,6 +269,16 @@ end;
 procedure TCommitIdentityEntry.DoAfterSetValue(const AValue: TGraphValue);
 begin
   inherited DoAfterSetValue(AValue);
+  if GCommitResetEntryEnabled then
+  begin
+    Inc(GCommitResetEntryCount);
+    Reset;
+  end;
+  if Assigned(GCommitDomainGraph) then
+  begin
+    Inc(GCommitDomainMutationCount);
+    GCommitDomainGraph.SetAllowedValues(0, 0, 0, 'B');
+  end;
   if Assigned(GCommitRandomGraph) and (GCommitRandomPassIndex >= 0) then
   begin
     GCommitRandomGraph.PassGraph[GCommitRandomPassIndex].RandomIndex(1000);
@@ -302,6 +340,19 @@ begin
     Inc(GFailureCount);
     WriteLn('  [FAIL] ', AMessage);
   end;
+end;
+
+function GraphValuesAre(const AActual: TGraphValues;
+  const AExpected: array of TGraphValue): Boolean;
+var
+  I: Integer;
+begin
+  if Length(AActual) <> Length(AExpected) then
+    Exit(False);
+  for I := 0 to High(AActual) do
+    if AActual[I] <> AExpected[I] then
+      Exit(False);
+  Result := True;
 end;
 
 procedure RunTest(const AName: String; const ATest: TTestProcedure);
@@ -409,6 +460,14 @@ begin
   Result := AValid[0];
 end;
 
+function SelectAndMutateAllowedValues(const AGraph: TGraph;
+  const {%H-}AEntry: TGraphEntry;
+  const AValid: TGraphValues): TGraphValue;
+begin
+  AGraph.SetAllowedValues(0, 0, 0, 'B');
+  Result := AValid[0];
+end;
+
 function SelectAndCaptureTraversal(const {%H-}AGraph: TGraph;
   const AEntry: TGraphEntry;
   const AValid: TGraphValues): TGraphValue;
@@ -465,6 +524,14 @@ procedure MutateInvalidEntryWithInvented(const {%H-}AGraph: TGraph;
 begin
   AEntry.Value := 'invented';
   AValue := 'invented';
+end;
+
+procedure ResetInvalidEntryAndProposeAllowed(const {%H-}AGraph: TGraph;
+  const AEntry: TGraphEntry; var AValue: TGraphValue);
+begin
+  Inc(GInvalidResetEntryCount);
+  AEntry.Reset;
+  AValue := 'A';
 end;
 
 procedure RepairEmptyDomainWithNone(const AGraph: TGraph;
@@ -1409,6 +1476,655 @@ begin
   end;
 end;
 
+procedure TestExplicitDenyModel;
+var
+  D: TGraphDirection;
+  LGraph: TGraph;
+  LGroup: TGraphRuleGroup;
+  LOptions: TGraphSolveOptions;
+  LReport: TGraphSolveReport;
+  LRaised: Boolean;
+  LRules: TGraphRules;
+begin
+  Check((Ord(gckNone) = 0)
+    and (Ord(gckEmptyDomain) = 1)
+    and (Ord(gckInvalidLock) = 2)
+    and (Ord(gckAdjacency) = 3)
+    and (Ord(gckPreviousPass) = 4)
+    and (Ord(gckRequiredSupport) = 5)
+    and (Ord(gckFinalValidation) = 6)
+    and (Ord(gckPassDependency) = 7),
+    'existing public contradiction-kind ordinals remain replay compatible');
+  Check(Ord(gckEntryDomain) > Ord(gckPassDependency),
+    'the additive entry-domain diagnostic does not renumber prior kinds');
+  Check(WFC_GRAPH_MODEL_VERSION > 0,
+    'the graph model publishes a positive compatibility version');
+
+  LGroup := TGraphRuleGroup.Create('A');
+  try
+    Check(LGroup.DeniedDirections = [],
+      'a new rule group has no explicitly denied direction');
+    LGroup.NewRule([gdEast], 'B', True);
+    Check(LGroup.Exists[gdEast] and (not LGroup.Denied[gdEast])
+      and LGroup.HasRequired,
+      'a finite required rule begins in allow-list mode');
+
+    LGroup.DenyAll([gdNorth, gdEast]);
+    Check(LGroup.DeniedDirections = [gdNorth, gdEast],
+      'DenyAll records its complete canonical direction set');
+    Check(LGroup.Denied[gdNorth] and LGroup.Denied[gdEast]
+      and (not LGroup.Denied[gdSouth]),
+      'the indexed denied view agrees with DeniedDirections');
+    Check(not LGroup.HasRequired,
+      'transitioning the only required rule to deny-all removes required support');
+
+    LGroup.NewRule([gdEast], 'C');
+    Check((not LGroup.Denied[gdEast]) and LGroup.Denied[gdNorth]
+      and LGroup.Exists[gdEast]
+      and GraphValuesAre(LGroup[gdEast].Value, ['C']),
+      'a later finite rule replaces deny-all without reviving stale values');
+    LGroup.DenyAll([gdEast]).NewRule([gdEast], 'D', True);
+    Check((not LGroup.Denied[gdEast])
+      and GraphValuesAre(LGroup[gdEast].Value, ['D'])
+      and LGroup[gdEast].Info,
+      'finite to deny to finite remains fluent and preserves the new required flag');
+  finally
+    LGroup.Free;
+  end;
+
+  LOptions := DefaultGraphSolveOptions;
+  LGraph := TGraph.Create;
+  try
+    LGraph.Reshape(2, 1, 1);
+    LGraph.WrapNeighbors := False;
+    LGraph.AddValue('A');
+    Check(LGraph.TrySolve(LOptions, LReport),
+      'a missing directional rule remains a wildcard');
+    Check(LReport.GraphModelVersion = WFC_GRAPH_MODEL_VERSION,
+      'successful reports identify the graph-model semantics');
+  finally
+    LGraph.Free;
+  end;
+
+  LGraph := TGraph.Create;
+  try
+    LGraph.Reshape(2, 1, 1);
+    LGraph.WrapNeighbors := False;
+    LGraph.AddValue('A');
+    SetLength(LRules, Ord(High(TGraphDirection)) + 1);
+    for D := Low(TGraphDirection) to High(TGraphDirection) do
+    begin
+      LRules[Ord(D)].Key := D;
+      SetLength(LRules[Ord(D)].Value, 0);
+      LRules[Ord(D)].Info := False;
+    end;
+    LGraph.Rules['A'].Rules := LRules;
+    Check(LGraph.Rules['A'].DeniedDirections = [],
+      'legacy present-empty rules do not become explicit denials');
+    Check(LGraph.TrySolve(LOptions, LReport),
+      'the reference solver preserves present-empty wildcard compatibility');
+    LGraph.Entry[0, 0, 0].ClearValue;
+    LGraph.Entry[1, 0, 0].ClearValue;
+    LGraph.SelectionCallback := SelectFirstValid;
+    LGraph.Run;
+    Check((LGraph.Entry[0, 0, 0].Value = 'A')
+      and (LGraph.Entry[1, 0, 0].Value = 'A'),
+      'legacy Run preserves present-empty wildcard compatibility');
+  finally
+    LGraph.Free;
+  end;
+
+  LGraph := TGraph.Create;
+  try
+    LGraph.Reshape(2, 1, 1);
+    LGraph.WrapNeighbors := False;
+    LGraph.AddValue('A').DenyAll(AllDirections);
+    LGraph.SelectionCallback := SelectFirstValid;
+    LRaised := False;
+    try
+      LGraph.Run;
+    except
+      on E: EInvalidOperation do
+        LRaised := True;
+    end;
+    Check(LRaised,
+      'legacy Run enforces explicit deny-all on a real neighbor arc');
+  finally
+    LGraph.Free;
+  end;
+
+  LGraph := TGraph.Create;
+  try
+    LGraph.Reshape(2, 1, 1);
+    LGraph.WrapNeighbors := False;
+    LGraph.AddValue('A').DenyAll(AllDirections);
+    Check(not LGraph.TrySolve(LOptions, LReport),
+      'the reference solver enforces explicit deny-all on a real neighbor arc');
+    Check((LReport.Contradiction.Kind = gckAdjacency)
+      and (LReport.GraphModelVersion = WFC_GRAPH_MODEL_VERSION),
+      'explicit denial reports adjacency under the published model version');
+  finally
+    LGraph.Free;
+  end;
+
+  LGraph := TGraph.Create;
+  try
+    LGraph.Reshape(1, 1, 1);
+    LGraph.WrapNeighbors := False;
+    LGraph.AddValue('A').DenyAll(AllDirections);
+    LGraph.SelectionCallback := SelectFirstValid;
+    LGraph.Run;
+    Check(LGraph.Entry[0, 0, 0].Value = 'A',
+      'deny-all does not reject a direction whose boundary neighbor is nil');
+  finally
+    LGraph.Free;
+  end;
+
+  LGraph := TGraph.Create;
+  try
+    LGraph.Reshape(1, 1, 1);
+    LGraph.WrapNeighbors := False;
+    LGraph.AddValue('A').DenyAll(AllDirections);
+    Check(LGraph.TrySolve(LOptions, LReport)
+      and (LGraph.Entry[0, 0, 0].Value = 'A'),
+      'the reference solver also ignores denied arcs beyond an open boundary');
+  finally
+    LGraph.Free;
+  end;
+
+  LGraph := TGraph.Create;
+  try
+    LGraph.Reshape(1, 1, 1);
+    LGraph.AddValue('A').DenyAll([gdNorth]);
+    LGraph.SelectionCallback := SelectFirstValid;
+    LRaised := False;
+    try
+      LGraph.Run;
+    except
+      on E: EInvalidOperation do
+        LRaised := True;
+    end;
+    Check(LRaised,
+      'legacy Run applies explicit denial to a wrapped singleton self-arc');
+  finally
+    LGraph.Free;
+  end;
+
+  LGraph := TGraph.Create;
+  try
+    LGraph.Reshape(1, 1, 1);
+    LGraph.AddValue('A').DenyAll([gdNorth]);
+    Check(not LGraph.TrySolve(LOptions, LReport),
+      'the reference solver applies explicit denial to a wrapped singleton');
+    Check(LReport.Contradiction.Kind = gckAdjacency,
+      'wrapped singleton denial receives adjacency evidence');
+  finally
+    LGraph.Free;
+  end;
+
+  LGraph := TGraph.Create;
+  try
+    LGraph.AddValue('A').NewRule([gdEast], 'B');
+    LGraph.RuleGroups.Add('nil-public-group', nil);
+    LRaised := False;
+    try
+      LGraph.Rules['A'].DenyAll([gdEast]);
+    except
+      on E: EInvalidOperation do
+        LRaised := True;
+      on E: Exception do
+        ;
+    end;
+    Check(LRaised,
+      'DenyAll preflight rejects a nil public rule group');
+    Check((not LGraph.Rules['A'].Denied[gdEast])
+      and LGraph.Rules['A'].Exists[gdEast]
+      and GraphValuesAre(LGraph.Rules['A'].Rule[gdEast].Value, ['B'])
+      and (not LGraph.Rules['B'].Denied[gdWest])
+      and GraphValuesAre(LGraph.Rules['B'].Rule[gdWest].Value, ['A']),
+      'nil-group rejection precedes every source and reciprocal denial change');
+    LGraph.RuleGroups.Remove('nil-public-group');
+  finally
+    LGraph.Free;
+  end;
+
+  LGraph := TGraph.Create;
+  try
+    LGraph.AddValue('A').NewRule([gdEast], 'B');
+    LGraph.Rules['B'].Value := 'identity-corrupt';
+    LRaised := False;
+    try
+      LGraph.Rules['A'].DenyAll([gdEast]);
+    except
+      on E: EInvalidOperation do
+        LRaised := True;
+      on E: Exception do
+        ;
+    end;
+    Check(LRaised,
+      'DenyAll preflight rejects a key/value identity mismatch');
+    Check((not LGraph.Rules['A'].Denied[gdEast])
+      and LGraph.Rules['A'].Exists[gdEast]
+      and GraphValuesAre(LGraph.Rules['A'].Rule[gdEast].Value, ['B'])
+      and (not LGraph.Rules['B'].Denied[gdWest])
+      and GraphValuesAre(LGraph.Rules['B'].Rule[gdWest].Value, ['A']),
+      'identity rejection precedes every source and reciprocal denial change');
+    LGraph.Rules['B'].Value := 'B';
+  finally
+    LGraph.Free;
+  end;
+end;
+
+procedure TestAllowedValueStorage;
+var
+  LCopy: TGraphValues;
+  LGraph: TGraph;
+  LInput: TGraphValues;
+  LPassIndex: Integer;
+  LRaised: Boolean;
+begin
+  LGraph := TGraph.Create;
+  try
+    LGraph.Reshape(2, 1, 1);
+    LGraph.AddValue('A');
+    LGraph.AddValue('B');
+    LGraph.AddValue('C');
+
+    SetLength(LInput, 3);
+    LInput[0] := 'C';
+    LInput[1] := 'A';
+    LInput[2] := 'C';
+    Check(LGraph.SetAllowedValues(0, 0, 0, LInput) = LGraph,
+      'SetAllowedValues is fluent');
+    Check(LGraph.HasAllowedValues(0, 0, 0),
+      'an assigned entry domain is distinguishable from no domain');
+    LCopy := LGraph.CopyAllowedValues(0, 0, 0);
+    Check(GraphValuesAre(LCopy, ['A', 'C']),
+      'entry domains are deduplicated into canonical value-registry order');
+
+    LInput[0] := 'B';
+    LInput[1] := 'B';
+    LCopy := LGraph.CopyAllowedValues(0, 0, 0);
+    Check(GraphValuesAre(LCopy, ['A', 'C']),
+      'SetAllowedValues detaches its storage from the caller array');
+    LCopy[0] := 'B';
+    LCopy := LGraph.CopyAllowedValues(0, 0, 0);
+    Check(GraphValuesAre(LCopy, ['A', 'C']),
+      'CopyAllowedValues returns detached storage');
+
+    Check(LGraph.SetAllowedValues(0, 0, 0, 'B') = LGraph,
+      'the single-value domain overload is fluent');
+    Check(GraphValuesAre(LGraph.CopyAllowedValues(0, 0, 0), ['B']),
+      'the single-value overload creates a singleton domain');
+
+    LGraph.SetAllowedValues(0, 0, 0, ['A', 'C']);
+    LRaised := False;
+    try
+      LGraph.SetAllowedValues(0, 0, 0, ['B', 'outside']);
+    except
+      on E: Exception do
+        LRaised := True;
+    end;
+    Check(LRaised,
+      'an entry domain rejects a value outside the selected pass registry');
+    Check(GraphValuesAre(LGraph.CopyAllowedValues(0, 0, 0), ['A', 'C']),
+      'unknown-value rejection is atomic');
+
+    SetLength(LInput, 0);
+    LGraph.SetAllowedValues(1, 0, 0, LInput);
+    Check(LGraph.HasAllowedValues(1, 0, 0)
+      and (Length(LGraph.CopyAllowedValues(1, 0, 0)) = 0),
+      'an explicit empty domain remains distinct from a cleared domain');
+    Check(LGraph.ClearAllowedValues(1, 0, 0) = LGraph,
+      'ClearAllowedValues is fluent');
+    Check((not LGraph.HasAllowedValues(1, 0, 0))
+      and (Length(LGraph.CopyAllowedValues(1, 0, 0)) = 0),
+      'clearing removes domain presence as well as its values');
+
+    LGraph.SwitchToPass('second', LPassIndex);
+    LGraph.AddValue('X');
+    LGraph.AddValue('Y');
+    LGraph.SetAllowedValues(0, 0, 0, 'Y');
+    Check(GraphValuesAre(LGraph.CopyAllowedValues(0, 0, 0), ['Y'])
+      and GraphValuesAre(
+        LGraph.PassGraph[0].CopyAllowedValues(0, 0, 0), ['A', 'C']),
+      'entry domains are pass-local when addressed through root or pass graph');
+    Check(not LGraph.PassGraph[0].HasAllowedValues(1, 0, 0)
+      and (LPassIndex = 1),
+      'clearing one pass cannot create domain state in another pass');
+  finally
+    LGraph.Free;
+  end;
+end;
+
+procedure TestAllowedValueSolving;
+var
+  LGraph: TGraph;
+  LOptions: TGraphSolveOptions;
+  LReport: TGraphSolveReport;
+begin
+  LOptions := DefaultGraphSolveOptions;
+
+  LGraph := TGraph.Create;
+  try
+    LGraph.Reshape(1, 1, 1);
+    LGraph.WrapNeighbors := False;
+    LGraph.AddValue('A');
+    LGraph.AddValue('B');
+    LGraph.SetAllowedValues(0, 0, 0, 'B');
+    LGraph.SelectionCallback := SelectFirstValid;
+    LGraph.Run;
+    Check((LGraph.Entry[0, 0, 0].Value = 'B')
+      and LGraph.Entry[0, 0, 0].Generated,
+      'legacy Run intersects generation with an entry domain');
+  finally
+    LGraph.Free;
+  end;
+
+  LGraph := TGraph.Create;
+  try
+    LGraph.Reshape(1, 1, 1);
+    LGraph.WrapNeighbors := False;
+    LGraph.AddValue('A');
+    LGraph.AddValue('B');
+    LGraph.SetAllowedValues(0, 0, 0, 'B');
+    Check(LGraph.TrySolve(LOptions, LReport)
+      and (LGraph.Entry[0, 0, 0].Value = 'B'),
+      'the reference solver intersects generation with an entry domain');
+  finally
+    LGraph.Free;
+  end;
+
+  LGraph := TGraph.Create;
+  try
+    LGraph.Reshape(1, 1, 1);
+    LGraph.AddValue('A');
+    LGraph.SetAllowedValues(0, 0, 0, []);
+    Check(not LGraph.TrySolve(LOptions, LReport),
+      'an explicit empty entry domain is a reported contradiction');
+    Check((LReport.Contradiction.Kind = gckEntryDomain)
+      and (LReport.Contradiction.EntryIndex = 0)
+      and (LReport.GraphModelVersion = WFC_GRAPH_MODEL_VERSION),
+      'empty-domain evidence identifies the entry and model semantics');
+    Check(LGraph.Entry[0, 0, 0].Empty,
+      'an empty entry domain cannot commit an invented value');
+  finally
+    LGraph.Free;
+  end;
+
+  LGraph := TGraph.Create;
+  try
+    LGraph.Reshape(1, 1, 1);
+    LGraph.AddValue('A');
+    LGraph.AddValue('B');
+    LGraph.SetAllowedValues(0, 0, 0, 'A');
+    LGraph.Entry[0, 0, 0].Value := 'B';
+    Check(not LGraph.TrySolve(LOptions, LReport),
+      'a caller lock cannot bypass a disjoint entry domain');
+    Check((LReport.Contradiction.Kind = gckEntryDomain)
+      and (LReport.Contradiction.EntryIndex = 0),
+      'lock-domain disjointness is distinguished from an unknown lock');
+    Check((LGraph.Entry[0, 0, 0].Value = 'B')
+      and (not LGraph.Entry[0, 0, 0].Generated)
+      and GraphValuesAre(LGraph.CopyAllowedValues(0, 0, 0), ['A']),
+      'failed lock-domain intersection preserves both caller inputs');
+  finally
+    LGraph.Free;
+  end;
+
+  LGraph := TGraph.Create;
+  try
+    LGraph.Reshape(2, 1, 1);
+    LGraph.WrapNeighbors := False;
+    LGraph.AddValue('A').NewRule([gdEast, gdWest], 'A');
+    LGraph.AddValue('B').NewRule([gdEast, gdWest], 'B');
+    LGraph.SetAllowedValues(0, 0, 0, ['A', 'B']);
+    LGraph.SetAllowedValues(1, 0, 0, 'A');
+    LGraph.Entry[0, 0, 0].Value := 'A';
+    Check(LGraph.TrySolve(LOptions, LReport),
+      'lock, mask, and adjacency constraints intersect when compatible');
+    Check((LGraph.Entry[0, 0, 0].Value = 'A')
+      and (LGraph.Entry[1, 0, 0].Value = 'A'),
+      'the compatible intersection commits only its common value');
+
+    LGraph.Entry[1, 0, 0].ClearValue;
+    LGraph.SetAllowedValues(1, 0, 0, 'B');
+    Check(not LGraph.TrySolve(LOptions, LReport),
+      'a nonempty mask can still contradict adjacency and a caller lock');
+    Check(LReport.Contradiction.Kind = gckAdjacency,
+      'propagated mask incompatibility remains an adjacency contradiction');
+    Check((LGraph.Entry[0, 0, 0].Value = 'A')
+      and LGraph.Entry[1, 0, 0].Empty,
+      'failed adjacency preserves the caller lock and unassigned destination');
+  finally
+    LGraph.Free;
+  end;
+
+  LGraph := TGraph.Create;
+  try
+    LGraph.Reshape(1, 1, 1);
+    LGraph.AddValue('A');
+    LGraph.AddValue('B');
+    LGraph.SetAllowedValues(0, 0, 0, 'A');
+    Check(LGraph.TrySolve(LOptions, LReport),
+      'the persistence fixture solves its masked entry');
+    LGraph.Entry[0, 0, 0].ClearValue;
+    Check(LGraph.Entry[0, 0, 0].Empty
+      and LGraph.HasAllowedValues(0, 0, 0)
+      and GraphValuesAre(LGraph.CopyAllowedValues(0, 0, 0), ['A']),
+      'ClearValue removes assignment ownership without clearing its domain');
+    Check(LGraph.TrySolve(LOptions, LReport)
+      and (LGraph.Entry[0, 0, 0].Value = 'A'),
+      'entry domains persist through repeated reference solves');
+  finally
+    LGraph.Free;
+  end;
+end;
+
+procedure TestAllowedValueLifecycle;
+var
+  LGraph: TGraph;
+  LOptions: TGraphSolveOptions;
+  LReport: TGraphSolveReport;
+  LRaised: Boolean;
+begin
+  LOptions := DefaultGraphSolveOptions;
+
+  LGraph := TGraph.Create;
+  try
+    LGraph.Reshape(1, 1, 1);
+    LGraph.AddValue('A');
+    LGraph.AddValue('B');
+    LGraph.SetAllowedValues(0, 0, 0, 'A');
+    LGraph.Entry[0, 0, 0].Reset;
+    Check(LGraph.Entry[0, 0, 0].Empty
+      and LGraph.HasAllowedValues(0, 0, 0)
+      and GraphValuesAre(LGraph.CopyAllowedValues(0, 0, 0), ['A']),
+      'public Entry.Reset clears entry state without discarding its caller domain');
+  finally
+    LGraph.Free;
+  end;
+
+  GInvalidResetEntryCount := 0;
+  LGraph := TGraph.Create;
+  try
+    LGraph.Reshape(1, 1, 1);
+    LGraph.WrapNeighbors := False;
+    LGraph.AddValue('A');
+    LGraph.SetAllowedValues(0, 0, 0, []);
+    LGraph.InvalidStateCallback := ResetInvalidEntryAndProposeAllowed;
+    LRaised := False;
+    try
+      LGraph.Run;
+    except
+      on E: EInvalidOperation do
+        LRaised := True;
+    end;
+    Check(LRaised and (GInvalidResetEntryCount = 1),
+      'a legacy invalid-state hook cannot bypass an empty caller domain through Entry.Reset');
+    Check(LGraph.Entry[0, 0, 0].Empty
+      and LGraph.HasAllowedValues(0, 0, 0)
+      and (Length(LGraph.CopyAllowedValues(0, 0, 0)) = 0),
+      'legacy hook reset leaves the explicit empty domain intact');
+  finally
+    GInvalidResetEntryCount := 0;
+    LGraph.Free;
+  end;
+
+  LGraph := TGraph.Create;
+  try
+    LGraph.Reshape(1, 1, 1);
+    LGraph.AddValue('A');
+    LGraph.AddValue('B');
+    LGraph.SetAllowedValues(0, 0, 0, 'A');
+    LGraph.SwitchToPass('second');
+    LGraph.AddValue('X');
+    LGraph.SetAllowedValues(0, 0, 0, 'X');
+    LGraph.Reshape(1, 1, 1);
+    Check((not LGraph.PassGraph[0].HasAllowedValues(0, 0, 0))
+      and (not LGraph.PassGraph[1].HasAllowedValues(0, 0, 0)),
+      'Reshape clears entry domains from every pass');
+
+    LGraph.SetAllowedValues(0, 0, 0, 'X');
+    LGraph.Reset;
+    LGraph.Reshape(1, 1, 1);
+    LGraph.AddValue('R');
+    Check((LGraph.TotalPassCount = 1)
+      and (not LGraph.HasAllowedValues(0, 0, 0)),
+      'Reset discards masked pass storage before later reshaping');
+  finally
+    LGraph.Free;
+  end;
+
+  LGraph := TGraph.Create;
+  try
+    LGraph.Seed := $10203040;
+    LGraph.Reshape(1, 1, 1);
+    LGraph.WrapNeighbors := False;
+    LGraph.CurrentPass := 'clean';
+    LGraph.PassMode := gpmOverlay;
+    LGraph.AddValue('A');
+    LGraph.AddValue('B');
+    LGraph.SetAllowedValues(0, 0, 0, 'A');
+    LGraph.SwitchToPass('dirty');
+    LGraph.PassMode := gpmOverlay;
+    LGraph.ClearDependencies;
+    LGraph.AddValue('X');
+    LGraph.AddValue('Y');
+    LGraph.SetAllowedValues(0, 0, 0, 'X');
+    Check(LGraph.TrySolve(LOptions, LReport),
+      'the selective-domain fixture establishes committed output');
+
+    LGraph.SetAllowedValues(0, 0, 0, []);
+    Check(not LGraph.TryRegenerateFrom('dirty', LOptions, LReport),
+      'an empty dirty-pass domain aborts selective regeneration');
+    Check((not LReport.Passes[0].Executed)
+      and (LReport.Passes[0].Disposition = gpdReused)
+      and (LGraph.PassGraph[0].Entry[0, 0, 0].Value = 'A')
+      and LGraph.PassGraph[0].Entry[0, 0, 0].Generated
+      and (LGraph.PassGraph[1].Entry[0, 0, 0].Value = 'X')
+      and LGraph.PassGraph[1].Entry[0, 0, 0].Generated,
+      'failed selective solving rolls entries back and reuses the clean pass');
+    Check(GraphValuesAre(
+      LGraph.PassGraph[0].CopyAllowedValues(0, 0, 0), ['A'])
+      and LGraph.PassGraph[1].HasAllowedValues(0, 0, 0)
+      and (Length(LGraph.PassGraph[1].CopyAllowedValues(0, 0, 0)) = 0),
+      'selective rollback preserves every caller-owned pass domain');
+
+    LGraph.SetAllowedValues(0, 0, 0, 'X');
+    LGraph.Entry[0, 0, 0].ClearValue;
+    Check(LGraph.TryRegenerateFrom('dirty', LOptions, LReport),
+      'restoring the dirty-pass domain permits selective regeneration');
+    Check((not LReport.Passes[0].Executed)
+      and (LReport.Passes[0].Disposition = gpdReused)
+      and GraphValuesAre(
+        LGraph.PassGraph[0].CopyAllowedValues(0, 0, 0), ['A'])
+      and GraphValuesAre(
+        LGraph.PassGraph[1].CopyAllowedValues(0, 0, 0), ['X']),
+      'successful selective solving leaves skipped and dirty domains unchanged');
+  finally
+    LGraph.Free;
+  end;
+
+  LGraph := TGraph.Create;
+  try
+    LGraph.Reshape(1, 1, 1);
+    LGraph.AddValue('A');
+    LGraph.AddValue('B');
+    LGraph.SetAllowedValues(0, 0, 0, 'A');
+    LGraph.SelectionCallback := SelectAndMutateAllowedValues;
+    LRaised := False;
+    try
+      LGraph.Run;
+    except
+      on E: EInvalidOperation do
+        LRaised := True;
+    end;
+    Check(LRaised,
+      'a legacy selection callback cannot mutate entry domains while running');
+    Check(LGraph.Entry[0, 0, 0].Empty
+      and GraphValuesAre(LGraph.CopyAllowedValues(0, 0, 0), ['A']),
+      'rejected callback mutation preserves assignment and domain state');
+  finally
+    LGraph.Free;
+  end;
+
+  GCommitDomainGraph := nil;
+  GCommitDomainMutationCount := 0;
+  LGraph := TCommitIdentityGraph.Create;
+  try
+    LGraph.Reshape(1, 1, 1);
+    LGraph.AddValue('A');
+    LGraph.AddValue('B');
+    LGraph.SetAllowedValues(0, 0, 0, 'A');
+    GCommitDomainGraph := LGraph;
+    LRaised := False;
+    try
+      LGraph.TrySolve(LOptions, LReport);
+    except
+      on E: EInvalidOperation do
+        LRaised := True;
+    end;
+    Check(LRaised and (GCommitDomainMutationCount = 1),
+      'a reference commit hook cannot mutate entry domains');
+    Check(LGraph.Entry[0, 0, 0].Empty
+      and GraphValuesAre(LGraph.CopyAllowedValues(0, 0, 0), ['A']),
+      'commit-hook domain mutation rolls entries back without changing masks');
+  finally
+    GCommitDomainGraph := nil;
+    GCommitDomainMutationCount := 0;
+    LGraph.Free;
+  end;
+
+  GCommitResetEntryEnabled := False;
+  GCommitResetEntryCount := 0;
+  LGraph := TCommitIdentityGraph.Create;
+  try
+    LGraph.Reshape(1, 1, 1);
+    LGraph.WrapNeighbors := False;
+    LGraph.AddValue('A');
+    LGraph.SetAllowedValues(0, 0, 0, 'A');
+    GCommitResetEntryEnabled := True;
+    LRaised := False;
+    try
+      LGraph.TrySolve(LOptions, LReport);
+    except
+      on E: EInvalidOperation do
+        LRaised := True;
+    end;
+    Check(LRaised and (GCommitResetEntryCount = 1),
+      'a reference commit hook reset is detected before success');
+    Check(LGraph.Entry[0, 0, 0].Empty
+      and LGraph.HasAllowedValues(0, 0, 0)
+      and GraphValuesAre(LGraph.CopyAllowedValues(0, 0, 0), ['A']),
+      'commit-hook reset rollback preserves the caller domain');
+  finally
+    GCommitResetEntryEnabled := False;
+    GCommitResetEntryCount := 0;
+    LGraph.Free;
+  end;
+end;
+
 procedure TestCompatibilityTypes;
 var
   LList: TGraph.TPlanesList;
@@ -1418,6 +2134,8 @@ var
   LOriginalList: TObjectList<TGraph.TPlanes>;
   LOriginalPlanes: TDictionary<TGraph.Z, TGraph.TPlane>;
   LOriginalRule: TPair<TGraphDirection, TGraphValues, TRequireRule>;
+  LOriginalDirections: TGraphDirections;
+  LOriginalValues: TArray<TGraphValue>;
   LGraph: TGraph;
   {$ENDIF}
 begin
@@ -1455,6 +2173,14 @@ begin
     LOriginalPlanes := LGraph.Planes;
     Check(Assigned(LOriginalPlanes),
       'native Planes retains its original TDictionary identity');
+    LGraph.Reshape(1, 1, 1);
+    LGraph.AddValue('compat').DenyAll([gdUp]);
+    LGraph.SetAllowedValues(0, 0, 0, 'compat');
+    LOriginalDirections := LGraph.Rules['compat'].DeniedDirections;
+    LOriginalValues := LGraph.CopyAllowedValues(0, 0, 0);
+    Check((LOriginalDirections = [gdUp])
+      and GraphValuesAre(LOriginalValues, ['compat']),
+      'native denial and domain APIs retain original public set and TArray identities');
   finally
     LGraph.Free;
   end;
@@ -4829,6 +5555,10 @@ begin
   RunTest('iterative traversal compatibility',
     @TestIterativeTraversalCompatibility);
   RunTest('rule group basics', @TestRuleGroup);
+  RunTest('explicit directional denial model', @TestExplicitDenyModel);
+  RunTest('entry-domain storage', @TestAllowedValueStorage);
+  RunTest('entry-domain solving', @TestAllowedValueSolving);
+  RunTest('entry-domain lifecycle', @TestAllowedValueLifecycle);
   RunTest('public compatibility types', @TestCompatibilityTypes);
   RunTest('inverse rule generation', @TestInverseRules);
   RunTest('required rule enforcement', @TestRequiredRules);

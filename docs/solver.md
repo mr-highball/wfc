@@ -90,7 +90,9 @@ and validation applies to the prepared pre-commit snapshot.
 For a cell value `C`, a neighbor value `N`, and direction `D` from the cell to
 that neighbor, define `Allows(S, D, T)` as the directional rule on source value
 `S` permitting target value `T`. An absent directional rule or a rule with an
-empty value list is a wildcard. Reference-solver compatibility is the
+empty value list is a wildcard, preserving the original public contract.
+`Rules[S].DenyAll([D])` is the distinct explicit state that makes
+`Allows(S, D, T)` false for every `T`. Reference-solver compatibility is the
 two-sided conjunction:
 
 ```text
@@ -101,7 +103,16 @@ This makes compatibility independent of which endpoint is assigned first.
 Every directional arc is checked separately, even when wrapping makes several
 directions point to the same physical entry. A wrapped self-arc supports only
 the same candidate value; one candidate cannot use a different candidate as
-its own support. A nil neighbor imposes no adjacency constraint.
+its own support. A nil neighbor imposes no adjacency constraint, including for
+an explicitly denied direction.
+
+`DenyAll` removes finite support in the selected directions and synchronizes
+the corresponding inverse support maintained by the fluent graph builder. If
+an inverse allow-list loses its final value, it becomes explicitly denied
+rather than a present-empty wildcard. A later `NewRule` in that direction
+restores finite support, including its inverse. Directly replacing the public
+`Rules` array does not implicitly change `DeniedDirections`; defining and
+denying the same direction is malformed state and is rejected before solving.
 
 Required rules retain their force/trigger meaning. A value whose rule group
 contains a required rule is required-only. Unless the cell is a caller lock,
@@ -120,6 +131,34 @@ stale output left by an earlier run.
 
 The reference solver rejects the empty string as a registered model value. It
 is reserved for the public empty-entry state.
+
+## caller-owned entry domains
+
+`SetAllowedValues(X, Y, Z, Values)` assigns a pass-local initial domain to one
+entry. The array overload removes duplicates and stores values in that pass's
+`AddValue` order; the single-value overload creates a singleton. All supplied
+values are validated before mutation, so an unknown value leaves the prior
+domain unchanged. `CopyAllowedValues` returns detached storage,
+`HasAllowedValues` distinguishes assigned state, and `ClearAllowedValues`
+removes it.
+
+An assigned empty array means “allow nothing”; it is not the same as clearing
+the domain. `Run` intersects its valid-value list with the assigned domain.
+`TrySolve` intersects locks, the caller domain, pass requirements, and
+propagated adjacency. An empty domain or a caller lock outside its domain
+returns `gckEntryDomain` with the zero-based entry index. A nonempty domain
+that is later eliminated by adjacency retains the more specific propagated
+contradiction kind. A definitionless pass has no local value registry, so its
+only assignable domain is the explicit empty domain, which contradicts its
+staged preserved, copied, or cleared state before commit.
+
+Domains persist across `Run`, `TrySolve`, selective regeneration,
+`Entry.ClearValue`, and the public entry `Reset`; resetting the graph or
+reshaping replaces their storage. They belong to their individual pass and
+never propagate or copy to another pass. Full and selective failures leave
+every caller domain unchanged. Domain mutation through a selection,
+invalid-state, or commit hook while the pipeline is running is rejected with
+`EInvalidOperation`.
 
 ## deterministic algorithm
 
@@ -167,12 +206,15 @@ backtracking remains complete and reproducible. Unit weights draw with the old
 domain-count bound and preserve the exact previous candidate order.
 
 `WFC_SOLVER_ALGORITHM_VERSION = 2` identifies these propagation, observation,
-candidate-ordering, and backtracking rules. A replay identity for `TrySolve`
-includes both solver and random algorithm versions, the seed, graph topology
-and mode, pass order, value/rule construction order, canonical normalized
-weights, locks, and solve options. Every call rewinds its streams, so an
-unchanged graph and seed replay on both native FPC and pas2js. A failed call
-restores the stream state that existed before the call.
+candidate-ordering, and backtracking rules.
+`WFC_GRAPH_MODEL_VERSION = 1` identifies the additive deny-all and caller-domain
+semantics without reinterpreting legacy wildcard rules. A replay identity for
+`TrySolve` includes graph-model, solver, and random algorithm versions, the
+seed, graph topology and mode, pass order, value/rule construction order,
+denied directions, caller domains in canonical value order, canonical
+normalized weights, locks, and solve options. Every call rewinds its streams,
+so an unchanged graph and seed replay on both native FPC and pas2js. A failed
+call restores the stream state that existed before the call.
 
 That identity guarantees replay of solver decisions. Whole-call completion and
 external side effects also require deterministic entry-setter hooks with the
@@ -194,15 +236,15 @@ Legacy callbacks and traversal hooks are deliberately outside this algorithm.
   configured limit had been reached.
 
 The report records `Seed`, `RandomAlgorithmVersion`,
-`SolverAlgorithmVersion`, `PipelineAlgorithmVersion`, executed
-`ExecutionOrder`, `FailedPassIndex`, terminal contradiction evidence, and one
+`SolverAlgorithmVersion`, `GraphModelVersion`, `PipelineAlgorithmVersion`,
+executed `ExecutionOrder`, `FailedPassIndex`, terminal contradiction evidence, and one
 `TGraphPassSolveReport` per pass. Per-pass records identify whether and when a
 pass executed and whether it was reused, cleared, copied, solved, or failed.
 Terminal contradiction kinds are
-`gckInvalidLock`, `gckEmptyDomain`, `gckAdjacency`, `gckPreviousPass`,
-`gckPassDependency`, `gckRequiredSupport`, and `gckFinalValidation`; `gckNone`
-is used on success. Named dependency failures also identify the stable source
-index through `DependencyPassIndex`.
+`gckInvalidLock`, `gckEntryDomain`, `gckEmptyDomain`, `gckAdjacency`,
+`gckPreviousPass`, `gckPassDependency`, `gckRequiredSupport`, and
+`gckFinalValidation`; `gckNone` is used on success. Named dependency failures
+also identify the stable source index through `DependencyPassIndex`.
 Entry and neighbor indices are zero-based. Inspect `HasDirection` before using
 the direction field. `FailedPassIndex` and unavailable contradiction pass,
 entry, or neighbor indices are `-1`. Report contents are unspecified when
@@ -230,8 +272,9 @@ caller locks on a defined solver pass and unsatisfied constraints. Malformed
 model or topology state raises before committing entries. Examples include a
 negative backtrack limit, an empty registered symbol, a rule target outside the
 value registry, duplicate directional records in a directly replaced public
-rule array, a normalized pass-weight sum larger than `High(Integer)`, or, on a
-defined pass, a neighbor object outside that pass's own entry storage.
+rule array, a direction that is both explicitly denied and directly defined,
+a normalized pass-weight sum larger than `High(Integer)`, or, on a defined
+pass, a neighbor object outside that pass's own entry storage.
 Definitionless passes copy or preserve caller state without compiling a solver
 model. The external-neighbor restriction freezes the topology used by the
 current reference solver; the legacy `Run` path continues to support public
@@ -249,9 +292,10 @@ tests until a separately versioned low-level API is deliberately published.
 ## current scope
 
 Solver version 2 provides deterministic integer weights and fixed-point
-Shannon observation; pipeline version 1 adds acyclic dependency planning,
-named same-coordinate requirements, explicit pass modes, and selective
-regeneration. Restart policy, timing data, stable trace hashes, soft
+Shannon observation; graph-model version 1 adds explicit deny-all adjacency
+and caller-owned entry domains; pipeline version 1 adds acyclic dependency
+planning, named same-coordinate requirements, explicit pass modes, and
+selective regeneration. Restart policy, timing data, stable trace hashes, soft
 constraints, offset/neighborhood cross-layer expressions, and
 minimal-unsatisfiable-core analysis remain roadmap work rather than hidden or
 partially specified behavior.

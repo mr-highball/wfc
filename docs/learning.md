@@ -155,7 +155,7 @@ explicit copy methods return detached arrays. A caller can therefore share one
 model across graph builders and text encoders without exposing mutable
 internal arrays.
 
-## graph application and the empty-support boundary
+## graph application and finite support
 
 `ApplyModelToGraph` registers values in model order, transfers raw value
 weights, and converts every positive relation count into a Boolean directional
@@ -170,21 +170,23 @@ row-major learner names them south. The adapter bridges both conventions; this
 is observable for asymmetric data and is covered by horizontal and vertical
 directed-cycle conformance fixtures.
 
-Application requires an otherwise undefined target pass. It also preflights
-token conversion and every source value in every active direction. Native
-`TGraphValue` retains the core's historical host-string representation; if a
-UTF-8 model token cannot round-trip through that representation exactly, the
-adapter rejects it before mutation rather than substituting a lossy value. The
-current `TGraph` rule contract also treats both an absent rule and an empty
-rule list as a wildcard, so a learned row with zero support cannot yet be
-represented as “allow nothing.” Such a model is valid IR, but graph application
-raises an exception containing `empty-support-not-representable` instead of
-silently broadening it.
+Application requires an otherwise undefined, non-running target pass. The
+root-aware `TGraph.Running` property lets the adapter reject callback-time
+imports before inspecting or mutating the public rule registry. It then
+preflights token conversion, uniqueness, and the complete finite rule arrays
+before mutating the graph. Native `TGraphValue` retains the core's
+historical host-string representation; if a UTF-8 model token cannot round-trip
+through that representation exactly, the adapter rejects it rather than
+substituting a lossy value.
 
-This commonly matters for tiny open samples whose value appears only on one
-edge. Wrapping the training sample, adding representative examples, or waiting
-for a future explicit deny-all rule are honest remedies; converting the empty
-row to a wildcard is not.
+Every active model direction is finite. A source row with positive learned
+relations becomes an allow-list; a source row with zero support becomes the
+graph's explicit `DenyAll` state. Directions outside the model rank remain
+wildcards. Tiny open samples can therefore retain edge-only values without
+silently broadening the learned model. The dense installation path preserves
+model/value order and public rule ordering while installing zero-support rows
+only after the finite arrays. `WFC_MODEL_GRAPH_ADAPTER_VERSION = 1` identifies
+this observable conversion contract.
 
 ## canonical `.wfcm` text
 
@@ -262,8 +264,9 @@ Recreating that model from training input additionally requires:
 - `WFC_LEARN_ALGORITHM_VERSION`;
 - `WFC_LEARN_CORPUS_ALGORITHM_VERSION` for multiple samples;
 - the exact ordered UTF-8 token sequence and dimensions of every sample;
-- boundary and symmetry policies; and
+- boundary and symmetry policies;
 - `WFC_MODEL_MERGE_ALGORITHM_VERSION` when models were merged;
+- `WFC_MODEL_GRAPH_ADAPTER_VERSION` when applying the model to `TGraph`; and
 - the selected model-text profile when comparing serialized bytes.
 
 Solving still uses the replay identity documented in

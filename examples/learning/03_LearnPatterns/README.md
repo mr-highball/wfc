@@ -57,9 +57,10 @@ The demonstrated invariants are:
   and
 - source-boundary metadata never silently changes output topology.
 
-If application reports `empty-support-not-representable`, an open training
-corpus produced a pattern with no support in at least one direction. This demo
-uses wrapped sources so every extracted pattern retains observed directional
-support. If solving exhausts the backtrack limit after changing the samples,
-increase `MaxBacktracks`, use a compatible output shape, or inspect the
-learned relation set; do not replace an empty support row with a wildcard.
+An open training corpus can produce a pattern with no support in one or more
+directions. Application preserves each such row as explicit `DenyAll`; it does
+not replace empty support with a wildcard. This demo uses wrapped sources so
+every extracted pattern retains observed directional support. If solving
+exhausts the backtrack limit after changing the samples, increase
+`MaxBacktracks`, use a compatible output shape, or inspect the learned relation
+set.

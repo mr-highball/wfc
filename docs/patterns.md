@@ -224,20 +224,21 @@ The explicit relation list is redundant by design: it makes replay semantics
 human-inspectable while independent recomputation detects corruption or a
 compatibility-algorithm mismatch.
 
-## graph representation boundary
+## graph representation
 
 Some open samples yield edge-only patterns with no support in one direction.
-The specialized model retains them honestly. The historical graph rule API
-treats an absent or empty rule as a wildcard, so such a row cannot represent
-“allow nothing.” Application raises `empty-support-not-representable` instead
-of silently widening the model. Wrapped samples guarantee that every extracted
-pattern has at least its observed neighbors as structural support.
+The specialized model and graph adapter retain them honestly: an active
+direction with no structural target becomes explicit `DenyAll`, while a
+direction outside the model rank remains a wildcard. Wrapped samples still
+guarantee that every extracted pattern has at least its observed neighbors as
+structural support.
 
 Dense pattern sets also exposed a construction bottleneck in the generic
 adapter. `ApplyModelToGraph` now prebuilds complete reciprocal rule arrays
 after full validation, then installs them once. This preserves the public rule
 order and later fluent inverse synchronization while avoiding a whole-graph
-fixed-point rebuild for every dense edge.
+fixed-point rebuild for every dense edge. Its observable conversion contract
+is `WFC_MODEL_GRAPH_ADAPTER_VERSION = 1`.
 
 ## replay identity and current limits
 

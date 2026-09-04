@@ -13,9 +13,10 @@ modular 3D structures, music, text, and other discrete design problems.
 > **Project status:** the original API and greedy traversal solver remain
 > available. The opt-in reference solver now provides fixed-point propagation,
 > deterministic weighted Shannon-entropy observation, bounded backtracking,
-> structured contradiction reports, atomic dependency-DAG pipelines, named
-> cross-pass constraints, and selective descendant regeneration on native FPC
-> and pas2js. The first specialized ecosystem now includes independently
+> explicit deny-all adjacency, caller-owned per-cell domains, structured
+> contradiction reports, atomic dependency-DAG pipelines, named cross-pass
+> constraints, and selective descendant regeneration on native FPC and
+> pas2js. The first specialized ecosystem now includes independently
 > validated terrain → biome → foliage and six-layer settlement worlds with
 > portable signatures; the former also has an interactive browser presentation
 > compiled from the same Pascal model. Deterministic training primitives learn cardinal
@@ -33,6 +34,8 @@ modular 3D structures, music, text, and other discrete design problems.
 
 - 2D and 3D graph topology with optional wrapped boundaries
 - fluent rules over caller-defined string values
+- compatibility-preserving wildcard rules plus explicit directional deny-all
+- caller-owned, pass-local per-cell domains with canonical value ordering
 - required directional rules and selection/invalid-state callbacks
 - stable, labeled, zero-based passes with isolated values, rules, and outputs
 - deterministic dependency-DAG execution with stable creation-index tie breaks

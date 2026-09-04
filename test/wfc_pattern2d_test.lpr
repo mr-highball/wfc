@@ -758,36 +758,78 @@ begin
   end;
 end;
 
-procedure TestAdapterEmptySupportHonesty;
+procedure TestAdapterOpenBoundarySupport;
 var
+  LBoundaryGraph: TGraph;
   LGraph: TGraph;
-  LMessage: String;
+  LGrid: TWfcPatternGrid2D;
   LModel: TWfcOverlappingModel2D;
-  LRaised: Boolean;
+  LOptions: TGraphSolveOptions;
+  LOutput: TWfcTokenGrid2D;
+  LReport: TWfcOverlapping2DValidationReport;
+  LSolveReport: TGraphSolveReport;
 begin
+  Check((WFC_MODEL_GRAPH_ADAPTER_VERSION = 1) and
+    (WFC_GRAPH_MODEL_VERSION = 1),
+    'the pattern adapter uses version-1 finite graph support');
   LModel := OpenNineModel;
   LGraph := TGraph.Create;
   try
-    LGraph.Reshape(3, 3, 1);
+    LGraph.Seed := 0;
+    LGraph.Reshape(2, 2, 1);
     LGraph.WrapNeighbors := False;
-    LRaised := False;
-    LMessage := '';
-    try
-      ApplyOverlappingModel2DToGraph(LModel, LGraph);
-    except
-      on E: Exception do
-      begin
-        LRaised := True;
-        LMessage := E.Message;
-      end;
-    end;
-    Check(LRaised and
-      (Pos('empty-support-not-representable', LMessage) > 0),
-      'the adapter explicitly rejects a structurally empty support row');
-    Check(LGraph.RuleGroups.Count = 0,
-      'empty-support preflight leaves the target graph unmodified');
+    ApplyOverlappingModel2DToGraph(LModel, LGraph);
+    Check((LGraph.RuleGroups.Count = LModel.PatternCount)
+      and (LGraph.Rules[ModelTokenAsGraphValue(
+        LModel.PatternKeyAt(0))].DeniedDirections = [gdNorth, gdEast])
+      and (LGraph.Rules[ModelTokenAsGraphValue(
+        LModel.PatternKeyAt(3))].DeniedDirections = [gdSouth, gdWest])
+      and LGraph.Rules[ModelTokenAsGraphValue(
+        LModel.PatternKeyAt(0))].Denied[gdNorth]
+      and LGraph.Rules[ModelTokenAsGraphValue(
+        LModel.PatternKeyAt(0))].Denied[gdEast]
+      and LGraph.Rules[ModelTokenAsGraphValue(
+        LModel.PatternKeyAt(3))].Denied[gdSouth]
+      and LGraph.Rules[ModelTokenAsGraphValue(
+        LModel.PatternKeyAt(3))].Denied[gdWest],
+      'open pattern endpoints retain every structurally empty support row');
+    Check((not LGraph.Rules[ModelTokenAsGraphValue(
+        LModel.PatternKeyAt(0))].Denied[gdUp])
+      and (not LGraph.Rules[ModelTokenAsGraphValue(
+        LModel.PatternKeyAt(0))].Denied[gdDown]),
+      'directions outside the rank-2 model remain graph wildcards');
+    LOptions := DefaultGraphSolveOptions;
+    LOptions.MaxBacktracks := 4096;
+    Check(LGraph.TrySolve(LOptions, LSolveReport),
+      'the finite open pattern model solves on its bounded support');
+    Check(CaptureSolvedPatternGrid2D(LModel, LGraph, 0,
+      LGrid, LReport)
+      and ValidateOverlappingPatternGrid2D(LModel, LGrid, LReport)
+      and TryProjectOverlappingPatternGrid2D(LModel, LGrid,
+        LOutput, LReport)
+      and (LOutput.Width = 3) and (LOutput.Height = 3)
+      and TokensMatch(LOutput.Tokens, [
+        'A', 'B', 'C',
+        'D', 'E', 'F',
+        'G', 'H', 'I']),
+      'the bounded solve projects back to the exact open source sample');
   finally
     LGraph.Free;
+  end;
+
+  LBoundaryGraph := TGraph.Create;
+  try
+    LBoundaryGraph.Seed := 0;
+    LBoundaryGraph.Reshape(1, 1, 1);
+    LBoundaryGraph.WrapNeighbors := False;
+    ApplyOverlappingModel2DToGraph(LModel, LBoundaryGraph);
+    LBoundaryGraph.Entry[0, 0, 0].Value := ModelTokenAsGraphValue(
+      LModel.PatternKeyAt(0));
+    LOptions := DefaultGraphSolveOptions;
+    Check(LBoundaryGraph.TrySolve(LOptions, LSolveReport),
+      'empty support does not constrain absent pattern-grid neighbors');
+  finally
+    LBoundaryGraph.Free;
     LModel.Free;
   end;
 end;
@@ -927,7 +969,7 @@ begin
   RunTest('wrapped projection and tamper reports',
     @TestWrappedProjectionAndTamperReports);
   RunTest('graph apply, solve, and capture', @TestGraphApplySolveAndCapture);
-  RunTest('adapter empty-support honesty', @TestAdapterEmptySupportHonesty);
+  RunTest('adapter open-boundary support', @TestAdapterOpenBoundarySupport);
   RunTest('canonical wfcp=1 text codec', @TestCanonicalPatternTextCodec);
   WriteLn('============================================');
   WriteLn(Format('%d checks, %d failures',

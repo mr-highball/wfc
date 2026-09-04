@@ -1,3 +1,26 @@
+(*
+MIT License
+
+Copyright (c) 2021 mr-highball
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+*)
 program wfc_learn_test;
 
 {$mode delphi}{$H+}
@@ -63,6 +86,18 @@ const
 var
   GCheckCount: Integer = 0;
   GFailureCount: Integer = 0;
+  GRunningAdapterAttempts: Integer = 0;
+  GRunningAdapterModel: TWfcModel = nil;
+  GRunningAdapterTarget: TGraph = nil;
+
+function SelectAndApplyModelToEmptyPass(const {%H-}AGraph: TGraph;
+  const {%H-}AEntry: TGraphEntry;
+  const AValid: TGraphValues): TGraphValue;
+begin
+  Inc(GRunningAdapterAttempts);
+  ApplyModelToGraph(GRunningAdapterModel, GRunningAdapterTarget);
+  Result := AValid[0];
+end;
 
 procedure Check(const ACondition: Boolean; const AMessage: String);
 begin
@@ -297,6 +332,46 @@ begin
   Result := True;
 end;
 
+function SameGraphAssignments(const ALeft, ARight: TGraph): Boolean;
+var
+  X: Integer;
+  Y: Integer;
+  Z: Integer;
+begin
+  Result := False;
+  if (ALeft.Dimension.Width <> ARight.Dimension.Width) or
+    (ALeft.Dimension.Height <> ARight.Dimension.Height) or
+    (ALeft.Dimension.Depth <> ARight.Dimension.Depth) then
+    Exit;
+  for Z := 0 to Integer(ALeft.Dimension.Depth) - 1 do
+    for Y := 0 to Integer(ALeft.Dimension.Height) - 1 do
+      for X := 0 to Integer(ALeft.Dimension.Width) - 1 do
+        if (ALeft.Entry[X, Y, Z].Empty <> ARight.Entry[X, Y, Z].Empty) or
+          (ALeft.Entry[X, Y, Z].Generated <>
+            ARight.Entry[X, Y, Z].Generated) or
+          ((not ALeft.Entry[X, Y, Z].Empty) and
+            (ALeft.Entry[X, Y, Z].Value <>
+              ARight.Entry[X, Y, Z].Value)) then
+          Exit;
+  Result := True;
+end;
+
+function GraphLineIs(const AGraph: TGraph;
+  const AExpected: array of TGraphValue): Boolean;
+var
+  X: Integer;
+begin
+  Result := False;
+  if (AGraph.Dimension.Width <> Length(AExpected)) or
+    (AGraph.Dimension.Height <> 1) or (AGraph.Dimension.Depth <> 1) then
+    Exit;
+  for X := 0 to High(AExpected) do
+    if AGraph.Entry[X, 0, 0].Empty or
+      (AGraph.Entry[X, 0, 0].Value <> AExpected[X]) then
+      Exit;
+  Result := True;
+end;
+
 function SamePublicGraphModel(const ALeft, ARight: TGraph;
   const AModel: TWfcModel): Boolean;
 var
@@ -327,6 +402,7 @@ begin
       (LLeftGroup.Weight <> LRightGroup.Weight) or
       (LLeftGroup.Weight <> AModel.WeightAt(I)) or
       (LLeftGroup.HasRequired <> LRightGroup.HasRequired) or
+      (LLeftGroup.DeniedDirections <> LRightGroup.DeniedDirections) or
       (not SameGraphValues(LLeftGroup.PreviousValues,
         LRightGroup.PreviousValues)) then
       Exit;
@@ -369,6 +445,7 @@ begin
     LGroup := AGraph.RuleGroups[LValue];
     if (LGroup.Weight <> AModel.WeightAt(I)) or LGroup.HasRequired or
       (Length(LGroup.PreviousValues) <> 0) or
+      (LGroup.DeniedDirections <> []) or
       (Length(LGroup.Rules) <> 4) or
       LGroup.Exists[gdUp] or LGroup.Exists[gdDown] then
       Exit;
@@ -952,16 +1029,23 @@ end;
 
 procedure TestGraphAdapter;
 var
+  LBoundaryGraph: TGraph;
   LExistingGroup: TGraph.TParentedGraphRuleGroup;
   LGraph: TGraph;
-  LMessage: String;
   LModel: TWfcModel;
   LOpenModel: TWfcModel;
   LOptions: TGraphSolveOptions;
   LReport: TGraphSolveReport;
+  LRunningGraph: TGraph;
+  LRunningTarget: TGraph;
   LRoundTripOrAtomic: Boolean;
   LRaised: Boolean;
+  LWrappedGraph: TGraph;
 begin
+  Check((WFC_MODEL_GRAPH_ADAPTER_VERSION = 1) and
+    (WFC_GRAPH_MODEL_VERSION = 1),
+    'the learned-model adapter and graph rule model publish version 1');
+
   LModel := LearnModel1D(Tokens('A', 'B', 'A'), wmbWrap);
   LGraph := TGraph.Create;
   try
@@ -995,26 +1079,114 @@ begin
   LOpenModel := LearnModel1D(Tokens('A', 'B'), wmbOpen);
   LGraph := TGraph.Create;
   try
-    LGraph.Reshape(3, 1, 1);
+    LGraph.Seed := 0;
+    LGraph.Reshape(2, 1, 1);
     LGraph.WrapNeighbors := False;
-    LRaised := False;
-    LMessage := '';
-    try
-      ApplyModelToGraph(LOpenModel, LGraph);
-    except
-      on E: Exception do
-      begin
-        LRaised := True;
-        LMessage := E.Message;
-      end;
-    end;
-    Check(LRaised and
-      (Pos('empty-support-not-representable', LMessage) > 0),
-      'the adapter names the zero-support representation boundary');
-    Check(LGraph.RuleGroups.Count = 0,
-      'a zero-support rejection leaves the target graph empty');
+    ApplyModelToGraph(LOpenModel, LGraph);
+    Check((LGraph.RuleGroups.Count = 2)
+      and (LGraph.Rules['A'].DeniedDirections = [gdEast])
+      and (LGraph.Rules['B'].DeniedDirections = [gdWest])
+      and LGraph.Rules['A'].Denied[gdEast]
+      and LGraph.Rules['B'].Denied[gdWest]
+      and (not LGraph.Rules['A'].Denied[gdWest])
+      and (not LGraph.Rules['B'].Denied[gdEast])
+      and LGraph.Rules['A'].Exists[gdWest]
+      and ContainsGraphValue(
+        LGraph.Rules['A'].Rule[gdWest].Value, 'B')
+      and LGraph.Rules['B'].Exists[gdEast]
+      and ContainsGraphValue(
+        LGraph.Rules['B'].Rule[gdEast].Value, 'A'),
+      'open A-B endpoints retain finite support and explicit zero-support rows');
+    Check((not LGraph.Rules['A'].Denied[gdNorth])
+      and (not LGraph.Rules['A'].Denied[gdSouth])
+      and (not LGraph.Rules['A'].Denied[gdUp])
+      and (not LGraph.Rules['A'].Denied[gdDown])
+      and (not LGraph.Rules['B'].Denied[gdNorth])
+      and (not LGraph.Rules['B'].Denied[gdSouth])
+      and (not LGraph.Rules['B'].Denied[gdUp])
+      and (not LGraph.Rules['B'].Denied[gdDown]),
+      'directions outside the rank-1 model remain graph wildcards');
+    LOptions := DefaultGraphSolveOptions;
+    Check(LGraph.TrySolve(LOptions, LReport)
+      and (LGraph.Entry[0, 0, 0].Value = 'A')
+      and (LGraph.Entry[1, 0, 0].Value = 'B'),
+      'explicit endpoint support makes the bounded open model solve exactly A-B');
   finally
     LGraph.Free;
+  end;
+
+  LWrappedGraph := TGraph.Create;
+  try
+    LWrappedGraph.Seed := 0;
+    LWrappedGraph.Reshape(2, 1, 1);
+    LWrappedGraph.WrapNeighbors := True;
+    ApplyModelToGraph(LOpenModel, LWrappedGraph);
+    LOptions := DefaultGraphSolveOptions;
+    Check((not LWrappedGraph.TrySolve(LOptions, LReport))
+      and (LReport.Status = gssContradiction)
+      and (LReport.Contradiction.Kind = gckAdjacency)
+      and LWrappedGraph.Entry[0, 0, 0].Empty
+      and LWrappedGraph.Entry[1, 0, 0].Empty,
+      'zero-support rows make the open A-B model contradictory when wrapped');
+  finally
+    LWrappedGraph.Free;
+  end;
+
+  LRunningGraph := TGraph.Create;
+  try
+    LRunningGraph.Seed := 0;
+    LRunningGraph.Reshape(2, 1, 1);
+    LRunningGraph.WrapNeighbors := False;
+    LRunningGraph.CurrentPass := 'source';
+    LRunningGraph.AddValue('source');
+    LRunningGraph.SelectionCallback := SelectAndApplyModelToEmptyPass;
+    LRunningGraph.SwitchToPass('target');
+    LRunningTarget := LRunningGraph.PassGraph[1];
+    LRunningGraph.SwitchToPass('source');
+
+    GRunningAdapterAttempts := 0;
+    GRunningAdapterModel := LOpenModel;
+    GRunningAdapterTarget := LRunningTarget;
+    LRaised := False;
+    try
+      LRunningGraph.Run;
+    except
+      on E: Exception do
+        LRaised := True;
+    end;
+    Check(LRaised and (GRunningAdapterAttempts = 1)
+      and (not LRunningGraph.Running)
+      and (LRunningTarget.RuleGroups.Count = 0),
+      'a running callback rejects model import before mutating its empty target pass');
+
+    GRunningAdapterModel := nil;
+    GRunningAdapterTarget := nil;
+    ApplyModelToGraph(LOpenModel, LRunningTarget);
+    LOptions := DefaultGraphSolveOptions;
+    Check(LRunningGraph.TrySolve(LOptions, LReport)
+      and (LRunningTarget.Entry[0, 0, 0].Value = 'A')
+      and (LRunningTarget.Entry[1, 0, 0].Value = 'B'),
+      'the atomically rejected target remains reusable for an exact later import');
+  finally
+    GRunningAdapterAttempts := 0;
+    GRunningAdapterModel := nil;
+    GRunningAdapterTarget := nil;
+    LRunningGraph.Free;
+  end;
+
+  LBoundaryGraph := TGraph.Create;
+  try
+    LBoundaryGraph.Seed := 0;
+    LBoundaryGraph.Reshape(1, 1, 1);
+    LBoundaryGraph.WrapNeighbors := False;
+    ApplyModelToGraph(LOpenModel, LBoundaryGraph);
+    LBoundaryGraph.Entry[0, 0, 0].Value := 'A';
+    LOptions := DefaultGraphSolveOptions;
+    Check(LBoundaryGraph.TrySolve(LOptions, LReport)
+      and (LBoundaryGraph.Entry[0, 0, 0].Value = 'A'),
+      'deny-all support does not constrain a missing boundary neighbor');
+  finally
+    LBoundaryGraph.Free;
     LOpenModel.Free;
   end;
 
@@ -1166,8 +1338,13 @@ procedure TestDenseAdapterPublicEquivalence;
 var
   I: Integer;
   LBulk: TGraph;
+  LBulkReport: TGraphSolveReport;
+  LBulkSolved: Boolean;
   LFluent: TGraph;
+  LFluentReport: TGraphSolveReport;
+  LFluentSolved: Boolean;
   LModel: TWfcModel;
+  LOptions: TGraphSolveOptions;
   LRules: TGraphRules;
   LTokens: TWfcModelTokens;
 begin
@@ -1175,6 +1352,12 @@ begin
   LBulk := TGraph.Create;
   LFluent := TGraph.Create;
   try
+    LBulk.Seed := 2;
+    LFluent.Seed := 2;
+    LBulk.Reshape(12, 1, 1);
+    LFluent.Reshape(12, 1, 1);
+    LBulk.WrapNeighbors := True;
+    LFluent.WrapNeighbors := True;
     ApplyModelToGraph(LModel, LBulk);
     ApplyModelFluentlyForTest(LModel, LFluent);
     Check(SamePublicGraphModel(LBulk, LFluent, LModel),
@@ -1184,6 +1367,23 @@ begin
     Check((Length(LRules) = 2) and
       (LRules[0].Key = gdEast) and (LRules[1].Key = gdWest),
       'dense import preserves inverse-before-forward public rule ordering');
+
+    LOptions := DefaultGraphSolveOptions;
+    LBulkSolved := LBulk.TrySolve(LOptions, LBulkReport);
+    LFluentSolved := LFluent.TrySolve(LOptions, LFluentReport);
+    Check(LBulkSolved and LFluentSolved
+      and SameGraphAssignments(LBulk, LFluent)
+      and GraphLineIs(LBulk, [
+        'A', 'B', 'C', 'A', 'B', 'C',
+        'A', 'B', 'C', 'A', 'B', 'C'])
+      and (LBulkReport.Status = LFluentReport.Status)
+      and (LBulkReport.Passes[0].Decisions =
+        LFluentReport.Passes[0].Decisions)
+      and (LBulkReport.Passes[0].Propagations =
+        LFluentReport.Passes[0].Propagations)
+      and (LBulkReport.Passes[0].Backtracks =
+        LFluentReport.Passes[0].Backtracks),
+      'seeded dense import exactly replays the former fluent output and solve trace');
 
     LBulk.Rules['A'].NewRule([gdEast], 'B', True);
     LFluent.Rules['A'].NewRule([gdEast], 'B', True);

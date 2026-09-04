@@ -62,6 +62,10 @@ const
   //Increment when propagation, observation, backtracking, or deterministic
   //tie-breaking changes reference-solver replay.
   WFC_SOLVER_ALGORITHM_VERSION = 2;
+  //Identifies additive graph-model semantics such as explicit deny-all
+  //directions and caller-owned entry domains.  These inputs are versioned
+  //separately because they do not reinterpret legacy rules or solver steps.
+  WFC_GRAPH_MODEL_VERSION = 1;
   //Increment when dependency planning, pass-mode staging, or selective
   //regeneration changes in a replay-incompatible way. The per-pass reference
   //solver remains versioned independently above.
@@ -114,6 +118,11 @@ type
       const AValue: TGraphEntry);
     procedure SetValue(const AValue: TGraphValue);
   private
+    //Pass-local caller domains are deliberately unit-private.  They are
+    //mutated only through TGraph so coordinate, value-order, and run guards
+    //cannot be bypassed through an entry reference.
+    FAllowedValues: TGraphValues;
+    FHasAllowedValues: Boolean;
     procedure AssignValue(const AValue: TGraphValue;
       const AGenerated: Boolean);
     procedure InitializePosition(const AIndex: Integer;
@@ -187,21 +196,27 @@ type
       const AValue: TGraphValue; const AOrigin: TPassRequirementOrigin);
   strict private
     FRules: TGraphRules;
+    FDeniedDirections: TGraphDirections;
     FPreviousValues: TGraphValues;
     FVal: TGraphValue;
     FWeight: TGraphWeight;
     function GetExists(const ADirection : TGraphDirection): Boolean;
+    function GetDenied(const ADirection: TGraphDirection): Boolean;
     function GetHasRequired: Boolean;
     function GetRule(const ADirection : TGraphDirection): TGraphRule;
     procedure SetWeight(const AValue: TGraphWeight);
   strict protected
     function IndexOfDirection(const ADirection : TGraphDirection) : Integer;
+    procedure ApplyDenyAll(const ADirections: TGraphDirections);
+    procedure RemoveRuleValue(const ADirection: TGraphDirection;
+      const AValue: TGraphValue; out ARemoved, ABecameEmpty: Boolean);
 
     (*
       can be overridden to handle additional logic for adding new rules
     *)
     procedure DoNewRule(const ADirections : TGraphDirections;
       const AValue : TGraphValue; const ARequireRule : Boolean); virtual;
+    procedure DoDenyAll(const ADirections: TGraphDirections); virtual;
     procedure DoRequirePrevious(const AValue : TGraphValue); virtual;
     procedure DoRequireFromPass(const APass: String;
       const AValue: TGraphValue); virtual;
@@ -212,6 +227,8 @@ type
     property Rule[const ADirection : TGraphDirection] : TGraphRule read GetRule; default;
     property Rules : TGraphRules read FRules write FRules;
     property Exists[const ADirection : TGraphDirection] : Boolean read GetExists;
+    property Denied[const ADirection: TGraphDirection]: Boolean read GetDenied;
+    property DeniedDirections: TGraphDirections read FDeniedDirections;
     property PreviousValues : TGraphValues read FPreviousValues;
     //Positive pass-local relative frequency. The reference solver
     //canonicalizes the complete pass vector by its GCD before use.
@@ -227,6 +244,10 @@ type
 
     function NewRule(const ADirections : TGraphDirections;
       const AValues : TGraphValues; const ARequireRule : Boolean = False) : TGraphRuleGroup; overload;
+
+    //Marks every supplied direction as explicitly allowing no neighbor.
+    //This is distinct from a missing or present-empty legacy wildcard rule.
+    function DenyAll(const ADirections: TGraphDirections): TGraphRuleGroup;
 
     (*
       allows this value only when the entry at the same coordinate in the
@@ -281,7 +302,8 @@ type
     gckPreviousPass,
     gckRequiredSupport,
     gckFinalValidation,
-    gckPassDependency
+    gckPassDependency,
+    gckEntryDomain
   );
 
   TGraphSolveOptions = record
@@ -317,6 +339,7 @@ type
     Seed: TGraphSeed;
     RandomAlgorithmVersion: Integer;
     SolverAlgorithmVersion: Integer;
+    GraphModelVersion: Integer;
     PipelineAlgorithmVersion: Integer;
     FailedPassIndex: Integer;
     Contradiction: TGraphContradiction;
@@ -376,6 +399,8 @@ type
       strict protected
         procedure DoNewRule(const ADirections: TGraphDirections;
           const AValue: TGraphValue; const ARequireRule : Boolean); override;
+        procedure DoDenyAll(
+          const ADirections: TGraphDirections); override;
         procedure DoRequirePrevious(
           const AValue: TGraphValue); override;
         procedure DoRequireFromPass(const APass: String;
@@ -488,6 +513,7 @@ type
     function GetPlanes: TPlanes;
     function GetRuleGroup(const AValue : TGraphValue): TParentedGraphRuleGroup;
     function GetRuleGroups: TGraphRuleGroups;
+    function GetRunning: Boolean;
     function GetSelectionCallback: TValueSelectionCallback;
     function GetSeed: TGraphSeed;
     function GetTotalPassCount: Integer;
@@ -503,6 +529,8 @@ type
     procedure SetWrapNeighbors(const AValue: Boolean);
     procedure CopyValuesFrom(const ASource: TGraph);
     function HasDefinition: Boolean;
+    procedure ValidateCurrentEntryDomains(const AOperation: String);
+    procedure ValidateDeniedRuleState(const AOperation: String);
     procedure InitializeStorage;
     function ReshapeOne(const AWidth, AHeight,
       ADepth: TGraphCoordinate): TGraph;
@@ -583,6 +611,10 @@ type
     *)
     property Seed : TGraphSeed read GetSeed write SetSeed;
 
+    //True while the root pipeline is executing. PassGraph instances forward
+    //this state so adapters can reject multi-step imports before any mutation.
+    property Running: Boolean read GetRunning;
+
     (*
       dimension of the graph
         - Width is X along plane
@@ -637,6 +669,20 @@ type
     function AddValue(const AValue : TGraphValue) : TParentedGraphRuleGroup; overload;
     function AddValue(const AValue : TGraphValue;
       const AWeight: TGraphWeight) : TParentedGraphRuleGroup; overload;
+
+    //Caller-owned pass-local initial domains.  SetAllowedValues canonicalizes
+    //the supplied set to AddValue order; an assigned empty set is an explicit
+    //contradiction and is distinct from ClearAllowedValues.
+    function SetAllowedValues(const X, Y, Z: TGraphCoordinate;
+      const AValues: TGraphValues): TGraph; overload;
+    function SetAllowedValues(const X, Y, Z: TGraphCoordinate;
+      const AValue: TGraphValue): TGraph; overload;
+    function ClearAllowedValues(const X, Y,
+      Z: TGraphCoordinate): TGraph;
+    function HasAllowedValues(const X, Y,
+      Z: TGraphCoordinate): Boolean;
+    function CopyAllowedValues(const X, Y,
+      Z: TGraphCoordinate): TGraphValues;
 
     (*
       executes ACallback for each pass including the default first pass
@@ -864,6 +910,88 @@ begin
   SynchronizeInverseRules;
 end;
 
+procedure TGraph.TParentedGraphRuleGroup.DoDenyAll(
+  const ADirections: TGraphDirections);
+var
+  I: Integer;
+  LBaseGroup: TGraphRuleGroup;
+  LBecameEmpty: Boolean;
+  LDirection: TGraphDirection;
+  LInverseDirection: TGraphDirection;
+  LRemoved: Boolean;
+  LRoot: TGraph;
+  LStoredGroup: TGraphRuleGroup;
+  LStoredParentedGroup: TParentedGraphRuleGroup;
+begin
+  if Assigned(Parent) then
+  begin
+    if Assigned(Parent.FPassRoot) then
+      LRoot := Parent.FPassRoot
+    else
+      LRoot := Parent;
+    if LRoot.FRunning then
+      raise EInvalidOperation.Create(
+        'DenyAll::cannot change rules while the pipeline is running');
+  end;
+
+  if Assigned(Parent) then
+  begin
+    //RuleGroups is intentionally public for legacy compatibility.  Validate
+    //the complete owning registry before changing this group so a nil,
+    //replacement, or identity-corrupt entry cannot leave reciprocal rules
+    //half updated when DenyAll later discovers it.
+    if Parent.FRuleGroups.Count <> Length(Parent.FValues) then
+      raise EInvalidOperation.CreateFmt(
+        'DenyAll::pass %d has an inconsistent value registry',
+        [Parent.FPassIndex]);
+    for I := 0 to High(Parent.FValues) do
+    begin
+      if not Parent.FRuleGroups.TryGetValue(Parent.FValues[I],
+        LStoredGroup) or (not Assigned(LStoredGroup)) then
+        raise EInvalidOperation.CreateFmt(
+          'DenyAll::pass %d has no rule group for value "%s"',
+          [Parent.FPassIndex, Parent.FValues[I]]);
+      if LStoredGroup.Value <> Parent.FValues[I] then
+        raise EInvalidOperation.CreateFmt(
+          'DenyAll::pass %d rule-group identity "%s" does not match value "%s"',
+          [Parent.FPassIndex, LStoredGroup.Value, Parent.FValues[I]]);
+      if not (LStoredGroup is TParentedGraphRuleGroup) then
+        raise EInvalidOperation.CreateFmt(
+          'DenyAll::pass %d value "%s" is not owned by the graph',
+          [Parent.FPassIndex, Parent.FValues[I]]);
+      LStoredParentedGroup := TParentedGraphRuleGroup(LStoredGroup);
+      if LStoredParentedGroup.Parent <> Parent then
+        raise EInvalidOperation.CreateFmt(
+          'DenyAll::pass %d value "%s" has a different owner',
+          [Parent.FPassIndex, Parent.FValues[I]]);
+    end;
+    if (not Parent.FRuleGroups.TryGetValue(Value, LStoredGroup))
+      or (LStoredGroup <> Self) then
+      raise EInvalidOperation.CreateFmt(
+        'DenyAll::pass %d source value "%s" is not the registered object',
+        [Parent.FPassIndex, Value]);
+  end;
+  inherited DoDenyAll(ADirections);
+
+  if not Assigned(Parent) then
+    Exit;
+  //NewRule maintains an explicit reciprocal finite model.  Remove the
+  //corresponding inverse claims when support is denied; if an inverse finite
+  //set loses its last value, represent that state with DenyAll rather than a
+  //present-empty rule (which remains a legacy wildcard).
+  for LDirection in ADirections do
+  begin
+    LInverseDirection := InverseOfDir(LDirection);
+    for LBaseGroup in Parent.RuleGroups.Values do
+    begin
+      LBaseGroup.RemoveRuleValue(LInverseDirection, Value,
+        LRemoved, LBecameEmpty);
+      if LRemoved and LBecameEmpty then
+        LBaseGroup.ApplyDenyAll([LInverseDirection]);
+    end;
+  end;
+end;
+
 procedure TGraph.TParentedGraphRuleGroup.SynchronizeInverseRules;
 var
   I: Integer;
@@ -1014,6 +1142,12 @@ begin
   Result := IndexOfDirection(ADirection) >= 0;
 end;
 
+function TGraphRuleGroup.GetDenied(
+  const ADirection: TGraphDirection): Boolean;
+begin
+  Result := ADirection in FDeniedDirections;
+end;
+
 function TGraphRuleGroup.GetHasRequired: Boolean;
 var
   I: Integer;
@@ -1044,6 +1178,72 @@ procedure TGraphRuleGroup.DoNewRule(const ADirections: TGraphDirections;
   const AValue: TGraphValue; const ARequireRule: Boolean);
 begin
   UpsertRule(ADirections, AValue, ARequireRule);
+end;
+
+procedure TGraphRuleGroup.DoDenyAll(
+  const ADirections: TGraphDirections);
+begin
+  ApplyDenyAll(ADirections);
+end;
+
+procedure TGraphRuleGroup.ApplyDenyAll(
+  const ADirections: TGraphDirections);
+var
+  I: Integer;
+  LCount: Integer;
+  LRules: TGraphRules;
+begin
+  if ADirections = [] then
+    Exit;
+
+  //Prepare the replacement before changing live state.  Denied directions
+  //have no legacy rule record, preserving the historical meaning of a
+  //present rule whose value list is empty.
+  SetLength(LRules, Length(FRules));
+  LCount := 0;
+  for I := 0 to High(FRules) do
+    if not (FRules[I].Key in ADirections) then
+    begin
+      LRules[LCount] := FRules[I];
+      Inc(LCount);
+    end;
+  SetLength(LRules, LCount);
+  FRules := LRules;
+  FDeniedDirections := FDeniedDirections + ADirections;
+end;
+
+procedure TGraphRuleGroup.RemoveRuleValue(
+  const ADirection: TGraphDirection; const AValue: TGraphValue;
+  out ARemoved, ABecameEmpty: Boolean);
+var
+  I: Integer;
+  LCount: Integer;
+  LRule: TGraphRule;
+  LVals: TGraphValues;
+begin
+  ARemoved := False;
+  ABecameEmpty := False;
+  I := IndexOfDirection(ADirection);
+  if I < 0 then
+    Exit;
+  LRule := FRules[I];
+  SetLength(LVals, Length(LRule.Value));
+  LCount := 0;
+  for I := 0 to High(LRule.Value) do
+    if LRule.Value[I] = AValue then
+      ARemoved := True
+    else
+    begin
+      LVals[LCount] := LRule.Value[I];
+      Inc(LCount);
+    end;
+  if not ARemoved then
+    Exit;
+  SetLength(LVals, LCount);
+  LRule.Value := LVals;
+  I := IndexOfDirection(ADirection);
+  FRules[I] := LRule;
+  ABecameEmpty := LCount = 0;
 end;
 
 procedure TGraphRuleGroup.SetWeight(const AValue: TGraphWeight);
@@ -1101,6 +1301,10 @@ begin
       SetLength(FRules, Succ(I));
       FRules[I] := LRule;
     end;
+
+    //Finite support explicitly restores a direction denied earlier.  This
+    //also applies to inverse-rule synchronization, which calls UpsertRule.
+    Exclude(FDeniedDirections, LDir);
   end;
 end;
 
@@ -1134,6 +1338,13 @@ begin
 
   for I := 0 to High(AValues) do
     NewRule(ADirections, AValues[I], ARequireRule);
+end;
+
+function TGraphRuleGroup.DenyAll(
+  const ADirections: TGraphDirections): TGraphRuleGroup;
+begin
+  Result := Self;
+  DoDenyAll(ADirections);
 end;
 
 function TGraphRuleGroup.RequirePrevious(
@@ -1175,6 +1386,7 @@ begin
   FVal := '';
   FWeight := WFC_DEFAULT_VALUE_WEIGHT;
   SetLength(FRules, 0);
+  FDeniedDirections := [];
   SetLength(FPreviousValues, 0);
   SetLength(FPassRequirements, 0);
 end;
@@ -1308,6 +1520,8 @@ end;
 constructor TGraphEntry.Create;
 begin
   SetLength(FNeighbors, Succ(Ord(High(TGraphDirection))));
+  FAllowedValues := Default(TGraphValues);
+  FHasAllowedValues := False;
   FIndex := -1;
   Reset;
   FID := DoGenerateID;
@@ -2099,6 +2313,14 @@ begin
   Result := GetActivePassGraph.FRuleGroups;
 end;
 
+function TGraph.GetRunning: Boolean;
+begin
+  if Assigned(FPassRoot) then
+    Result := FPassRoot.FRunning
+  else
+    Result := FRunning;
+end;
+
 function TGraph.GetSelectionCallback: TValueSelectionCallback;
 begin
   Result := GetActivePassGraph.FSel;
@@ -2366,6 +2588,54 @@ begin
   Result := (Length(FValues) > 0) or (FRuleGroups.Count > 0);
 end;
 
+procedure TGraph.ValidateCurrentEntryDomains(const AOperation: String);
+var
+  I: Integer;
+  LEntry: TGraphEntry;
+begin
+  for I := 0 to Pred(FEntries.Count) do
+  begin
+    LEntry := FEntries[I];
+    if not LEntry.FHasAllowedValues then
+      Continue;
+    if LEntry.Empty
+      or (not ContainsGraphValue(LEntry.FAllowedValues, LEntry.Value)) then
+      raise EInvalidOperation.CreateFmt(
+        '%s::entry %d violates its allowed-value domain in pass %d',
+        [AOperation, I, FPassIndex]);
+  end;
+end;
+
+procedure TGraph.ValidateDeniedRuleState(const AOperation: String);
+var
+  I: Integer;
+  LDirectionOrdinal: Integer;
+  LGroup: TGraphRuleGroup;
+  LRule: TGraphRule;
+begin
+  for LGroup in FRuleGroups.Values do
+  begin
+    if not Assigned(LGroup) then
+      raise EInvalidOperation.CreateFmt(
+        '%s::pass %d contains a nil rule group',
+        [AOperation, FPassIndex]);
+    for I := 0 to High(LGroup.Rules) do
+    begin
+      LRule := LGroup.Rules[I];
+      LDirectionOrdinal := Ord(LRule.Key);
+      if (LDirectionOrdinal < Ord(Low(TGraphDirection)))
+        or (LDirectionOrdinal > Ord(High(TGraphDirection))) then
+        raise EInvalidOperation.CreateFmt(
+          '%s::pass %d contains an invalid rule direction %d',
+          [AOperation, FPassIndex, LDirectionOrdinal]);
+      if LGroup.Denied[LRule.Key] then
+        raise EInvalidOperation.CreateFmt(
+          '%s::pass %d value "%s" both denies and defines direction %d',
+          [AOperation, FPassIndex, LGroup.Value, LDirectionOrdinal]);
+    end;
+  end;
+end;
+
 function TGraph.PassLabelFromIndex(const AIndex: Integer): String;
 var
   LPair : TPair<String, Integer>;
@@ -2506,6 +2776,20 @@ var
   LInitialValues: TGraphValues;
   LSelfRequiredValues: TGraphValues;
 
+  procedure TrimValuesForEntryDomain;
+  var
+    I: Integer;
+    LVals: TGraphValues;
+  begin
+    if not AEntry.FHasAllowedValues then
+      Exit;
+    LVals := Default(TGraphValues);
+    for I := 0 to High(Values) do
+      if ContainsGraphValue(AEntry.FAllowedValues, Values[I]) then
+        Insert(Values[I], LVals, Length(LVals));
+    Values := LVals;
+  end;
+
   (*
     for each neighbor provided, this method will whittle down
     the values out param of invalid states until we're either left with
@@ -2542,6 +2826,9 @@ var
           end;
 
           LGroup := FRuleGroups[Values[I]];
+          if LGroup.Denied[ADirection]
+            or LGroup.Denied[InverseOfDir(ADirection)] then
+            Continue;
           if not LGroup.Exists[ADirection] then
           begin
             Insert(Values[I], LVals, Length(LVals));
@@ -2581,33 +2868,46 @@ var
     //get the rule group of the neighbor we'll be using to trim our values with
     LGroup := FRuleGroups[ANeighbor.Value];
 
+    if LGroup.Denied[ADirection] then
+    begin
+      SetLength(Values, 0);
+      Exit;
+    end;
+
     //check to see if the neighbor contains rules for the direction it is (relational to this entry)
     if LGroup.Exists[ADirection] then
     begin
       LRule := LGroup.Rule[ADirection];
       LRuleVals := LGroup[ADirection].Value;
 
-      //note:
-      //  no rules, means any state is possible. for users to specifically
-      //  state "nothing" should be allowed, a user defined value representing "nothing"
-      //  should be introduced
-      if Length(LRuleVals) < 1 then
-        Exit;
+      //A present-empty rule retains its historical wildcard meaning.  An
+      //explicit DenyAll direction was handled above as separate model state.
+      if Length(LRuleVals) > 0 then
+      begin
+        if TRequireRule(LRule.Info) then
+          LHasRequiredConstraint := True;
 
-      if TRequireRule(LRule.Info) then
-        LHasRequiredConstraint := True;
-
-      //Every active neighbor rule is conjunctive. Starting empty entries from
-      //the complete value set lets the first required rule force its values,
-      //while intersecting here prevents a later rule from reintroducing a
-      //candidate rejected by an earlier neighbor.
-      for I := 0 to High(Values) do
-        if ContainsGraphValue(LRuleVals, Values[I]) then
-          Insert(Values[I], LVals, Length(LVals));
-
-      //lastly, set the output values to our local validated values
-      Values := LVals
+        //Every active neighbor rule is conjunctive. Starting empty entries
+        //from the complete value set lets the first required rule force its
+        //values, while intersecting prevents a later rule from reintroducing
+        //a candidate rejected by an earlier neighbor.
+        for I := 0 to High(Values) do
+          if ContainsGraphValue(LRuleVals, Values[I]) then
+            Insert(Values[I], LVals, Length(LVals));
+        Values := LVals;
+      end;
     end;
+
+    //Deny-all is directional source state.  Check the candidate's reverse
+    //direction as well as the assigned neighbor above so legacy traversal is
+    //independent of which endpoint happened to collapse first.
+    LVals := Default(TGraphValues);
+    for I := 0 to High(Values) do
+      if (not FRuleGroups.ContainsKey(Values[I]))
+        or (not FRuleGroups[Values[I]].Denied[
+          InverseOfDir(ADirection)]) then
+        Insert(Values[I], LVals, Length(LVals));
+    Values := LVals;
   end;
 
   procedure RemoveUnforcedRequiredValues;
@@ -2742,6 +3042,8 @@ begin
       Insert(FValues[I], LInitialValues, Length(LInitialValues));
     Values := LInitialValues;
   end;
+
+  TrimValuesForEntryDomain;
 
   //get the rule group for each of the entry's neighbors on the same plane
   TrimValuesForNeighbor(AEntry[gdNorth], gdNorth);
@@ -2966,6 +3268,98 @@ begin
       'AddValue::weight must be positive [%d]', [AWeight]);
   Result := AddValue(AValue);
   Result.Weight := AWeight;
+end;
+
+function TGraph.SetAllowedValues(const X, Y, Z: TGraphCoordinate;
+  const AValues: TGraphValues): TGraph;
+var
+  I: Integer;
+  LCanonical: TGraphValues;
+  LEntry: TGraphEntry;
+  LGraph: TGraph;
+  LRoot: TGraph;
+begin
+  Result := Self;
+  if Assigned(FPassRoot) then
+    LRoot := FPassRoot
+  else
+    LRoot := Self;
+  if LRoot.FRunning then
+    raise EInvalidOperation.Create(
+      'SetAllowedValues::cannot change entry domains while the pipeline is running');
+
+  LGraph := GetActivePassGraph;
+  //Validate every caller value before allocating or changing the entry.  The
+  //stored order is always the pass's AddValue order, so duplicate or reordered
+  //input denotes the same replay model.
+  for I := 0 to High(AValues) do
+    if not ContainsGraphValue(LGraph.FValues, AValues[I]) then
+      raise EArgumentException.CreateFmt(
+        'SetAllowedValues::unknown pass value "%s"', [AValues[I]]);
+
+  SetLength(LCanonical, 0);
+  for I := 0 to High(LGraph.FValues) do
+    if ContainsGraphValue(AValues, LGraph.FValues[I]) then
+      Insert(LGraph.FValues[I], LCanonical, Length(LCanonical));
+
+  LEntry := LGraph.GetEntry(X, Y, Z);
+  LEntry.FAllowedValues := LCanonical;
+  LEntry.FHasAllowedValues := True;
+end;
+
+function TGraph.SetAllowedValues(const X, Y, Z: TGraphCoordinate;
+  const AValue: TGraphValue): TGraph;
+var
+  LValues: TGraphValues;
+begin
+  SetLength(LValues, 1);
+  LValues[0] := AValue;
+  Result := SetAllowedValues(X, Y, Z, LValues);
+end;
+
+function TGraph.ClearAllowedValues(const X, Y,
+  Z: TGraphCoordinate): TGraph;
+var
+  LEntry: TGraphEntry;
+  LGraph: TGraph;
+  LRoot: TGraph;
+begin
+  Result := Self;
+  if Assigned(FPassRoot) then
+    LRoot := FPassRoot
+  else
+    LRoot := Self;
+  if LRoot.FRunning then
+    raise EInvalidOperation.Create(
+      'ClearAllowedValues::cannot change entry domains while the pipeline is running');
+  LGraph := GetActivePassGraph;
+  LEntry := LGraph.GetEntry(X, Y, Z);
+  SetLength(LEntry.FAllowedValues, 0);
+  LEntry.FHasAllowedValues := False;
+end;
+
+function TGraph.HasAllowedValues(const X, Y,
+  Z: TGraphCoordinate): Boolean;
+var
+  LGraph: TGraph;
+begin
+  LGraph := GetActivePassGraph;
+  Result := LGraph.GetEntry(X, Y, Z).FHasAllowedValues;
+end;
+
+function TGraph.CopyAllowedValues(const X, Y,
+  Z: TGraphCoordinate): TGraphValues;
+var
+  I: Integer;
+  LEntry: TGraphEntry;
+  LGraph: TGraph;
+begin
+  Result := Default(TGraphValues);
+  LGraph := GetActivePassGraph;
+  LEntry := LGraph.GetEntry(X, Y, Z);
+  SetLength(Result, Length(LEntry.FAllowedValues));
+  for I := 0 to High(Result) do
+    Result[I] := LEntry.FAllowedValues[I];
 end;
 
 function TGraph.ForEachPass(const ACallback: TForEachPassCallback): TGraph;
@@ -3384,6 +3778,7 @@ var
     AReport.Seed := Seed;
     AReport.RandomAlgorithmVersion := WFC_RANDOM_ALGORITHM_VERSION;
     AReport.SolverAlgorithmVersion := WFC_SOLVER_ALGORITHM_VERSION;
+    AReport.GraphModelVersion := WFC_GRAPH_MODEL_VERSION;
     AReport.PipelineAlgorithmVersion := WFC_PIPELINE_ALGORITHM_VERSION;
     AReport.FailedPassIndex := -1;
     AReport.Contradiction.Kind := gckNone;
@@ -3468,6 +3863,10 @@ var
           raise EInvalidOperation.CreateFmt(
             'TrySolve::pass %d rule "%s" repeats direction %d',
             [AGraph.FPassIndex, AGraph.FValues[I], LDirectionOrdinal]);
+        if LGroup.Denied[LRule.Key] then
+          raise EInvalidOperation.CreateFmt(
+            'TrySolve::pass %d value "%s" both denies and defines direction %d',
+            [AGraph.FPassIndex, AGraph.FValues[I], LDirectionOrdinal]);
         Include(LSeenDirections, LRule.Key);
         for K := 0 to High(LRule.Value) do
           if FindValueIndex(AGraph, LRule.Value[K]) < 0 then
@@ -3488,6 +3887,8 @@ var
   begin
     ARequiredEdge := False;
     LGroup := AGraph.FRuleGroups[AGraph.FValues[ASourceValue]];
+    if LGroup.Denied[ADirection] then
+      Exit(False);
     if not LGroup.Exists[ADirection] then
       Exit(True);
     LRule := LGroup.Rule[ADirection];
@@ -3705,12 +4106,24 @@ var
         //have to satisfy adjacency and previous-pass constraints.
       end;
 
+      if AGraph.FEntries[LCell].FHasAllowedValues
+        and ((Length(AGraph.FEntries[LCell].FAllowedValues) = 0)
+          or ((LLockValue >= 0)
+            and (not ContainsGraphValue(
+              AGraph.FEntries[LCell].FAllowedValues,
+              AGraph.FValues[LLockValue])))) then
+        AModel.InitialFailureKinds[LCell] := rckEntryDomain;
+
       LAllowedCount := 0;
       LFailurePass := -1;
       LFailureNamed := False;
       for LValue := 0 to Pred(AModel.ValueCount) do
       begin
         LAllowed := (LLockValue < 0) or (LLockValue = LValue);
+        if LAllowed and AGraph.FEntries[LCell].FHasAllowedValues then
+          LAllowed := ContainsGraphValue(
+            AGraph.FEntries[LCell].FAllowedValues,
+            AGraph.FValues[LValue]);
         LGroup := AGraph.FRuleGroups[AGraph.FValues[LValue]];
         if LAllowed then
         begin
@@ -3792,7 +4205,8 @@ var
           Inc(LAllowedCount);
         end;
       end;
-      if (LAllowedCount = 0) and (LFailurePass >= 0) then
+      if (LAllowedCount = 0) and (LFailurePass >= 0)
+        and (AModel.InitialFailureKinds[LCell] <> rckEntryDomain) then
       begin
         AModel.InitialFailureKinds[LCell] := rckPreviousPass;
         ARequirementFailurePass[LCell] := LFailurePass;
@@ -3809,6 +4223,8 @@ var
     case AKind of
       rckEmptyDomain:
         Result := gckEmptyDomain;
+      rckEntryDomain:
+        Result := gckEntryDomain;
       rckAdjacency:
         Result := gckAdjacency;
       rckPreviousPass:
@@ -3882,11 +4298,13 @@ var
         LStaged[APassIndex][I] := AGraph.FEntries[I].Value;
   end;
 
-  procedure StageDefinitionlessPass(const APassIndex: Integer;
-    const AGraph: TGraph);
+  function StageDefinitionlessPass(const APassIndex: Integer;
+    const AGraph: TGraph; out AFailedEntry: Integer): Boolean;
   var
     I, LSourcePassIndex: Integer;
   begin
+    Result := False;
+    AFailedEntry := -1;
     LSourcePassIndex := -1;
     case AGraph.FPassMode of
       gpmLegacy:
@@ -3922,6 +4340,7 @@ var
 
     SetLength(LStaged[APassIndex], AGraph.FEntries.Count);
     for I := 0 to Pred(AGraph.FEntries.Count) do
+    begin
       if (not AGraph.FEntries[I].Empty)
         and (not AGraph.FEntries[I].Generated) then
         LStaged[APassIndex][I] := AGraph.FEntries[I].Value
@@ -3932,6 +4351,17 @@ var
         LStaged[APassIndex][I] := AGraph.FEntries[I].Value
       else
         LStaged[APassIndex][I] := TGraphValue.Empty;
+      if AGraph.FEntries[I].FHasAllowedValues
+        and ((LStaged[APassIndex][I] = TGraphValue.Empty)
+          or (not ContainsGraphValue(
+            AGraph.FEntries[I].FAllowedValues,
+            LStaged[APassIndex][I]))) then
+      begin
+        AFailedEntry := I;
+        Exit;
+      end;
+    end;
+    Result := True;
   end;
 
   procedure SnapshotEntries;
@@ -4113,7 +4543,22 @@ begin
 
       if not LGraph.HasDefinition then
       begin
-        StageDefinitionlessPass(LPassIndex, LGraph);
+        if not StageDefinitionlessPass(LPassIndex, LGraph,
+          LInvalidLockEntry) then
+        begin
+          AReport.Status := gssContradiction;
+          AReport.FailedPassIndex := LPassIndex;
+          AReport.Contradiction.Kind := gckEntryDomain;
+          AReport.Contradiction.PassIndex := LPassIndex;
+          AReport.Contradiction.EntryIndex := LInvalidLockEntry;
+          AReport.Contradiction.NeighborIndex := -1;
+          AReport.Contradiction.HasDirection := False;
+          AReport.Contradiction.Direction := gdNorth;
+          AReport.Contradiction.DependencyPassIndex := -1;
+          AReport.Passes[LPassIndex].Contradictions := 1;
+          AReport.Passes[LPassIndex].Disposition := gpdFailed;
+          Exit(False);
+        end;
         Continue;
       end;
 
@@ -4299,6 +4744,7 @@ var
 
 begin
   Result := Self;
+  ValidateDeniedRuleState('Run');
   ClearGeneratedValues;
 
   if (FDimension.Width = 0)
@@ -4382,6 +4828,7 @@ begin
         else
           raise ERangeError.Create('Run::invalid pass mode');
         end;
+        LGraph.ValidateCurrentEntryDomains('Run');
       end
       else
         LGraph.RunOnePass;
