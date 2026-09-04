@@ -6,8 +6,10 @@ pretokenized UTF-8 samples, adapts the learned latent states to a one-dimensiona
 for native FPC and pas2js and adds no third-party runtime dependency.
 
 This layer is useful for musical events, words, characters, command streams,
-and any other ordered discrete vocabulary. Tokenization remains a caller
-decision: the learner accepts token arrays, not raw text, MIDI, or media files.
+and any other ordered discrete vocabulary. The generic learner accepts token
+arrays. The specialized [text foundation](text.md) adds a project-owned,
+lossless Unicode-scalar tokenizer plus a portable caller-defined tokenizer
+contract; MIDI and other media remain separate domain policies.
 
 ## learning contract
 
@@ -53,11 +55,18 @@ marks an observed end.
 pass. It installs one graph value per latent state with raw observation counts
 as relative weights and exact structural east/west support.
 
-On an open graph, position zero is intersected with the observed start states
-and the final position with observed end states. A width-one output must satisfy
-both. `IntersectSequenceAllowedTokens` can further constrain any position by
-one or more public tokens without replacing an existing endpoint or caller
-domain.
+The extent-aware adapter distinguishes a whole sample, prefix, suffix,
+interior fragment, and wrapped cycle. Whole paths require observed start and
+end states. Prefixes require only an observed start. Suffixes require a
+BOS-free start and observed end. Fragments require a BOS-free start but neither
+observed endpoint. The compatibility overload retains the original whole-open
+behavior. A width-one whole output must satisfy both endpoints.
+
+`IntersectSequenceAllowedTokens` can constrain any position by one or more
+public tokens without replacing an existing endpoint or caller domain.
+`IntersectSequenceTokenConstraints`, `IntersectSequenceLockedSpan`,
+`IntersectSequencePrefix`, and `IntersectSequenceSuffix` apply checked bulk
+masks atomically. Repeated positions intersect.
 
 On a wrapped graph, every position is restricted to states with no BOS history
 and the last state must structurally connect to the first. This is a cycle
@@ -65,10 +74,18 @@ derived from the learned overlap relation. It is not evidence that the source
 was trained as wrapped, and some models have no satisfiable derived cycle.
 
 `CaptureSolvedSequence` returns public token projection and public state
-indices, then independently validates starts, ends, or the closing wrapped
-transition. Model-qualified graph keys are private adapter values. They are
+indices, records the selected extent, then independently validates its required
+start/end semantics or the closing wrapped transition. Model-qualified graph
+keys are private adapter values. They are
 collision-safe with caller tokens and never belong in public output,
 validation diagnostics, or `wfcs=1` artifacts.
+
+`AnalyzeSequenceTokenDomains` provides solver-independent forward/backward
+reachability for the same five extents. Every reported latent state and public
+token lies on at least one globally feasible path satisfying the complete
+positional mask; wrapped analysis additionally proves the closing edge. Public
+tokens stay in first-seen vocabulary order and carry aggregate raw observation
+weights. This is the exact inspection surface used by text completion.
 
 ## passes and projection
 
@@ -146,23 +163,29 @@ sequence order, and `WFC_SEQUENCE_LEARN_ALGORITHM_VERSION`. Serialized identity
 also includes `WFC_SEQUENCE_MODEL_VERSION` and `WFC_SEQUENCE_TEXT_VERSION`.
 Graph output additionally depends on `WFC_SEQUENCE_GRAPH_MODEL_VERSION`,
 `WFC_SEQUENCE_GRAPH_ADAPTER_VERSION`, graph length and wrapping, token-domain
-intersections, pass constraints, solve options, solver/random versions, and
-the seed described in [deterministic generation](determinism.md).
+intersections, selected extent, pass constraints, solve options,
+solver/random versions, and the seed described in
+[deterministic generation](determinism.md).
 
 ## version-1 scope
 
-Version 1 deliberately does not tokenize raw input, perform smoothing, train a
-wrapped corpus, or implement a probabilistic language model. It learns hard
-structural constraints and raw relative counts from caller-supplied tokens.
-Prefixes, suffixes, and fixed-token spans can be expressed by repeated
-per-position token intersections, but dedicated bulk helpers and a text editor
-remain roadmap work.
+Version 1 deliberately does not perform smoothing, train a wrapped corpus, or
+implement a probabilistic language model. It learns hard structural constraints
+and raw relative counts from caller-supplied tokens. Dedicated extent and bulk
+constraint helpers, exact public-domain analysis, and Unicode-scalar text
+completion are now available. A standard project-owned word-boundary tokenizer,
+variable-length editor, and interactive browser editor remain roadmap work.
 
 The portable foundation remains project-owned Pascal. A tokenizer, event
 codec, exporter, or inspector that can reasonably be implemented for FPC and
-pas2js belongs in the ecosystem rather than becoming a required library.
+pas2js belongs in the ecosystem rather than becoming a required library. The
+Unicode-scalar tokenizer and exact domain analyzer follow that rule without a
+host regex, locale service, or third-party runtime.
 
 See the portable
 [LearnSequence example](../examples/sequence/01_LearnSequence/README.md) for
 canonical round-trip, seeded open generation, independent validation, and
 public/latent/public pass composition from one source on both targets.
+See [ConstraintCompletion](../examples/text/02_ConstraintCompletion/README.md)
+for anchored infill, prefix-only continuation, exact candidate domains, and
+native/pas2js replay.

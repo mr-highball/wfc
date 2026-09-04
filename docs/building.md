@@ -2,12 +2,14 @@
 
 The dependency-free build covers the core, causal-trace kernel/public/utility
 contracts, specialized 2D and settlement, radius-one model-learning,
-overlapping-pattern, sequence, exact music-score, music projection, Standard
-MIDI File, score-export, and voxel-3D units and their conformance suites, plus
+overlapping-pattern, sequence, Unicode-scalar text completion, exact
+music-score, music projection, Standard MIDI File, score-export, and voxel-3D
+units and their conformance suites, plus
 the checked voxel pass bridge and multi-pass Building 3D owner/validator,
 pass-aware view, fixed-integer isometric projector, and canonical SVG encoder.
 It also runs seeded smoke checks of the portable console demos, including the
-causal-trace inspector, and writes a checked seed-zero Building SVG artifact.
+causal-trace inspector and anchored text infill, and writes a checked
+seed-zero Building SVG artifact.
 It does not initialize the optional legacy music submodule or build the
 unfinished Castle Game Engine viewer. The 2D world and Building 3D workbench
 have separate dependency-free pas2js browser entry points described below.
@@ -26,8 +28,10 @@ inspect project artifacts, but tool-specific units and types must not enter
 core/runtime `uses` clauses or public APIs. Canonical artifacts, validation,
 generation, and replay remain usable without those tools.
 
-The sequence learner, graph adapter, validator, and canonical `wfcs=1` codec
-follow this boundary. The exact music score, fixed-quantum cell codecs,
+The sequence learner, extent-aware graph adapter, exact public-domain analyzer,
+validator, canonical `wfcs=1` codec, Unicode-scalar tokenizer, and text
+completion/validation owner follow this boundary. The exact music score,
+fixed-quantum cell codecs,
 cross-model projection maps, strict `wfcmusic=1` score codec, raw SMF
 format-0/1 codec, and format-0 score exporter are also project-owned portable
 Pascal. The voxel kit, semantic validator, and integer surface mesh are
@@ -59,17 +63,17 @@ From the repository root, use the entry point for your shell:
 Both scripts rebuild with assertions and range, overflow, and I/O checks, run
 `wfc_test`, `wfc_world2d_test`, `wfc_world2d_settlement_test`,
 `wfc_learn_test`, `wfc_pattern2d_test`, `wfc_sequence_test`,
-`wfc_voxel3d_test`, `wfc_voxel3d_isometric_test`,
+`wfc_text_test`, `wfc_voxel3d_test`, `wfc_voxel3d_isometric_test`,
 `wfc_voxel3d_svg_test`, `wfc_building3d_test`,
 `wfc_building3d_view_test`, `wfc_midi_smf_test`,
 `wfc_music_test`,
 `wfc_music_graph_test`, `wfc_music_midi_test`, `wfc_trace_reference_test`,
 `wfc_trace_test`, and `wfc_trace_utility_test`, then compile and smoke-test the
 portable console examples with seed `0`, including the bounded/wrapped spatial
-dependency self-check, causal-trace inspector, and depth-three Building 3D
-pipeline; the multi-pass and selective-settlement worlds also run with their
-default seeds. Finally, the native `Building3DSvg` host generates and validates
-`build/native/bin/building3d-seed-zero.svg`.
+dependency self-check, causal-trace inspector, anchored text completion, and
+depth-three Building 3D pipeline; the multi-pass and selective-settlement
+worlds also run with their default seeds. Finally, the native `Building3DSvg`
+host generates and validates `build/native/bin/building3d-seed-zero.svg`.
 A compiler error, failed check,
 or example failure produces a nonzero exit code. Compiler units and binaries
 are written beneath `build/native/`; running the gate does not modify tracked
@@ -176,6 +180,12 @@ pas2js -B -Tnodejs -Mdelphi -Fusrc \
   test/wfc_sequence_test.lpr
 node build/pas2js/sequence/wfc_sequence_test.js
 
+mkdir -p build/pas2js/text-units build/pas2js/text
+pas2js -B -Tnodejs -Mdelphi -Fusrc \
+  -FUbuild/pas2js/text-units -FEbuild/pas2js/text \
+  test/wfc_text_test.lpr
+node build/pas2js/text/wfc_text_test.js
+
 mkdir -p build/pas2js/voxel-units build/pas2js/voxel
 pas2js -B -Tnodejs -Mdelphi -Fusrc \
   -FUbuild/pas2js/voxel-units -FEbuild/pas2js/voxel \
@@ -272,6 +282,18 @@ pas2js -B -Tnodejs -Mdelphi -Fusrc \
   -FUbuild/pas2js/sequence-example-units -FEbuild/pas2js/sequence-example \
   examples/sequence/01_LearnSequence/LearnSequence.lpr
 node build/pas2js/sequence-example/LearnSequence.js 0
+```
+
+The text host shares Unicode-scalar learning, exact domain analysis, anchored
+infill, and independent validation between native FPC and Node:
+
+```bash
+mkdir -p build/pas2js/text-example-units build/pas2js/text-example
+pas2js -B -Tnodejs -Mdelphi -Fusrc \
+  -Fuexamples/text/02_ConstraintCompletion \
+  -FUbuild/pas2js/text-example-units -FEbuild/pas2js/text-example \
+  examples/text/02_ConstraintCompletion/ConstraintCompletionNode.lpr
+node build/pas2js/text-example/ConstraintCompletionNode.js 0
 ```
 
 The music host exercises harmony + rhythm -> melody pass composition, exact

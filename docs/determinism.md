@@ -105,11 +105,15 @@ Sequence models additionally depend on the exact ordered pretokenized UTF-8
 corpus, order, and `WFC_SEQUENCE_LEARN_ALGORITHM_VERSION`. Canonical `wfcs=1`
 captures ordered sample lengths, public tokens, typed BOS/token histories,
 emissions, and raw observation/start/end counts. Graph replay also includes
-`WFC_SEQUENCE_MODEL_VERSION`, `WFC_SEQUENCE_TEXT_VERSION`,
-`WFC_SEQUENCE_GRAPH_MODEL_VERSION`, `WFC_SEQUENCE_GRAPH_ADAPTER_VERSION`,
-output length and wrapping, public-token domain intersections, and any latent
-or projected cross-pass requirements. Wrapped output is a derived BOS-free
-cycle, not wrapped training evidence. See [sequence models](sequences.md).
+  `WFC_SEQUENCE_MODEL_VERSION`, `WFC_SEQUENCE_TEXT_VERSION`,
+  `WFC_SEQUENCE_GRAPH_MODEL_VERSION`, `WFC_SEQUENCE_GRAPH_ADAPTER_VERSION`,
+  output length and extent, public-token domain intersections, and any latent
+  or projected cross-pass requirements. Wrapped output is a derived BOS-free
+  cycle, not wrapped training evidence. Text completion additionally includes
+  the exact raw documents or serialized sequence model, tokenizer kind and
+  version, ordered prefix/suffix/locked-span/domain request, completion version,
+  and independent validation contract. See [sequence models](sequences.md) and
+  [text constraint completion](text.md).
 
 The replay contract assumes values and rules are registered through
 the public builders or a versioned project adapter such as

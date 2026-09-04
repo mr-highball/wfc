@@ -19,6 +19,7 @@ $settlementTestSource = Join-Path $repositoryRoot `
 $learningTestSource = Join-Path $repositoryRoot 'test/wfc_learn_test.lpr'
 $patternTestSource = Join-Path $repositoryRoot 'test/wfc_pattern2d_test.lpr'
 $sequenceTestSource = Join-Path $repositoryRoot 'test/wfc_sequence_test.lpr'
+$textTestSource = Join-Path $repositoryRoot 'test/wfc_text_test.lpr'
 $voxelTestSource = Join-Path $repositoryRoot 'test/wfc_voxel3d_test.lpr'
 $buildingTestSource = Join-Path $repositoryRoot 'test/wfc_building3d_test.lpr'
 $traceTestSources = @(
@@ -51,6 +52,10 @@ $patternExampleSource = Join-Path $repositoryRoot `
   'examples/learning/03_LearnPatterns/LearnPatterns.lpr'
 $sequenceExampleSource = Join-Path $repositoryRoot `
   'examples/sequence/01_LearnSequence/LearnSequence.lpr'
+$textCompletionExampleSource = Join-Path $repositoryRoot `
+  'examples/text/02_ConstraintCompletion/ConstraintCompletion.lpr'
+$textCompletionExampleDirectory = Join-Path $repositoryRoot `
+  'examples/text/02_ConstraintCompletion'
 $musicExampleSource = Join-Path $repositoryRoot `
   'examples/music/03_PassComposition/PassComposition.lpr'
 $spatialExampleSource = Join-Path $repositoryRoot `
@@ -286,6 +291,42 @@ Write-Host "Running '$sequenceTestExecutable'."
 $sequenceTestExitCode = $LASTEXITCODE
 if ($sequenceTestExitCode -ne 0) {
   exit $sequenceTestExitCode
+}
+
+$textTestCompilerArguments = @(
+  $CompilerOptions
+  '-B'
+  '-Mdelphi'
+  '-Sa'
+  '-Cr'
+  '-Co'
+  '-Ci'
+  "-Fu$sourceDirectory"
+  "-FU$unitOutputDirectory"
+  "-FE$binaryOutputDirectory"
+  $textTestSource
+)
+
+Write-Host 'Building the text-completion conformance suite.'
+& $Compiler @textTestCompilerArguments
+$textTestCompilerExitCode = $LASTEXITCODE
+if ($textTestCompilerExitCode -ne 0) {
+  exit $textTestCompilerExitCode
+}
+
+$textTestExecutableName = if ($env:OS -eq 'Windows_NT') {
+  'wfc_text_test.exe'
+} else {
+  'wfc_text_test'
+}
+$textTestExecutable = Join-Path $binaryOutputDirectory `
+  $textTestExecutableName
+
+Write-Host "Running '$textTestExecutable'."
+& $textTestExecutable
+$textTestExitCode = $LASTEXITCODE
+if ($textTestExitCode -ne 0) {
+  exit $textTestExitCode
 }
 
 $voxelTestCompilerArguments = @(
@@ -743,6 +784,43 @@ Write-Host "Smoke testing '$sequenceExampleExecutable' with seed 0."
 $sequenceExampleExitCode = $LASTEXITCODE
 if ($sequenceExampleExitCode -ne 0) {
   exit $sequenceExampleExitCode
+}
+
+$textCompletionExampleCompilerArguments = @(
+  $CompilerOptions
+  '-B'
+  '-Mdelphi'
+  '-Sa'
+  '-Cr'
+  '-Co'
+  '-Ci'
+  "-Fu$sourceDirectory"
+  "-Fu$textCompletionExampleDirectory"
+  "-FU$unitOutputDirectory"
+  "-FE$binaryOutputDirectory"
+  $textCompletionExampleSource
+)
+
+Write-Host 'Building the portable text constraint-completion example.'
+& $Compiler @textCompletionExampleCompilerArguments
+$textCompletionExampleCompilerExitCode = $LASTEXITCODE
+if ($textCompletionExampleCompilerExitCode -ne 0) {
+  exit $textCompletionExampleCompilerExitCode
+}
+
+$textCompletionExampleExecutableName = if ($env:OS -eq 'Windows_NT') {
+  'ConstraintCompletion.exe'
+} else {
+  'ConstraintCompletion'
+}
+$textCompletionExampleExecutable = Join-Path $binaryOutputDirectory `
+  $textCompletionExampleExecutableName
+
+Write-Host "Smoke testing '$textCompletionExampleExecutable' with seed 0."
+& $textCompletionExampleExecutable 0 | Out-Null
+$textCompletionExampleExitCode = $LASTEXITCODE
+if ($textCompletionExampleExitCode -ne 0) {
+  exit $textCompletionExampleExitCode
 }
 
 $musicExampleCompilerArguments = @(

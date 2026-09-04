@@ -503,6 +503,12 @@ begin
     wmbWrap, LValidation) and
     (LValidation.Issue.Kind = wsgikBoundaryState),
     'wrapped validation reports a BOS-bearing state without leaking keys');
+  Check(not ValidateSequenceStatePath(LModel, IndicesOf([0]),
+    wseFragment, LValidation) and
+    (LValidation.Issue.Kind = wsgikBoundaryState) and
+    (Pos('wrapped', DescribeSequenceGraphIssue(
+      LValidation.Issue)) = 0),
+    'BOS diagnostics remain accurate for non-wrapped extents');
   Check(not ValidateSequenceStatePath(LModel, IndicesOf([1, 1]),
     wmbWrap, LValidation) and
     (LValidation.Issue.Kind = wsgikTransition),
@@ -1057,6 +1063,7 @@ var
 begin
   Check((WFC_SEQUENCE_MODEL_VERSION = 1) and
     (WFC_SEQUENCE_GRAPH_MODEL_VERSION = 1) and
+    (WFC_SEQUENCE_EXTENT_VERSION = 1) and
     (WFC_SEQUENCE_LEARN_ALGORITHM_VERSION = 1) and
     (WFC_SEQUENCE_GRAPH_ADAPTER_VERSION = 1) and
     (WFC_SEQUENCE_TEXT_VERSION = 1),

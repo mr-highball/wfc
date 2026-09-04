@@ -67,8 +67,15 @@ The repository already contains the beginnings of the ecosystem:
   demonstration;
 - an immutable bounded sequence model with typed BOS history, deterministic
   order-N learning from pretokenized UTF-8 corpora, raw counts, structural
-  suffix/prefix recombination, open and derived wrapped graph adaptation,
-  latent/public pass projection, and strict canonical `wfcs=1` text I/O;
+  suffix/prefix recombination, whole/prefix/suffix/fragment and derived wrapped
+  graph adaptation, atomic bulk token constraints, exact feasible-domain
+  analysis, latent/public pass projection, and strict canonical `wfcs=1` text
+  I/O;
+- a project-owned text constraint-completion foundation with lossless
+  Unicode-scalar tokenization across native UTF-8 and pas2js UTF-16,
+  caller-defined tokenizer learning, anchored infill, prefix continuation,
+  structured semantic failure, independent text validation, and a shared
+  native/pas2js demonstration;
 - a project-owned Music Foundation v1 with an immutable exact score IR,
   reduced rational helpers, strict `wm1`/`wr1`/`wh1` fixed-quantum cells,
   lossless aligned monophonic projection/rebuild, and exact rhythm and
@@ -137,8 +144,10 @@ It is not yet the finished system described above:
   stepping, search controls, and domain-specific browser inspection remain;
 - model learning now covers pretokenized cardinal radius-one corpora,
   structurally compatible overlapping 2D footprints, and bounded order-N
-  sequences with explicit projection; tokenizers, wrapped sequence training,
-  3D neighborhoods, provenance metadata, and the planned
+  sequences with explicit projection; Unicode-scalar text tokenization and
+  exact completion domains now sit above that sequence layer, while a
+  project-owned versioned word-boundary table, wrapped sequence training, 3D
+  neighborhoods, provenance metadata, and the planned
   validation/run/inspection tools remain;
 - the hosted CI definition is present, but its first remote run still needs to
   be observed before the Phase 0 exit gate is claimed complete;
@@ -338,10 +347,12 @@ both, and round-trips strict standalone `wfcp=1` artifacts.
 The sequence version-1 layer learns bounded order-N latent states from ordered
 pretokenized UTF-8 corpora, resets typed BOS history at every sample boundary,
 retains raw observation/start/end counts, derives exact suffix/prefix
-compatibility, adapts open endpoints or BOS-free wrapped cycles, composes
-latent and public-token passes in either direction, and round-trips strict
-standalone `wfcs=1` artifacts. Corpus seams are absent, while compatible
-states may intentionally recombine. The broader tools, tokenizers, wrapped
+compatibility, adapts whole/prefix/suffix/fragment paths or BOS-free wrapped
+cycles, composes latent and public-token passes in either direction, and
+round-trips strict standalone `wfcs=1` artifacts. Atomic positional masks and
+exact forward/backward domain analysis now support project-owned Unicode-scalar
+text completion. Corpus seams are absent, while compatible states may
+intentionally recombine. The broader tools, word-boundary tables, wrapped
 sequence training, provenance metadata, higher-dimensional extraction, and
 complete exit gate remain open.
 
@@ -477,14 +488,24 @@ playback requirements.
   structural recombination, derived BOS-free wrapped cycles, projection-aware
   pass helpers, independent path validation, and canonical `wfcs=1` text on
   native FPC and pas2js.
-- Extend the Unicode-aware 1D token topology with dedicated prefix, suffix,
-  mask, and locked-span helpers and caller-selectable tokenizers.
-- Character, word, and caller-defined token models with learned n-gram and
-  offset constraints.
+- Text Completion Foundation v1 now adds whole, prefix, suffix, fragment, and
+  cycle extents; atomic prefix/suffix/mask/locked-span helpers; exact globally
+  feasible token domains with aggregate learned weights; a lossless
+  project-owned Unicode-scalar tokenizer; a caller-defined tokenizer learning
+  contract; anchored infill; prefix continuation; structured failure; and
+  independent text/token validation.
+- A shared native FPC and pas2js/Node seed-zero fixture proves `e | c` at one
+  unresolved position, completes `the quick fox rests.`, rejects a truncated
+  whole sample while accepting its prefix extent, and replays identically with
+  no external dependency.
+- Add a standard lossless word tokenizer only with project-owned, versioned
+  Unicode word-boundary data, then extend learned models with useful offset
+  constraints.
 - Passes for structure/template -> lexical fill -> punctuation or other
   domain-specific refinement.
-- Native CLI completion and an interactive pas2js editor that exposes domains
-  and explains why a token was selected or rejected.
+- Generalize the native demonstration into an arbitrary-corpus completion CLI
+  and build an interactive pas2js editor that exposes domains and causal
+  reasons for token acceptance or rejection.
 
 **Exit gate:** output contains no forbidden learned neighborhoods, boundary and
 lock behavior is covered by tests, seeded completions match across native and

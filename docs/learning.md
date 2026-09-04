@@ -286,7 +286,10 @@ pattern layer extracts overlapping multi-cell 2D footprints, and the sequence
 layer learns bounded order-N latent states from pretokenized UTF-8 corpora.
 Sequence samples reset a typed BOS history and add no cross-sample seam, while
 exact suffix/prefix compatibility intentionally permits recombination. These
-layers do not yet tokenize raw files, learn 3D neighborhoods, smooth unseen
-relations, attach provenance or semantic tags, or implement a probabilistic
-language model. Those are deliberate extension points built on stable explicit
-IR rather than hidden behavior.
+generic learners retain their explicit token boundary; the specialized
+[text foundation](text.md) now converts raw in-memory documents with a
+project-owned Unicode-scalar tokenizer or caller callback. The ecosystem does
+not yet stream raw files, learn 3D neighborhoods, smooth unseen relations,
+attach provenance or semantic tags, or implement a probabilistic language
+model. Those are deliberate extension points built on stable explicit IR
+rather than hidden behavior.

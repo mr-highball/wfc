@@ -12,6 +12,7 @@ settlement_test_source="$repository_root/test/wfc_world2d_settlement_test.lpr"
 learning_test_source="$repository_root/test/wfc_learn_test.lpr"
 pattern_test_source="$repository_root/test/wfc_pattern2d_test.lpr"
 sequence_test_source="$repository_root/test/wfc_sequence_test.lpr"
+text_test_source="$repository_root/test/wfc_text_test.lpr"
 voxel_test_source="$repository_root/test/wfc_voxel3d_test.lpr"
 building_test_source="$repository_root/test/wfc_building3d_test.lpr"
 trace_reference_test_source="$repository_root/test/wfc_trace_reference_test.lpr"
@@ -31,6 +32,8 @@ learning_example_source="$repository_root/examples/learning/01_LearnTiles/LearnT
 corpus_example_source="$repository_root/examples/learning/02_LearnCorpus/LearnCorpus.lpr"
 pattern_example_source="$repository_root/examples/learning/03_LearnPatterns/LearnPatterns.lpr"
 sequence_example_source="$repository_root/examples/sequence/01_LearnSequence/LearnSequence.lpr"
+text_completion_example_source="$repository_root/examples/text/02_ConstraintCompletion/ConstraintCompletion.lpr"
+text_completion_example_directory="$repository_root/examples/text/02_ConstraintCompletion"
 music_example_source="$repository_root/examples/music/03_PassComposition/PassComposition.lpr"
 spatial_example_source="$repository_root/examples/passes/01_SpatialDependencies/SpatialDependencies.lpr"
 trace_example_source="$repository_root/examples/passes/02_TraceInspector/TraceInspector.lpr"
@@ -52,6 +55,7 @@ compiler_settlement_test_source=$settlement_test_source
 compiler_learning_test_source=$learning_test_source
 compiler_pattern_test_source=$pattern_test_source
 compiler_sequence_test_source=$sequence_test_source
+compiler_text_test_source=$text_test_source
 compiler_voxel_test_source=$voxel_test_source
 compiler_building_test_source=$building_test_source
 compiler_trace_reference_test_source=$trace_reference_test_source
@@ -71,6 +75,8 @@ compiler_learning_example_source=$learning_example_source
 compiler_corpus_example_source=$corpus_example_source
 compiler_pattern_example_source=$pattern_example_source
 compiler_sequence_example_source=$sequence_example_source
+compiler_text_completion_example_source=$text_completion_example_source
+compiler_text_completion_example_directory=$text_completion_example_directory
 compiler_music_example_source=$music_example_source
 compiler_spatial_example_source=$spatial_example_source
 compiler_trace_example_source=$trace_example_source
@@ -92,6 +98,7 @@ case "$host_system" in
     compiler_learning_test_source=$(cygpath -m "$learning_test_source") || exit $?
     compiler_pattern_test_source=$(cygpath -m "$pattern_test_source") || exit $?
     compiler_sequence_test_source=$(cygpath -m "$sequence_test_source") || exit $?
+    compiler_text_test_source=$(cygpath -m "$text_test_source") || exit $?
     compiler_voxel_test_source=$(cygpath -m "$voxel_test_source") || exit $?
     compiler_building_test_source=$(cygpath -m "$building_test_source") || exit $?
     compiler_trace_reference_test_source=$(cygpath -m "$trace_reference_test_source") || exit $?
@@ -111,6 +118,8 @@ case "$host_system" in
     compiler_corpus_example_source=$(cygpath -m "$corpus_example_source") || exit $?
     compiler_pattern_example_source=$(cygpath -m "$pattern_example_source") || exit $?
     compiler_sequence_example_source=$(cygpath -m "$sequence_example_source") || exit $?
+    compiler_text_completion_example_source=$(cygpath -m "$text_completion_example_source") || exit $?
+    compiler_text_completion_example_directory=$(cygpath -m "$text_completion_example_directory") || exit $?
     compiler_music_example_source=$(cygpath -m "$music_example_source") || exit $?
     compiler_spatial_example_source=$(cygpath -m "$spatial_example_source") || exit $?
     compiler_trace_example_source=$(cygpath -m "$trace_example_source") || exit $?
@@ -251,6 +260,27 @@ esac
 
 printf "Running '%s'.\n" "$sequence_test_executable"
 "$sequence_test_executable" || exit $?
+
+printf "Building the text-completion conformance suite.\n"
+"$compiler" "$@" \
+  -B \
+  -Mdelphi \
+  -Sa \
+  -Cr \
+  -Co \
+  -Ci \
+  "-Fu$compiler_source_directory" \
+  "-FU$compiler_unit_output_directory" \
+  "-FE$compiler_binary_output_directory" \
+  "$compiler_text_test_source" || exit $?
+
+text_test_executable="$binary_output_directory/wfc_text_test"
+case "$host_system" in
+  CYGWIN*|MINGW*|MSYS*) text_test_executable="${text_test_executable}.exe" ;;
+esac
+
+printf "Running '%s'.\n" "$text_test_executable"
+"$text_test_executable" || exit $?
 
 printf "Building the voxel-3D foundation conformance suite.\n"
 "$compiler" "$@" \
@@ -532,6 +562,28 @@ esac
 
 printf "Smoke testing '%s' with seed 0.\n" "$sequence_example_executable"
 "$sequence_example_executable" 0 >/dev/null || exit $?
+
+printf "Building the portable text constraint-completion example.\n"
+"$compiler" "$@" \
+  -B \
+  -Mdelphi \
+  -Sa \
+  -Cr \
+  -Co \
+  -Ci \
+  "-Fu$compiler_source_directory" \
+  "-Fu$compiler_text_completion_example_directory" \
+  "-FU$compiler_unit_output_directory" \
+  "-FE$compiler_binary_output_directory" \
+  "$compiler_text_completion_example_source" || exit $?
+
+text_completion_example_executable="$binary_output_directory/ConstraintCompletion"
+case "$host_system" in
+  CYGWIN*|MINGW*|MSYS*) text_completion_example_executable="${text_completion_example_executable}.exe" ;;
+esac
+
+printf "Smoke testing '%s' with seed 0.\n" "$text_completion_example_executable"
+"$text_completion_example_executable" 0 >/dev/null || exit $?
 
 printf "Building the dependency-free pass-composed music example.\n"
 "$compiler" "$@" \

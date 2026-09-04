@@ -15,6 +15,7 @@ the [roadmap](../ROADMAP.md).
 | Learned corpus | `learning/02_LearnCorpus/LearnCorpus.lpr` | Native FPC, pas2js/Node | Learns one directed model from two differently sized samples, proves their local wraps and absent cross-sample seams, round-trips canonical `wfcm=2`, and independently validates generated orientation. |
 | Overlapping patterns | `learning/03_LearnPatterns/LearnPatterns.lpr` | Native FPC, pas2js/Node | Learns weighted `2x2` structure from heterogeneous grids with D4 augmentation, round-trips strict `wfcp=1`, solves private latent patterns, independently validates every overlap and projected token contribution, and prints a portable signature without external dependencies. |
 | Learned sequence | `sequence/01_LearnSequence/LearnSequence.lpr` | Native FPC, pas2js/Node | Learns bounded order-2 latent states from a pretokenized UTF-8 corpus, round-trips strict `wfcs=1`, constrains public projection, solves and independently validates the path, and exposes no private graph key or external dependency. |
+| Text constraint completion | `text/02_ConstraintCompletion/ConstraintCompletion.lpr` and `ConstraintCompletionNode.lpr` | Native FPC, pas2js/Node | Learns project-authored raw text with the project-owned Unicode-scalar tokenizer, exposes exact feasible domains, composes prefix/suffix/mask/interior locks, distinguishes prefix from whole-sample boundaries, independently validates anchored infill, and replays without an external dependency. |
 | Pass-composed music | `music/03_PassComposition/PassComposition.lpr` | Native FPC, pas2js/Node | Solves harmony and rhythm before a jointly constrained melody, rebuilds an exact score, round-trips strict `wfcmusic=1` and project-owned SMF bytes, and needs no playback or external dependency. |
 | Text-rendered 2D world | `text/01_SimpleTiledWorld/SimpleTiledWorld.lpr` | Native FPC, pas2js/Node | Builds and runs from the same Pascal source, prints and accepts an optional replay seed, and needs no external dependency. This is world generation rendered as text, not a text-prediction model. |
 | Voxel 3D foundation | `../test/wfc_voxel3d_test.lpr` | Native FPC, pas2js/Node | Proves deterministic yaw variants, exact six-face sockets, vertical support, captured scene signatures, independent entrance/connectivity validation, wrapped seams, and renderer-neutral integer meshes using only repository units and the standard RTL. |
@@ -29,9 +30,10 @@ The 2D field instrument and Building 3D workbench exercise the real browser
 target and document host. The causal-trace console inspector now proves
 portable event capture, validation, hashing, pass slices, and backward cause
 links. Interactive stepping, live domain views, richer failed-clause/minimal
-core explanations, streaming capture, and a text-prediction browser demo remain
-roadmap work. The Castle shell is retained only as an optional native-engine
-edge; the standard 3D graphical path no longer waits on it.
+core explanations, streaming capture, and an interactive text-completion
+browser editor remain roadmap work. The Castle shell is retained only as an
+optional native-engine edge; the standard 3D graphical path no longer waits
+on it.
 
 ## dependency-free builds
 
@@ -234,6 +236,25 @@ See the [sequence example guide](sequence/01_LearnSequence/README.md) and
 [sequence-model documentation](../docs/sequences.md) for the bounded/open
 learning contract, derived wrapped-cycle semantics, pass projection, and
 versioned replay identity.
+
+The constraint-completion example learns raw Unicode-scalar text, combines a
+prefix, suffix, interior lock, and positional mask, prints the exact feasible
+domain, and proves that prefix continuation has different endpoint semantics
+from whole-sample generation:
+
+```text
+fpc -B -Mdelphi -Sa -Cr -Co -Ci -Fusrc -Fuexamples/text/02_ConstraintCompletion -FUbuild/examples/text-completion/native/units -FEbuild/examples/text-completion/native/bin examples/text/02_ConstraintCompletion/ConstraintCompletion.lpr
+build/examples/text-completion/native/bin/ConstraintCompletion 0
+```
+
+```text
+pas2js -B -Tnodejs -Mdelphi -Fusrc -Fuexamples/text/02_ConstraintCompletion -FUbuild/examples/text-completion/pas2js/units -FEbuild/examples/text-completion/pas2js/bin examples/text/02_ConstraintCompletion/ConstraintCompletionNode.lpr
+node build/examples/text-completion/pas2js/bin/ConstraintCompletionNode.js 0
+```
+
+See the [constraint-completion guide](text/02_ConstraintCompletion/README.md)
+and [text foundation](../docs/text.md) for scalar offsets, extent semantics,
+domain analysis, independent validation, replay inputs, and the non-LLM scope.
 
 The pass-composed music example exercises exact cross-vocabulary maps over
 three latent sequence models, score reconstruction, strict `wfcmusic=1`, and

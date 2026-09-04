@@ -34,6 +34,7 @@ uses
 const
   WFC_SEQUENCE_MODEL_VERSION = 1;
   WFC_SEQUENCE_GRAPH_MODEL_VERSION = 1;
+  WFC_SEQUENCE_EXTENT_VERSION = 1;
 
 type
   EWfcSequence = class(EWfcModel);
@@ -66,6 +67,28 @@ type
   TWfcSequenceStates = array of TWfcSequenceState;
   TWfcSequenceStateIndices = array of Integer;
   TWfcSequenceSampleLengths = array of Integer;
+
+  (*
+    Describes which learned corpus boundaries a generated path represents.
+    Whole paths begin and end at observed sample boundaries. Prefixes begin at
+    an observed sample boundary but may stop anywhere; suffixes may begin at
+    an interior state but end at an observed boundary; fragments require
+    neither endpoint. Interior starts exclude every BOS-bearing latent state.
+    Wrapped paths are BOS-free structural cycles.
+  *)
+  TWfcSequenceExtent = (
+    wseWhole,
+    wsePrefix,
+    wseSuffix,
+    wseFragment,
+    wseWrap
+  );
+
+  TWfcSequenceTokenConstraint = record
+    Position: Integer;
+    AllowedTokens: TWfcModelTokens;
+  end;
+  TWfcSequenceTokenConstraints = array of TWfcSequenceTokenConstraint;
 
   { TWfcSequenceModel }
 
@@ -157,6 +180,16 @@ function MakeWfcSequenceTokenHistoryItem(
 
 function MakeWfcSequenceState(const AHistory: TWfcSequenceHistory;
   const AEmittedTokenIndex: Integer): TWfcSequenceState;
+
+function MakeWfcSequenceTokenConstraint(const APosition: Integer;
+  const AAllowedTokens: TWfcModelTokens): TWfcSequenceTokenConstraint;
+
+{ Validates every position and public token before a caller mutates graph or
+  analysis state. Empty allowed-token sets are valid constraints that make a
+  position unsatisfiable. }
+procedure ValidateSequenceTokenConstraints(
+  const AModel: TWfcSequenceModel; const ALength: Integer;
+  const AConstraints: TWfcSequenceTokenConstraints);
 
 implementation
 
@@ -267,6 +300,56 @@ begin
   for I := 0 to Length(AHistory) - 1 do
     Result.History[I] := AHistory[I];
   Result.EmittedTokenIndex := AEmittedTokenIndex;
+end;
+
+function MakeWfcSequenceTokenConstraint(const APosition: Integer;
+  const AAllowedTokens: TWfcModelTokens): TWfcSequenceTokenConstraint;
+var
+  I: Integer;
+  LTokenCount: Integer;
+begin
+  LTokenCount := CheckedLength(Length(AAllowedTokens),
+    'sequence constraint token count');
+  Result.Position := APosition;
+  Result.AllowedTokens := nil;
+  SetLength(Result.AllowedTokens, LTokenCount);
+  for I := 0 to LTokenCount - 1 do
+    Result.AllowedTokens[I] := AAllowedTokens[I];
+end;
+
+procedure ValidateSequenceTokenConstraints(
+  const AModel: TWfcSequenceModel; const ALength: Integer;
+  const AConstraints: TWfcSequenceTokenConstraints);
+var
+  I: Integer;
+  J: Integer;
+  LConstraintCount: Integer;
+  LTokenCount: Integer;
+begin
+  if not Assigned(AModel) then
+    raise EArgumentNilException.Create(
+      'sequence constraint model cannot be nil');
+  if ALength < 0 then
+    raise ERangeError.CreateFmt(
+      'sequence constraint length cannot be negative [%d]', [ALength]);
+  LConstraintCount := CheckedLength(Length(AConstraints),
+    'sequence constraint count');
+  for I := 0 to LConstraintCount - 1 do
+  begin
+    if (AConstraints[I].Position < 0) or
+        (AConstraints[I].Position >= ALength) then
+      raise ERangeError.CreateFmt(
+        'sequence constraint position is out of bounds [%d: %d]',
+        [I, AConstraints[I].Position]);
+    LTokenCount := CheckedLength(
+      Length(AConstraints[I].AllowedTokens),
+      Format('sequence constraint %d token count', [I]));
+    for J := 0 to LTokenCount - 1 do
+      if AModel.FindPublicToken(
+          AConstraints[I].AllowedTokens[J]) < 0 then
+        raise EArgumentException.CreateFmt(
+          'unknown sequence constraint token [%d, %d]', [I, J]);
+  end;
 end;
 
 constructor TWfcSequenceModel.Create(const AOrder: Integer;

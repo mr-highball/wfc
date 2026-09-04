@@ -27,9 +27,13 @@ modular 3D structures, music, text, and other discrete design problems.
 > latent assignments, and independently validates projected token grids
 > through canonical `wfcp=1` artifacts. The sequence foundation learns bounded
 > order-N models from pretokenized UTF-8 corpora, derives structural
-> suffix/prefix recombination, applies open or derived wrapped graph domains,
-> composes latent and public-token passes in either direction, and round-trips
-> strict canonical `wfcs=1` artifacts. Music Foundation v1 adds an exact
+> suffix/prefix recombination, applies whole/prefix/suffix/fragment or derived
+> wrapped graph domains, composes latent and public-token passes in either
+> direction, and round-trips strict canonical `wfcs=1` artifacts. The text
+> foundation adds project-owned Unicode-scalar tokenization, atomic prefix,
+> suffix, mask, and locked-span constraints, exact globally feasible token
+> domains, anchored infill, prefix-only continuation, and independent text
+> validation on native FPC and pas2js/Node. Music Foundation v1 adds an exact
 > integer score IR, canonical melody/rhythm/harmony cells, two-source latent
 > pass projection, strict `wfcmusic=1` score text, a project-owned SMF
 > format-0/1 codec, and a format-0 score exporter. Its portable three-pass
@@ -95,6 +99,11 @@ modular 3D structures, music, text, and other discrete design problems.
 - deterministic bounded sequence learning with typed BOS history, raw counts,
   order-N latent states, structural suffix/prefix recombination, explicit
   public-token projection, and strict canonical `wfcs=1` artifacts
+- whole, prefix, suffix, fragment, and cycle sequence extents with atomic bulk
+  token masks and exact forward/backward public-domain analysis
+- project-owned Unicode-scalar tokenization across native UTF-8 and pas2js
+  UTF-16, caller-defined tokenizer learning, anchored text infill, deterministic
+  prefix continuation, and independent token/text validation
 - immutable exact music scores with complete per-voice timelines and exact
   meter-boundary validation
 - strict `wm1` melody, `wr1` rhythm, and `wh1` harmony cells with lossless
@@ -176,6 +185,9 @@ independent validation, and the `.wfcp` format, see
 For bounded order-N learning, typed BOS boundaries, open and derived wrapped
 generation, pass projection, and canonical `wfcs=1` text, see
 [sequence models](docs/sequences.md).
+For Unicode-scalar learning, exact token-domain analysis, prefix/suffix and
+interior locks, deterministic infill, validation, and current non-LLM scope,
+see [text constraint completion](docs/text.md).
 For the exact score model, fixed-quantum cells, music pass projection,
 `wfcmusic=1`, Standard MIDI Files, and the optional playback boundary, see the
 [music foundation](docs/music.md).
@@ -198,10 +210,11 @@ Run the checked native build and conformance suite from the repository root:
 
 Both entry points compile with checked FPC options, keep all output under
 `build/`, run the core, 2D ecosystem, selective-settlement, radius-one
-learning, overlapping-pattern, sequence, score/cell, music-graph, SMF,
-score-to-MIDI, voxel, Building 3D, and causal-trace suites, smoke-test the
-portable console examples—including the bounded/wrapped spatial dependency,
-causal-trace inspector, and depth-three building proofs—compile the
+learning, overlapping-pattern, sequence, text-completion, score/cell,
+music-graph, SMF, score-to-MIDI, voxel, Building 3D, and causal-trace suites,
+smoke-test the portable console examples—including the bounded/wrapped spatial
+dependency, causal-trace inspector, anchored text infill, and depth-three
+building proofs—compile the
 fixed-integer isometric, SVG, and Building-view suites, write a deterministic
 seed-zero Building SVG, and preserve failure exit codes.
 The repository also includes an FPM package, a runtime-only Lazarus package,
