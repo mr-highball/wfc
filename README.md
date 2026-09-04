@@ -17,8 +17,11 @@ modular 3D structures, music, text, and other discrete design problems.
 > native FPC and pas2js. The first specialized ecosystem now adds a reusable,
 > independently validated terrain → biome → foliage world with portable layer
 > signatures and an interactive browser presentation compiled from the same
-> Pascal model. Richer cross-layer constraints, additional domain libraries,
-> restart policies, and broader browser inspection tools remain tracked in the
+> Pascal model. A deterministic training primitive can also learn cardinal
+> constraints and raw weights from tokenized 1D/2D samples, apply the immutable
+> result to a graph, and round-trip it through a strict canonical text format.
+> Richer cross-layer constraints, additional domain libraries, restart
+> policies, and broader inspection and training tools remain tracked in the
 > [roadmap](ROADMAP.md).
 
 ## Features
@@ -39,6 +42,11 @@ modular 3D structures, music, text, and other discrete design problems.
 - matching seeded golden fixtures on native FPC and pas2js/Node
 - an interactive browser world with synchronized layers, locks, and a seeded
   headless-browser conformance fixture
+- immutable, versioned one-layer model data shared by native FPC and pas2js
+- deterministic first-seen learning for tokenized 1D/2D samples with open or
+  wrapped boundaries and explicit D4 augmentation
+- strict canonical `.wfcm` text with UTF-8 percent encoding and byte-exact
+  decode/re-encode validation
 - iterative traversal without a graph-sized call stack
 - extension hooks for custom graph and entry behavior
 - one Pascal core for native FPC and pas2js
@@ -81,6 +89,9 @@ For exact replay behavior, callback requirements, and algorithm versioning,
 see [deterministic generation](docs/determinism.md).
 For the reusable world model, typed locks, validator, signatures, and console
 and browser demonstrations, see the [2D ecosystem](docs/world2d.md).
+For learned frequencies and adjacency, immutable model data, graph adaptation,
+the `.wfcm` format, and exact replay inputs, see
+[model learning and priming](docs/learning.md).
 
 ## Build and test
 
@@ -95,11 +106,12 @@ Run the checked native build and conformance suite from the repository root:
 ```
 
 Both entry points compile with checked FPC options, keep all output under
-`build/`, run the core and 2D ecosystem suites, smoke-test both portable
-examples, and preserve failure exit codes. The repository also includes an FPM
-package, a runtime-only Lazarus package, and the same conformance sources for
-pas2js/Node. Separate `build-browser.ps1` and `build-browser.sh` entry points
-stage the interactive browser world without committing generated JavaScript.
+`build/`, run the core, 2D ecosystem, and learning suites, smoke-test the three
+portable console examples, and preserve failure exit codes. The repository
+also includes an FPM package, a runtime-only Lazarus package, and the same
+conformance sources for pas2js/Node. Separate `build-browser.ps1` and
+`build-browser.sh` entry points stage the interactive browser world without
+committing generated JavaScript.
 See [building and testing](docs/building.md) for compiler overrides, package
 commands, output paths, pas2js setup, and browser self-test details.
 
@@ -112,9 +124,9 @@ submodule; they are not part of the dependency-free MIT build path. See the
 ## Direction
 
 The [roadmap](ROADMAP.md) covers the remaining reference-solver work, richer
-pass composition, model learning and validation tools, 2D/3D/music/text
-ecosystems, pas2js playgrounds, reproducible research, documentation, and
-release provenance. Current examples are indexed under
+pass composition, corpus and higher-dimensional learning, validation tools,
+2D/3D/music/text ecosystems, pas2js playgrounds, reproducible research,
+documentation, and release provenance. Current examples are indexed under
 [examples](examples/README.md).
 
 ## License

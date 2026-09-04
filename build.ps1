@@ -14,10 +14,13 @@ $repositoryRoot = $PSScriptRoot
 $sourceDirectory = Join-Path $repositoryRoot 'src'
 $testSource = Join-Path $repositoryRoot 'test/wfc_test.lpr'
 $worldTestSource = Join-Path $repositoryRoot 'test/wfc_world2d_test.lpr'
+$learningTestSource = Join-Path $repositoryRoot 'test/wfc_learn_test.lpr'
 $exampleSource = Join-Path $repositoryRoot `
   'examples/text/01_SimpleTiledWorld/SimpleTiledWorld.lpr'
 $worldExampleSource = Join-Path $repositoryRoot `
   'examples/2D/01_MultiPassWorld/MultiPassWorld.lpr'
+$learningExampleSource = Join-Path $repositoryRoot `
+  'examples/learning/01_LearnTiles/LearnTiles.lpr'
 $worldCommonDirectory = Join-Path $repositoryRoot 'examples/2D/common'
 $unitOutputDirectory = Join-Path $repositoryRoot 'build/native/units'
 $binaryOutputDirectory = Join-Path $repositoryRoot 'build/native/bin'
@@ -96,6 +99,42 @@ if ($worldTestExitCode -ne 0) {
   exit $worldTestExitCode
 }
 
+$learningTestCompilerArguments = @(
+  $CompilerOptions
+  '-B'
+  '-Mdelphi'
+  '-Sa'
+  '-Cr'
+  '-Co'
+  '-Ci'
+  "-Fu$sourceDirectory"
+  "-FU$unitOutputDirectory"
+  "-FE$binaryOutputDirectory"
+  $learningTestSource
+)
+
+Write-Host 'Building the model-learning conformance suite.'
+& $Compiler @learningTestCompilerArguments
+$learningTestCompilerExitCode = $LASTEXITCODE
+if ($learningTestCompilerExitCode -ne 0) {
+  exit $learningTestCompilerExitCode
+}
+
+$learningTestExecutableName = if ($env:OS -eq 'Windows_NT') {
+  'wfc_learn_test.exe'
+} else {
+  'wfc_learn_test'
+}
+$learningTestExecutable = Join-Path $binaryOutputDirectory `
+  $learningTestExecutableName
+
+Write-Host "Running '$learningTestExecutable'."
+& $learningTestExecutable
+$learningTestExitCode = $LASTEXITCODE
+if ($learningTestExitCode -ne 0) {
+  exit $learningTestExitCode
+}
+
 $exampleCompilerArguments = @(
   $CompilerOptions
   '-B'
@@ -170,4 +209,40 @@ if ($worldExampleSeedZeroExitCode -ne 0) {
 
 Write-Host "Smoke testing '$worldExampleExecutable' with its default seed."
 & $worldExampleExecutable | Out-Null
+$worldExampleDefaultExitCode = $LASTEXITCODE
+if ($worldExampleDefaultExitCode -ne 0) {
+  exit $worldExampleDefaultExitCode
+}
+
+$learningExampleCompilerArguments = @(
+  $CompilerOptions
+  '-B'
+  '-Mdelphi'
+  '-Sa'
+  '-Cr'
+  '-Co'
+  '-Ci'
+  "-Fu$sourceDirectory"
+  "-FU$unitOutputDirectory"
+  "-FE$binaryOutputDirectory"
+  $learningExampleSource
+)
+
+Write-Host 'Building the portable learned-tiles example.'
+& $Compiler @learningExampleCompilerArguments
+$learningExampleCompilerExitCode = $LASTEXITCODE
+if ($learningExampleCompilerExitCode -ne 0) {
+  exit $learningExampleCompilerExitCode
+}
+
+$learningExampleExecutableName = if ($env:OS -eq 'Windows_NT') {
+  'LearnTiles.exe'
+} else {
+  'LearnTiles'
+}
+$learningExampleExecutable = Join-Path $binaryOutputDirectory `
+  $learningExampleExecutableName
+
+Write-Host "Smoke testing '$learningExampleExecutable' with seed 0."
+& $learningExampleExecutable 0 | Out-Null
 exit $LASTEXITCODE

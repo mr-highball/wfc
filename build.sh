@@ -8,8 +8,10 @@ compiler=${FPC:-fpc}
 source_directory="$repository_root/src"
 test_source="$repository_root/test/wfc_test.lpr"
 world_test_source="$repository_root/test/wfc_world2d_test.lpr"
+learning_test_source="$repository_root/test/wfc_learn_test.lpr"
 example_source="$repository_root/examples/text/01_SimpleTiledWorld/SimpleTiledWorld.lpr"
 world_example_source="$repository_root/examples/2D/01_MultiPassWorld/MultiPassWorld.lpr"
+learning_example_source="$repository_root/examples/learning/01_LearnTiles/LearnTiles.lpr"
 world_common_directory="$repository_root/examples/2D/common"
 unit_output_directory="$repository_root/build/native/units"
 binary_output_directory="$repository_root/build/native/bin"
@@ -19,8 +21,10 @@ mkdir -p -- "$unit_output_directory" "$binary_output_directory" || exit $?
 compiler_source_directory=$source_directory
 compiler_test_source=$test_source
 compiler_world_test_source=$world_test_source
+compiler_learning_test_source=$learning_test_source
 compiler_example_source=$example_source
 compiler_world_example_source=$world_example_source
+compiler_learning_example_source=$learning_example_source
 compiler_world_common_directory=$world_common_directory
 compiler_unit_output_directory=$unit_output_directory
 compiler_binary_output_directory=$binary_output_directory
@@ -30,8 +34,10 @@ case "$host_system" in
     compiler_source_directory=$(cygpath -m "$source_directory") || exit $?
     compiler_test_source=$(cygpath -m "$test_source") || exit $?
     compiler_world_test_source=$(cygpath -m "$world_test_source") || exit $?
+    compiler_learning_test_source=$(cygpath -m "$learning_test_source") || exit $?
     compiler_example_source=$(cygpath -m "$example_source") || exit $?
     compiler_world_example_source=$(cygpath -m "$world_example_source") || exit $?
+    compiler_learning_example_source=$(cygpath -m "$learning_example_source") || exit $?
     compiler_world_common_directory=$(cygpath -m "$world_common_directory") || exit $?
     compiler_unit_output_directory=$(cygpath -m "$unit_output_directory") || exit $?
     compiler_binary_output_directory=$(cygpath -m "$binary_output_directory") || exit $?
@@ -81,6 +87,27 @@ esac
 printf "Running '%s'.\n" "$world_test_executable"
 "$world_test_executable" || exit $?
 
+printf "Building the model-learning conformance suite.\n"
+"$compiler" "$@" \
+  -B \
+  -Mdelphi \
+  -Sa \
+  -Cr \
+  -Co \
+  -Ci \
+  "-Fu$compiler_source_directory" \
+  "-FU$compiler_unit_output_directory" \
+  "-FE$compiler_binary_output_directory" \
+  "$compiler_learning_test_source" || exit $?
+
+learning_test_executable="$binary_output_directory/wfc_learn_test"
+case "$host_system" in
+  CYGWIN*|MINGW*|MSYS*) learning_test_executable="${learning_test_executable}.exe" ;;
+esac
+
+printf "Running '%s'.\n" "$learning_test_executable"
+"$learning_test_executable" || exit $?
+
 printf "Building the dependency-free tiled-world example.\n"
 "$compiler" "$@" \
   -B \
@@ -126,3 +153,24 @@ printf "Smoke testing '%s' with seed 0.\n" "$world_example_executable"
 
 printf "Smoke testing '%s' with its default seed.\n" "$world_example_executable"
 "$world_example_executable" >/dev/null || exit $?
+
+printf "Building the portable learned-tiles example.\n"
+"$compiler" "$@" \
+  -B \
+  -Mdelphi \
+  -Sa \
+  -Cr \
+  -Co \
+  -Ci \
+  "-Fu$compiler_source_directory" \
+  "-FU$compiler_unit_output_directory" \
+  "-FE$compiler_binary_output_directory" \
+  "$compiler_learning_example_source" || exit $?
+
+learning_example_executable="$binary_output_directory/LearnTiles"
+case "$host_system" in
+  CYGWIN*|MINGW*|MSYS*) learning_example_executable="${learning_example_executable}.exe" ;;
+esac
+
+printf "Smoke testing '%s' with seed 0.\n" "$learning_example_executable"
+"$learning_example_executable" 0 >/dev/null || exit $?

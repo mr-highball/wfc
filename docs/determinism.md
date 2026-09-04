@@ -72,6 +72,12 @@ integer therefore preserves replay exactly, including bounded-sampling
 rejection behavior and the following stream state. The canonical normalized
 vector is the identity; zero is not a disabled value.
 
+Models produced by the learning layer add their own replay inputs: learning
+algorithm version, ordered tokenized sample, dimensions, boundary policy, and
+symmetry policy. A canonical `.wfcm` document captures the resulting immutable
+weights and relations directly. See [model learning and priming](learning.md)
+for that contract and its deliberate tokenization boundary.
+
 The replay contract assumes values and rules are registered through
 `AddValue`, `NewRule`, and `RequirePrevious`. Directly mutating the exposed
 rule arrays or dictionary internals bypasses ordered registration and is not a

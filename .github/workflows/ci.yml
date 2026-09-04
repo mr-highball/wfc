@@ -215,15 +215,21 @@ jobs:
           test_bin='build/pas2js/test/bin'
           world_test_units='build/pas2js/world-test/units'
           world_test_bin='build/pas2js/world-test/bin'
+          learning_test_units='build/pas2js/learning-test/units'
+          learning_test_bin='build/pas2js/learning-test/bin'
           example_units='build/pas2js/example/units'
           example_bin='build/pas2js/example/bin'
           world_example_units='build/pas2js/world-example/units'
           world_example_bin='build/pas2js/world-example/bin'
+          learning_example_units='build/pas2js/learning-example/units'
+          learning_example_bin='build/pas2js/learning-example/bin'
           mkdir -p \
             "$test_units" "$test_bin" \
             "$world_test_units" "$world_test_bin" \
+            "$learning_test_units" "$learning_test_bin" \
             "$example_units" "$example_bin" \
-            "$world_example_units" "$world_example_bin"
+            "$world_example_units" "$world_example_bin" \
+            "$learning_example_units" "$learning_example_bin"
 
           "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
             -FU"$test_units" -FE"$test_bin" test/wfc_test.lpr
@@ -233,6 +239,11 @@ jobs:
             -FU"$world_test_units" -FE"$world_test_bin" \
             test/wfc_world2d_test.lpr
           node "$world_test_bin/wfc_world2d_test.js"
+
+          "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
+            -FU"$learning_test_units" -FE"$learning_test_bin" \
+            test/wfc_learn_test.lpr
+          node "$learning_test_bin/wfc_learn_test.js"
 
           "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
             -FU"$example_units" -FE"$example_bin" \
@@ -245,6 +256,11 @@ jobs:
             examples/2D/01_MultiPassWorld/MultiPassWorld.lpr
           node "$world_example_bin/MultiPassWorld.js" 0 >/dev/null
           node "$world_example_bin/MultiPassWorld.js" >/dev/null
+
+          "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
+            -FU"$learning_example_units" -FE"$learning_example_bin" \
+            examples/learning/01_LearnTiles/LearnTiles.lpr
+          node "$learning_example_bin/LearnTiles.js" 0 >/dev/null
 
       - name: Build and self-test browser world
         shell: bash

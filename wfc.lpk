@@ -12,10 +12,10 @@
         <UnitOutputDirectory Value="build/lazarus/package/$(TargetCPU)-$(TargetOS)"/>
       </SearchPaths>
     </CompilerOptions>
-    <Description Value="Wave Function Collapse and multi-pass constraint generation library"/>
+    <Description Value="Wave Function Collapse, multi-pass generation, and model learning library"/>
     <License Value="MIT"/>
     <Version Minor="1"/>
-    <Files Count="5">
+    <Files Count="8">
       <Item1>
         <Filename Value="wfc_package.pas"/>
         <Type Value="Main Unit"/>
@@ -30,13 +30,25 @@
         <UnitName Value="wfc"/>
       </Item3>
       <Item4>
-        <Filename Value="src/wfc_world2d.pas"/>
-        <UnitName Value="wfc_world2d"/>
+        <Filename Value="src/wfc_model.pas"/>
+        <UnitName Value="wfc_model"/>
       </Item4>
       <Item5>
+        <Filename Value="src/wfc_learn.pas"/>
+        <UnitName Value="wfc_learn"/>
+      </Item5>
+      <Item6>
+        <Filename Value="src/wfc_model_text.pas"/>
+        <UnitName Value="wfc_model_text"/>
+      </Item6>
+      <Item7>
+        <Filename Value="src/wfc_world2d.pas"/>
+        <UnitName Value="wfc_world2d"/>
+      </Item7>
+      <Item8>
         <Filename Value="src/wfc_world2d_validate.pas"/>
         <UnitName Value="wfc_world2d_validate"/>
-      </Item5>
+      </Item8>
     </Files>
     <UsageOptions>
       <UnitPath Value="$(PkgOutDir)"/>
