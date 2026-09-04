@@ -24,6 +24,7 @@ corpus_example_source="$repository_root/examples/learning/02_LearnCorpus/LearnCo
 pattern_example_source="$repository_root/examples/learning/03_LearnPatterns/LearnPatterns.lpr"
 sequence_example_source="$repository_root/examples/sequence/01_LearnSequence/LearnSequence.lpr"
 music_example_source="$repository_root/examples/music/03_PassComposition/PassComposition.lpr"
+spatial_example_source="$repository_root/examples/passes/01_SpatialDependencies/SpatialDependencies.lpr"
 world_common_directory="$repository_root/examples/2D/common"
 unit_output_directory="$repository_root/build/native/units"
 binary_output_directory="$repository_root/build/native/bin"
@@ -49,6 +50,7 @@ compiler_corpus_example_source=$corpus_example_source
 compiler_pattern_example_source=$pattern_example_source
 compiler_sequence_example_source=$sequence_example_source
 compiler_music_example_source=$music_example_source
+compiler_spatial_example_source=$spatial_example_source
 compiler_world_common_directory=$world_common_directory
 compiler_unit_output_directory=$unit_output_directory
 compiler_binary_output_directory=$binary_output_directory
@@ -74,6 +76,7 @@ case "$host_system" in
     compiler_pattern_example_source=$(cygpath -m "$pattern_example_source") || exit $?
     compiler_sequence_example_source=$(cygpath -m "$sequence_example_source") || exit $?
     compiler_music_example_source=$(cygpath -m "$music_example_source") || exit $?
+    compiler_spatial_example_source=$(cygpath -m "$spatial_example_source") || exit $?
     compiler_world_common_directory=$(cygpath -m "$world_common_directory") || exit $?
     compiler_unit_output_directory=$(cygpath -m "$unit_output_directory") || exit $?
     compiler_binary_output_directory=$(cygpath -m "$binary_output_directory") || exit $?
@@ -410,3 +413,24 @@ esac
 
 printf "Smoke testing '%s' with seed 0.\n" "$music_example_executable"
 "$music_example_executable" 0 >/dev/null || exit $?
+
+printf "Building the dependency-free spatial-pass example.\n"
+"$compiler" "$@" \
+  -B \
+  -Mdelphi \
+  -Sa \
+  -Cr \
+  -Co \
+  -Ci \
+  "-Fu$compiler_source_directory" \
+  "-FU$compiler_unit_output_directory" \
+  "-FE$compiler_binary_output_directory" \
+  "$compiler_spatial_example_source" || exit $?
+
+spatial_example_executable="$binary_output_directory/SpatialDependencies"
+case "$host_system" in
+  CYGWIN*|MINGW*|MSYS*) spatial_example_executable="${spatial_example_executable}.exe" ;;
+esac
+
+printf "Smoke testing '%s' with seed 0.\n" "$spatial_example_executable"
+"$spatial_example_executable" 0 >/dev/null || exit $?

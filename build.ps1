@@ -41,6 +41,8 @@ $sequenceExampleSource = Join-Path $repositoryRoot `
   'examples/sequence/01_LearnSequence/LearnSequence.lpr'
 $musicExampleSource = Join-Path $repositoryRoot `
   'examples/music/03_PassComposition/PassComposition.lpr'
+$spatialExampleSource = Join-Path $repositoryRoot `
+  'examples/passes/01_SpatialDependencies/SpatialDependencies.lpr'
 $worldCommonDirectory = Join-Path $repositoryRoot 'examples/2D/common'
 $unitOutputDirectory = Join-Path $repositoryRoot 'build/native/units'
 $binaryOutputDirectory = Join-Path $repositoryRoot 'build/native/bin'
@@ -600,4 +602,40 @@ $musicExampleExecutable = Join-Path $binaryOutputDirectory `
 
 Write-Host "Smoke testing '$musicExampleExecutable' with seed 0."
 & $musicExampleExecutable 0 | Out-Null
+$musicExampleExitCode = $LASTEXITCODE
+if ($musicExampleExitCode -ne 0) {
+  exit $musicExampleExitCode
+}
+
+$spatialExampleCompilerArguments = @(
+  $CompilerOptions
+  '-B'
+  '-Mdelphi'
+  '-Sa'
+  '-Cr'
+  '-Co'
+  '-Ci'
+  "-Fu$sourceDirectory"
+  "-FU$unitOutputDirectory"
+  "-FE$binaryOutputDirectory"
+  $spatialExampleSource
+)
+
+Write-Host 'Building the dependency-free spatial-pass example.'
+& $Compiler @spatialExampleCompilerArguments
+$spatialExampleCompilerExitCode = $LASTEXITCODE
+if ($spatialExampleCompilerExitCode -ne 0) {
+  exit $spatialExampleCompilerExitCode
+}
+
+$spatialExampleExecutableName = if ($env:OS -eq 'Windows_NT') {
+  'SpatialDependencies.exe'
+} else {
+  'SpatialDependencies'
+}
+$spatialExampleExecutable = Join-Path $binaryOutputDirectory `
+  $spatialExampleExecutableName
+
+Write-Host "Smoke testing '$spatialExampleExecutable' with seed 0."
+& $spatialExampleExecutable 0 | Out-Null
 exit $LASTEXITCODE

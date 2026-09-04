@@ -7,9 +7,9 @@ extends that idea beyond a single chain. Independent branches can read a
 shared foundation, later passes can join those branches, and a local change can
 regenerate only the layers that actually depend on it.
 
-This document defines the version-1 dependency and selective-regeneration
-model. The implementation remains part of `TGraph`; there is no external
-scheduler or runtime dependency.
+This document defines the version-2 dependency, spatial-read, and
+selective-regeneration model. The implementation remains part of `TGraph`;
+there is no external scheduler or runtime dependency.
 
 ## formal model
 
@@ -35,7 +35,7 @@ execution scheduler.
 The versioned contract is identified by:
 
 ```pascal
-WFC_PIPELINE_ALGORITHM_VERSION = 1
+WFC_PIPELINE_ALGORITHM_VERSION = 2
 ```
 
 ## dependency roles
@@ -46,7 +46,8 @@ An edge may serve more than one role:
 - the protected predecessor edge required by legacy mode;
 - the single protected source of a transform pass;
 - the protected predecessor used by `RequirePrevious`; or
-- a protected source used by `RequireFromPass`.
+- a protected source used by `RequireFromPass`, `RequireFromPassAt`, or
+  `RequireAnyFromPass`.
 
 The implementation retains these roles rather than storing an untyped Boolean
 edge. `RemoveDependency` and `ClearDependencies` therefore cannot silently
@@ -128,10 +129,82 @@ replace same-layer directional rules; both must hold. `RequirePrevious`
 retains its exact historical meaning and diagnostic while internally
 protecting the predecessor edge it reads.
 
-Version 1 deliberately uses same-coordinate equality against finite value
-sets. Coordinate offsets, source neighborhoods, arbitrary predicates, and
-feedback are future expression layers, not implicit behavior in this
-contract.
+`RequireFromPass` remains the compatibility spelling for a merged zero-offset
+clause. Pipeline v2 generalizes that contract with signed finite offsets:
+
+```pascal
+Graph.AddValue('house')
+  .RequireFromPassAt('terrain', MakeGraphOffset(0, 0, 0),
+    ['land', 'forest'])
+  .RequireAnyFromPass('terrain', [
+    MakeGraphPassMatchTerm(MakeGraphOffset(-1, 0, 0),
+      ['water', 'marsh']),
+    MakeGraphPassMatchTerm(MakeGraphOffset(1, 0, 0),
+      ['water', 'marsh'])
+  ]);
+```
+
+`TGraphOffset` contains signed `DeltaX`, `DeltaY`, and `DeltaZ` components.
+The provider coordinate is the consumer coordinate plus that displacement.
+`RequireFromPassAt` accepts one finite value set at one exact offset.
+`RequireAnyFromPass` accepts a finite ordered array of `(offset, values)`
+terms. It is a neighborhood primitive because callers can explicitly list any
+shape—cardinal, diagonal, vertical, temporal, or domain-specific—without
+embedding those concepts in the core.
+
+### clause algebra
+
+For candidate `v`, consumer coordinate `c`, provider pass `s`, offset `d`, and
+finite value set `A`, define:
+
+```text
+match(s, c, d, A) = provider(s, resolve(c + d)) is in A
+```
+
+An unresolved bounded coordinate and an empty provider entry both make
+`match` false. The public calls compose as follows:
+
+- values within one exact-offset clause are OR;
+- repeated `RequireFromPassAt` calls with the same provider and exact offset
+  merge their values as OR;
+- terms within one `RequireAnyFromPass` call are OR, and every term's values
+  are OR;
+- different offsets declared with `RequireFromPassAt`, separate any-clauses,
+  and clauses from any other provider are AND.
+
+Thus the example above means `(land OR forest) at self` AND `((water OR
+marsh) west OR (water OR marsh) east)`. Repeating `RequireFromPass` retains
+its historical merged zero-offset OR behavior. When `RequirePrevious` and a
+named zero-offset clause refer to the same predecessor, their accepted values
+also retain the compatibility merge; nonzero and any-clauses remain separate
+AND requirements.
+
+Empty value arrays, empty any-term arrays, and terms with empty values are
+rejected at construction time. Duplicate-offset terms merge, term order is
+canonical signed X/Y/Z order, and accepted values deduplicate in first-seen
+order. Offset arithmetic is checked before sampling, so an `Integer`
+displacement cannot silently wrap an unsigned coordinate.
+
+### boundaries and staging
+
+When `WrapNeighbors` is false, every dimension is bounded. Any sampled
+coordinate below zero or at/above that dimension's size is an unresolved
+non-match. Therefore an exact-offset clause fails at that cell, while an
+any-clause can still succeed through another in-bounds term. If every term is
+out of bounds, the any-clause fails.
+
+When `WrapNeighbors` is true, each displaced component wraps independently by
+the shared graph dimension. Large positive and negative offsets resolve to the
+same coordinate they denote; the declared offsets themselves remain replay
+inputs.
+
+Every spatial requirement declares a protected dependency edge immediately.
+The provider must already exist, have the same shape, and precede the consumer
+in the acyclic dependency plan. Both `Run` and `TrySolve` execute providers
+before consumers. `TrySolve` reads the provider's staged output from the
+current atomic transaction; legacy `Run` reads output produced earlier in its
+nontransactional execution. These are hard candidate filters, not soft scores,
+late callbacks, or reads from a partially solved peer.
 
 ## selective descendant closure
 
@@ -199,7 +272,8 @@ Exact dependency-pipeline replay requires:
 - stable pass creation order and labels;
 - each pass mode and transform source;
 - dependency edges in canonical stable source-index order;
-- every named source requirement and accepted-value order;
+- every named source requirement, signed offset, any-clause term, and
+  accepted-value order;
 - graph shape, wrapping, locks, values, rules, weights, and callbacks;
 - the pipeline seed and random/solver algorithm versions; and
 - for selective runs, the ordered requested root labels.
@@ -216,8 +290,10 @@ an explicit bounded negotiation, repair, or fixed-point protocol with its own
 termination and replay contract; treating a cycle as an arbitrary execution
 order would hide a materially different algorithm.
 
-Cross-pass requirements currently read `TGraphValue` layers with the same
-shape. An overlapping-pattern solve instead contains private latent pattern
+Cross-pass requirements read `TGraphValue` layers with the same shape at
+exactly declared finite offsets. They do not perform radius expansion,
+distance calculation, counting, arbitrary predicates, resampling, or soft
+scoring. An overlapping-pattern solve instead contains private latent pattern
 keys and yields public tokens only after checked projection. Connecting that
 layer requires a future projection-aware transaction that stages and validates
 the projected grid before dependent passes read it. The dependency API does

@@ -69,7 +69,7 @@ const
   //Increment when dependency planning, pass-mode staging, or selective
   //regeneration changes in a replay-incompatible way. The per-pass reference
   //solver remains versioned independently above.
-  WFC_PIPELINE_ALGORITHM_VERSION = 1;
+  WFC_PIPELINE_ALGORITHM_VERSION = 2;
 
 type
 
@@ -78,6 +78,23 @@ type
     Y : TGraphCoordinate;
     Z : TGraphCoordinate;
   end;
+
+  //Signed finite displacement from a consumer cell to a provider-pass cell.
+  //Keeping offsets independent of unsigned graph coordinates makes bounded
+  //and wrapped sampling explicit and portable across native FPC and pas2js.
+  TGraphOffset = record
+    DeltaX: Integer;
+    DeltaY: Integer;
+    DeltaZ: Integer;
+  end;
+
+  //One alternative in a cross-pass clause. A term matches when its resolved
+  //provider cell is non-empty and contains one of Values.
+  TGraphPassMatchTerm = record
+    Offset: TGraphOffset;
+    Values: TGraphValues;
+  end;
+  TGraphPassMatchTerms = array of TGraphPassMatchTerm;
 
   //all posible "directions" to move from a single point on the graph
   TGraphDirection = (gdNorth, gdEast, gdSouth, gdWest, gdUp, gdDown);
@@ -184,16 +201,24 @@ type
     type
       TPassRequirementOrigin = (proPrevious, proNamed);
       TPassRequirementOrigins = set of TPassRequirementOrigin;
+      TPassRequirementKind = (prkMergedOffset, prkAny);
       TPassRequirement = record
         PassIndex: Integer;
-        Values: TGraphValues;
+        Terms: TGraphPassMatchTerms;
         Origins: TPassRequirementOrigins;
+        Kind: TPassRequirementKind;
       end;
       TPassRequirements = array of TPassRequirement;
   private
     FPassRequirements: TPassRequirements;
     procedure AddPassRequirement(const APassIndex: Integer;
       const AValue: TGraphValue; const AOrigin: TPassRequirementOrigin);
+    procedure AddPassOffsetRequirement(const APassIndex: Integer;
+      const AOffset: TGraphOffset; const AValues: TGraphValues;
+      const AOrigin: TPassRequirementOrigin);
+    procedure AddPassAnyRequirement(const APassIndex: Integer;
+      const ATerms: TGraphPassMatchTerms;
+      const AOrigin: TPassRequirementOrigin);
   strict private
     FRules: TGraphRules;
     FDeniedDirections: TGraphDirections;
@@ -220,6 +245,10 @@ type
     procedure DoRequirePrevious(const AValue : TGraphValue); virtual;
     procedure DoRequireFromPass(const APass: String;
       const AValue: TGraphValue); virtual;
+    procedure DoRequireFromPassAt(const APass: String;
+      const AOffset: TGraphOffset; const AValues: TGraphValues); virtual;
+    procedure DoRequireAnyFromPass(const APass: String;
+      const ATerms: TGraphPassMatchTerms); virtual;
     procedure UpsertRule(const ADirections : TGraphDirections;
       const AValue : TGraphValue; const ARequireRule : Boolean);
   public
@@ -263,6 +292,21 @@ type
       const AValue: TGraphValue): TGraphRuleGroup; overload;
     function RequireFromPass(const APass: String;
       const AValues: TGraphValues): TGraphRuleGroup; overload;
+
+    //Adds or extends the merged single-offset clause for this source. Values
+    //at one source+offset are alternatives; different offsets are clauses and
+    //therefore remain conjunctive.
+    function RequireFromPassAt(const APass: String;
+      const AOffset: TGraphOffset;
+      const AValue: TGraphValue): TGraphRuleGroup; overload;
+    function RequireFromPassAt(const APass: String;
+      const AOffset: TGraphOffset;
+      const AValues: TGraphValues): TGraphRuleGroup; overload;
+
+    //Adds one distinct OR clause over finite provider-pass terms. Every call
+    //is conjunctive with the group's other clauses.
+    function RequireAnyFromPass(const APass: String;
+      const ATerms: TGraphPassMatchTerms): TGraphRuleGroup;
 
     constructor Create; virtual; overload;
     constructor Create(const AValue : TGraphValue); virtual; overload;
@@ -405,6 +449,11 @@ type
           const AValue: TGraphValue); override;
         procedure DoRequireFromPass(const APass: String;
           const AValue: TGraphValue); override;
+        procedure DoRequireFromPassAt(const APass: String;
+          const AOffset: TGraphOffset;
+          const AValues: TGraphValues); override;
+        procedure DoRequireAnyFromPass(const APass: String;
+          const ATerms: TGraphPassMatchTerms); override;
         procedure SynchronizeInverseRules;
       public
         property Parent : TGraph read FParent write FParent;
@@ -490,6 +539,8 @@ type
       AProviderIndex: Integer): Boolean;
     function HasPassRequirement(const APassIndex: Integer): Boolean;
     function HasPreviousValueRequirement: Boolean;
+    function ResolveOffsetIndex(const AEntryIndex: Integer;
+      const AOffset: TGraphOffset; out AResolvedIndex: Integer): Boolean;
     procedure SynchronizePreviousValueDependencies;
     procedure AddDependencyRole(const APassIndex: Integer;
       const ARole: TPassDependencyRole);
@@ -776,6 +827,13 @@ var
   *)
   function InverseOfDir(const ADirection : TGraphDirection) : TGraphDirection; inline;
 
+  function MakeGraphOffset(const ADeltaX, ADeltaY,
+    ADeltaZ: Integer): TGraphOffset;
+  function MakeGraphPassMatchTerm(const AOffset: TGraphOffset;
+    const AValue: TGraphValue): TGraphPassMatchTerm; overload;
+  function MakeGraphPassMatchTerm(const AOffset: TGraphOffset;
+    const AValues: TGraphValues): TGraphPassMatchTerm; overload;
+
   (*
     checks if a value is held in a graph values array
   *)
@@ -849,6 +907,173 @@ begin
     Exit(gdDown)
   else
     Exit(gdUp);
+end;
+
+function CloneGraphValues(const AValues: TGraphValues): TGraphValues;
+var
+  I: Integer;
+begin
+  Result := Default(TGraphValues);
+  SetLength(Result, Length(AValues));
+  for I := 0 to High(AValues) do
+    Result[I] := AValues[I];
+end;
+
+function GraphOffsetsEqual(const ALeft,
+  ARight: TGraphOffset): Boolean; inline;
+begin
+  Result := (ALeft.DeltaX = ARight.DeltaX)
+    and (ALeft.DeltaY = ARight.DeltaY)
+    and (ALeft.DeltaZ = ARight.DeltaZ);
+end;
+
+function CompareGraphOffsets(const ALeft,
+  ARight: TGraphOffset): Integer; inline;
+begin
+  if ALeft.DeltaX < ARight.DeltaX then
+    Exit(-1)
+  else if ALeft.DeltaX > ARight.DeltaX then
+    Exit(1);
+  if ALeft.DeltaY < ARight.DeltaY then
+    Exit(-1)
+  else if ALeft.DeltaY > ARight.DeltaY then
+    Exit(1);
+  if ALeft.DeltaZ < ARight.DeltaZ then
+    Exit(-1)
+  else if ALeft.DeltaZ > ARight.DeltaZ then
+    Exit(1);
+  Result := 0;
+end;
+
+function IsZeroGraphOffset(const AOffset: TGraphOffset): Boolean; inline;
+begin
+  Result := (AOffset.DeltaX = 0) and (AOffset.DeltaY = 0)
+    and (AOffset.DeltaZ = 0);
+end;
+
+procedure MergeGraphValues(var ADestination: TGraphValues;
+  const ASource: TGraphValues);
+var
+  I, LIndex: Integer;
+begin
+  for I := 0 to High(ASource) do
+    if not ContainsGraphValue(ADestination, ASource[I]) then
+    begin
+      LIndex := Length(ADestination);
+      SetLength(ADestination, Succ(LIndex));
+      ADestination[LIndex] := ASource[I];
+    end;
+end;
+
+function CanonicalGraphPassMatchTerms(const ATerms: TGraphPassMatchTerms;
+  const AOperation: String): TGraphPassMatchTerms;
+var
+  I, J, K, LIndex: Integer;
+  LSwap: TGraphPassMatchTerm;
+begin
+  Result := Default(TGraphPassMatchTerms);
+  if Length(ATerms) = 0 then
+    raise EArgumentException.CreateFmt(
+      '%s::match terms cannot be empty', [AOperation]);
+  SetLength(Result, 0);
+  for I := 0 to High(ATerms) do
+  begin
+    if Length(ATerms[I].Values) = 0 then
+      raise EArgumentException.CreateFmt(
+        '%s::term %d values cannot be empty', [AOperation, I]);
+    for K := 0 to High(ATerms[I].Values) do
+      if ATerms[I].Values[K] = TGraphValue.Empty then
+        raise EArgumentException.CreateFmt(
+          '%s::term %d value %d cannot be empty',
+          [AOperation, I, K]);
+    LIndex := -1;
+    for J := 0 to High(Result) do
+      if GraphOffsetsEqual(Result[J].Offset, ATerms[I].Offset) then
+      begin
+        LIndex := J;
+        Break;
+      end;
+    if LIndex < 0 then
+    begin
+      LIndex := Length(Result);
+      SetLength(Result, Succ(LIndex));
+      Result[LIndex].Offset := ATerms[I].Offset;
+      Result[LIndex].Values := Default(TGraphValues);
+      MergeGraphValues(Result[LIndex].Values, ATerms[I].Values);
+    end
+    else
+      MergeGraphValues(Result[LIndex].Values, ATerms[I].Values);
+  end;
+
+  //Insertion sort avoids host-specific comparer behavior and gives native
+  //FPC and pas2js the same signed X/Y/Z term order.
+  for I := 1 to High(Result) do
+  begin
+    LSwap := Result[I];
+    J := I;
+    while (J > 0)
+      and (CompareGraphOffsets(LSwap.Offset,
+        Result[Pred(J)].Offset) < 0) do
+    begin
+      Result[J] := Result[Pred(J)];
+      Dec(J);
+    end;
+    Result[J] := LSwap;
+  end;
+end;
+
+function GraphPassMatchTermsEqual(const ALeft,
+  ARight: TGraphPassMatchTerms): Boolean;
+var
+  I, J: Integer;
+begin
+  if Length(ALeft) <> Length(ARight) then
+    Exit(False);
+  for I := 0 to High(ALeft) do
+  begin
+    if (not GraphOffsetsEqual(ALeft[I].Offset, ARight[I].Offset))
+      or (Length(ALeft[I].Values) <> Length(ARight[I].Values)) then
+      Exit(False);
+    for J := 0 to High(ALeft[I].Values) do
+      if ALeft[I].Values[J] <> ARight[I].Values[J] then
+        Exit(False);
+  end;
+  Result := True;
+end;
+
+function MakeGraphOffset(const ADeltaX, ADeltaY,
+  ADeltaZ: Integer): TGraphOffset;
+begin
+  Result.DeltaX := ADeltaX;
+  Result.DeltaY := ADeltaY;
+  Result.DeltaZ := ADeltaZ;
+end;
+
+function MakeGraphPassMatchTerm(const AOffset: TGraphOffset;
+  const AValue: TGraphValue): TGraphPassMatchTerm;
+begin
+  if AValue = TGraphValue.Empty then
+    raise EArgumentException.Create(
+      'MakeGraphPassMatchTerm::value cannot be empty');
+  Result.Offset := AOffset;
+  SetLength(Result.Values, 1);
+  Result.Values[0] := AValue;
+end;
+
+function MakeGraphPassMatchTerm(const AOffset: TGraphOffset;
+  const AValues: TGraphValues): TGraphPassMatchTerm;
+var
+  I: Integer;
+begin
+  if Length(AValues) = 0 then
+    raise EArgumentException.Create(
+      'MakeGraphPassMatchTerm::values cannot be empty');
+  for I := 0 to High(AValues) do
+    if AValues[I] = TGraphValue.Empty then
+      raise EArgumentException.CreateFmt(
+        'MakeGraphPassMatchTerm::value %d cannot be empty', [I]);
+  Result.Offset := AOffset;
+  Result.Values := CloneGraphValues(AValues);
 end;
 
 function ContainsGraphValue(const AValues: TGraphValues;
@@ -1101,6 +1326,51 @@ begin
   AddPassRequirement(LPassIndex, AValue, proNamed);
 end;
 
+procedure TGraph.TParentedGraphRuleGroup.DoRequireFromPassAt(
+  const APass: String; const AOffset: TGraphOffset;
+  const AValues: TGraphValues);
+var
+  LPassIndex: Integer;
+  LTerm: TGraphPassMatchTerm;
+  LTerms: TGraphPassMatchTerms;
+begin
+  //Canonicalize and validate all caller-owned arrays before dependency state
+  //can change. AddPassOffsetRequirement clones again for durable ownership.
+  LTerm := MakeGraphPassMatchTerm(AOffset, AValues);
+  SetLength(LTerms, 1);
+  LTerms[0] := LTerm;
+  LTerms := CanonicalGraphPassMatchTerms(LTerms,
+    'RequireFromPassAt');
+  if not Assigned(Parent) then
+    raise EInvalidOperation.Create(
+      'RequireFromPassAt::rule group is not owned by a graph');
+  LPassIndex := Parent.PassIndexForLabel(APass,
+    'RequireFromPassAt');
+  Parent.SynchronizePreviousValueDependencies;
+  Parent.AddDependencyRole(LPassIndex, pdrRequirement);
+  AddPassOffsetRequirement(LPassIndex, LTerms[0].Offset,
+    LTerms[0].Values, proNamed);
+end;
+
+procedure TGraph.TParentedGraphRuleGroup.DoRequireAnyFromPass(
+  const APass: String; const ATerms: TGraphPassMatchTerms);
+var
+  LCanonical: TGraphPassMatchTerms;
+  LPassIndex: Integer;
+begin
+  //The complete clause must be known-good before adding its inferred edge.
+  LCanonical := CanonicalGraphPassMatchTerms(ATerms,
+    'RequireAnyFromPass');
+  if not Assigned(Parent) then
+    raise EInvalidOperation.Create(
+      'RequireAnyFromPass::rule group is not owned by a graph');
+  LPassIndex := Parent.PassIndexForLabel(APass,
+    'RequireAnyFromPass');
+  Parent.SynchronizePreviousValueDependencies;
+  Parent.AddDependencyRole(LPassIndex, pdrRequirement);
+  AddPassAnyRequirement(LPassIndex, LCanonical, proNamed);
+end;
+
 { TGraphRuleGroup }
 
 procedure TGraphRuleGroup.AddPassRequirement(const APassIndex: Integer;
@@ -1109,17 +1379,25 @@ var
   I, LInsertIndex, LValueIndex: Integer;
   LRequirement: TPassRequirement;
 begin
+  //Legacy RequirePrevious/RequireFromPass retain their historical value
+  //acceptance. New spatial constructors perform stricter empty-value
+  //validation before they reach AddPassOffsetRequirement.
   LInsertIndex := Length(FPassRequirements);
   for I := 0 to High(FPassRequirements) do
   begin
-    if FPassRequirements[I].PassIndex = APassIndex then
+    if (FPassRequirements[I].PassIndex = APassIndex)
+      and (FPassRequirements[I].Kind = prkMergedOffset)
+      and (Length(FPassRequirements[I].Terms) = 1)
+      and IsZeroGraphOffset(FPassRequirements[I].Terms[0].Offset) then
     begin
       Include(FPassRequirements[I].Origins, AOrigin);
-      if ContainsGraphValue(FPassRequirements[I].Values, AValue) then
+      if ContainsGraphValue(FPassRequirements[I].Terms[0].Values,
+        AValue) then
         Exit;
-      LValueIndex := Length(FPassRequirements[I].Values);
-      SetLength(FPassRequirements[I].Values, Succ(LValueIndex));
-      FPassRequirements[I].Values[LValueIndex] := AValue;
+      LValueIndex := Length(FPassRequirements[I].Terms[0].Values);
+      SetLength(FPassRequirements[I].Terms[0].Values,
+        Succ(LValueIndex));
+      FPassRequirements[I].Terms[0].Values[LValueIndex] := AValue;
       Exit;
     end;
     if (LInsertIndex = Length(FPassRequirements))
@@ -1128,9 +1406,96 @@ begin
   end;
 
   LRequirement.PassIndex := APassIndex;
-  SetLength(LRequirement.Values, 1);
-  LRequirement.Values[0] := AValue;
+  SetLength(LRequirement.Terms, 1);
+  LRequirement.Terms[0].Offset := MakeGraphOffset(0, 0, 0);
+  SetLength(LRequirement.Terms[0].Values, 1);
+  LRequirement.Terms[0].Values[0] := AValue;
   LRequirement.Origins := [AOrigin];
+  LRequirement.Kind := prkMergedOffset;
+  SetLength(FPassRequirements, Succ(Length(FPassRequirements)));
+  for I := High(FPassRequirements) downto Succ(LInsertIndex) do
+    FPassRequirements[I] := FPassRequirements[Pred(I)];
+  FPassRequirements[LInsertIndex] := LRequirement;
+end;
+
+procedure TGraphRuleGroup.AddPassOffsetRequirement(
+  const APassIndex: Integer; const AOffset: TGraphOffset;
+  const AValues: TGraphValues; const AOrigin: TPassRequirementOrigin);
+var
+  I, LInsertIndex, LValueIndex: Integer;
+  LRequirement: TPassRequirement;
+  LTerms: TGraphPassMatchTerms;
+begin
+  SetLength(LTerms, 1);
+  LTerms[0] := MakeGraphPassMatchTerm(AOffset, AValues);
+  LTerms := CanonicalGraphPassMatchTerms(LTerms,
+    'PassRequirement');
+  LInsertIndex := Length(FPassRequirements);
+  for I := 0 to High(FPassRequirements) do
+  begin
+    if (FPassRequirements[I].PassIndex = APassIndex)
+      and (FPassRequirements[I].Kind = prkMergedOffset)
+      and (Length(FPassRequirements[I].Terms) = 1)
+      and GraphOffsetsEqual(FPassRequirements[I].Terms[0].Offset,
+        LTerms[0].Offset) then
+    begin
+      Include(FPassRequirements[I].Origins, AOrigin);
+      for LValueIndex := 0 to High(LTerms[0].Values) do
+        if not ContainsGraphValue(
+          FPassRequirements[I].Terms[0].Values,
+          LTerms[0].Values[LValueIndex]) then
+          Insert(LTerms[0].Values[LValueIndex],
+            FPassRequirements[I].Terms[0].Values,
+            Length(FPassRequirements[I].Terms[0].Values));
+      Exit;
+    end;
+    if (LInsertIndex = Length(FPassRequirements))
+      and (FPassRequirements[I].PassIndex > APassIndex) then
+      LInsertIndex := I;
+  end;
+
+  LRequirement.PassIndex := APassIndex;
+  LRequirement.Terms := CanonicalGraphPassMatchTerms(LTerms,
+    'PassRequirement');
+  LRequirement.Origins := [AOrigin];
+  LRequirement.Kind := prkMergedOffset;
+  SetLength(FPassRequirements, Succ(Length(FPassRequirements)));
+  for I := High(FPassRequirements) downto Succ(LInsertIndex) do
+    FPassRequirements[I] := FPassRequirements[Pred(I)];
+  FPassRequirements[LInsertIndex] := LRequirement;
+end;
+
+procedure TGraphRuleGroup.AddPassAnyRequirement(
+  const APassIndex: Integer; const ATerms: TGraphPassMatchTerms;
+  const AOrigin: TPassRequirementOrigin);
+var
+  I, LInsertIndex: Integer;
+  LCanonical: TGraphPassMatchTerms;
+  LRequirement: TPassRequirement;
+begin
+  LCanonical := CanonicalGraphPassMatchTerms(ATerms,
+    'PassRequirement');
+  LInsertIndex := Length(FPassRequirements);
+  for I := 0 to High(FPassRequirements) do
+  begin
+    if (FPassRequirements[I].PassIndex = APassIndex)
+      and (FPassRequirements[I].Kind = prkAny)
+      and GraphPassMatchTermsEqual(FPassRequirements[I].Terms,
+        LCanonical) then
+    begin
+      Include(FPassRequirements[I].Origins, AOrigin);
+      Exit;
+    end;
+    if (LInsertIndex = Length(FPassRequirements))
+      and (FPassRequirements[I].PassIndex > APassIndex) then
+      LInsertIndex := I;
+  end;
+
+  LRequirement.PassIndex := APassIndex;
+  LRequirement.Terms := CanonicalGraphPassMatchTerms(LCanonical,
+    'PassRequirement');
+  LRequirement.Origins := [AOrigin];
+  LRequirement.Kind := prkAny;
   SetLength(FPassRequirements, Succ(Length(FPassRequirements)));
   for I := High(FPassRequirements) downto Succ(LInsertIndex) do
     FPassRequirements[I] := FPassRequirements[Pred(I)];
@@ -1321,6 +1686,26 @@ begin
     'RequireFromPass::rule group is not owned by a graph [%s]', [APass]);
 end;
 
+procedure TGraphRuleGroup.DoRequireFromPassAt(const APass: String;
+  const AOffset: TGraphOffset; const AValues: TGraphValues);
+begin
+  if Length(AValues) = 0 then
+    raise EArgumentException.Create(
+      'RequireFromPassAt::values cannot be empty');
+  raise EInvalidOperation.CreateFmt(
+    'RequireFromPassAt::rule group is not owned by a graph [%s]',
+    [APass]);
+end;
+
+procedure TGraphRuleGroup.DoRequireAnyFromPass(const APass: String;
+  const ATerms: TGraphPassMatchTerms);
+begin
+  CanonicalGraphPassMatchTerms(ATerms, 'RequireAnyFromPass');
+  raise EInvalidOperation.CreateFmt(
+    'RequireAnyFromPass::rule group is not owned by a graph [%s]',
+    [APass]);
+end;
+
 
 function TGraphRuleGroup.NewRule(const ADirections: TGraphDirections;
   const AValue: TGraphValue; const ARequireRule: Boolean): TGraphRuleGroup;
@@ -1379,6 +1764,42 @@ begin
   Result := Self;
   for I := 0 to High(AValues) do
     DoRequireFromPass(APass, AValues[I]);
+end;
+
+function TGraphRuleGroup.RequireFromPassAt(const APass: String;
+  const AOffset: TGraphOffset;
+  const AValue: TGraphValue): TGraphRuleGroup;
+var
+  LValues: TGraphValues;
+begin
+  Result := Self;
+  SetLength(LValues, 1);
+  LValues[0] := AValue;
+  DoRequireFromPassAt(APass, AOffset, LValues);
+end;
+
+function TGraphRuleGroup.RequireFromPassAt(const APass: String;
+  const AOffset: TGraphOffset;
+  const AValues: TGraphValues): TGraphRuleGroup;
+begin
+  Result := Self;
+  if Length(AValues) = 0 then
+    raise EArgumentException.Create(
+      'RequireFromPassAt::values cannot be empty');
+  DoRequireFromPassAt(APass, AOffset, AValues);
+end;
+
+function TGraphRuleGroup.RequireAnyFromPass(const APass: String;
+  const ATerms: TGraphPassMatchTerms): TGraphRuleGroup;
+var
+  LCanonical: TGraphPassMatchTerms;
+begin
+  Result := Self;
+  //Validate before dispatch so even unusual descendants receive a complete
+  //clause and cannot mutate dependency state before discovering bad input.
+  LCanonical := CanonicalGraphPassMatchTerms(ATerms,
+    'RequireAnyFromPass');
+  DoRequireAnyFromPass(APass, LCanonical);
 end;
 
 constructor TGraphRuleGroup.Create;
@@ -1768,6 +2189,89 @@ begin
     if Assigned(LGroup) and (Length(LGroup.PreviousValues) > 0) then
       Exit(True);
   Result := False;
+end;
+
+function TGraph.ResolveOffsetIndex(const AEntryIndex: Integer;
+  const AOffset: TGraphOffset; out AResolvedIndex: Integer): Boolean;
+var
+  LPosition: TGraphPosition;
+  LX, LY, LZ: Integer;
+
+  function ResolveAxis(const ACoordinate: TGraphCoordinate;
+    const ASize: TGraphCoordinate; const ADelta: Integer;
+    out AResolved: Integer): Boolean;
+  var
+    LCoordinate, LDeltaRemainder, LMagnitude, LSize: Integer;
+  begin
+    LSize := Integer(ASize);
+    if LSize <= 0 then
+      raise EInvalidOperation.Create(
+        'ResolveOffsetIndex::graph dimension cannot be empty');
+    LCoordinate := Integer(ACoordinate);
+    if (LCoordinate < 0) or (LCoordinate >= LSize) then
+      raise EInvalidOperation.Create(
+        'ResolveOffsetIndex::entry coordinate is outside its dimension');
+
+    if not FWrap then
+    begin
+      if ADelta >= 0 then
+      begin
+        //Check before adding so even High(Integer) is harmless.
+        if (ADelta >= LSize)
+          or (LCoordinate > Pred(LSize) - ADelta) then
+          Exit(False);
+      end
+      else
+      begin
+        //-LCoordinate is representable because stored coordinates never
+        //exceed High(Integer); this avoids negating Low(Integer).
+        if ADelta < -LCoordinate then
+          Exit(False);
+      end;
+      AResolved := LCoordinate + ADelta;
+      Exit(True);
+    end;
+
+    //Modulo by a positive dimension is defined for Low(Integer), unlike
+    //taking Abs or negating that value.
+    LDeltaRemainder := ADelta mod LSize;
+    if LDeltaRemainder >= 0 then
+    begin
+      if LCoordinate >= LSize - LDeltaRemainder then
+        AResolved := LCoordinate - (LSize - LDeltaRemainder)
+      else
+        AResolved := LCoordinate + LDeltaRemainder;
+    end
+    else
+    begin
+      //A negative remainder has magnitude below LSize and therefore cannot
+      //be Low(Integer), even when the original delta was.
+      LMagnitude := -LDeltaRemainder;
+      if LCoordinate < LMagnitude then
+        AResolved := LCoordinate + (LSize - LMagnitude)
+      else
+        AResolved := LCoordinate - LMagnitude;
+    end;
+    Result := True;
+  end;
+
+begin
+  AResolvedIndex := -1;
+  if (AEntryIndex < 0) or (AEntryIndex >= FEntries.Count) then
+    raise ERangeError.CreateFmt(
+      'ResolveOffsetIndex::entry index out of bounds [%d]',
+      [AEntryIndex]);
+  LPosition := FEntries[AEntryIndex].Position;
+  if (not ResolveAxis(LPosition.X, FDimension.Width,
+      AOffset.DeltaX, LX))
+    or (not ResolveAxis(LPosition.Y, FDimension.Height,
+      AOffset.DeltaY, LY))
+    or (not ResolveAxis(LPosition.Z, FDimension.Depth,
+      AOffset.DeltaZ, LZ)) then
+    Exit(False);
+  AResolvedIndex := CoordToIndex(TGraphCoordinate(LX),
+    TGraphCoordinate(LY), TGraphCoordinate(LZ));
+  Result := True;
 end;
 
 procedure TGraph.SynchronizePreviousValueDependencies;
@@ -2933,6 +3437,7 @@ var
     LHasPreviousValues: Boolean;
     LPreviousPassIndex: Integer;
     LRequirementIndex: Integer;
+    LResolvedIndex: Integer;
     LSourceAllowed: Boolean;
     LSourceEntry: TGraphEntry;
     LSourceGraph: TGraph;
@@ -2940,7 +3445,7 @@ var
     I: Integer;
     LAllowed: Boolean;
 
-    function SourceEntry(const ASourcePassIndex: Integer): TGraphEntry;
+    function SourceGraph(const ASourcePassIndex: Integer): TGraph;
     begin
       if (ASourcePassIndex < 0)
         or (ASourcePassIndex >= FPassRoot.FPasses.Count) then
@@ -2951,11 +3456,46 @@ var
         raise EInvalidOperation.CreateFmt(
           'TrimValuesForPassRequirements::pass %d reads undeclared dependency %d',
           [FPassIndex, ASourcePassIndex]);
-      LSourceGraph := FPassRoot.GetPassGraph(ASourcePassIndex);
-      if LSourceGraph.FEntries.Count <> FEntries.Count then
+      Result := FPassRoot.GetPassGraph(ASourcePassIndex);
+      if Result.FEntries.Count <> FEntries.Count then
         raise EInvalidOperation.Create(
           'TrimValuesForPassRequirements::pass dimensions do not match');
-      Result := LSourceGraph.FEntries[AEntry.Index];
+    end;
+
+    function RequirementMatches(
+      const ARequirementIndex: Integer): Boolean;
+    var
+      LTermIndex: Integer;
+    begin
+      Result := False;
+      LSourceGraph := SourceGraph(
+        LGroup.FPassRequirements[ARequirementIndex].PassIndex);
+      for LTermIndex := 0 to High(
+        LGroup.FPassRequirements[ARequirementIndex].Terms) do
+        if ResolveOffsetIndex(AEntry.Index,
+          LGroup.FPassRequirements[ARequirementIndex].Terms[
+            LTermIndex].Offset, LResolvedIndex) then
+        begin
+          LSourceEntry := LSourceGraph.FEntries[LResolvedIndex];
+          if (not LSourceEntry.Empty)
+            and ContainsGraphValue(
+              LGroup.FPassRequirements[ARequirementIndex].Terms[
+                LTermIndex].Values, LSourceEntry.Value) then
+            Exit(True);
+        end;
+    end;
+
+    function IsMergedPreviousZero(
+      const ARequirementIndex, APreviousPassIndex: Integer): Boolean;
+    begin
+      Result := (LGroup.FPassRequirements[ARequirementIndex].PassIndex
+          = APreviousPassIndex)
+        and (LGroup.FPassRequirements[ARequirementIndex].Kind
+          = prkMergedOffset)
+        and (Length(LGroup.FPassRequirements[ARequirementIndex].Terms)
+          = 1)
+        and IsZeroGraphOffset(
+          LGroup.FPassRequirements[ARequirementIndex].Terms[0].Offset);
     end;
   begin
     if not Assigned(FPassRoot) then
@@ -2983,34 +3523,26 @@ var
       //conjunctive filters.
       if LHasPreviousValues then
       begin
-        LSourceEntry := SourceEntry(LPreviousPassIndex);
+        LSourceGraph := SourceGraph(LPreviousPassIndex);
+        LSourceEntry := LSourceGraph.FEntries[AEntry.Index];
         LSourceAllowed := (not LSourceEntry.Empty)
           and ContainsGraphValue(LGroup.PreviousValues,
             LSourceEntry.Value);
         for LRequirementIndex := 0 to
           High(LGroup.FPassRequirements) do
-          if LGroup.FPassRequirements[LRequirementIndex].PassIndex
-            = LPreviousPassIndex then
+          if IsMergedPreviousZero(LRequirementIndex,
+            LPreviousPassIndex) then
             LSourceAllowed := LSourceAllowed
-              or ((not LSourceEntry.Empty)
-                and ContainsGraphValue(
-                  LGroup.FPassRequirements[LRequirementIndex].Values,
-                  LSourceEntry.Value));
+              or RequirementMatches(LRequirementIndex);
         LAllowed := LSourceAllowed;
       end;
 
       for LRequirementIndex := 0 to High(LGroup.FPassRequirements) do
       begin
-        if LHasPreviousValues
-          and (LGroup.FPassRequirements[LRequirementIndex].PassIndex
-            = LPreviousPassIndex) then
+        if LHasPreviousValues and IsMergedPreviousZero(
+          LRequirementIndex, LPreviousPassIndex) then
           Continue;
-        LSourceEntry := SourceEntry(
-          LGroup.FPassRequirements[LRequirementIndex].PassIndex);
-        if LSourceEntry.Empty
-          or (not ContainsGraphValue(
-            LGroup.FPassRequirements[LRequirementIndex].Values,
-            LSourceEntry.Value)) then
+        if not RequirementMatches(LRequirementIndex) then
         begin
           LAllowed := False;
           Break;
@@ -3972,6 +4504,44 @@ var
     LSourcePassIndex: Integer;
     LSourceValue: TGraphValue;
     LValue: Integer;
+
+    function RequirementMatches(
+      const ARequirementIndex: Integer): Boolean;
+    var
+      LResolvedIndex, LTermIndex: Integer;
+      LTermSourcePass: Integer;
+      LTermSourceValue: TGraphValue;
+    begin
+      Result := False;
+      LTermSourcePass :=
+        LGroup.FPassRequirements[ARequirementIndex].PassIndex;
+      for LTermIndex := 0 to High(
+        LGroup.FPassRequirements[ARequirementIndex].Terms) do
+        if AGraph.ResolveOffsetIndex(LCell,
+          LGroup.FPassRequirements[ARequirementIndex].Terms[
+            LTermIndex].Offset, LResolvedIndex) then
+        begin
+          LTermSourceValue := AStaged[LTermSourcePass][LResolvedIndex];
+          if (LTermSourceValue <> TGraphValue.Empty)
+            and ContainsGraphValue(
+              LGroup.FPassRequirements[ARequirementIndex].Terms[
+                LTermIndex].Values, LTermSourceValue) then
+            Exit(True);
+        end;
+    end;
+
+    function IsMergedPreviousZero(
+      const ARequirementIndex, APreviousPassIndex: Integer): Boolean;
+    begin
+      Result := (LGroup.FPassRequirements[ARequirementIndex].PassIndex
+          = APreviousPassIndex)
+        and (LGroup.FPassRequirements[ARequirementIndex].Kind
+          = prkMergedOffset)
+        and (Length(LGroup.FPassRequirements[ARequirementIndex].Terms)
+          = 1)
+        and IsZeroGraphOffset(
+          LGroup.FPassRequirements[ARequirementIndex].Terms[0].Offset);
+    end;
   begin
     Result := False;
     AInvalidLockEntry := -1;
@@ -4141,17 +4711,14 @@ var
             LSourceNamed := False;
             for LRequirementIndex := 0 to
               High(LGroup.FPassRequirements) do
-              if LGroup.FPassRequirements[LRequirementIndex].PassIndex
-                = LSourcePassIndex then
+              if IsMergedPreviousZero(LRequirementIndex,
+                LSourcePassIndex) then
               begin
                 if proNamed in
                   LGroup.FPassRequirements[LRequirementIndex].Origins then
                   LSourceNamed := True;
                 LSourceAllowed := LSourceAllowed
-                  or ((LSourceValue <> TGraphValue.Empty)
-                    and ContainsGraphValue(
-                      LGroup.FPassRequirements[LRequirementIndex].Values,
-                      LSourceValue));
+                  or RequirementMatches(LRequirementIndex);
               end;
             if not LSourceAllowed then
             begin
@@ -4173,14 +4740,10 @@ var
           begin
             LSourcePassIndex :=
               LGroup.FPassRequirements[LRequirementIndex].PassIndex;
-            if LHasPreviousValues
-              and (LSourcePassIndex = Pred(AGraph.FPassIndex)) then
+            if LHasPreviousValues and IsMergedPreviousZero(
+              LRequirementIndex, Pred(AGraph.FPassIndex)) then
               Continue;
-            LSourceValue := AStaged[LSourcePassIndex][LCell];
-            if (LSourceValue = TGraphValue.Empty)
-              or (not ContainsGraphValue(
-                LGroup.FPassRequirements[LRequirementIndex].Values,
-                LSourceValue)) then
+            if not RequirementMatches(LRequirementIndex) then
             begin
               LRequirementsAllowed := False;
               if (LFailurePass < 0)

@@ -164,6 +164,8 @@ var
   GInvalidResetEntryCount: Integer = 0;
   GCapturedWeightCount: Integer = 0;
   GCapturedWeights: array[0..Pred(MAX_CAPTURED_PASSES)] of TGraphWeight;
+  GSpatialExactMutationRejected: Boolean = False;
+  GSpatialAnyMutationRejected: Boolean = False;
 
 function TTestGraph.DoCreateEntry: TGraphEntry;
 begin
@@ -465,6 +467,27 @@ function SelectAndMutateAllowedValues(const AGraph: TGraph;
   const AValid: TGraphValues): TGraphValue;
 begin
   AGraph.SetAllowedValues(0, 0, 0, 'B');
+  Result := AValid[0];
+end;
+
+function SelectAndAttemptSpatialMutation(const AGraph: TGraph;
+  const {%H-}AEntry: TGraphEntry;
+  const AValid: TGraphValues): TGraphValue;
+begin
+  try
+    AGraph.Rules['candidate'].RequireFromPassAt('source',
+      MakeGraphOffset(0, 0, 0), 'A');
+  except
+    on E: EInvalidOperation do
+      GSpatialExactMutationRejected := True;
+  end;
+  try
+    AGraph.Rules['candidate'].RequireAnyFromPass('source', [
+      MakeGraphPassMatchTerm(MakeGraphOffset(0, 0, 0), 'A')]);
+  except
+    on E: EInvalidOperation do
+      GSpatialAnyMutationRejected := True;
+  end;
   Result := AValid[0];
 end;
 
@@ -933,6 +956,117 @@ begin
     .RequireFromPass('biome', 'plains')
     .RequireFromPass('roads', 'bridge')
     .RequireFromPass('housing', 'none');
+end;
+
+function NewSpatialParityFixture: TGraph;
+begin
+  Result := TGraph.Create;
+  Result.Seed := $2468ACE0;
+  Result.Reshape(3, 1, 1);
+  Result.WrapNeighbors := False;
+
+  Result.CurrentPass := 'source';
+  Result.PassMode := gpmOverlay;
+  Result.AddValue('A');
+  Result.AddValue('B');
+  Result.AddValue('C');
+  Result.Entry[0, 0, 0].Value := 'A';
+  Result.Entry[1, 0, 0].Value := 'B';
+  Result.Entry[2, 0, 0].Value := 'C';
+
+  Result.SwitchToPass('consumer');
+  Result.PassMode := gpmOverlay;
+  Result.ClearDependencies;
+  Result.AddValue('next-A').RequireFromPassAt('source',
+    MakeGraphOffset(1, 0, 0), 'A');
+  Result.AddValue('next-B').RequireFromPassAt('source',
+    MakeGraphOffset(1, 0, 0), 'B');
+  Result.AddValue('next-C').RequireFromPassAt('source',
+    MakeGraphOffset(1, 0, 0), 'C');
+  Result.AddValue('edge').RequireFromPassAt('source',
+    MakeGraphOffset(0, 0, 0), 'C');
+end;
+
+function NewSpatialAnyParityFixture: TGraph;
+begin
+  Result := TGraph.Create.Reshape(3, 1, 1);
+  Result.WrapNeighbors := False;
+  Result.CurrentPass := 'source';
+  Result.PassMode := gpmOverlay;
+  Result.AddValue('left');
+  Result.AddValue('middle');
+  Result.AddValue('right');
+  Result.Entry[0, 0, 0].Value := 'left';
+  Result.Entry[1, 0, 0].Value := 'middle';
+  Result.Entry[2, 0, 0].Value := 'right';
+  Result.SwitchToPass('consumer');
+  Result.PassMode := gpmOverlay;
+  Result.ClearDependencies;
+  Result.AddValue('choice').RequireAnyFromPass('source', [
+    MakeGraphPassMatchTerm(MakeGraphOffset(-1, 0, 0), 'left'),
+    MakeGraphPassMatchTerm(MakeGraphOffset(1, 0, 0), 'right')]);
+  Result.AddValue('none');
+  Result.Entry[1, 0, 0].Value := 'choice';
+end;
+
+function NewSpatialAnyExtremeFailureFixture(
+  const AWrap: Boolean): TGraph;
+var
+  LRequired: TGraphValue;
+  Y, Z: Integer;
+begin
+  Result := TGraph.Create.Reshape(1, 4, 4);
+  Result.WrapNeighbors := AWrap;
+  Result.CurrentPass := 'source';
+  Result.PassMode := gpmOverlay;
+  Result.AddValue('hit');
+  Result.AddValue('miss');
+  for Z := 0 to 3 do
+    for Y := 0 to 3 do
+      Result.Entry[0, Y, Z].Value := 'hit';
+  if AWrap then
+    LRequired := 'miss'
+  else
+    LRequired := 'hit';
+  Result.SwitchToPass('consumer');
+  Result.PassMode := gpmOverlay;
+  Result.ClearDependencies;
+  Result.AddValue('choice').RequireAnyFromPass('source', [
+    MakeGraphPassMatchTerm(MakeGraphOffset(0, Low(Integer), 0),
+      LRequired),
+    MakeGraphPassMatchTerm(MakeGraphOffset(0, High(Integer), 0),
+      LRequired),
+    MakeGraphPassMatchTerm(MakeGraphOffset(0, 0, Low(Integer)),
+      LRequired),
+    MakeGraphPassMatchTerm(MakeGraphOffset(0, 0, High(Integer)),
+      LRequired)]);
+  Result.AddValue('none');
+  Result.Entry[0, 1, 1].Value := 'choice';
+end;
+
+function NewSpatialZeroMergeFixture(const AReverse: Boolean): TGraph;
+var
+  LGroup: TGraphRuleGroup;
+begin
+  Result := TGraph.Create.Reshape(1, 1, 1);
+  Result.WrapNeighbors := False;
+  Result.CurrentPass := 'source';
+  Result.AddValue('previous');
+  Result.AddValue('named');
+  Result.AddValue('exact');
+  Result.Entry[0, 0, 0].Value := 'exact';
+  Result.SwitchToPass('consumer');
+  LGroup := Result.AddValue('choice');
+  if AReverse then
+    LGroup.RequireFromPassAt('source', MakeGraphOffset(0, 0, 0),
+      'exact').RequireFromPass('source', 'named')
+      .RequirePrevious('previous')
+  else
+    LGroup.RequirePrevious('previous')
+      .RequireFromPass('source', 'named')
+      .RequireFromPassAt('source', MakeGraphOffset(0, 0, 0), 'exact');
+  Result.AddValue('none');
+  Result.Entry[0, 0, 0].Value := 'choice';
 end;
 
 function SamePassSolveReport(const A, B: TGraphPassSolveReport): Boolean;
@@ -2607,6 +2741,833 @@ begin
       'legacy Run honors named requirements in topological order');
   finally
     LRun.Free;
+  end;
+end;
+
+procedure TestSpatialPassExactOffsets;
+var
+  LCenterIndex: Integer;
+  LGraph: TGraph;
+  LOptions: TGraphSolveOptions;
+  LReport: TGraphSolveReport;
+  LSnapshot: String;
+  X, Y, Z: Integer;
+begin
+  LOptions := DefaultGraphSolveOptions;
+  LGraph := TGraph.Create.Reshape(3, 3, 3);
+  try
+    LGraph.WrapNeighbors := False;
+    LGraph.CurrentPass := 'structure';
+    LGraph.PassMode := gpmOverlay;
+    LGraph.AddValue('empty');
+    LGraph.AddValue('west');
+    LGraph.AddValue('east');
+    LGraph.AddValue('south');
+    LGraph.AddValue('north');
+    LGraph.AddValue('below');
+    LGraph.AddValue('above');
+    for Z := 0 to 2 do
+      for Y := 0 to 2 do
+        for X := 0 to 2 do
+          LGraph.Entry[X, Y, Z].Value := 'empty';
+    LGraph.Entry[0, 1, 1].Value := 'west';
+    LGraph.Entry[2, 1, 1].Value := 'east';
+    LGraph.Entry[1, 0, 1].Value := 'south';
+    LGraph.Entry[1, 2, 1].Value := 'north';
+    LGraph.Entry[1, 1, 0].Value := 'below';
+    LGraph.Entry[1, 1, 2].Value := 'above';
+
+    LGraph.SwitchToPass('supported');
+    LGraph.PassMode := gpmOverlay;
+    LGraph.ClearDependencies;
+    LGraph.AddValue('center')
+      .RequireFromPassAt('structure', MakeGraphOffset(-1, 0, 0), 'west')
+      .RequireFromPassAt('structure', MakeGraphOffset(1, 0, 0),
+        ['west', 'east'])
+      .RequireFromPassAt('structure', MakeGraphOffset(0, -1, 0), 'south')
+      .RequireFromPassAt('structure', MakeGraphOffset(0, 1, 0), 'north')
+      .RequireFromPassAt('structure', MakeGraphOffset(0, 0, -1), 'below')
+      .RequireFromPassAt('structure', MakeGraphOffset(0, 0, 1), 'above');
+    LGraph.AddValue('none');
+    LGraph.Entry[1, 1, 1].Value := 'center';
+    LCenterIndex := LGraph.Entry[1, 1, 1].Index;
+
+    Check(DependencySnapshot(LGraph, 1) = '0',
+      'six spatial clauses retain one canonical dependency edge');
+    Check(LGraph.TrySolve(LOptions, LReport)
+      and (LGraph.PassGraph[1].Entry[1, 1, 1].Value = 'center'),
+      'signed X, Y, and Z offsets match their exact source coordinates');
+    Check((WFC_PIPELINE_ALGORITHM_VERSION = 2)
+      and (LReport.PipelineAlgorithmVersion = 2),
+      'spatial pass solving reports pipeline algorithm version 2');
+
+    LGraph.PassGraph[0].Entry[1, 1, 2].Value := 'empty';
+    LSnapshot := SnapshotPipelineState(LGraph);
+    Check(not LGraph.TryRegenerateFrom('structure', LOptions, LReport),
+      'distinct exact-offset clauses remain conjunctive');
+    Check((LReport.FailedPassIndex = 1)
+      and (LReport.Contradiction.Kind = gckPassDependency)
+      and (LReport.Contradiction.PassIndex = 1)
+      and (LReport.Contradiction.DependencyPassIndex = 0)
+      and (LReport.Contradiction.EntryIndex = LCenterIndex),
+      'a spatial failure attributes the consumer, source pass, and entry');
+    Check(ExecutionOrderSnapshot(LReport) = '0,1',
+      'selective spatial regeneration executes its dependency closure');
+    Check(SnapshotPipelineState(LGraph) = LSnapshot,
+      'failed spatial regeneration rolls every pass back atomically');
+
+    LGraph.PassGraph[0].Entry[1, 1, 2].Value := 'above';
+    Check(LGraph.TryRegenerateFrom('structure', LOptions, LReport)
+      and (LGraph.PassGraph[1].Entry[1, 1, 1].Value = 'center'),
+      'repairing one failed spatial clause permits selective retry');
+  finally
+    LGraph.Free;
+  end;
+end;
+
+procedure TestSpatialPassAnyClauses;
+var
+  LGraph: TGraph;
+  LOptions: TGraphSolveOptions;
+  LReport: TGraphSolveReport;
+begin
+  LOptions := DefaultGraphSolveOptions;
+
+  LGraph := TGraph.Create.Reshape(3, 1, 1);
+  try
+    LGraph.WrapNeighbors := False;
+    LGraph.CurrentPass := 'source';
+    LGraph.PassMode := gpmOverlay;
+    LGraph.AddValue('left');
+    LGraph.AddValue('anchor');
+    LGraph.AddValue('right-a');
+    LGraph.AddValue('right-b');
+    LGraph.Entry[0, 0, 0].Value := 'left';
+    LGraph.Entry[1, 0, 0].Value := 'anchor';
+    LGraph.Entry[2, 0, 0].Value := 'right-b';
+    LGraph.SwitchToPass('consumer');
+    LGraph.PassMode := gpmOverlay;
+    LGraph.ClearDependencies;
+    LGraph.AddValue('choice')
+      .RequireAnyFromPass('source', [
+        MakeGraphPassMatchTerm(MakeGraphOffset(-1, 0, 0), 'left'),
+        MakeGraphPassMatchTerm(MakeGraphOffset(1, 0, 0),
+          ['right-a', 'right-b'])])
+      .RequireFromPassAt('source', MakeGraphOffset(0, 0, 0), 'anchor');
+    LGraph.AddValue('none');
+    LGraph.Entry[1, 0, 0].Value := 'choice';
+    Check(LGraph.TrySolve(LOptions, LReport)
+      and (LGraph.PassGraph[1].Entry[1, 0, 0].Value = 'choice'),
+      'an existential clause accepts either offset with term-specific values');
+  finally
+    LGraph.Free;
+  end;
+
+  LGraph := TGraph.Create.Reshape(3, 1, 1);
+  try
+    LGraph.WrapNeighbors := False;
+    LGraph.CurrentPass := 'source';
+    LGraph.PassMode := gpmOverlay;
+    LGraph.AddValue('left');
+    LGraph.AddValue('anchor');
+    LGraph.AddValue('right-a');
+    LGraph.Entry[0, 0, 0].Value := 'right-a';
+    LGraph.Entry[1, 0, 0].Value := 'anchor';
+    LGraph.Entry[2, 0, 0].Value := 'left';
+    LGraph.SwitchToPass('consumer');
+    LGraph.PassMode := gpmOverlay;
+    LGraph.ClearDependencies;
+    LGraph.AddValue('choice')
+      .RequireAnyFromPass('source', [
+        MakeGraphPassMatchTerm(MakeGraphOffset(-1, 0, 0), 'left'),
+        MakeGraphPassMatchTerm(MakeGraphOffset(1, 0, 0), 'right-a')])
+      .RequireFromPassAt('source', MakeGraphOffset(0, 0, 0), 'anchor');
+    LGraph.AddValue('none');
+    LGraph.Entry[1, 0, 0].Value := 'choice';
+    Check(not LGraph.TrySolve(LOptions, LReport),
+      'existential terms do not pool values across different offsets');
+    Check((LReport.Contradiction.Kind = gckPassDependency)
+      and (LReport.Contradiction.DependencyPassIndex = 0)
+      and (LReport.Contradiction.EntryIndex =
+        LGraph.PassGraph[1].Entry[1, 0, 0].Index),
+      'a failed existential clause retains dependency attribution');
+  finally
+    LGraph.Free;
+  end;
+
+  LGraph := TGraph.Create.Reshape(2, 1, 1);
+  try
+    LGraph.WrapNeighbors := False;
+    LGraph.CurrentPass := 'source';
+    LGraph.PassMode := gpmOverlay;
+    LGraph.AddValue('blank');
+    LGraph.AddValue('hit');
+    LGraph.Entry[0, 0, 0].Value := 'blank';
+    LGraph.Entry[1, 0, 0].Value := 'hit';
+    LGraph.SwitchToPass('consumer');
+    LGraph.PassMode := gpmOverlay;
+    LGraph.ClearDependencies;
+    LGraph.AddValue('choice').RequireAnyFromPass('source', [
+      MakeGraphPassMatchTerm(MakeGraphOffset(-1, 0, 0), 'hit'),
+      MakeGraphPassMatchTerm(MakeGraphOffset(1, 0, 0), 'hit')]);
+    LGraph.AddValue('none');
+    LGraph.Entry[0, 0, 0].Value := 'choice';
+    Check(LGraph.TrySolve(LOptions, LReport),
+      'an out-of-bounds term does not poison an in-bounds existential match');
+  finally
+    LGraph.Free;
+  end;
+
+  LGraph := TGraph.Create.Reshape(1, 1, 1);
+  try
+    LGraph.WrapNeighbors := False;
+    LGraph.CurrentPass := 'source';
+    LGraph.PassMode := gpmOverlay;
+    LGraph.AddValue('hit');
+    LGraph.Entry[0, 0, 0].Value := 'hit';
+    LGraph.SwitchToPass('consumer');
+    LGraph.PassMode := gpmOverlay;
+    LGraph.ClearDependencies;
+    LGraph.AddValue('choice').RequireAnyFromPass('source', [
+      MakeGraphPassMatchTerm(MakeGraphOffset(-1, 0, 0), 'hit'),
+      MakeGraphPassMatchTerm(MakeGraphOffset(1, 0, 0), 'hit')]);
+    LGraph.Entry[0, 0, 0].Value := 'choice';
+    Check(not LGraph.TrySolve(LOptions, LReport),
+      'an existential clause fails when every bounded term is out of bounds');
+  finally
+    LGraph.Free;
+  end;
+
+  LGraph := TGraph.Create.Reshape(1, 1, 1);
+  try
+    LGraph.WrapNeighbors := False;
+    LGraph.CurrentPass := 'source';
+    LGraph.PassMode := gpmOverlay;
+    LGraph.AddValue('hit');
+    LGraph.Entry[0, 0, 0].Value := 'hit';
+    LGraph.SwitchToPass('consumer');
+    LGraph.PassMode := gpmOverlay;
+    LGraph.ClearDependencies;
+    LGraph.AddValue('choice').RequireFromPassAt('source',
+      MakeGraphOffset(-1, 0, 0), 'hit');
+    LGraph.Entry[0, 0, 0].Value := 'choice';
+    Check(not LGraph.TrySolve(LOptions, LReport),
+      'an exact clause fails when its bounded coordinate is out of bounds');
+  finally
+    LGraph.Free;
+  end;
+end;
+
+procedure TestSpatialPassClauseComposition;
+var
+  LGraph: TGraph;
+  LOptions: TGraphSolveOptions;
+  LReport: TGraphSolveReport;
+  LSnapshot: String;
+begin
+  LOptions := DefaultGraphSolveOptions;
+  LGraph := TGraph.Create.Reshape(3, 1, 1);
+  try
+    LGraph.WrapNeighbors := False;
+    LGraph.CurrentPass := 'geometry';
+    LGraph.PassMode := gpmOverlay;
+    LGraph.AddValue('left');
+    LGraph.AddValue('anchor');
+    LGraph.AddValue('right');
+    LGraph.AddValue('wrong');
+    LGraph.Entry[0, 0, 0].Value := 'left';
+    LGraph.Entry[1, 0, 0].Value := 'anchor';
+    LGraph.Entry[2, 0, 0].Value := 'right';
+
+    LGraph.SwitchToPass('climate');
+    LGraph.PassMode := gpmOverlay;
+    LGraph.ClearDependencies;
+    LGraph.AddValue('warm');
+    LGraph.AddValue('cold');
+    LGraph.Entry[0, 0, 0].Value := 'warm';
+    LGraph.Entry[1, 0, 0].Value := 'warm';
+    LGraph.Entry[2, 0, 0].Value := 'warm';
+
+    LGraph.SwitchToPass('consumer');
+    LGraph.PassMode := gpmOverlay;
+    LGraph.ClearDependencies;
+    LGraph.AddValue('choice')
+      .RequireAnyFromPass('geometry', [
+        MakeGraphPassMatchTerm(MakeGraphOffset(-1, 0, 0), 'left'),
+        MakeGraphPassMatchTerm(MakeGraphOffset(1, 0, 0), 'right')])
+      .RequireAnyFromPass('geometry', [
+        MakeGraphPassMatchTerm(MakeGraphOffset(0, 0, 0), 'anchor')])
+      .RequireAnyFromPass('climate', [
+        MakeGraphPassMatchTerm(MakeGraphOffset(0, 0, 0), 'warm')]);
+    LGraph.AddValue('none');
+    LGraph.Entry[1, 0, 0].Value := 'choice';
+
+    Check((DependencySnapshot(LGraph, 2) = '0,1')
+      and LGraph.TrySolve(LOptions, LReport),
+      'separate any clauses and providers solve as one AND composition');
+
+    LGraph.PassGraph[0].Entry[1, 0, 0].Value := 'wrong';
+    LSnapshot := SnapshotPipelineState(LGraph);
+    Check(not LGraph.TryRegenerateFrom('geometry', LOptions, LReport),
+      'a second any clause from one provider remains independently required');
+    Check((LReport.Contradiction.Kind = gckPassDependency)
+      and (LReport.Contradiction.DependencyPassIndex = 0),
+      'same-provider any-clause failure identifies that provider');
+    Check(SnapshotPipelineState(LGraph) = LSnapshot,
+      'same-provider any-clause failure rolls back atomically');
+
+    LGraph.PassGraph[0].Entry[1, 0, 0].Value := 'anchor';
+    LGraph.PassGraph[1].Entry[1, 0, 0].Value := 'cold';
+    LSnapshot := SnapshotPipelineState(LGraph);
+    Check(not LGraph.TryRegenerateFrom('climate', LOptions, LReport),
+      'an any clause from a distinct provider is also conjunctive');
+    Check((LReport.Contradiction.Kind = gckPassDependency)
+      and (LReport.Contradiction.DependencyPassIndex = 1)
+      and (SnapshotPipelineState(LGraph) = LSnapshot),
+      'multi-provider failure attributes its source and preserves state');
+  finally
+    LGraph.Free;
+  end;
+end;
+
+procedure TestSpatialPassWrapping;
+var
+  LGraph: TGraph;
+  LOffset: TGraphOffset;
+  LOptions: TGraphSolveOptions;
+  LReport: TGraphSolveReport;
+  LRaised: Boolean;
+  LRun: TGraph;
+  Y, Z: Integer;
+begin
+  LOffset := MakeGraphOffset(-7, 11, -13);
+  Check((LOffset.DeltaX = -7) and (LOffset.DeltaY = 11)
+    and (LOffset.DeltaZ = -13),
+    'the portable offset constructor preserves all signed components');
+
+  LOptions := DefaultGraphSolveOptions;
+  LGraph := TGraph.Create.Reshape(4, 1, 1);
+  try
+    LGraph.WrapNeighbors := True;
+    LGraph.CurrentPass := 'source';
+    LGraph.PassMode := gpmOverlay;
+    LGraph.AddValue('low');
+    LGraph.AddValue('high');
+    LGraph.AddValue('large');
+    LGraph.AddValue('negative');
+    LGraph.Entry[0, 0, 0].Value := 'high';
+    LGraph.Entry[1, 0, 0].Value := 'low';
+    LGraph.Entry[2, 0, 0].Value := 'large';
+    LGraph.Entry[3, 0, 0].Value := 'negative';
+
+    LGraph.SwitchToPass('consumer');
+    LGraph.PassMode := gpmOverlay;
+    LGraph.ClearDependencies;
+    LGraph.AddValue('wrapped')
+      .RequireFromPassAt('source',
+        MakeGraphOffset(Low(Integer), 0, 0), 'low')
+      .RequireFromPassAt('source',
+        MakeGraphOffset(High(Integer), 0, 0), 'high')
+      .RequireFromPassAt('source', MakeGraphOffset(5, 0, 0), 'large')
+      .RequireFromPassAt('source', MakeGraphOffset(-2, 0, 0), 'negative');
+    LGraph.AddValue('none');
+    LGraph.Entry[1, 0, 0].Value := 'wrapped';
+
+    Check(LGraph.TrySolve(LOptions, LReport)
+      and (LGraph.PassGraph[1].Entry[1, 0, 0].Value = 'wrapped'),
+      'wrapped offsets use overflow-safe modulo for large and negative deltas');
+  finally
+    LGraph.Free;
+  end;
+
+  LGraph := TGraph.Create.Reshape(1, 4, 4);
+  try
+    LGraph.WrapNeighbors := True;
+    LGraph.CurrentPass := 'source';
+    LGraph.PassMode := gpmOverlay;
+    LGraph.AddValue('origin');
+    LGraph.AddValue('y-high');
+    LGraph.AddValue('z-high');
+    for Z := 0 to 3 do
+      for Y := 0 to 3 do
+        LGraph.Entry[0, Y, Z].Value := 'origin';
+    LGraph.Entry[0, 0, 1].Value := 'y-high';
+    LGraph.Entry[0, 1, 0].Value := 'z-high';
+    LGraph.SwitchToPass('consumer');
+    LGraph.PassMode := gpmOverlay;
+    LGraph.ClearDependencies;
+    LGraph.AddValue('wrapped')
+      .RequireFromPassAt('source',
+        MakeGraphOffset(0, Low(Integer), 0), 'origin')
+      .RequireFromPassAt('source',
+        MakeGraphOffset(0, High(Integer), 0), 'y-high')
+      .RequireFromPassAt('source',
+        MakeGraphOffset(0, 0, Low(Integer)), 'origin')
+      .RequireFromPassAt('source',
+        MakeGraphOffset(0, 0, High(Integer)), 'z-high');
+    LGraph.AddValue('none');
+    LGraph.Entry[0, 1, 1].Value := 'wrapped';
+    Check(LGraph.TrySolve(LOptions, LReport),
+      'Y and Z Low/High(Integer) offsets wrap without overflow');
+  finally
+    LGraph.Free;
+  end;
+
+  LGraph := NewSpatialAnyExtremeFailureFixture(False);
+  LRun := NewSpatialAnyExtremeFailureFixture(False);
+  try
+    Check(not LGraph.TrySolve(LOptions, LReport),
+      'bounded Y/Z Low/High(Integer) any terms fail in TrySolve');
+    LRaised := False;
+    try
+      LRun.Run;
+    except
+      on E: EInvalidOperation do
+        LRaised := True;
+    end;
+    Check(LRaised,
+      'legacy Run agrees on bounded extreme-offset failure');
+  finally
+    LRun.Free;
+    LGraph.Free;
+  end;
+
+  LGraph := NewSpatialAnyExtremeFailureFixture(True);
+  LRun := NewSpatialAnyExtremeFailureFixture(True);
+  try
+    Check(not LGraph.TrySolve(LOptions, LReport),
+      'wrapped Y/Z extreme any terms still fail when values mismatch');
+    LRaised := False;
+    try
+      LRun.Run;
+    except
+      on E: EInvalidOperation do
+        LRaised := True;
+    end;
+    Check(LRaised,
+      'legacy Run agrees on wrapped extreme-offset value failure');
+  finally
+    LRun.Free;
+    LGraph.Free;
+  end;
+end;
+
+procedure TestSpatialPassCompatibilityAndParity;
+var
+  LGraph: TGraph;
+  LOptions: TGraphSolveOptions;
+  LReference: TGraph;
+  LReport: TGraphSolveReport;
+  LReportTwin: TGraphSolveReport;
+  LRaised: Boolean;
+  LRun: TGraph;
+  LSnapshot: String;
+begin
+  LOptions := DefaultGraphSolveOptions;
+  LReference := NewSpatialParityFixture;
+  LRun := NewSpatialParityFixture;
+  try
+    ConfigureDeterministicSelection(LReference);
+    ConfigureDeterministicSelection(LRun);
+    Check(LReference.TrySolve(LOptions, LReport),
+      'the reference solver accepts the exact-offset parity fixture');
+    LRaised := False;
+    try
+      LRun.Run;
+    except
+      on E: Exception do
+        LRaised := True;
+    end;
+    Check(not LRaised,
+      'legacy Run accepts the exact-offset parity fixture');
+    Check((SnapshotPass(LReference, 1) = 'next-Bnext-Cedge/|')
+      and (SnapshotPass(LRun, 1) = SnapshotPass(LReference, 1)),
+      'legacy Run and TrySolve produce identical spatial filtering');
+    Check((LReport.PipelineAlgorithmVersion = 2)
+      and (WFC_PIPELINE_ALGORITHM_VERSION = 2),
+      'the parity solve uses the public pipeline v2 contract');
+  finally
+    LRun.Free;
+    LReference.Free;
+  end;
+
+  LReference := NewSpatialAnyParityFixture;
+  LRun := NewSpatialAnyParityFixture;
+  try
+    ConfigureDeterministicSelection(LReference);
+    ConfigureDeterministicSelection(LRun);
+    Check(LReference.TrySolve(LOptions, LReport),
+      'the reference solver accepts the any-clause parity fixture');
+    LRaised := False;
+    try
+      LRun.Run;
+    except
+      on E: Exception do
+        LRaised := True;
+    end;
+    Check(not LRaised,
+      'legacy Run accepts the any-clause parity fixture');
+    Check(SnapshotPipelineState(LRun) = SnapshotPipelineState(LReference),
+      'legacy Run and TrySolve agree on successful any clauses');
+  finally
+    LRun.Free;
+    LReference.Free;
+  end;
+
+  LReference := NewSpatialZeroMergeFixture(False);
+  LRun := NewSpatialZeroMergeFixture(True);
+  try
+    Check(LReference.TrySolve(LOptions, LReport)
+      and LRun.TrySolve(LOptions, LReportTwin),
+      'all three zero-offset APIs merge as OR in both call orders');
+    Check((SnapshotPass(LReference, 1) = 'choice/|')
+      and (SnapshotPipelineState(LReference) = SnapshotPipelineState(LRun)),
+      'zero-offset OR merging is call-order independent');
+  finally
+    LRun.Free;
+    LReference.Free;
+  end;
+
+  LGraph := TGraph.Create.Reshape(2, 1, 1);
+  try
+    LGraph.WrapNeighbors := False;
+    LGraph.CurrentPass := 'terrain';
+    LGraph.PassMode := gpmOverlay;
+    LGraph.AddValue('land');
+    LGraph.AddValue('water');
+    LGraph.AddValue('rock');
+    LGraph.AddValue('sand');
+    LGraph.Entry[0, 0, 0].Value := 'water';
+    LGraph.Entry[1, 0, 0].Value := 'rock';
+
+    LGraph.SwitchToPass('foliage');
+    LGraph.AddValue('tree')
+      .RequirePrevious('land')
+      .RequireFromPass('terrain', 'water')
+      .RequireFromPassAt('terrain', MakeGraphOffset(1, 0, 0), 'rock');
+    LGraph.AddValue('none');
+    LGraph.Entry[0, 0, 0].Value := 'tree';
+    Check(LGraph.TrySolve(LOptions, LReport)
+      and (LGraph.PassGraph[1].Entry[0, 0, 0].Value = 'tree'),
+      'previous and named zero-offset alternatives remain OR-compatible');
+
+    LGraph.PassGraph[0].Entry[1, 0, 0].Value := 'sand';
+    LSnapshot := SnapshotPipelineState(LGraph);
+    Check(not LGraph.TryRegenerateFrom('terrain', LOptions, LReport),
+      'a nonzero clause from the predecessor remains a separate AND');
+    Check((LReport.Contradiction.Kind = gckPassDependency)
+      and (LReport.Contradiction.DependencyPassIndex = 0)
+      and (LReport.Contradiction.EntryIndex =
+        LGraph.PassGraph[1].Entry[0, 0, 0].Index),
+      'the nonzero predecessor failure is attributed to its source');
+    Check(SnapshotPipelineState(LGraph) = LSnapshot,
+      'a failed predecessor-offset retry preserves the prior pipeline state');
+  finally
+    LGraph.Free;
+  end;
+end;
+
+procedure TestSpatialPassOwnershipAndValidation;
+var
+  I: Integer;
+  LExactValues: TGraphValues;
+  LGraph: TGraph;
+  LGroup: TGraphRuleGroup;
+  LOptions: TGraphSolveOptions;
+  LReport: TGraphSolveReport;
+  LReportTwin: TGraphSolveReport;
+  LRaised: Boolean;
+  LTerms: TGraphPassMatchTerms;
+  LTwin: TGraph;
+  LValues: TGraphValues;
+begin
+  LOptions := DefaultGraphSolveOptions;
+  LGraph := TGraph.Create.Reshape(3, 1, 1);
+  LTwin := TGraph.Create.Reshape(3, 1, 1);
+  try
+    LGraph.WrapNeighbors := False;
+    LGraph.CurrentPass := 'source';
+    LGraph.PassMode := gpmOverlay;
+    LGraph.AddValue('left');
+    LGraph.AddValue('middle');
+    LGraph.AddValue('right');
+    LGraph.Entry[0, 0, 0].Value := 'left';
+    LGraph.Entry[1, 0, 0].Value := 'middle';
+    LGraph.Entry[2, 0, 0].Value := 'right';
+    LGraph.SwitchToPass('consumer');
+    LGraph.PassMode := gpmOverlay;
+    LGraph.ClearDependencies;
+    SetLength(LValues, 3);
+    LValues[0] := 'left';
+    LValues[1] := 'left';
+    LValues[2] := 'left';
+    SetLength(LTerms, 3);
+    LTerms[0] := MakeGraphPassMatchTerm(
+      MakeGraphOffset(-1, 0, 0), LValues);
+    LTerms[1] := MakeGraphPassMatchTerm(
+      MakeGraphOffset(-1, 0, 0), LValues);
+    LTerms[2] := MakeGraphPassMatchTerm(
+      MakeGraphOffset(1, 0, 0), 'right');
+    SetLength(LExactValues, 2);
+    LExactValues[0] := 'middle';
+    LExactValues[1] := 'middle';
+    LGroup := LGraph.AddValue('choice');
+    LGroup.RequireAnyFromPass('source', LTerms)
+      .RequireFromPassAt('source', MakeGraphOffset(0, 0, 0),
+        LExactValues);
+    LGraph.AddValue('none');
+    LGraph.Entry[1, 0, 0].Value := 'choice';
+
+    LValues[0] := 'mutated';
+    LValues[1] := 'mutated';
+    LValues[2] := 'mutated';
+    LExactValues[0] := 'mutated';
+    LExactValues[1] := 'mutated';
+    LTerms[0].Values[0] := 'mutated';
+    LTerms[1].Values[0] := 'mutated';
+    LTerms[2].Values[0] := 'mutated';
+    for I := 0 to High(LTerms) do
+      LTerms[I] := MakeGraphPassMatchTerm(
+        MakeGraphOffset(0, 0, 0), 'mutated');
+
+    LTwin.WrapNeighbors := False;
+    LTwin.CurrentPass := 'source';
+    LTwin.PassMode := gpmOverlay;
+    LTwin.AddValue('left');
+    LTwin.AddValue('middle');
+    LTwin.AddValue('right');
+    LTwin.Entry[0, 0, 0].Value := 'left';
+    LTwin.Entry[1, 0, 0].Value := 'middle';
+    LTwin.Entry[2, 0, 0].Value := 'right';
+    LTwin.SwitchToPass('consumer');
+    LTwin.PassMode := gpmOverlay;
+    LTwin.ClearDependencies;
+    LTwin.AddValue('choice').RequireAnyFromPass('source', [
+      MakeGraphPassMatchTerm(MakeGraphOffset(1, 0, 0), 'right'),
+      MakeGraphPassMatchTerm(MakeGraphOffset(-1, 0, 0), 'left'),
+      MakeGraphPassMatchTerm(MakeGraphOffset(-1, 0, 0), 'left')])
+      .RequireFromPassAt('source', MakeGraphOffset(0, 0, 0), 'middle');
+    LTwin.AddValue('none');
+    LTwin.Entry[1, 0, 0].Value := 'choice';
+
+    Check(LGraph.TrySolve(LOptions, LReport)
+      and LTwin.TrySolve(LOptions, LReportTwin),
+      'spatial clauses deep-copy terms, nested values, and exact arrays');
+    Check(SnapshotPipelineState(LGraph) = SnapshotPipelineState(LTwin),
+      'duplicate first-term values and reordered terms stay canonical');
+    for I := 0 to Pred(LGraph.TotalPassCount) do
+      Check(SamePassSolveReport(LReport.Passes[I], LReportTwin.Passes[I]),
+        Format('canonical spatial terms reproduce pass report %d', [I]));
+  finally
+    LTwin.Free;
+    LGraph.Free;
+  end;
+
+  LGraph := TGraph.Create.Reshape(1, 1, 1);
+  try
+    LGraph.WrapNeighbors := False;
+    LGraph.CurrentPass := 'source';
+    LGraph.PassMode := gpmOverlay;
+    LGraph.AddValue('A');
+    LGraph.Entry[0, 0, 0].Value := 'A';
+    LGraph.SwitchToPass('consumer');
+    LGraph.PassMode := gpmOverlay;
+    LGraph.ClearDependencies;
+    LGroup := LGraph.AddValue('candidate');
+    LGraph.AddValue('none');
+
+    SetLength(LTerms, 0);
+    LRaised := False;
+    try
+      LGroup.RequireAnyFromPass('source', LTerms);
+    except
+      on E: EArgumentException do
+        LRaised := True;
+    end;
+    Check(LRaised and (LGraph.DependencyCount = 0),
+      'an empty existential clause is rejected without adding an edge');
+
+    SetLength(LTerms, 2);
+    LTerms[0] := MakeGraphPassMatchTerm(
+      MakeGraphOffset(1, 0, 0), 'never');
+    LRaised := False;
+    try
+      LGroup.RequireAnyFromPass('source', LTerms);
+    except
+      on E: EArgumentException do
+        LRaised := True;
+    end;
+    Check(LRaised and (LGraph.DependencyCount = 0),
+      'a clause containing an empty term is rejected atomically');
+
+    LRaised := False;
+    try
+      LGroup.RequireFromPassAt('source', MakeGraphOffset(0, 0, 0),
+        TGraphValue.Empty);
+    except
+      on E: EArgumentException do
+        LRaised := True;
+    end;
+    Check(LRaised and (LGraph.DependencyCount = 0),
+      'an empty exact scalar value is rejected without mutation');
+
+    SetLength(LValues, 0);
+    LRaised := False;
+    try
+      LGroup.RequireFromPassAt('source',
+        MakeGraphOffset(0, 0, 0), LValues);
+    except
+      on E: EArgumentException do
+        LRaised := True;
+    end;
+    Check(LRaised and (LGraph.DependencyCount = 0),
+      'an empty exact value array is rejected without mutation');
+
+    LRaised := False;
+    try
+      LTerms[0] := MakeGraphPassMatchTerm(
+        MakeGraphOffset(0, 0, 0), LValues);
+    except
+      on E: EArgumentException do
+        LRaised := True;
+    end;
+    Check(LRaised and (LGraph.DependencyCount = 0),
+      'the public term constructor rejects an empty value array');
+
+    LGroup.RequireFromPassAt('source',
+      MakeGraphOffset(0, 0, 0), 'A');
+    LGraph.Entry[0, 0, 0].Value := 'candidate';
+    Check((DependencySnapshot(LGraph, 1) = '0')
+      and LGraph.TrySolve(LOptions, LReport),
+      'valid configuration succeeds after atomic validation failures');
+  finally
+    LGraph.Free;
+  end;
+end;
+
+procedure TestSpatialPassConfigurationGuards;
+var
+  LGraph: TGraph;
+  LGroup: TGraphRuleGroup;
+  LOptions: TGraphSolveOptions;
+  LReport: TGraphSolveReport;
+  LRaised: Boolean;
+begin
+  LOptions := DefaultGraphSolveOptions;
+  LGraph := TGraph.Create.Reshape(1, 1, 1);
+  try
+    LGraph.WrapNeighbors := False;
+    LGraph.CurrentPass := 'source';
+    LGraph.PassMode := gpmOverlay;
+    LGraph.AddValue('A');
+    LGraph.Entry[0, 0, 0].Value := 'A';
+    LGraph.SwitchToPass('consumer');
+    LGraph.PassMode := gpmOverlay;
+    LGraph.ClearDependencies;
+    LGroup := LGraph.AddValue('candidate');
+    LGraph.AddValue('none');
+    LGraph.Entry[0, 0, 0].Value := 'candidate';
+
+    LRaised := False;
+    try
+      LGroup.RequireFromPassAt('missing', MakeGraphOffset(0, 0, 0), 'A');
+    except
+      on E: EArgumentException do
+        LRaised := True;
+    end;
+    Check(LRaised and (LGraph.DependencyCount = 0),
+      'exact clauses reject an unknown provider atomically');
+
+    LRaised := False;
+    try
+      LGroup.RequireAnyFromPass('missing', [
+        MakeGraphPassMatchTerm(MakeGraphOffset(0, 0, 0), 'A')]);
+    except
+      on E: EArgumentException do
+        LRaised := True;
+    end;
+    Check(LRaised and (LGraph.DependencyCount = 0),
+      'any clauses reject an unknown provider atomically');
+
+    LRaised := False;
+    try
+      LGroup.RequireFromPassAt('consumer',
+        MakeGraphOffset(0, 0, 0), 'candidate');
+    except
+      on E: EInvalidOperation do
+        LRaised := True;
+    end;
+    Check(LRaised and (LGraph.DependencyCount = 0),
+      'exact clauses reject their own pass atomically');
+
+    LRaised := False;
+    try
+      LGroup.RequireAnyFromPass('consumer', [
+        MakeGraphPassMatchTerm(MakeGraphOffset(0, 0, 0), 'candidate')]);
+    except
+      on E: EInvalidOperation do
+        LRaised := True;
+    end;
+    Check(LRaised and (LGraph.DependencyCount = 0),
+      'any clauses reject their own pass atomically');
+
+    LGraph.DependsOn('source');
+    LGraph.SwitchToPass('source');
+    LGroup := LGraph.Rules['A'];
+    LRaised := False;
+    try
+      LGroup.RequireFromPassAt('consumer',
+        MakeGraphOffset(0, 0, 0), 'candidate');
+    except
+      on E: EInvalidOperation do
+        LRaised := True;
+    end;
+    Check(LRaised and (LGraph.DependencyCount = 0)
+      and (DependencySnapshot(LGraph, 1) = '0'),
+      'exact clauses reject a dependency cycle atomically');
+
+    LRaised := False;
+    try
+      LGroup.RequireAnyFromPass('consumer', [
+        MakeGraphPassMatchTerm(MakeGraphOffset(0, 0, 0), 'candidate')]);
+    except
+      on E: EInvalidOperation do
+        LRaised := True;
+    end;
+    Check(LRaised and (LGraph.DependencyCount = 0)
+      and (DependencySnapshot(LGraph, 1) = '0'),
+      'any clauses reject a dependency cycle atomically');
+    Check(LGraph.TrySolve(LOptions, LReport),
+      'configuration recovers after unknown, self, and cycle failures');
+  finally
+    LGraph.Free;
+  end;
+
+  LGraph := TGraph.Create.Reshape(1, 1, 1);
+  try
+    LGraph.WrapNeighbors := False;
+    LGraph.CurrentPass := 'source';
+    LGraph.PassMode := gpmOverlay;
+    LGraph.AddValue('A');
+    LGraph.Entry[0, 0, 0].Value := 'A';
+    LGraph.SwitchToPass('consumer');
+    LGraph.PassMode := gpmOverlay;
+    LGraph.ClearDependencies;
+    LGraph.AddValue('candidate');
+    LGraph.AddValue('none');
+    LGraph.SelectionCallback := SelectAndAttemptSpatialMutation;
+    GSpatialExactMutationRejected := False;
+    GSpatialAnyMutationRejected := False;
+    LGraph.Run;
+    Check(GSpatialExactMutationRejected
+      and (LGraph.DependencyCount = 0),
+      'exact clauses cannot mutate dependency state during Run');
+    Check(GSpatialAnyMutationRejected
+      and (LGraph.DependencyCount = 0)
+      and (LGraph.Entry[0, 0, 0].Value = 'candidate'),
+      'any clauses cannot mutate requirements during Run');
+  finally
+    LGraph.Free;
   end;
 end;
 
@@ -5570,6 +6531,17 @@ begin
   RunTest('stable pass selection', @TestStablePassSelection);
   RunTest('deterministic DAG execution', @TestDeterministicDagExecution);
   RunTest('named pass requirements', @TestNamedPassRequirements);
+  RunTest('spatial pass exact offsets', @TestSpatialPassExactOffsets);
+  RunTest('spatial pass existential clauses', @TestSpatialPassAnyClauses);
+  RunTest('spatial pass clause composition',
+    @TestSpatialPassClauseComposition);
+  RunTest('spatial pass wrapping arithmetic', @TestSpatialPassWrapping);
+  RunTest('spatial pass compatibility and parity',
+    @TestSpatialPassCompatibilityAndParity);
+  RunTest('spatial pass ownership and validation',
+    @TestSpatialPassOwnershipAndValidation);
+  RunTest('spatial pass configuration guards',
+    @TestSpatialPassConfigurationGuards);
   RunTest('definitionless pass modes', @TestDefinitionlessPassModes);
   RunTest('selective DAG regeneration', @TestSelectiveDagRegeneration);
   RunTest('selective DAG rollback', @TestSelectiveDagRollback);

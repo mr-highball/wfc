@@ -428,16 +428,18 @@ documented in [deterministic generation](determinism.md).
 
 ## current limitations
 
-Version 1 dependency planning is deliberately acyclic. `RequirePrevious` and
-`RequireFromPass` read the same coordinate and compare exact values; coordinate
-offsets, source-neighborhood queries, soft predicates, and bounded feedback or
-repair are not implicit features. Transform mode has one source. Sequence
+Version 2 dependency planning is deliberately acyclic. `RequirePrevious` and
+`RequireFromPass` preserve same-coordinate compatibility;
+`RequireFromPassAt` reads one signed offset, and `RequireAnyFromPass` reads an
+explicit finite any-of-neighborhood. These are exact hard value comparisons,
+not radius searches, counts, distance metrics, soft predicates, or bounded
+feedback/repair. Transform mode has one source. Sequence
 projection helpers now bridge exact public tokens and private latent states in
 both directions; general projection schemas and overlapping-pattern pass
 projection remain future work. Exact sequence token maps now support multiple
-latent models, but they remain same-coordinate hard alternatives; they do not
-provide offset relations, arithmetic predicates, soft preferences, or
-many-cell semantic joins.
+latent models. Generic pass rules can place those values in finite offset
+clauses, but the adapters do not infer offset relations, arithmetic
+predicates, soft preferences, or many-cell semantic joins.
 
 A failed legacy `Run` restores pass selection but is not a transaction over
 generated cell values. `TrySolve` and `TryRegenerateFrom` are transactional.
@@ -449,7 +451,8 @@ stable trace hash.
 The pass implementation and public callback types are written for both native
 FPC and pas2js. The same `TGraph`, `SwitchToPass`, `PassGraph`, `ForEachPass`,
 `DependsOn`, `TransformFrom`, `Run`, `TrySolve`, `TryRegenerateFrom`,
-`RequirePrevious`, and `RequireFromPass` calls are used on both targets.
+`RequirePrevious`, `RequireFromPass`, `RequireFromPassAt`, and
+`RequireAnyFromPass` calls are used on both targets.
 
 The host program is responsible only for presentation: a console, Lazarus
 form, canvas, WebAudio player, or other UI can read the same pass results. For

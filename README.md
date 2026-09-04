@@ -34,8 +34,9 @@ modular 3D structures, music, text, and other discrete design problems.
 > pass projection, strict `wfcmusic=1` score text, a project-owned SMF
 > format-0/1 codec, and a format-0 score exporter. Its portable three-pass
 > example runs on native FPC and pas2js/Node without a playback dependency.
-> Offset/neighborhood cross-layer constraints, additional domain libraries, restart
-> policies, and broader inspection and training tools remain tracked in the
+> Pipeline v2 adds exact signed-offset and finite any-of-neighborhood reads
+> across staged provider passes. Additional domain libraries, restart policies,
+> and broader inspection and training tools remain tracked in the
 > [roadmap](ROADMAP.md).
 
 ## Features
@@ -48,8 +49,8 @@ modular 3D structures, music, text, and other discrete design problems.
 - stable, labeled, zero-based passes with isolated values, rules, and outputs
 - deterministic dependency-DAG execution with stable creation-index tie breaks
 - explicit legacy, overlay, and transform pass modes
-- named same-coordinate cross-pass constraints and selective descendant-only
-  regeneration
+- named same-coordinate, exact-offset, and finite any-of-neighborhood
+  cross-pass constraints with selective descendant-only regeneration
 - transactional full and selective solves with selected-pass restoration
 - compatibility-preserving empty-pass copying and previous-pass constraints
 - explicit pipeline seeds with stable, independent per-pass random streams
@@ -122,8 +123,9 @@ end;
 
 For a complete terrain-to-foliage pipeline, including `SwitchToPass`,
 `PassGraph`, and `RequirePrevious`, see [pass-system semantics](docs/passes.md).
-For dependency roles, pass modes, `RequireFromPass`, topological execution, and
-selective regeneration, see [pass DAGs](docs/pass-dags.md).
+For dependency roles, pass modes, `RequireFromPassAt`,
+`RequireAnyFromPass`, boundary behavior, topological execution, and selective
+regeneration, see [pass DAGs](docs/pass-dags.md).
 For the reference algorithm, atomicity contract, reports, and exact constraint
 semantics, see the [reference solver](docs/solver.md).
 For exact replay behavior, callback requirements, and algorithm versioning,
@@ -158,10 +160,10 @@ Run the checked native build and conformance suite from the repository root:
 Both entry points compile with checked FPC options, keep all output under
 `build/`, run the core, 2D ecosystem, selective-settlement, radius-one
 learning, overlapping-pattern, sequence, score/cell, music-graph, SMF, and
-score-to-MIDI suites, smoke-test the portable console examples, and preserve
-failure exit codes. The repository
-also includes an FPM package, a runtime-only Lazarus package, and the same
-conformance sources for pas2js/Node. Separate `build-browser.ps1` and
+score-to-MIDI suites, smoke-test the portable console examples—including the
+bounded/wrapped spatial dependency proof—and preserve failure exit codes.
+The repository also includes an FPM package, a runtime-only Lazarus package,
+and the same conformance sources for pas2js/Node. Separate `build-browser.ps1` and
 `build-browser.sh` entry points stage the interactive browser world without
 committing generated JavaScript.
 See [building and testing](docs/building.md) for compiler overrides, package
@@ -176,11 +178,12 @@ for exact status and commands.
 
 The portable foundation is project-owned Pascal. Whenever a capability can
 reasonably be implemented here instead of adding a library, the project
-implements and maintains its own FPC/pas2js version. Core and runtime units
-depend only on repository units and the applicable standard FPC/pas2js RTL.
-Engines, viewers, and media backends may be optional adapters, and development
-tools may assist builds, tests, conversion, or inspection, but none may leak
-into core/runtime APIs or define canonical algorithms, models, artifacts,
+implements and maintains its own FPC/pas2js version; when that choice is
+debatable, project-owned Pascal is the default. Core and runtime units depend
+only on repository units and the applicable standard FPC/pas2js RTL. Engines,
+viewers, and media backends may be optional adapters, and development tools may
+assist builds, tests, conversion, or inspection, but none may leak into
+core/runtime APIs or define canonical algorithms, models, artifacts,
 validation, or replay behavior.
 
 ## Direction

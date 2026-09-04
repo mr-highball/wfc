@@ -241,6 +241,8 @@ jobs:
           sequence_example_bin='build/pas2js/sequence-example/bin'
           music_example_units='build/pas2js/music-example/units'
           music_example_bin='build/pas2js/music-example/bin'
+          spatial_example_units='build/pas2js/spatial-example/units'
+          spatial_example_bin='build/pas2js/spatial-example/bin'
           mkdir -p \
             "$test_units" "$test_bin" \
             "$world_test_units" "$world_test_bin" \
@@ -256,7 +258,8 @@ jobs:
             "$corpus_example_units" "$corpus_example_bin" \
             "$pattern_example_units" "$pattern_example_bin" \
             "$sequence_example_units" "$sequence_example_bin" \
-            "$music_example_units" "$music_example_bin"
+            "$music_example_units" "$music_example_bin" \
+            "$spatial_example_units" "$spatial_example_bin"
 
           "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
             -FU"$test_units" -FE"$test_bin" test/wfc_test.lpr
@@ -342,6 +345,11 @@ jobs:
             -FU"$music_example_units" -FE"$music_example_bin" \
             examples/music/03_PassComposition/PassComposition.lpr
           node "$music_example_bin/PassComposition.js" 0 >/dev/null
+
+          "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
+            -FU"$spatial_example_units" -FE"$spatial_example_bin" \
+            examples/passes/01_SpatialDependencies/SpatialDependenciesNode.lpr
+          node "$spatial_example_bin/SpatialDependenciesNode.js" 0 >/dev/null
 
       - name: Build and self-test browser world
         shell: bash

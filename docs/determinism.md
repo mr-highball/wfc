@@ -48,8 +48,8 @@ A complete replay identity consists of:
 - `WFC_GRAPH_MODEL_VERSION`, explicit denied directions, and canonical
   pass-local entry domains;
 - `WFC_PIPELINE_ALGORITHM_VERSION`, pass modes, dependency edges, named
-  requirements, and requested roots when using dependency planning or
-  selective regeneration;
+  requirements, signed offsets, ordered finite any-clauses, and requested
+  roots when using dependency planning or selective regeneration;
 - `Seed`;
 - graph dimensions, wrapping, and run mode;
 - pass creation order;
@@ -172,8 +172,9 @@ or built-in-selection changes must likewise receive an explicit compatibility
 version rather than silently reinterpreting existing replay inputs. An
 incompatible change to deny-all, entry-domain, or other graph-input semantics
 must increment `WFC_GRAPH_MODEL_VERSION`.
-An incompatible change to dependency planning, pass-mode staging, dirty-closure
-selection, or topological tie-breaking must increment
+An incompatible change to dependency planning, spatial clause/boundary
+semantics, pass-mode staging, dirty-closure selection, or topological
+tie-breaking must increment
 `WFC_PIPELINE_ALGORITHM_VERSION` independently.
 
 The weighted entropy and ticket contract is

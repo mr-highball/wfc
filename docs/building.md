@@ -16,10 +16,11 @@ compiler is also exercised as a compatibility canary.
 Runtime units may use repository units and the applicable standard FPC/pas2js
 RTL. When a needed capability can reasonably be implemented and maintained in
 portable Pascal, it is project-owned rather than added as a third-party runtime
-dependency. Optional tools may build, test, profile, render, convert, or inspect
-project artifacts, but tool-specific units and types must not enter core/runtime
-`uses` clauses or public APIs. Canonical artifacts, validation, generation, and
-replay remain usable without those tools.
+dependency; uncertain cases resolve in favor of the project-owned FPC/pas2js
+implementation. Optional tools may build, test, profile, render, convert, or
+inspect project artifacts, but tool-specific units and types must not enter
+core/runtime `uses` clauses or public APIs. Canonical artifacts, validation,
+generation, and replay remain usable without those tools.
 
 The sequence learner, graph adapter, validator, and canonical `wfcs=1` codec
 follow this boundary. The exact music score, fixed-quantum cell codecs,
@@ -47,7 +48,8 @@ Both scripts rebuild with assertions and range, overflow, and I/O checks, run
 `wfc_learn_test`, `wfc_pattern2d_test`, `wfc_sequence_test`,
 `wfc_midi_smf_test`, `wfc_music_test`, `wfc_music_graph_test`, and
 `wfc_music_midi_test`, then compile and smoke-test the portable console
-examples with seed `0`; the multi-pass and selective-settlement worlds also run
+examples with seed `0`, including the bounded/wrapped spatial dependency
+self-check; the multi-pass and selective-settlement worlds also run
 with their default seeds.
 A compiler error, failed check,
 or example failure produces a nonzero exit code. Compiler units and binaries
@@ -246,6 +248,22 @@ node build/pas2js/music-example/PassComposition.js 0
 This host validates artifacts held in memory. It does not provide a browser UI
 or playback backend.
 
+The Pipeline v2 spatial host uses a thin Node entry point over the same Pascal
+unit as the native executable:
+
+```bash
+mkdir -p build/pas2js/spatial-example-units build/pas2js/spatial-example
+pas2js -B -Tnodejs -Mdelphi -Fusrc \
+  -FUbuild/pas2js/spatial-example-units \
+  -FEbuild/pas2js/spatial-example \
+  examples/passes/01_SpatialDependencies/SpatialDependenciesNode.lpr
+node build/pas2js/spatial-example/SpatialDependenciesNode.js 0
+```
+
+It checks exact-offset and finite any-neighbor clauses, bounded rejection,
+wrapped sampling, independent validation, and same-seed replay without an
+external runtime library.
+
 A standalone `pas2js` executable is not enough when its RTL unit paths are
 missing. Use the compiler and RTL from the same installation.
 
@@ -287,7 +305,8 @@ The hosted pas2js gate uses exact official upstream pas2js and FPC-source
 revisions, verifies both source-archive SHA-256 digests, and caches the resulting
 3.3.1 toolchain. It runs every portable conformance source, including the four
 music suites; the tiled-world, learned-tiles, learned-corpus,
-overlapping-pattern, sequence, and pass-composed-music seed-zero smoke tests;
+overlapping-pattern, sequence, pass-composed-music, and spatial-dependency
+seed-zero smoke tests;
 and the multi-pass and selective-settlement worlds with both seed zero and
 their default seeds under Node.js 22.23.2. It then
 builds the browser target, serves the staged site, and checks its exact

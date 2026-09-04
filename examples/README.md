@@ -6,6 +6,7 @@ the [roadmap](../ROADMAP.md).
 
 | Area | Entry point | Targets | Current proof and dependencies |
 | --- | --- | --- | --- |
+| Spatial pass constraints | `passes/01_SpatialDependencies/SpatialDependencies.lpr` and `SpatialDependenciesNode.lpr` | Native FPC, pas2js/Node | Solves terrain before settlement and foliage, checks exact-offset AND clauses plus finite any-neighbor OR clauses, contrasts bounded and wrapped edges, rejects an out-of-bounds probe, and replays portable signatures using only repository units and the standard RTL. |
 | Multi-pass 2D world | `2D/01_MultiPassWorld/MultiPassWorld.lpr` | Native FPC, pas2js/Node | Uses the reusable 2D units, solves terrain → biome → foliage atomically, independently validates every cell/relation, and prints matching portable signatures without external dependencies. |
 | Interactive browser world | `2D/02_BrowserWorld/BrowserWorld.lpr` | pas2js/browser | Runs the same model and validator in a responsive three-layer canvas UI with seeds, wrapping, cell locks, and an exact headless-browser fixture. |
 | Selective settlement | `2D/03_SelectiveSettlement/SelectiveSettlement.lpr` | Native FPC, pas2js/Node | Solves a six-layer dependency DAG, edits hydrology, regenerates only its dependent closure, independently validates the result, proves rollback and exact recovery, and uses no external dependency. |
@@ -73,6 +74,22 @@ node build/examples/settlement/pas2js/bin/SelectiveSettlement.js 0
 See the [selective-settlement guide](2D/03_SelectiveSettlement/README.md) and
 the [pass-DAG contract](../docs/pass-dags.md) for its dependency shape,
 constraints, transactional edit story, and replay identity.
+
+The spatial-dependency example is the focused Pipeline v2 proof. Native FPC
+and pas2js/Node use separate thin hosts over the same Pascal unit:
+
+```text
+fpc -B -Mdelphi -Sa -Cr -Co -Ci -Fusrc -FUbuild/examples/spatial/native/units -FEbuild/examples/spatial/native/bin examples/passes/01_SpatialDependencies/SpatialDependencies.lpr
+build/examples/spatial/native/bin/SpatialDependencies 0
+```
+
+```text
+pas2js -B -Tnodejs -Mdelphi -Fusrc -FUbuild/examples/spatial/pas2js/units -FEbuild/examples/spatial/pas2js/bin examples/passes/01_SpatialDependencies/SpatialDependenciesNode.lpr
+node build/examples/spatial/pas2js/bin/SpatialDependenciesNode.js 0
+```
+
+See the [spatial-dependency guide](passes/01_SpatialDependencies/README.md)
+for its clauses, boundary proof, self-check, and golden output.
 
 The learned-tiles example exercises training, canonical model I/O, graph
 adaptation, weighted solving, and independent output validation from one

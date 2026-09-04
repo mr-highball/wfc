@@ -24,7 +24,8 @@ The repository already contains the beginnings of the ecosystem:
   required rules, selection callbacks, and extension hooks;
 - a versioned dependency-DAG pass coordinator with stable labeled passes,
   isolated rules and values, deterministic topological execution, legacy,
-  overlay, and transform modes, named same-coordinate constraints, and atomic
+  overlay, and transform modes, named same-coordinate constraints, signed
+  exact-offset and finite any-of-neighborhood clauses, and atomic
   descendant-only regeneration;
 - a versioned portable random source with an explicit pipeline seed,
   independent index-derived pass streams, run-to-run rewind, and matching
@@ -36,6 +37,9 @@ The repository already contains the beginnings of the ecosystem:
 - atomic reference-solver staging across full and selectively regenerated pass
   closures, including locks, named dependencies, definitionless-pass behavior,
   skipped-layer preservation, and rollback on any failed descendant;
+- a dependency-free native/pas2js Pipeline v2 fixture that contrasts bounded
+  and wrapped spatial reads, independently validates terrain -> settlement and
+  foliage clauses, and rejects an out-of-bounds requirement;
 - a reusable `wfc_world2d` terrain/biome/foliage library, a separate semantic
   validator, fixed-token portable layer signatures, and a documented
   native/pas2js multi-pass demonstration;
@@ -82,10 +86,11 @@ It is not yet the finished system described above:
   explicit zero-support adjacency, and caller-owned per-cell domains, but
   deterministic restarts, timing, a stable trace hash, richer explanations,
   and more scalable domain representations remain to be built;
-- pass DAGs, named overlay layers, same-coordinate cross-layer requirements,
-  selective regeneration, and structured dependency diagnostics are now
-  operational; offset and neighborhood reads, cyclic negotiation/repair, and
-  projection maps beyond exact same-coordinate token relations remain to be
+- pass DAGs, named overlay layers, same-coordinate and exact signed-offset
+  requirements, finite any-of-neighborhood reads, selective regeneration, and
+  structured dependency diagnostics are now operational; implicit
+  radius/count/distance expressions, cyclic negotiation/repair, and
+  projection-aware bridges between unlike representations remain to be
   designed;
 - the examples index now records targets, dependencies, build commands, and
   honest completion status, but full per-example tutorials, invariants,
@@ -137,11 +142,13 @@ to preserve what is interesting while making the foundation trustworthy.
   way they are distributed.
 - **Own the portable foundation.** Whenever a capability can reasonably be
   implemented in portable Pascal instead of adding a library, implement and
-  maintain the FPC/pas2js version here. Keep runtime dependencies minimal:
-  repository units and the applicable standard RTL only. Third-party engines,
-  viewers, and media backends may be isolated optional adapters. Optional
-  development tooling must not leak into core/runtime APIs or define canonical
-  models, algorithms, artifact formats, validation, or replay behavior.
+  maintain the FPC/pas2js version here. If library inclusion is a judgment
+  call, choose the project-owned implementation. Keep runtime dependencies
+  minimal: repository units and the applicable standard RTL only. Third-party
+  engines, viewers, and media backends may be isolated optional adapters.
+  Optional development tooling must not leak into core/runtime APIs or define
+  canonical models, algorithms, artifact formats, validation, or replay
+  behavior.
 
 ## Phase 0: a trustworthy baseline
 
@@ -227,8 +234,9 @@ Two explicit pass modes extend the legacy compatibility mode:
 
 Running a pass follows `prepare -> solve -> validate -> commit`. A failed pass
 does not corrupt earlier committed layers. Sequential dependencies remain the
-compatibility default. Version-1 acyclic dependency graphs, named cross-pass
-constraints, deterministic topological execution, and selective descendant
+compatibility default. Version-2 acyclic dependency graphs, named
+same-coordinate and signed-offset constraints, finite any-of-neighborhood
+clauses, deterministic topological execution, and selective descendant
 regeneration are now implemented; bounded feedback requires a separate
 termination and replay contract.
 
@@ -238,7 +246,9 @@ terrain → hydrology/biome → roads → housing → foliage, including named
 overlays, non-linear dependency closure, an intentionally illegal descendant
 lock, transactional rollback, independent validation, exact recovery, and
 matching native/pas2js layer signatures. Pass inspection and richer causal
-explanations remain open Phase 2 work.
+explanations remain open Phase 2 work. A focused spatial fixture additionally
+proves bounded out-of-bounds rejection and wrapped edge sampling for terrain
+consumers without adding domain knowledge or a runtime dependency to the core.
 
 ### Deliverables
 

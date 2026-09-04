@@ -211,7 +211,8 @@ candidate-ordering, and backtracking rules.
 semantics without reinterpreting legacy wildcard rules. A replay identity for
 `TrySolve` includes graph-model, solver, and random algorithm versions, the
 seed, graph topology and mode, pass order, value/rule construction order,
-denied directions, caller domains in canonical value order, canonical
+denied directions, caller domains in canonical value order, Pipeline v2
+cross-pass clauses with signed offsets and ordered any-terms, canonical
 normalized weights, locks, and solve options. Every call rewinds its streams,
 so an unchanged graph and seed replay on both native FPC and pas2js. A failed
 call restores the stream state that existed before the call.
@@ -293,9 +294,10 @@ tests until a separately versioned low-level API is deliberately published.
 
 Solver version 2 provides deterministic integer weights and fixed-point
 Shannon observation; graph-model version 1 adds explicit deny-all adjacency
-and caller-owned entry domains; pipeline version 1 adds acyclic dependency
-planning, named same-coordinate requirements, explicit pass modes, and
-selective regeneration. Restart policy, timing data, stable trace hashes, soft
-constraints, offset/neighborhood cross-layer expressions, and
+and caller-owned entry domains; pipeline version 2 adds acyclic dependency
+planning, named same-coordinate and signed-offset requirements, explicit
+finite any-of-neighborhood clauses, pass modes, and selective regeneration.
+Restart policy, timing data, stable trace hashes, soft constraints, implicit
+radius/count/distance expressions, cyclic repair, and
 minimal-unsatisfiable-core analysis remain roadmap work rather than hidden or
 partially specified behavior.
