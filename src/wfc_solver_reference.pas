@@ -67,6 +67,46 @@ type
     Direction: Integer;
   end;
 
+  //Tracing is deliberately numeric and pass-agnostic. The public graph
+  //facade can attach labels and coordinates without making the reference
+  //kernel depend on graph ownership or string behavior.
+  TReferenceTraceEventKind = (
+    rtekInitialCandidateRemoved,
+    rtekDecision,
+    rtekCandidateRemoved,
+    rtekContradiction,
+    rtekBacktrack,
+    rtekCandidateRestored,
+    rtekSolved
+  );
+
+  TReferenceTraceCauseKind = (
+    rtckNone,
+    rtckInitialDomain,
+    rtckLock,
+    rtckDecision,
+    rtckAdjacency,
+    rtckRequiredSupport,
+    rtckBacktrack,
+    rtckFinalValidation
+  );
+
+  TReferenceTraceEvent = record
+    EventId: Integer;
+    CauseEventId: Integer;
+    Kind: TReferenceTraceEventKind;
+    CauseKind: TReferenceTraceCauseKind;
+    EntryIndex: Integer;
+    ValueIndex: Integer;
+    NeighborIndex: Integer;
+    Direction: Integer;
+    DecisionDepth: Integer;
+    DomainCountBefore: Integer;
+    DomainCountAfter: Integer;
+  end;
+
+  TReferenceTraceEvents = array of TReferenceTraceEvent;
+
   TReferenceSolveReport = record
     Status: TReferenceSolveStatus;
     Decisions: Integer;
@@ -74,6 +114,7 @@ type
     Contradictions: Integer;
     Backtracks: Integer;
     Contradiction: TReferenceContradiction;
+    Trace: TReferenceTraceEvents;
   end;
 
   TReferenceRandomIndex = function(const ACount: Integer): Integer of object;
@@ -106,7 +147,12 @@ type
 function SolveReferenceModel(const AModel: TReferenceModel;
   const AMaxBacktracks: Integer; const ARandomIndex: TReferenceRandomIndex;
   out AAssignment: TReferenceIntegerArray;
-  out AReport: TReferenceSolveReport): Boolean;
+  out AReport: TReferenceSolveReport): Boolean; overload;
+function SolveReferenceModel(const AModel: TReferenceModel;
+  const AMaxBacktracks: Integer; const ACaptureTrace: Boolean;
+  const ARandomIndex: TReferenceRandomIndex;
+  out AAssignment: TReferenceIntegerArray;
+  out AReport: TReferenceSolveReport): Boolean; overload;
 
 implementation
 
@@ -138,6 +184,7 @@ type
   strict private
     FModel: TReferenceModel;
     FMaxBacktracks: Integer;
+    FCaptureTrace: Boolean;
     FRandomIndex: TReferenceRandomIndex;
     FValueWeights: TReferenceIntegerArray;
     FValueWeightLogTerms: TReferenceExactDoubleArray;
@@ -158,6 +205,10 @@ type
     FFrames: TReferenceDecisionFrames;
     FFrameCount: Integer;
     FReport: TReferenceSolveReport;
+    FLastEntryChange: TReferenceIntegerArray;
+    FLastChangeEventId: Integer;
+    FLastContradictionEventId: Integer;
+    FTraceCount: Integer;
 
     function DomainIndex(const ACell, AValue: Integer): Integer; inline;
     function RelationIndex(const ADirection, ACurrentValue,
@@ -165,12 +216,26 @@ type
     function Log2Q16(const AValue: Integer): Integer;
     procedure InitializeWeights;
     function EntropyQ16(const ACell: Integer): Integer;
+    function AppendTraceEvent(const AKind: TReferenceTraceEventKind;
+      const ACauseKind: TReferenceTraceCauseKind;
+      const ACauseEventId, AEntryIndex, AValueIndex, ANeighborIndex,
+      ADirection, ADecisionDepth, ADomainCountBefore,
+      ADomainCountAfter: Integer): Integer;
+    function CurrentDecisionDepth: Integer;
+    function LastEntryChange(const ACell: Integer): Integer;
+    function LatestNeighborChange(const ACell: Integer): Integer;
+    function TraceCauseKindAt(const AEventId: Integer):
+      TReferenceTraceCauseKind;
+    procedure PublishReport(out AReport: TReferenceSolveReport);
     procedure RecordContradiction(const AKind: TReferenceContradictionKind;
-      const AEntryIndex, ANeighborIndex, ADirection: Integer);
+      const ACauseKind: TReferenceTraceCauseKind;
+      const AEntryIndex, ANeighborIndex, ADirection,
+      ACauseEventId: Integer);
     procedure EnsureTrailCapacity;
     function RemoveCandidate(const ACell, AValue: Integer;
-      const APropagation: Boolean): Boolean;
-    procedure RestoreTrail(const AMark: Integer);
+      const ACauseKind: TReferenceTraceCauseKind;
+      const ACauseEventId, ANeighborIndex, ADirection: Integer): Boolean;
+    procedure RestoreTrail(const AMark, ABacktrackEventId: Integer);
     procedure ResetQueue;
     procedure Enqueue(const ACell: Integer);
     function Dequeue(out ACell: Integer): Boolean;
@@ -181,7 +246,8 @@ type
     function Propagate: Boolean;
     function FindDecisionCell: Integer;
     procedure EnsureFrameCapacity;
-    procedure TryFrameAlternative(const AFrameIndex: Integer);
+    procedure TryFrameAlternative(const AFrameIndex,
+      ACauseEventId: Integer);
     procedure PushDecision(const ACell: Integer);
     function Recover: TReferenceRecoveryResult;
     procedure ExtractAssignment(out AAssignment: TReferenceIntegerArray);
@@ -190,6 +256,7 @@ type
   public
     constructor Create(const AModel: TReferenceModel;
       const AMaxBacktracks: Integer;
+      const ACaptureTrace: Boolean;
       const ARandomIndex: TReferenceRandomIndex);
     function Execute(out AAssignment: TReferenceIntegerArray;
       out AReport: TReferenceSolveReport): Boolean;
@@ -299,11 +366,13 @@ end;
 
 constructor TReferenceSolver.Create(const AModel: TReferenceModel;
   const AMaxBacktracks: Integer;
+  const ACaptureTrace: Boolean;
   const ARandomIndex: TReferenceRandomIndex);
 begin
   inherited Create;
   FModel := AModel;
   FMaxBacktracks := AMaxBacktracks;
+  FCaptureTrace := ACaptureTrace;
   FRandomIndex := ARandomIndex;
 end;
 
@@ -446,15 +515,113 @@ begin
   Result := Trunc(LNumerator / LWeightSum);
 end;
 
+function TReferenceSolver.AppendTraceEvent(
+  const AKind: TReferenceTraceEventKind;
+  const ACauseKind: TReferenceTraceCauseKind;
+  const ACauseEventId, AEntryIndex, AValueIndex, ANeighborIndex,
+  ADirection, ADecisionDepth, ADomainCountBefore,
+  ADomainCountAfter: Integer): Integer;
+var
+  LCapacity: Integer;
+  LEvent: TReferenceTraceEvent;
+begin
+  if not FCaptureTrace then
+    Exit(-1);
+  if FTraceCount = High(Integer) then
+    raise ERangeError.Create('reference trace is too large');
+
+  if FTraceCount = Length(FReport.Trace) then
+  begin
+    LCapacity := Length(FReport.Trace);
+    if LCapacity < 64 then
+      LCapacity := 64
+    else if LCapacity > High(Integer) div 2 then
+      LCapacity := High(Integer)
+    else
+      LCapacity := LCapacity * 2;
+    SetLength(FReport.Trace, LCapacity);
+  end;
+
+  Result := FTraceCount;
+  LEvent.EventId := Result;
+  LEvent.CauseEventId := ACauseEventId;
+  LEvent.Kind := AKind;
+  LEvent.CauseKind := ACauseKind;
+  LEvent.EntryIndex := AEntryIndex;
+  LEvent.ValueIndex := AValueIndex;
+  LEvent.NeighborIndex := ANeighborIndex;
+  LEvent.Direction := ADirection;
+  LEvent.DecisionDepth := ADecisionDepth;
+  LEvent.DomainCountBefore := ADomainCountBefore;
+  LEvent.DomainCountAfter := ADomainCountAfter;
+  FReport.Trace[Result] := LEvent;
+  Inc(FTraceCount);
+end;
+
+function TReferenceSolver.CurrentDecisionDepth: Integer;
+begin
+  Result := Pred(FFrameCount);
+end;
+
+function TReferenceSolver.LastEntryChange(
+  const ACell: Integer): Integer;
+begin
+  if not FCaptureTrace then
+    Exit(-1);
+  Result := FLastEntryChange[ACell];
+end;
+
+function TReferenceSolver.LatestNeighborChange(const ACell: Integer): Integer;
+var
+  LDirection: Integer;
+  LNeighbor: Integer;
+begin
+  Result := -1;
+  if not FCaptureTrace then
+    Exit;
+  for LDirection := 0 to Pred(WFC_REFERENCE_DIRECTION_COUNT) do
+  begin
+    LNeighbor := FModel.Neighbors[
+      (ACell * WFC_REFERENCE_DIRECTION_COUNT) + LDirection];
+    if (LNeighbor >= 0) and
+      (FLastEntryChange[LNeighbor] > Result) then
+      Result := FLastEntryChange[LNeighbor];
+  end;
+end;
+
+function TReferenceSolver.TraceCauseKindAt(
+  const AEventId: Integer): TReferenceTraceCauseKind;
+begin
+  if (AEventId < 0) or (AEventId >= FTraceCount) then
+    Exit(rtckNone);
+  Result := FReport.Trace[AEventId].CauseKind;
+end;
+
+procedure TReferenceSolver.PublishReport(
+  out AReport: TReferenceSolveReport);
+begin
+  if FCaptureTrace then
+    SetLength(FReport.Trace, FTraceCount)
+  else
+    FReport.Trace := nil;
+  AReport := FReport;
+end;
+
 procedure TReferenceSolver.RecordContradiction(
-  const AKind: TReferenceContradictionKind; const AEntryIndex,
-  ANeighborIndex, ADirection: Integer);
+  const AKind: TReferenceContradictionKind;
+  const ACauseKind: TReferenceTraceCauseKind;
+  const AEntryIndex, ANeighborIndex, ADirection,
+  ACauseEventId: Integer);
 begin
   IncrementCounter(FReport.Contradictions);
   FReport.Contradiction.Kind := AKind;
   FReport.Contradiction.EntryIndex := AEntryIndex;
   FReport.Contradiction.NeighborIndex := ANeighborIndex;
   FReport.Contradiction.Direction := ADirection;
+  FLastContradictionEventId := AppendTraceEvent(rtekContradiction,
+    ACauseKind, ACauseEventId, AEntryIndex, -1, ANeighborIndex,
+    ADirection, CurrentDecisionDepth,
+    FDomainCounts[AEntryIndex], FDomainCounts[AEntryIndex]);
 end;
 
 procedure TReferenceSolver.EnsureTrailCapacity;
@@ -474,14 +641,18 @@ begin
 end;
 
 function TReferenceSolver.RemoveCandidate(const ACell, AValue: Integer;
-  const APropagation: Boolean): Boolean;
+  const ACauseKind: TReferenceTraceCauseKind;
+  const ACauseEventId, ANeighborIndex, ADirection: Integer): Boolean;
 var
+  LBefore: Integer;
+  LEventId: Integer;
   LIndex: Integer;
 begin
   LIndex := DomainIndex(ACell, AValue);
   if FDomains[LIndex] = 0 then
     Exit(False);
 
+  LBefore := FDomainCounts[ACell];
   EnsureTrailCapacity;
   FTrail[FTrailCount] := LIndex;
   Inc(FTrailCount);
@@ -490,14 +661,25 @@ begin
   Dec(FDomainWeightSums[ACell], FValueWeights[AValue]);
   FDomainWeightLogSums[ACell] := FDomainWeightLogSums[ACell]
     - FValueWeightLogTerms[AValue];
-  if APropagation then
+  if ACauseKind in [rtckAdjacency, rtckRequiredSupport] then
     IncrementCounter(FReport.Propagations);
+  LEventId := AppendTraceEvent(rtekCandidateRemoved, ACauseKind,
+    ACauseEventId, ACell, AValue, ANeighborIndex, ADirection,
+    CurrentDecisionDepth, LBefore, FDomainCounts[ACell]);
+  if LEventId >= 0 then
+  begin
+    FLastEntryChange[ACell] := LEventId;
+    FLastChangeEventId := LEventId;
+  end;
   Enqueue(ACell);
   Result := True;
 end;
 
-procedure TReferenceSolver.RestoreTrail(const AMark: Integer);
+procedure TReferenceSolver.RestoreTrail(const AMark,
+  ABacktrackEventId: Integer);
 var
+  LBefore: Integer;
+  LEventId: Integer;
   LCell: Integer;
   LIndex: Integer;
   LValue: Integer;
@@ -508,13 +690,22 @@ begin
     LIndex := FTrail[FTrailCount];
     if FDomains[LIndex] = 0 then
     begin
-      FDomains[LIndex] := 1;
       LCell := LIndex div FModel.ValueCount;
       LValue := LIndex mod FModel.ValueCount;
+      LBefore := FDomainCounts[LCell];
+      FDomains[LIndex] := 1;
       Inc(FDomainCounts[LCell]);
       Inc(FDomainWeightSums[LCell], FValueWeights[LValue]);
       FDomainWeightLogSums[LCell] := FDomainWeightLogSums[LCell]
         + FValueWeightLogTerms[LValue];
+      LEventId := AppendTraceEvent(rtekCandidateRestored,
+        rtckBacktrack, ABacktrackEventId, LCell, LValue, -1, -1,
+        CurrentDecisionDepth, LBefore, FDomainCounts[LCell]);
+      if LEventId >= 0 then
+      begin
+        FLastEntryChange[LCell] := LEventId;
+        FLastChangeEventId := LEventId;
+      end;
     end;
   end;
 end;
@@ -598,9 +789,12 @@ end;
 
 function TReferenceSolver.InitializeDomains: Boolean;
 var
+  LCauseKind: TReferenceTraceCauseKind;
   LCell: Integer;
+  LEventId: Integer;
   LIndex: Integer;
   LKind: TReferenceContradictionKind;
+  LTraceDomainCount: Integer;
   LValue: Integer;
 begin
   InitializeWeights;
@@ -615,10 +809,21 @@ begin
   FTrailCount := 0;
   SetLength(FFrames, 0);
   FFrameCount := 0;
+  if FCaptureTrace then
+  begin
+    SetLength(FLastEntryChange, FModel.CellCount);
+    for LCell := 0 to Pred(FModel.CellCount) do
+      FLastEntryChange[LCell] := -1;
+  end
+  else
+    FLastEntryChange := nil;
+  FLastChangeEventId := -1;
+  FLastContradictionEventId := -1;
   ResetQueue;
 
   for LCell := 0 to Pred(FModel.CellCount) do
   begin
+    LTraceDomainCount := FModel.ValueCount;
     for LValue := 0 to Pred(FModel.ValueCount) do
     begin
       LIndex := DomainIndex(LCell, LValue);
@@ -632,6 +837,22 @@ begin
         FDomainWeightLogSums[LCell] := FDomainWeightLogSums[LCell]
           + FValueWeightLogTerms[LValue];
       end;
+      if FDomains[LIndex] = 0 then
+      begin
+        if FModel.InitialAllowed[LIndex] = 0 then
+          LCauseKind := rtckInitialDomain
+        else
+          LCauseKind := rtckLock;
+        LEventId := AppendTraceEvent(rtekInitialCandidateRemoved,
+          LCauseKind, -1, LCell, LValue, -1, -1, -1,
+          LTraceDomainCount, Pred(LTraceDomainCount));
+        Dec(LTraceDomainCount);
+        if LEventId >= 0 then
+        begin
+          FLastEntryChange[LCell] := LEventId;
+          FLastChangeEventId := LEventId;
+        end;
+      end;
     end;
 
     if FDomainCounts[LCell] = 0 then
@@ -639,7 +860,9 @@ begin
       LKind := FModel.InitialFailureKinds[LCell];
       if LKind = rckNone then
         LKind := rckEmptyDomain;
-      RecordContradiction(LKind, LCell, -1, -1);
+      RecordContradiction(LKind,
+        TraceCauseKindAt(LastEntryChange(LCell)), LCell, -1, -1,
+        LastEntryChange(LCell));
       Exit(False);
     end;
   end;
@@ -649,6 +872,7 @@ end;
 function TReferenceSolver.ReviseArc(const ACell,
   ADirection: Integer): Boolean;
 var
+  LCauseEventId: Integer;
   LNeighbor: Integer;
   LNeighborValue: Integer;
   LSupported: Boolean;
@@ -680,10 +904,13 @@ begin
 
     if not LSupported then
     begin
-      RemoveCandidate(ACell, LValue, True);
+      LCauseEventId := LastEntryChange(LNeighbor);
+      RemoveCandidate(ACell, LValue, rtckAdjacency,
+        LCauseEventId, LNeighbor, ADirection);
       if FDomainCounts[ACell] = 0 then
       begin
-        RecordContradiction(rckAdjacency, ACell, LNeighbor, ADirection);
+        RecordContradiction(rckAdjacency, rtckAdjacency,
+          ACell, LNeighbor, ADirection, LastEntryChange(ACell));
         Exit(False);
       end;
     end;
@@ -693,6 +920,7 @@ end;
 
 function TReferenceSolver.ReviseRequired(const ACell: Integer): Boolean;
 var
+  LCauseEventId: Integer;
   LDirection: Integer;
   LNeighbor: Integer;
   LNeighborValue: Integer;
@@ -738,10 +966,13 @@ begin
 
     if not LSupported then
     begin
-      RemoveCandidate(ACell, LValue, True);
+      LCauseEventId := LatestNeighborChange(ACell);
+      RemoveCandidate(ACell, LValue, rtckRequiredSupport,
+        LCauseEventId, -1, -1);
       if FDomainCounts[ACell] = 0 then
       begin
-        RecordContradiction(rckRequiredSupport, ACell, -1, -1);
+        RecordContradiction(rckRequiredSupport, rtckRequiredSupport,
+          ACell, -1, -1, LastEntryChange(ACell));
         Exit(False);
       end;
     end;
@@ -829,9 +1060,11 @@ begin
   SetLength(FFrames, LCapacity);
 end;
 
-procedure TReferenceSolver.TryFrameAlternative(const AFrameIndex: Integer);
+procedure TReferenceSolver.TryFrameAlternative(const AFrameIndex,
+  ACauseEventId: Integer);
 var
   LChosen: Integer;
+  LDecisionEventId: Integer;
   LFrame: TReferenceDecisionFrame;
   LValue: Integer;
 begin
@@ -840,11 +1073,16 @@ begin
   Inc(LFrame.NextAlternative);
   FFrames[AFrameIndex] := LFrame;
   IncrementCounter(FReport.Decisions);
+  LDecisionEventId := AppendTraceEvent(rtekDecision,
+    TraceCauseKindAt(ACauseEventId), ACauseEventId,
+    LFrame.CellIndex, LChosen, -1, -1, AFrameIndex,
+    FDomainCounts[LFrame.CellIndex], FDomainCounts[LFrame.CellIndex]);
 
   for LValue := 0 to Pred(FModel.ValueCount) do
     if (LValue <> LChosen)
       and (FDomains[DomainIndex(LFrame.CellIndex, LValue)] <> 0) then
-      RemoveCandidate(LFrame.CellIndex, LValue, False);
+      RemoveCandidate(LFrame.CellIndex, LValue, rtckDecision,
+        LDecisionEventId, -1, -1);
 end;
 
 procedure TReferenceSolver.PushDecision(const ACell: Integer);
@@ -906,11 +1144,12 @@ begin
   EnsureFrameCapacity;
   FFrames[FFrameCount] := LFrame;
   Inc(FFrameCount);
-  TryFrameAlternative(Pred(FFrameCount));
+  TryFrameAlternative(Pred(FFrameCount), LastEntryChange(ACell));
 end;
 
 function TReferenceSolver.Recover: TReferenceRecoveryResult;
 var
+  LBacktrackEventId: Integer;
   LFrameIndex: Integer;
 begin
   while FFrameCount > 0 do
@@ -920,12 +1159,17 @@ begin
     IncrementCounter(FReport.Backtracks);
 
     LFrameIndex := Pred(FFrameCount);
-    RestoreTrail(FFrames[LFrameIndex].TrailMark);
+    LBacktrackEventId := AppendTraceEvent(rtekBacktrack,
+      rtckBacktrack, FLastContradictionEventId,
+      FFrames[LFrameIndex].CellIndex, -1, -1, -1,
+      LFrameIndex, FDomainCounts[FFrames[LFrameIndex].CellIndex],
+      FDomainCounts[FFrames[LFrameIndex].CellIndex]);
+    RestoreTrail(FFrames[LFrameIndex].TrailMark, LBacktrackEventId);
     ResetQueue;
     if FFrames[LFrameIndex].NextAlternative
       < Length(FFrames[LFrameIndex].Alternatives) then
     begin
-      TryFrameAlternative(LFrameIndex);
+      TryFrameAlternative(LFrameIndex, LBacktrackEventId);
       Exit(rrRetry);
     end;
 
@@ -1046,6 +1290,8 @@ var
   LCell: Integer;
   LFinalContradiction: TReferenceContradiction;
   LRecovery: TReferenceRecoveryResult;
+  LSolvedDomainCount: Integer;
+  LSolvedEntry: Integer;
 begin
   AAssignment := nil;
   FReport.Status := rssContradiction;
@@ -1057,10 +1303,12 @@ begin
   FReport.Contradiction.EntryIndex := -1;
   FReport.Contradiction.NeighborIndex := -1;
   FReport.Contradiction.Direction := -1;
+  FReport.Trace := nil;
+  FTraceCount := 0;
 
   if not InitializeDomains then
   begin
-    AReport := FReport;
+    PublishReport(AReport);
     Exit(False);
   end;
   BuildIncomingArcs;
@@ -1072,7 +1320,7 @@ begin
     LCell := FModel.CellOrder[I];
     if not ReviseRequired(LCell) then
     begin
-      AReport := FReport;
+      PublishReport(AReport);
       Exit(False);
     end;
   end;
@@ -1090,13 +1338,13 @@ begin
         rrLimit:
           begin
             FReport.Status := rssBacktrackLimit;
-            AReport := FReport;
+            PublishReport(AReport);
             Exit(False);
           end;
         rrExhausted:
           begin
             FReport.Status := rssContradiction;
-            AReport := FReport;
+            PublishReport(AReport);
             Exit(False);
           end;
       end;
@@ -1112,13 +1360,14 @@ begin
     ExtractAssignment(AAssignment);
     if not ValidateAssignment(AAssignment, LFinalContradiction) then
     begin
-      RecordContradiction(rckFinalValidation,
+      RecordContradiction(rckFinalValidation, rtckFinalValidation,
         LFinalContradiction.EntryIndex,
         LFinalContradiction.NeighborIndex,
-        LFinalContradiction.Direction);
+        LFinalContradiction.Direction,
+        LastEntryChange(LFinalContradiction.EntryIndex));
       AAssignment := nil;
       FReport.Status := rssContradiction;
-      AReport := FReport;
+      PublishReport(AReport);
       Exit(False);
     end;
 
@@ -1127,13 +1376,35 @@ begin
     FReport.Contradiction.EntryIndex := -1;
     FReport.Contradiction.NeighborIndex := -1;
     FReport.Contradiction.Direction := -1;
-    AReport := FReport;
+    LSolvedEntry := -1;
+    LSolvedDomainCount := -1;
+    if (FLastChangeEventId >= 0)
+      and (FLastChangeEventId < FTraceCount) then
+    begin
+      LSolvedEntry := FReport.Trace[FLastChangeEventId].EntryIndex;
+      if (LSolvedEntry >= 0) and (LSolvedEntry < FModel.CellCount) then
+        LSolvedDomainCount := FDomainCounts[LSolvedEntry];
+    end;
+    AppendTraceEvent(rtekSolved, rtckNone, FLastChangeEventId,
+      LSolvedEntry, -1, -1, -1, CurrentDecisionDepth,
+      LSolvedDomainCount, LSolvedDomainCount);
+    PublishReport(AReport);
     Exit(True);
   end;
 end;
 
 function SolveReferenceModel(const AModel: TReferenceModel;
   const AMaxBacktracks: Integer; const ARandomIndex: TReferenceRandomIndex;
+  out AAssignment: TReferenceIntegerArray;
+  out AReport: TReferenceSolveReport): Boolean;
+begin
+  Result := SolveReferenceModel(AModel, AMaxBacktracks, False,
+    ARandomIndex, AAssignment, AReport);
+end;
+
+function SolveReferenceModel(const AModel: TReferenceModel;
+  const AMaxBacktracks: Integer; const ACaptureTrace: Boolean;
+  const ARandomIndex: TReferenceRandomIndex;
   out AAssignment: TReferenceIntegerArray;
   out AReport: TReferenceSolveReport): Boolean;
 var
@@ -1143,7 +1414,8 @@ begin
     raise ERangeError.CreateFmt(
       'maximum backtracks cannot be negative [%d]', [AMaxBacktracks]);
   ValidateModel(AModel);
-  LSolver := TReferenceSolver.Create(AModel, AMaxBacktracks, ARandomIndex);
+  LSolver := TReferenceSolver.Create(AModel, AMaxBacktracks,
+    ACaptureTrace, ARandomIndex);
   try
     Result := LSolver.Execute(AAssignment, AReport);
   finally

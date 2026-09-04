@@ -14,6 +14,9 @@ pattern_test_source="$repository_root/test/wfc_pattern2d_test.lpr"
 sequence_test_source="$repository_root/test/wfc_sequence_test.lpr"
 voxel_test_source="$repository_root/test/wfc_voxel3d_test.lpr"
 building_test_source="$repository_root/test/wfc_building3d_test.lpr"
+trace_reference_test_source="$repository_root/test/wfc_trace_reference_test.lpr"
+trace_test_source="$repository_root/test/wfc_trace_test.lpr"
+trace_utility_test_source="$repository_root/test/wfc_trace_utility_test.lpr"
 isometric_test_source="$repository_root/test/wfc_voxel3d_isometric_test.lpr"
 svg_test_source="$repository_root/test/wfc_voxel3d_svg_test.lpr"
 building_view_test_source="$repository_root/test/wfc_building3d_view_test.lpr"
@@ -30,6 +33,8 @@ pattern_example_source="$repository_root/examples/learning/03_LearnPatterns/Lear
 sequence_example_source="$repository_root/examples/sequence/01_LearnSequence/LearnSequence.lpr"
 music_example_source="$repository_root/examples/music/03_PassComposition/PassComposition.lpr"
 spatial_example_source="$repository_root/examples/passes/01_SpatialDependencies/SpatialDependencies.lpr"
+trace_example_source="$repository_root/examples/passes/02_TraceInspector/TraceInspector.lpr"
+trace_example_directory="$repository_root/examples/passes/02_TraceInspector"
 building_example_source="$repository_root/examples/3D/02_MultiPassBuilding/MultiPassBuilding.lpr"
 building_example_directory="$repository_root/examples/3D/02_MultiPassBuilding"
 building_common_directory="$repository_root/examples/3D/common"
@@ -49,6 +54,9 @@ compiler_pattern_test_source=$pattern_test_source
 compiler_sequence_test_source=$sequence_test_source
 compiler_voxel_test_source=$voxel_test_source
 compiler_building_test_source=$building_test_source
+compiler_trace_reference_test_source=$trace_reference_test_source
+compiler_trace_test_source=$trace_test_source
+compiler_trace_utility_test_source=$trace_utility_test_source
 compiler_isometric_test_source=$isometric_test_source
 compiler_svg_test_source=$svg_test_source
 compiler_building_view_test_source=$building_view_test_source
@@ -65,6 +73,8 @@ compiler_pattern_example_source=$pattern_example_source
 compiler_sequence_example_source=$sequence_example_source
 compiler_music_example_source=$music_example_source
 compiler_spatial_example_source=$spatial_example_source
+compiler_trace_example_source=$trace_example_source
+compiler_trace_example_directory=$trace_example_directory
 compiler_building_example_source=$building_example_source
 compiler_building_example_directory=$building_example_directory
 compiler_building_common_directory=$building_common_directory
@@ -84,6 +94,9 @@ case "$host_system" in
     compiler_sequence_test_source=$(cygpath -m "$sequence_test_source") || exit $?
     compiler_voxel_test_source=$(cygpath -m "$voxel_test_source") || exit $?
     compiler_building_test_source=$(cygpath -m "$building_test_source") || exit $?
+    compiler_trace_reference_test_source=$(cygpath -m "$trace_reference_test_source") || exit $?
+    compiler_trace_test_source=$(cygpath -m "$trace_test_source") || exit $?
+    compiler_trace_utility_test_source=$(cygpath -m "$trace_utility_test_source") || exit $?
     compiler_isometric_test_source=$(cygpath -m "$isometric_test_source") || exit $?
     compiler_svg_test_source=$(cygpath -m "$svg_test_source") || exit $?
     compiler_building_view_test_source=$(cygpath -m "$building_view_test_source") || exit $?
@@ -100,6 +113,8 @@ case "$host_system" in
     compiler_sequence_example_source=$(cygpath -m "$sequence_example_source") || exit $?
     compiler_music_example_source=$(cygpath -m "$music_example_source") || exit $?
     compiler_spatial_example_source=$(cygpath -m "$spatial_example_source") || exit $?
+    compiler_trace_example_source=$(cygpath -m "$trace_example_source") || exit $?
+    compiler_trace_example_directory=$(cygpath -m "$trace_example_directory") || exit $?
     compiler_building_example_source=$(cygpath -m "$building_example_source") || exit $?
     compiler_building_example_directory=$(cygpath -m "$building_example_directory") || exit $?
     compiler_building_common_directory=$(cygpath -m "$building_common_directory") || exit $?
@@ -278,6 +293,33 @@ esac
 
 printf "Running '%s'.\n" "$building_test_executable"
 "$building_test_executable" || exit $?
+
+for compiler_trace_suite in \
+  "$compiler_trace_reference_test_source" \
+  "$compiler_trace_test_source" \
+  "$compiler_trace_utility_test_source"
+do
+  trace_suite_name=$(basename "$compiler_trace_suite" .lpr)
+  printf "Building the causal-trace conformance suite '%s'.\n" "$trace_suite_name"
+  "$compiler" "$@" \
+    -B \
+    -Mdelphi \
+    -Sa \
+    -Cr \
+    -Co \
+    -Ci \
+    "-Fu$compiler_source_directory" \
+    "-FU$compiler_unit_output_directory" \
+    "-FE$compiler_binary_output_directory" \
+    "$compiler_trace_suite" || exit $?
+
+  trace_suite_executable="$binary_output_directory/$trace_suite_name"
+  case "$host_system" in
+    CYGWIN*|MINGW*|MSYS*) trace_suite_executable="${trace_suite_executable}.exe" ;;
+  esac
+  printf "Running '%s'.\n" "$trace_suite_executable"
+  "$trace_suite_executable" || exit $?
+done
 
 for compiler_viewer_suite in \
   "$compiler_isometric_test_source" \
@@ -532,6 +574,28 @@ esac
 
 printf "Smoke testing '%s' with seed 0.\n" "$spatial_example_executable"
 "$spatial_example_executable" 0 >/dev/null || exit $?
+
+printf "Building the dependency-free causal-trace inspector example.\n"
+"$compiler" "$@" \
+  -B \
+  -Mdelphi \
+  -Sa \
+  -Cr \
+  -Co \
+  -Ci \
+  "-Fu$compiler_source_directory" \
+  "-Fu$compiler_trace_example_directory" \
+  "-FU$compiler_unit_output_directory" \
+  "-FE$compiler_binary_output_directory" \
+  "$compiler_trace_example_source" || exit $?
+
+trace_example_executable="$binary_output_directory/TraceInspector"
+case "$host_system" in
+  CYGWIN*|MINGW*|MSYS*) trace_example_executable="${trace_example_executable}.exe" ;;
+esac
+
+printf "Smoke testing '%s' with seed 0.\n" "$trace_example_executable"
+"$trace_example_executable" 0 >/dev/null || exit $?
 
 printf "Building the dependency-free multi-pass Building 3D example.\n"
 "$compiler" "$@" \

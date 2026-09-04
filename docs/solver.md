@@ -47,6 +47,11 @@ end;
 of zero permits propagation and first choices but stops at the first required
 branch restoration. A negative value raises `ERangeError`.
 
+Always initialize a local `TGraphSolveOptions` with
+`DefaultGraphSolveOptions` before overriding fields. Local Pascal records are
+not guaranteed to be zeroed; assigning only one field can leave another field
+undefined.
+
 ## pipeline transaction
 
 `TrySolve` performs one transaction over the complete dependency plan:
@@ -238,9 +243,10 @@ Legacy callbacks and traversal hooks are deliberately outside this algorithm.
 
 The report records `Seed`, `RandomAlgorithmVersion`,
 `SolverAlgorithmVersion`, `GraphModelVersion`, `PipelineAlgorithmVersion`,
-executed `ExecutionOrder`, `FailedPassIndex`, terminal contradiction evidence, and one
-`TGraphPassSolveReport` per pass. Per-pass records identify whether and when a
-pass executed and whether it was reused, cleared, copied, solved, or failed.
+executed `ExecutionOrder`, `FailedPassIndex`, terminal contradiction evidence,
+one `TGraphPassSolveReport` per pass, and the opt-in causal-trace fields.
+Per-pass records identify whether and when a pass executed and whether it was
+reused, cleared, copied, solved, or failed.
 Terminal contradiction kinds are
 `gckInvalidLock`, `gckEntryDomain`, `gckEmptyDomain`, `gckAdjacency`,
 `gckPreviousPass`, `gckPassDependency`, `gckRequiredSupport`, and
@@ -267,6 +273,44 @@ Initial domain construction for locks and `RequirePrevious`, and the direct
 restriction to a chosen branch value, are not propagations. A solved pass may
 have nonzero contradiction and backtrack counters if it recovered from failed
 alternatives; the report's terminal contradiction is cleared on success.
+
+## causal traces
+
+`TGraphSolveOptions.CaptureTrace` enables a deterministic chronological record
+of the complete attempted transaction. The default is `False`. With capture
+disabled, `TraceCaptured` is false, `TraceHash` is zero, `Trace` is empty, and
+each pass reports `TraceStart = -1` and `TraceCount = 0`. Assignments, status,
+counters, and random-stream positions remain identical to the non-tracing path,
+and the solver does not allocate its causal arrays.
+
+With capture enabled, `TGraphSolveReport.Trace` records caller-domain and lock
+filtering, decisions, propagated removals, contradictions, backtracks,
+restorations, pass begin/stage/fail/skip events, and the final pipeline commit
+or rollback. Every `CauseEventId` is either `-1` or a strictly earlier event.
+Cross-pass candidate removals identify both consumer and provider and link to a
+provider-pass event, so a downstream rejection can be followed back across the
+pass DAG. Abandoned branches remain in the trace even when a later alternative
+solves.
+
+Each `TGraphPassSolveReport` exposes its contiguous half-open trace slice using
+`TraceStart` and `TraceCount`; the final pipeline event is outside every pass
+slice. `WFC_TRACE_VERSION` versions the event schema, and
+`WFC_TRACE_HASH_VERSION` versions the portable numeric signature.
+`CalculateGraphTraceHash` recomputes it without depending on host string
+encoding.
+
+The project-owned `wfc_trace` unit provides stable event/cause names, event-ID
+lookup, detached pass/entry subsets, entry-index-to-coordinate conversion, a
+line-safe formatter, and `ValidateGraphTrace`. Validation checks event IDs and
+causes, graph and value bounds, dependency links, per-pass slices, field
+invariants, terminal status, and the recomputed hash. See
+[causal solve traces](traces.md) for the complete schema and the shared
+native/pas2js terrain -> settlement -> foliage inspector.
+
+Trace v1 retains the whole attempted search in memory. It does not yet provide
+interactive stepping, live domain snapshots, every failed term of a compound
+cross-pass clause, minimal-unsatisfiable-core extraction, an event cap, or a
+streaming sink.
 
 Impossible but structurally valid input returns `False`, including unknown
 caller locks on a defined solver pass and unsatisfied constraints. Malformed
@@ -297,7 +341,9 @@ Shannon observation; graph-model version 1 adds explicit deny-all adjacency
 and caller-owned entry domains; pipeline version 2 adds acyclic dependency
 planning, named same-coordinate and signed-offset requirements, explicit
 finite any-of-neighborhood clauses, pass modes, and selective regeneration.
-Restart policy, timing data, stable trace hashes, soft constraints, implicit
-radius/count/distance expressions, cyclic repair, and
+Causal Trace v1 adds stable native/pas2js hashes and public inspection and
+validation helpers. Restart policy, timing data, interactive stepping, bounded
+or streaming trace capture, soft constraints, implicit radius/count/distance
+expressions, cyclic repair, richer failed-clause evidence, and
 minimal-unsatisfiable-core analysis remain roadmap work rather than hidden or
 partially specified behavior.

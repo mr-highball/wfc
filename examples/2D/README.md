@@ -25,6 +25,8 @@ remains a compact single-pass legacy-`Run` example.
 Reusable terrain/biome/foliage types live in `wfc_world2d`, with semantic
 checks in `wfc_world2d_validate`. The settlement specialization and its
 independent checker live in `wfc_world2d_settlement` and
-`wfc_world2d_settlement_validate`. Full domain/trace inspectors remain roadmap work. See the
-[2D documentation](../../docs/world2d.md), [roadmap](../../ROADMAP.md), and
+`wfc_world2d_settlement_validate`. The shared causal-trace console inspector
+now exposes complete pass events and backward provider links; an interactive
+2D domain/decision stepper remains roadmap work. See the [2D documentation](../../docs/world2d.md),
+[causal-trace contract](../../docs/traces.md), [roadmap](../../ROADMAP.md), and
 [examples index](../README.md).

@@ -1,12 +1,13 @@
 # Building and testing
 
-The dependency-free build covers the core, specialized 2D and settlement,
-radius-one model-learning, overlapping-pattern, sequence, exact music-score,
-music projection, Standard MIDI File, score-export, and voxel-3D units and
-their conformance suites, plus the checked voxel pass bridge and multi-pass
-Building 3D owner/validator, pass-aware view, fixed-integer isometric
-projector, and canonical SVG encoder. It also runs seeded smoke checks of the
-portable console demos and writes a checked seed-zero Building SVG artifact.
+The dependency-free build covers the core, causal-trace kernel/public/utility
+contracts, specialized 2D and settlement, radius-one model-learning,
+overlapping-pattern, sequence, exact music-score, music projection, Standard
+MIDI File, score-export, and voxel-3D units and their conformance suites, plus
+the checked voxel pass bridge and multi-pass Building 3D owner/validator,
+pass-aware view, fixed-integer isometric projector, and canonical SVG encoder.
+It also runs seeded smoke checks of the portable console demos, including the
+causal-trace inspector, and writes a checked seed-zero Building SVG artifact.
 It does not initialize the optional legacy music submodule or build the
 unfinished Castle Game Engine viewer. The 2D world and Building 3D workbench
 have separate dependency-free pas2js browser entry points described below.
@@ -34,7 +35,9 @@ likewise project-owned and expose no engine or renderer type. The voxel pass
 bridge, typed Building 3D owner, cross-layer validator, and shared
 native/pas2js demonstration are project-owned as well. The immutable Building
 view, fixed-integer command projection, hit testing, and SVG encoder are also
-portable project units. Playback systems, editors, native window/engine
+portable project units. Causal capture, hashing, formatting, query, and
+validation are likewise project-owned Pascal in `wfc` and `wfc_trace`.
+Playback systems, editors, native window/engine
 adapters, and media backends remain optional edge integrations; none is
 required to learn, serialize, solve, validate, export, mesh, project, or write
 the canonical graphical artifact.
@@ -60,12 +63,12 @@ Both scripts rebuild with assertions and range, overflow, and I/O checks, run
 `wfc_voxel3d_svg_test`, `wfc_building3d_test`,
 `wfc_building3d_view_test`, `wfc_midi_smf_test`,
 `wfc_music_test`,
-`wfc_music_graph_test`, and `wfc_music_midi_test`, then compile and smoke-test
-the portable console
-examples with seed `0`, including the bounded/wrapped spatial dependency
-self-check and depth-three Building 3D pipeline; the multi-pass and
-selective-settlement worlds also run with their default seeds. Finally, the
-native `Building3DSvg` host generates and validates
+`wfc_music_graph_test`, `wfc_music_midi_test`, `wfc_trace_reference_test`,
+`wfc_trace_test`, and `wfc_trace_utility_test`, then compile and smoke-test the
+portable console examples with seed `0`, including the bounded/wrapped spatial
+dependency self-check, causal-trace inspector, and depth-three Building 3D
+pipeline; the multi-pass and selective-settlement worlds also run with their
+default seeds. Finally, the native `Building3DSvg` host generates and validates
 `build/native/bin/building3d-seed-zero.svg`.
 A compiler error, failed check,
 or example failure produces a nonzero exit code. Compiler units and binaries
@@ -185,6 +188,16 @@ pas2js -B -Tnodejs -Mdelphi -Fusrc \
   test/wfc_building3d_test.lpr
 node build/pas2js/building/wfc_building3d_test.js
 
+mkdir -p build/pas2js/trace-units build/pas2js/trace
+for trace_test in wfc_trace_reference_test wfc_trace_test \
+  wfc_trace_utility_test
+do
+  pas2js -B -Tnodejs -Mdelphi -Fusrc \
+    -FUbuild/pas2js/trace-units -FEbuild/pas2js/trace \
+    "test/${trace_test}.lpr"
+  node "build/pas2js/trace/${trace_test}.js"
+done
+
 mkdir -p build/pas2js/music-units build/pas2js/music
 for music_test in wfc_midi_smf_test wfc_music_test \
   wfc_music_graph_test wfc_music_midi_test
@@ -292,6 +305,24 @@ It checks exact-offset and finite any-neighbor clauses, bounded rejection,
 wrapped sampling, independent validation, and same-seed replay without an
 external runtime library.
 
+The Causal Trace v1 inspector uses the same shared-source pattern:
+
+```bash
+mkdir -p build/pas2js/trace-example-units build/pas2js/trace-example
+pas2js -B -Tnodejs -Mdelphi -Fusrc \
+  -Fuexamples/passes/02_TraceInspector \
+  -FUbuild/pas2js/trace-example-units \
+  -FEbuild/pas2js/trace-example \
+  examples/passes/02_TraceInspector/TraceInspectorNode.lpr
+node build/pas2js/trace-example/TraceInspectorNode.js
+```
+
+It validates and prints the complete terrain -> settlement -> foliage event
+stream, per-pass slices, portable hash, and a backward provider-pass cause
+chain. Native and Node output is identical; no inspection library beyond the
+repository units and standard RTL is required. The full schema and limits are
+documented in [`docs/traces.md`](traces.md).
+
 The depth-three Building 3D host also uses one shared Pascal implementation
 behind thin native and Node entry points:
 
@@ -394,9 +425,10 @@ host and full graphical contract are documented in
 The hosted pas2js gate uses exact official upstream pas2js and FPC-source
 revisions, verifies both source-archive SHA-256 digests, and caches the resulting
 3.3.1 toolchain. It runs every portable conformance source, including the voxel
-foundation and four music suites; the tiled-world, learned-tiles, learned-corpus,
-overlapping-pattern, sequence, pass-composed-music, and spatial-dependency
-seed-zero smoke tests;
+foundation, four music suites, and three causal-trace suites; the tiled-world,
+learned-tiles, learned-corpus, overlapping-pattern, sequence,
+pass-composed-music, spatial-dependency, and causal-trace-inspector seed-zero
+smoke tests;
 and the multi-pass and selective-settlement worlds with both seed zero and
 their default seeds under Node.js 22.23.2. It then builds both browser targets,
 serves each staged site, and checks their exact body-state contracts in
@@ -410,8 +442,8 @@ The hosted workflow runs the checked native gate with FPC 3.2.2 on Linux,
 macOS, and Windows. The Linux lane also builds the FPM and Lazarus packages,
 runs the core Lazarus project, and verifies that generation leaves the checkout
 clean. A separate Linux lane runs the complete core, 2D, voxel-3D, Building
-3D, learning, sequence, music, and pass-composition pas2js/Node.js gate, plus
-both real browser self-tests in headless Chrome, while a canary runs against the
-current official
+3D, learning, sequence, music, pass-composition, and causal-trace pas2js/Node.js
+gate, plus both real browser self-tests in headless Chrome, while a canary runs
+against the current official
 FPC development image and records the image digest and compiler revision in the
 job log. Submodules are deliberately disabled for every gate.

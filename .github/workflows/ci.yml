@@ -227,6 +227,8 @@ jobs:
           voxel_test_bin='build/pas2js/voxel-test/bin'
           building_test_units='build/pas2js/building-test/units'
           building_test_bin='build/pas2js/building-test/bin'
+          trace_test_units='build/pas2js/trace-test/units'
+          trace_test_bin='build/pas2js/trace-test/bin'
           viewer_test_units='build/pas2js/viewer-test/units'
           viewer_test_bin='build/pas2js/viewer-test/bin'
           music_test_units='build/pas2js/music-test/units'
@@ -249,6 +251,8 @@ jobs:
           music_example_bin='build/pas2js/music-example/bin'
           spatial_example_units='build/pas2js/spatial-example/units'
           spatial_example_bin='build/pas2js/spatial-example/bin'
+          trace_example_units='build/pas2js/trace-example/units'
+          trace_example_bin='build/pas2js/trace-example/bin'
           building_example_units='build/pas2js/building-example/units'
           building_example_bin='build/pas2js/building-example/bin'
           mkdir -p \
@@ -260,6 +264,7 @@ jobs:
             "$sequence_test_units" "$sequence_test_bin" \
             "$voxel_test_units" "$voxel_test_bin" \
             "$building_test_units" "$building_test_bin" \
+            "$trace_test_units" "$trace_test_bin" \
             "$viewer_test_units" "$viewer_test_bin" \
             "$music_test_units" "$music_test_bin" \
             "$example_units" "$example_bin" \
@@ -271,6 +276,7 @@ jobs:
             "$sequence_example_units" "$sequence_example_bin" \
             "$music_example_units" "$music_example_bin" \
             "$spatial_example_units" "$spatial_example_bin" \
+            "$trace_example_units" "$trace_example_bin" \
             "$building_example_units" "$building_example_bin"
 
           "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
@@ -311,6 +317,17 @@ jobs:
             -FU"$building_test_units" -FE"$building_test_bin" \
             test/wfc_building3d_test.lpr
           node "$building_test_bin/wfc_building3d_test.js"
+
+          for trace_test in \
+            wfc_trace_reference_test \
+            wfc_trace_test \
+            wfc_trace_utility_test
+          do
+            "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
+              -FU"$trace_test_units" -FE"$trace_test_bin" \
+              "test/$trace_test.lpr"
+            node "$trace_test_bin/$trace_test.js"
+          done
 
           for viewer_test in \
             wfc_voxel3d_isometric_test \
@@ -384,6 +401,12 @@ jobs:
             -FU"$spatial_example_units" -FE"$spatial_example_bin" \
             examples/passes/01_SpatialDependencies/SpatialDependenciesNode.lpr
           node "$spatial_example_bin/SpatialDependenciesNode.js" 0 >/dev/null
+
+          "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
+            -Fuexamples/passes/02_TraceInspector \
+            -FU"$trace_example_units" -FE"$trace_example_bin" \
+            examples/passes/02_TraceInspector/TraceInspectorNode.lpr
+          node "$trace_example_bin/TraceInspectorNode.js" 0 >/dev/null
 
           "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
             -Fuexamples/3D/02_MultiPassBuilding \

@@ -21,6 +21,11 @@ $patternTestSource = Join-Path $repositoryRoot 'test/wfc_pattern2d_test.lpr'
 $sequenceTestSource = Join-Path $repositoryRoot 'test/wfc_sequence_test.lpr'
 $voxelTestSource = Join-Path $repositoryRoot 'test/wfc_voxel3d_test.lpr'
 $buildingTestSource = Join-Path $repositoryRoot 'test/wfc_building3d_test.lpr'
+$traceTestSources = @(
+  (Join-Path $repositoryRoot 'test/wfc_trace_reference_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_trace_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_trace_utility_test.lpr')
+)
 $viewerTestSources = @(
   (Join-Path $repositoryRoot 'test/wfc_voxel3d_isometric_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_voxel3d_svg_test.lpr')
@@ -50,6 +55,10 @@ $musicExampleSource = Join-Path $repositoryRoot `
   'examples/music/03_PassComposition/PassComposition.lpr'
 $spatialExampleSource = Join-Path $repositoryRoot `
   'examples/passes/01_SpatialDependencies/SpatialDependencies.lpr'
+$traceExampleSource = Join-Path $repositoryRoot `
+  'examples/passes/02_TraceInspector/TraceInspector.lpr'
+$traceExampleDirectory = Join-Path $repositoryRoot `
+  'examples/passes/02_TraceInspector'
 $buildingExampleSource = Join-Path $repositoryRoot `
   'examples/3D/02_MultiPassBuilding/MultiPassBuilding.lpr'
 $buildingExampleDirectory = Join-Path $repositoryRoot `
@@ -349,6 +358,45 @@ Write-Host "Running '$buildingTestExecutable'."
 $buildingTestExitCode = $LASTEXITCODE
 if ($buildingTestExitCode -ne 0) {
   exit $buildingTestExitCode
+}
+
+foreach ($traceTestSource in $traceTestSources) {
+  $traceTestName = [System.IO.Path]::GetFileNameWithoutExtension(
+    $traceTestSource)
+  $traceTestCompilerArguments = @(
+    $CompilerOptions
+    '-B'
+    '-Mdelphi'
+    '-Sa'
+    '-Cr'
+    '-Co'
+    '-Ci'
+    "-Fu$sourceDirectory"
+    "-FU$unitOutputDirectory"
+    "-FE$binaryOutputDirectory"
+    $traceTestSource
+  )
+
+  Write-Host "Building the causal-trace conformance suite '$traceTestName'."
+  & $Compiler @traceTestCompilerArguments
+  $traceTestCompilerExitCode = $LASTEXITCODE
+  if ($traceTestCompilerExitCode -ne 0) {
+    exit $traceTestCompilerExitCode
+  }
+
+  $traceTestExecutableName = if ($env:OS -eq 'Windows_NT') {
+    "$traceTestName.exe"
+  } else {
+    $traceTestName
+  }
+  $traceTestExecutable = Join-Path $binaryOutputDirectory `
+    $traceTestExecutableName
+  Write-Host "Running '$traceTestExecutable'."
+  & $traceTestExecutable
+  $traceTestExitCode = $LASTEXITCODE
+  if ($traceTestExitCode -ne 0) {
+    exit $traceTestExitCode
+  }
 }
 
 foreach ($viewerTestSource in $viewerTestSources) {
@@ -767,6 +815,43 @@ Write-Host "Smoke testing '$spatialExampleExecutable' with seed 0."
 $spatialExampleExitCode = $LASTEXITCODE
 if ($spatialExampleExitCode -ne 0) {
   exit $spatialExampleExitCode
+}
+
+$traceExampleCompilerArguments = @(
+  $CompilerOptions
+  '-B'
+  '-Mdelphi'
+  '-Sa'
+  '-Cr'
+  '-Co'
+  '-Ci'
+  "-Fu$sourceDirectory"
+  "-Fu$traceExampleDirectory"
+  "-FU$unitOutputDirectory"
+  "-FE$binaryOutputDirectory"
+  $traceExampleSource
+)
+
+Write-Host 'Building the dependency-free causal-trace inspector example.'
+& $Compiler @traceExampleCompilerArguments
+$traceExampleCompilerExitCode = $LASTEXITCODE
+if ($traceExampleCompilerExitCode -ne 0) {
+  exit $traceExampleCompilerExitCode
+}
+
+$traceExampleExecutableName = if ($env:OS -eq 'Windows_NT') {
+  'TraceInspector.exe'
+} else {
+  'TraceInspector'
+}
+$traceExampleExecutable = Join-Path $binaryOutputDirectory `
+  $traceExampleExecutableName
+
+Write-Host "Smoke testing '$traceExampleExecutable' with seed 0."
+& $traceExampleExecutable 0 | Out-Null
+$traceExampleExitCode = $LASTEXITCODE
+if ($traceExampleExitCode -ne 0) {
+  exit $traceExampleExitCode
 }
 
 $buildingExampleCompilerArguments = @(

@@ -7,6 +7,7 @@ the [roadmap](../ROADMAP.md).
 | Area | Entry point | Targets | Current proof and dependencies |
 | --- | --- | --- | --- |
 | Spatial pass constraints | `passes/01_SpatialDependencies/SpatialDependencies.lpr` and `SpatialDependenciesNode.lpr` | Native FPC, pas2js/Node | Solves terrain before settlement and foliage, checks exact-offset AND clauses plus finite any-neighbor OR clauses, contrasts bounded and wrapped edges, rejects an out-of-bounds probe, and replays portable signatures using only repository units and the standard RTL. |
+| Causal trace inspector | `passes/02_TraceInspector/TraceInspector.lpr` and `TraceInspectorNode.lpr` | Native FPC, pas2js/Node | Captures and validates a deterministic terrain -> settlement -> foliage transaction, prints its portable trace hash, pass slices, and all 27 events, then follows a rejected foliage candidate back to its settlement provider event. Both hosts emit the same event stream using only repository units and the standard RTL. |
 | Multi-pass 2D world | `2D/01_MultiPassWorld/MultiPassWorld.lpr` | Native FPC, pas2js/Node | Uses the reusable 2D units, solves terrain → biome → foliage atomically, independently validates every cell/relation, and prints matching portable signatures without external dependencies. |
 | Interactive browser world | `2D/02_BrowserWorld/BrowserWorld.lpr` | pas2js/browser | Runs the same model and validator in a responsive three-layer canvas UI with seeds, wrapping, cell locks, and an exact headless-browser fixture. |
 | Selective settlement | `2D/03_SelectiveSettlement/SelectiveSettlement.lpr` | Native FPC, pas2js/Node | Solves a six-layer dependency DAG, edits hydrology, regenerates only its dependent closure, independently validates the result, proves rollback and exact recovery, and uses no external dependency. |
@@ -25,10 +26,12 @@ the [roadmap](../ROADMAP.md).
 | Learned-riff music experiment | `music/02_simple_song_riffs/simple_song_riffs.lpi` | Native Lazarus/LCL | Legacy optional experiment using manually inferred note adjacency, SoundShop, and SDL2 playback. |
 
 The 2D field instrument and Building 3D workbench exercise the real browser
-target and document host. Complete domain/decision-trace inspection and a
-text-prediction browser demo remain roadmap work. The Castle shell is retained
-only as an optional native-engine edge; the standard 3D graphical path no
-longer waits on it.
+target and document host. The causal-trace console inspector now proves
+portable event capture, validation, hashing, pass slices, and backward cause
+links. Interactive stepping, live domain views, richer failed-clause/minimal
+core explanations, streaming capture, and a text-prediction browser demo remain
+roadmap work. The Castle shell is retained only as an optional native-engine
+edge; the standard 3D graphical path no longer waits on it.
 
 ## dependency-free builds
 
@@ -94,6 +97,24 @@ node build/examples/spatial/pas2js/bin/SpatialDependenciesNode.js 0
 
 See the [spatial-dependency guide](passes/01_SpatialDependencies/README.md)
 for its clauses, boundary proof, self-check, and golden output.
+
+The causal-trace inspector is another shared-unit example with thin native and
+Node hosts:
+
+```text
+fpc -B -Mdelphi -Sa -Cr -Co -Ci -Fusrc -Fuexamples/passes/02_TraceInspector -FUbuild/trace-inspector/native/units -FEbuild/trace-inspector/native/bin examples/passes/02_TraceInspector/TraceInspector.lpr
+build/trace-inspector/native/bin/TraceInspector
+```
+
+```text
+pas2js -B -Tnodejs -Mdelphi -Fusrc -Fuexamples/passes/02_TraceInspector -FUbuild/trace-inspector/pas2js/units -FEbuild/trace-inspector/pas2js/bin examples/passes/02_TraceInspector/TraceInspectorNode.lpr
+node build/trace-inspector/pas2js/bin/TraceInspectorNode.js
+```
+
+Both produce the 27-event seed-zero trace hash `73C4B9A2`, validate the report,
+and print the same backward chain from foliage event `15` to settlement event
+`13`. See [causal solve traces](../docs/traces.md) for the event schema,
+signature contract, query helpers, and current limits.
 
 The standard Building 3D host uses a thin native or Node entry point over the
 same depth-three Pascal demonstration unit:

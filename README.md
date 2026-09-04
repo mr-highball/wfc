@@ -35,7 +35,10 @@ modular 3D structures, music, text, and other discrete design problems.
 > format-0/1 codec, and a format-0 score exporter. Its portable three-pass
 > example runs on native FPC and pas2js/Node without a playback dependency.
 > Pipeline v2 adds exact signed-offset and finite any-of-neighborhood reads
-> across staged provider passes. Voxel Foundation v1 adds immutable
+> across staged provider passes. Causal Trace v1 adds opt-in chronological
+> decision/removal/backtrack evidence, provider-pass cause links, per-pass
+> slices, portable versioned hashes, structural validation/query helpers, and
+> a shared native/pas2js console inspector. Voxel Foundation v1 adds immutable
 > rotation-aware prototypes, explicit six-face socket compatibility, vertical
 > support, captured scenes, independent validation, and renderer-neutral
 > integer surface meshes. Building 3D v1 now composes a full depth-aware
@@ -66,6 +69,11 @@ modular 3D structures, music, text, and other discrete design problems.
   fixed-point Shannon entropy, exact unit-weight MRV compatibility, and bounded
   backtracking
 - atomic staging, independent validation, and structured execution reports
+- opt-in causal traces covering caller filters, decisions, propagation,
+  contradictions, backtracking, pass staging/skipping, and pipeline commit or
+  rollback
+- versioned portable trace hashes, per-pass event slices, public query and
+  validation helpers, and matching native/pas2js trace fixtures
 - typed 2D terrain/biome/foliage and selective-settlement libraries with
   independent semantic checkers
 - versioned, fixed-token 2D layer signatures shared by native FPC and pas2js
@@ -152,6 +160,9 @@ For dependency roles, pass modes, `RequireFromPassAt`,
 regeneration, see [pass DAGs](docs/pass-dags.md).
 For the reference algorithm, atomicity contract, reports, and exact constraint
 semantics, see the [reference solver](docs/solver.md).
+For `CaptureTrace`, event/cause semantics, per-pass slices, stable hashes,
+query/validation helpers, current limits, and the console inspector, see
+[causal solve traces](docs/traces.md).
 For exact replay behavior, callback requirements, and algorithm versioning,
 see [deterministic generation](docs/determinism.md).
 For the reusable world model, typed locks, validator, signatures, and console
@@ -188,11 +199,11 @@ Run the checked native build and conformance suite from the repository root:
 Both entry points compile with checked FPC options, keep all output under
 `build/`, run the core, 2D ecosystem, selective-settlement, radius-one
 learning, overlapping-pattern, sequence, score/cell, music-graph, SMF,
-score-to-MIDI, voxel, and Building 3D suites, smoke-test the portable console
-examples—including the bounded/wrapped spatial dependency and depth-three
-building proofs—compile the fixed-integer isometric, SVG, and Building-view
-suites, write a deterministic seed-zero Building SVG, and preserve failure
-exit codes.
+score-to-MIDI, voxel, Building 3D, and causal-trace suites, smoke-test the
+portable console examples—including the bounded/wrapped spatial dependency,
+causal-trace inspector, and depth-three building proofs—compile the
+fixed-integer isometric, SVG, and Building-view suites, write a deterministic
+seed-zero Building SVG, and preserve failure exit codes.
 The repository also includes an FPM package, a runtime-only Lazarus package,
 and the same conformance sources for pas2js/Node. Separate `build-browser.ps1`
 and `build-browser.sh` entry points stage the interactive 2D world;
@@ -225,10 +236,11 @@ validation, or replay behavior.
 ## Direction
 
 The [roadmap](ROADMAP.md) covers the remaining reference-solver work, richer
-pass composition, higher-dimensional and cross-pass learning, validation tools,
-2D/3D/music/text ecosystems, pas2js playgrounds, reproducible research,
-documentation, and release provenance. Current examples are indexed under
-[examples](examples/README.md).
+pass composition, interactive trace stepping and domain views, richer failed
+clause/minimal-core explanations, trace streaming, higher-dimensional and
+cross-pass learning, validation tools, 2D/3D/music/text ecosystems, pas2js
+playgrounds, reproducible research, documentation, and release provenance.
+Current examples are indexed under [examples](examples/README.md).
 
 ## License
 

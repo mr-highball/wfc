@@ -37,6 +37,14 @@ The repository already contains the beginnings of the ecosystem:
 - atomic reference-solver staging across full and selectively regenerated pass
   closures, including locks, named dependencies, definitionless-pass behavior,
   skipped-layer preservation, and rollback on any failed descendant;
+- an opt-in Causal Trace v1 contract covering initial filters, decisions,
+  propagation, contradictions, backtracking/restoration, pass lifecycle, and
+  atomic commit/rollback; per-pass slices, provider-pass cause links, stable
+  portable hashes, public query/validation helpers, and matching native/pas2js
+  conformance fixtures;
+- a dependency-free shared native/pas2js console inspector that validates and
+  prints a terrain -> settlement -> foliage trace, then follows a rejected
+  downstream candidate backward to its provider-pass event;
 - a dependency-free native/pas2js Pipeline v2 fixture that contrasts bounded
   and wrapped spatial reads, independently validates terrain -> settlement and
   foliage clauses, and rejects an out-of-bounds requirement;
@@ -97,14 +105,16 @@ The repository already contains the beginnings of the ecosystem:
   project skeleton;
 - native/pas2js conformance runners covering the core, pass contracts, 2D and
   voxel-3D domain semantics, learning, sequence, music, atomic failure, and
-  replay signatures.
+  replay signatures, including the reference-kernel, public pipeline, and
+  trace-utility contracts.
 
 It is not yet the finished system described above:
 
 - the version-2 reference solver now supports scale-canonical integer weights,
   explicit zero-support adjacency, and caller-owned per-cell domains, but
-  deterministic restarts, timing, a stable trace hash, richer explanations,
-  and more scalable domain representations remain to be built;
+  deterministic restarts, timing, more scalable domain representations,
+  richer failed-clause/minimal-core explanations, interactive stepping, and
+  bounded or streaming trace capture remain to be built;
 - pass DAGs, named overlay layers, same-coordinate and exact signed-offset
   requirements, finite any-of-neighborhood reads, selective regeneration, and
   structured dependency diagnostics are now operational; implicit
@@ -122,9 +132,9 @@ It is not yet the finished system described above:
   arbitrary cameras or intersecting geometry need a later generalized
   visibility/depth renderer;
 - the interactive 2D and Building 3D pas2js demos and browser test hosts now
-  exist, but there is no complete pass/domain inspector or stable
-  native/pas2js decision-trace parity suite (canonical seeded value fixtures
-  do already match);
+  exist, and the first console pass/causal-trace inspector plus stable
+  native/pas2js trace parity are checked; live domain snapshots, interactive
+  stepping, search controls, and domain-specific browser inspection remain;
 - model learning now covers pretokenized cardinal radius-one corpora,
   structurally compatible overlapping 2D footprints, and bounded order-N
   sequences with explicit projection; tokenizers, wrapped sequence training,
@@ -213,8 +223,9 @@ integer weights, deterministic Q16 Shannon observation with an exact
 unit-weight minimum-remaining-values path, locks, bounded backtracking,
 structured contradictions, independent validation, atomic pass staging,
 explicit deny-all directions, and pass-local caller domain masks.
-Phase 1 stays open until deterministic restarts, timing, and native/pas2js
-stable trace-hash parity satisfy the exit gate below.
+Phase 1 stays open until deterministic restarts and timing satisfy the remaining
+exit-gate work below. Causal Trace v1 now satisfies the native/pas2js stable
+trace-hash parity portion.
 
 ### Deliverables
 
@@ -271,9 +282,13 @@ terrain → hydrology/biome → roads → housing → foliage, including named
 overlays, non-linear dependency closure, an intentionally illegal descendant
 lock, transactional rollback, independent validation, exact recovery, and
 matching native/pas2js layer signatures. Pass inspection and richer causal
-explanations remain open Phase 2 work. A focused spatial fixture additionally
-proves bounded out-of-bounds rejection and wrapped edge sampling for terrain
-consumers without adding domain knowledge or a runtime dependency to the core.
+explanations now have a first checked vertical slice: Causal Trace v1 records
+chronological eliminations and provider links, and the console inspector walks
+one chain across passes. Interactive stepping, live domain views, complete
+failed-clause evidence, minimal contradiction sets, and streaming remain open.
+A focused spatial fixture additionally proves bounded out-of-bounds rejection
+and wrapped edge sampling for terrain consumers without adding domain knowledge
+or a runtime dependency to the core.
 
 ### Deliverables
 
@@ -286,9 +301,11 @@ consumers without adding domain knowledge or a runtime dependency to the core.
   knowledge into the core.
 - Derive pass seeds from the pipeline seed and stable pass identity, so adding
   a later pass cannot change an earlier committed result.
-- Record which constraint, neighbor, pass, and decision forced each value.
+- Preserve Causal Trace v1 evidence for caller filters, neighbors, passes,
+  decisions, contradictions, and abandoned branches.
 - Support selective regeneration with locked unaffected cells.
-- Add a pass inspector that can step through layers and contradiction traces.
+- Extend the checked console inspector with interactive stepping, live domain
+  snapshots, richer clause evidence, and bounded/streaming capture.
 
 ### Exit gate
 
@@ -340,8 +357,9 @@ complete exit gate remain open.
 - Build `wfc-validate` to lint schemas, unreachable values, asymmetric rules,
   impossible requirements, missing assets, and contradictory pass inputs.
 - Build `wfc-run` for headless, seeded generation and reproducible batch runs.
-- Build `wfc-inspect` for rule graphs, pass layers, entropy/domain views,
-  decision replay, and contradiction explanations.
+- Generalize the existing fixed-fixture causal-trace inspector into
+  `wfc-inspect` for arbitrary rule graphs, pass layers, entropy/domain views,
+  interactive decision replay, and richer contradiction explanations.
 - Preserve source hashes and corpus licenses in generated model metadata.
 - Add compact binary caching only after the portable text format is stable.
 
@@ -372,9 +390,9 @@ gate.
 - Extend the current terrain/biome/foliage model with coast/hydrology, roads,
   settlements, and richer decoration helpers.
 - Image/tile-set learning with rotation and reflection policies.
-- Extend the console example and current browser field instrument into native
-  and browser inspectors that expose domains, propagation, and contradiction
-  traces across the complete multi-pass pipeline.
+- Feed the implemented causal trace into the browser field instrument and add
+  live domains, interactive stepping, search controls, and richer
+  contradiction views across the complete multi-pass pipeline.
 
 **Exit gate:** every displayed map passes terrain, connectivity, occupancy, and
 cross-pass invariants; the same model and seed match between native and web.

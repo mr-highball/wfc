@@ -264,6 +264,22 @@ Named constraint failures use `gckPassDependency` and report the stable source
 index through `DependencyPassIndex`. Historical `RequirePrevious` failures
 remain `gckPreviousPass`.
 
+Set `TGraphSolveOptions.CaptureTrace` to retain the complete attempted
+transaction rather than only its aggregate report. Every pass owns a
+contiguous `TraceStart`/`TraceCount` slice. Selective regeneration emits
+`gtekPassSkipped` for reused immutable inputs; executed passes emit begin and
+stage/fail lifecycle events; and the final commit or rollback remains outside
+all pass slices.
+
+A candidate removed by a named or spatial requirement uses
+`gtckPassDependency`, identifies the stable provider through
+`DependencyPassIndex`, and links its `CauseEventId` to that provider's stage or
+skip event. This makes the already-planned provider -> consumer relationship
+visible in the causal record without introducing a separate scheduler. The
+versioned trace hash and `wfc_trace` validation/query helpers are portable
+across native FPC and pas2js. See [causal solve traces](traces.md) and the
+shared `examples/passes/02_TraceInspector` console example.
+
 ## deterministic replay identity
 
 Exact dependency-pipeline replay requires:
@@ -289,6 +305,13 @@ The dependency graph is intentionally acyclic. Cyclic design problems require
 an explicit bounded negotiation, repair, or fixed-point protocol with its own
 termination and replay contract; treating a cycle as an arbitrary execution
 order would hide a materially different algorithm.
+
+Causal Trace v1 records the lowest stable failed provider when several
+cross-pass clauses reject one candidate. It does not retain every failed term,
+derive a minimal contradiction set, expose live domain snapshots for
+interactive stepping, cap the event count, or stream events. Those additions
+need explicit deterministic and versioned contracts rather than silently
+changing the meaning of a complete trace.
 
 Cross-pass requirements read `TGraphValue` layers with the same shape at
 exactly declared finite offsets. They do not perform radius expansion,

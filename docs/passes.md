@@ -265,9 +265,19 @@ it stages the complete pipeline before changing any entry.
 
 ```pascal
 LOptions := DefaultGraphSolveOptions;
+LOptions.CaptureTrace := True;
 if not LGraph.TrySolve(LOptions, LReport) then
   WriteLn('Failed pass: ', LReport.FailedPassIndex);
 ```
+
+Trace capture is optional and defaults to false. When enabled, the report
+contains one chronological transaction trace plus a contiguous
+`TraceStart`/`TraceCount` slice for every pass. Cross-pass removals identify the
+provider through `DependencyPassIndex` and link backward to that provider's
+stage or skip event. `wfc_trace` supplies lookup, detached pass/entry queries,
+formatting, structural/hash validation, and coordinate conversion. The
+[causal-trace contract](traces.md) documents the event schema and shared
+native/pas2js inspector.
 
 Defined passes solve against the staged output immediately before them. A
 later definitionless pass stages a copy of the preceding result, with its own
@@ -449,8 +459,10 @@ predicates, soft preferences, or many-cell semantic joins.
 
 A failed legacy `Run` restores pass selection but is not a transaction over
 generated cell values. `TrySolve` and `TryRegenerateFrom` are transactional.
-The version-2 reference solver still has no restart policy, timing data, or
-stable trace hash.
+The version-2 reference solver has a stable opt-in trace hash and a checked
+console inspector. It still has no restart policy or timing data. Trace v1 also
+does not provide interactive stepping, live domain snapshots, complete
+failed-clause/minimal-core explanations, an event cap, or streaming capture.
 
 ## native FPC and pas2js
 
@@ -458,7 +470,9 @@ The pass implementation and public callback types are written for both native
 FPC and pas2js. The same `TGraph`, `SwitchToPass`, `PassGraph`, `ForEachPass`,
 `DependsOn`, `TransformFrom`, `Run`, `TrySolve`, `TryRegenerateFrom`,
 `RequirePrevious`, `RequireFromPass`, `RequireFromPassAt`, and
-`RequireAnyFromPass` calls are used on both targets.
+`RequireAnyFromPass` calls are used on both targets. `CaptureTrace`, portable
+trace hashes, per-pass slices, and the `wfc_trace` query/validation helpers have
+matching native FPC and pas2js fixtures as well.
 
 The host program is responsible only for presentation: a console, Lazarus
 form, canvas, WebAudio player, or other UI can read the same pass results. For
