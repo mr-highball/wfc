@@ -26,6 +26,7 @@ New-Item -ItemType Directory -Force `
   build\examples\building3d\native\units, `
   build\examples\building3d\native\bin | Out-Null
 fpc -B -Mdelphi -Sa -Cr -Co -Ci -Fusrc `
+  -Fuexamples\3D\common `
   -Fuexamples\3D\02_MultiPassBuilding `
   -FUbuild\examples\building3d\native\units `
   -FEbuild\examples\building3d\native\bin `
@@ -38,6 +39,7 @@ Compile the Node host with pas2js and its matching RTL:
 ```bash
 mkdir -p build/examples/building3d/pas2js/{units,bin}
 pas2js -B -Tnodejs -Mdelphi -Fusrc \
+  -Fuexamples/3D/common \
   -Fuexamples/3D/02_MultiPassBuilding \
   -FUbuild/examples/building3d/pas2js/units \
   -FEbuild/examples/building3d/pas2js/bin \

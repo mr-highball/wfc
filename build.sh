@@ -14,6 +14,9 @@ pattern_test_source="$repository_root/test/wfc_pattern2d_test.lpr"
 sequence_test_source="$repository_root/test/wfc_sequence_test.lpr"
 voxel_test_source="$repository_root/test/wfc_voxel3d_test.lpr"
 building_test_source="$repository_root/test/wfc_building3d_test.lpr"
+isometric_test_source="$repository_root/test/wfc_voxel3d_isometric_test.lpr"
+svg_test_source="$repository_root/test/wfc_voxel3d_svg_test.lpr"
+building_view_test_source="$repository_root/test/wfc_building3d_view_test.lpr"
 midi_test_source="$repository_root/test/wfc_midi_smf_test.lpr"
 music_test_source="$repository_root/test/wfc_music_test.lpr"
 music_graph_test_source="$repository_root/test/wfc_music_graph_test.lpr"
@@ -29,6 +32,8 @@ music_example_source="$repository_root/examples/music/03_PassComposition/PassCom
 spatial_example_source="$repository_root/examples/passes/01_SpatialDependencies/SpatialDependencies.lpr"
 building_example_source="$repository_root/examples/3D/02_MultiPassBuilding/MultiPassBuilding.lpr"
 building_example_directory="$repository_root/examples/3D/02_MultiPassBuilding"
+building_common_directory="$repository_root/examples/3D/common"
+building_svg_source="$repository_root/examples/3D/03_BrowserBuilding/Building3DSvg.lpr"
 world_common_directory="$repository_root/examples/2D/common"
 unit_output_directory="$repository_root/build/native/units"
 binary_output_directory="$repository_root/build/native/bin"
@@ -44,6 +49,9 @@ compiler_pattern_test_source=$pattern_test_source
 compiler_sequence_test_source=$sequence_test_source
 compiler_voxel_test_source=$voxel_test_source
 compiler_building_test_source=$building_test_source
+compiler_isometric_test_source=$isometric_test_source
+compiler_svg_test_source=$svg_test_source
+compiler_building_view_test_source=$building_view_test_source
 compiler_midi_test_source=$midi_test_source
 compiler_music_test_source=$music_test_source
 compiler_music_graph_test_source=$music_graph_test_source
@@ -59,6 +67,8 @@ compiler_music_example_source=$music_example_source
 compiler_spatial_example_source=$spatial_example_source
 compiler_building_example_source=$building_example_source
 compiler_building_example_directory=$building_example_directory
+compiler_building_common_directory=$building_common_directory
+compiler_building_svg_source=$building_svg_source
 compiler_world_common_directory=$world_common_directory
 compiler_unit_output_directory=$unit_output_directory
 compiler_binary_output_directory=$binary_output_directory
@@ -74,6 +84,9 @@ case "$host_system" in
     compiler_sequence_test_source=$(cygpath -m "$sequence_test_source") || exit $?
     compiler_voxel_test_source=$(cygpath -m "$voxel_test_source") || exit $?
     compiler_building_test_source=$(cygpath -m "$building_test_source") || exit $?
+    compiler_isometric_test_source=$(cygpath -m "$isometric_test_source") || exit $?
+    compiler_svg_test_source=$(cygpath -m "$svg_test_source") || exit $?
+    compiler_building_view_test_source=$(cygpath -m "$building_view_test_source") || exit $?
     compiler_midi_test_source=$(cygpath -m "$midi_test_source") || exit $?
     compiler_music_test_source=$(cygpath -m "$music_test_source") || exit $?
     compiler_music_graph_test_source=$(cygpath -m "$music_graph_test_source") || exit $?
@@ -89,6 +102,8 @@ case "$host_system" in
     compiler_spatial_example_source=$(cygpath -m "$spatial_example_source") || exit $?
     compiler_building_example_source=$(cygpath -m "$building_example_source") || exit $?
     compiler_building_example_directory=$(cygpath -m "$building_example_directory") || exit $?
+    compiler_building_common_directory=$(cygpath -m "$building_common_directory") || exit $?
+    compiler_building_svg_source=$(cygpath -m "$building_svg_source") || exit $?
     compiler_world_common_directory=$(cygpath -m "$world_common_directory") || exit $?
     compiler_unit_output_directory=$(cygpath -m "$unit_output_directory") || exit $?
     compiler_binary_output_directory=$(cygpath -m "$binary_output_directory") || exit $?
@@ -263,6 +278,35 @@ esac
 
 printf "Running '%s'.\n" "$building_test_executable"
 "$building_test_executable" || exit $?
+
+for compiler_viewer_suite in \
+  "$compiler_isometric_test_source" \
+  "$compiler_svg_test_source" \
+  "$compiler_building_view_test_source"
+do
+  viewer_suite_name=$(basename -- "$compiler_viewer_suite" .lpr)
+  printf "Building the 3D presentation conformance suite '%s'.\n" \
+    "$viewer_suite_name"
+  "$compiler" "$@" \
+    -B \
+    -Mdelphi \
+    -Sa \
+    -Cr \
+    -Co \
+    -Ci \
+    "-Fu$compiler_source_directory" \
+    "-Fu$compiler_building_common_directory" \
+    "-FU$compiler_unit_output_directory" \
+    "-FE$compiler_binary_output_directory" \
+    "$compiler_viewer_suite" || exit $?
+
+  viewer_suite_executable="$binary_output_directory/$viewer_suite_name"
+  case "$host_system" in
+    CYGWIN*|MINGW*|MSYS*) viewer_suite_executable="${viewer_suite_executable}.exe" ;;
+  esac
+  printf "Running '%s'.\n" "$viewer_suite_executable"
+  "$viewer_suite_executable" || exit $?
+done
 
 for compiler_music_suite in \
   "$compiler_midi_test_source" \
@@ -499,6 +543,7 @@ printf "Building the dependency-free multi-pass Building 3D example.\n"
   -Ci \
   "-Fu$compiler_source_directory" \
   "-Fu$compiler_building_example_directory" \
+  "-Fu$compiler_building_common_directory" \
   "-FU$compiler_unit_output_directory" \
   "-FE$compiler_binary_output_directory" \
   "$compiler_building_example_source" || exit $?
@@ -510,3 +555,25 @@ esac
 
 printf "Smoke testing '%s' with seed 0.\n" "$building_example_executable"
 "$building_example_executable" 0 >/dev/null || exit $?
+
+printf "Building the dependency-free Building 3D SVG example.\n"
+"$compiler" "$@" \
+  -B \
+  -Mdelphi \
+  -Sa \
+  -Cr \
+  -Co \
+  -Ci \
+  "-Fu$compiler_source_directory" \
+  "-Fu$compiler_building_common_directory" \
+  "-FU$compiler_unit_output_directory" \
+  "-FE$compiler_binary_output_directory" \
+  "$compiler_building_svg_source" || exit $?
+
+building_svg_executable="$binary_output_directory/Building3DSvg"
+case "$host_system" in
+  CYGWIN*|MINGW*|MSYS*) building_svg_executable="${building_svg_executable}.exe" ;;
+esac
+building_svg_output="$binary_output_directory/building3d-seed-zero.svg"
+printf "Smoke testing '%s' with seed 0.\n" "$building_svg_executable"
+"$building_svg_executable" 0 "$building_svg_output" >/dev/null || exit $?

@@ -18,15 +18,17 @@ the [roadmap](../ROADMAP.md).
 | Text-rendered 2D world | `text/01_SimpleTiledWorld/SimpleTiledWorld.lpr` | Native FPC, pas2js/Node | Builds and runs from the same Pascal source, prints and accepts an optional replay seed, and needs no external dependency. This is world generation rendered as text, not a text-prediction model. |
 | Voxel 3D foundation | `../test/wfc_voxel3d_test.lpr` | Native FPC, pas2js/Node | Proves deterministic yaw variants, exact six-face sockets, vertical support, captured scene signatures, independent entrance/connectivity validation, wrapped seams, and renderer-neutral integer meshes using only repository units and the standard RTL. |
 | Multi-pass Building 3D | `3D/02_MultiPassBuilding/MultiPassBuilding.lpr` and `MultiPassBuildingNode.lpr` | Native FPC, pas2js/Node | Runs one depth-three footprint -> structure -> envelope/roof -> props DAG, keeps voxel keys private through checked prototype maps, validates support/entrance/reachability and every cross-layer cell independently, captures an integer mesh, and replays a portable public signature without external dependencies. |
+| Graphical Building 3D | `3D/03_BrowserBuilding/Building3DSvg.lpr` and `BrowserBuilding.lpr` | Native FPC/SVG, pas2js/browser | Builds one immutable public-lineage view over the shared four-pass showcase, projects fixed-integer commands through four yaws, writes deterministic SVG, and renders an interactive Canvas2D workbench with picking and an exact seed-zero browser fixture. It uses repository units plus the applicable standard RTL; Canvas2D is only the browser edge. |
 | Building-kit console | `3D/01_SimpleBuildingKit/tester.lpr` | Native FPC | Builds without Castle Game Engine, but its current fixture reaches a no-valid-value failure before rendering. It does not yet prove vertical 3D constraints. |
 | Castle viewer shell | `3D/01_SimpleBuildingKit/castle-demo/` | Native Castle Game Engine | The project shell and assets exist, but its game state does not yet call WFC or render generated building geometry. |
 | A-major music experiment | `music/01_simple_A_major/simple_a_major.lpi` | Native Lazarus/LCL | Legacy optional experiment using the SoundShop submodule and SDL2 playback. |
 | Learned-riff music experiment | `music/02_simple_song_riffs/simple_song_riffs.lpi` | Native Lazarus/LCL | Legacy optional experiment using manually inferred note adjacency, SoundShop, and SDL2 playback. |
 
-The first HTML/browser UI now exercises the real browser target and document
-host. A complete domain/trace inspector, text-prediction demo, graphical
-Building 3D browser host, and connected Castle visualization remain roadmap
-work.
+The 2D field instrument and Building 3D workbench exercise the real browser
+target and document host. Complete domain/decision-trace inspection and a
+text-prediction browser demo remain roadmap work. The Castle shell is retained
+only as an optional native-engine edge; the standard 3D graphical path no
+longer waits on it.
 
 ## dependency-free builds
 
@@ -97,18 +99,50 @@ The standard Building 3D host uses a thin native or Node entry point over the
 same depth-three Pascal demonstration unit:
 
 ```text
-fpc -B -Mdelphi -Sa -Cr -Co -Ci -Fusrc -Fuexamples/3D/02_MultiPassBuilding -FUbuild/examples/building3d/native/units -FEbuild/examples/building3d/native/bin examples/3D/02_MultiPassBuilding/MultiPassBuilding.lpr
+fpc -B -Mdelphi -Sa -Cr -Co -Ci -Fusrc -Fuexamples/3D/common -Fuexamples/3D/02_MultiPassBuilding -FUbuild/examples/building3d/native/units -FEbuild/examples/building3d/native/bin examples/3D/02_MultiPassBuilding/MultiPassBuilding.lpr
 build/examples/building3d/native/bin/MultiPassBuilding 0
 ```
 
 ```text
-pas2js -B -Tnodejs -Mdelphi -Fusrc -Fuexamples/3D/02_MultiPassBuilding -FUbuild/examples/building3d/pas2js/units -FEbuild/examples/building3d/pas2js/bin examples/3D/02_MultiPassBuilding/MultiPassBuildingNode.lpr
+pas2js -B -Tnodejs -Mdelphi -Fusrc -Fuexamples/3D/common -Fuexamples/3D/02_MultiPassBuilding -FUbuild/examples/building3d/pas2js/units -FEbuild/examples/building3d/pas2js/bin examples/3D/02_MultiPassBuilding/MultiPassBuildingNode.lpr
 node build/examples/building3d/pas2js/bin/MultiPassBuildingNode.js 0
 ```
 
 See the [example guide](3D/02_MultiPassBuilding/README.md) and
 [Building 3D contract](../docs/building3d.md) for its massing roles, checked
 voxel pass maps, validation, mesh extraction, and exact public output.
+
+The graphical Building 3D example presents the same showcase through one
+shared immutable command model. The checked native gate compiles its focused
+isometric, SVG, and Building-view suites and writes a deterministic seed-zero
+SVG under `build/native/bin`:
+
+```text
+.\build.ps1
+```
+
+```text
+./build.sh
+```
+
+The interactive pas2js site has dedicated staging scripts:
+
+```text
+.\build-browser-building3d.ps1
+```
+
+```text
+bash ./build-browser-building3d.sh
+```
+
+Serve `build/browser/building3d/www` and append `?selftest=1` for the checked
+browser contract: seed-zero pipeline `1:F1EF0EB6`, yaw-zero complete view
+`AC7290C0`, and `140` faces. The workbench exposes seeds, descendant
+regeneration, four presentation modes, four camera yaws, Z clipping, face
+picking, and public four-pass lineage. See the
+[graphical example guide](3D/03_BrowserBuilding/README.md) for the focused
+native SVG command, compiler overrides, controls, and deliberate renderer
+limits.
 
 The learned-tiles example exercises training, canonical model I/O, graph
 adaptation, weighted solving, and independent output validation from one
@@ -250,5 +284,7 @@ license boundary.
 The Castle project may be compiled from its own directory with Castle Game
 Engine's editor or `castle-engine compile`, or through its Lazarus project when
 the Castle packages are registered. It is retained as a viewer starting point,
-not presented as a working WFC demonstration yet. Asset provenance and the
-generated-geometry connection remain roadmap work.
+not presented as a working WFC demonstration. The project-owned native SVG
+and pas2js/Canvas2D paths are the standard graphical examples. Connecting an
+interactive native engine remains an optional adapter task, and the shell's
+legacy asset provenance is still unestablished.

@@ -21,6 +21,11 @@ $patternTestSource = Join-Path $repositoryRoot 'test/wfc_pattern2d_test.lpr'
 $sequenceTestSource = Join-Path $repositoryRoot 'test/wfc_sequence_test.lpr'
 $voxelTestSource = Join-Path $repositoryRoot 'test/wfc_voxel3d_test.lpr'
 $buildingTestSource = Join-Path $repositoryRoot 'test/wfc_building3d_test.lpr'
+$viewerTestSources = @(
+  (Join-Path $repositoryRoot 'test/wfc_voxel3d_isometric_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_voxel3d_svg_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_building3d_view_test.lpr')
+)
 $musicTestSources = @(
   (Join-Path $repositoryRoot 'test/wfc_midi_smf_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_music_test.lpr')
@@ -49,6 +54,9 @@ $buildingExampleSource = Join-Path $repositoryRoot `
   'examples/3D/02_MultiPassBuilding/MultiPassBuilding.lpr'
 $buildingExampleDirectory = Join-Path $repositoryRoot `
   'examples/3D/02_MultiPassBuilding'
+$buildingCommonDirectory = Join-Path $repositoryRoot 'examples/3D/common'
+$buildingSvgSource = Join-Path $repositoryRoot `
+  'examples/3D/03_BrowserBuilding/Building3DSvg.lpr'
 $worldCommonDirectory = Join-Path $repositoryRoot 'examples/2D/common'
 $unitOutputDirectory = Join-Path $repositoryRoot 'build/native/units'
 $binaryOutputDirectory = Join-Path $repositoryRoot 'build/native/bin'
@@ -341,6 +349,46 @@ Write-Host "Running '$buildingTestExecutable'."
 $buildingTestExitCode = $LASTEXITCODE
 if ($buildingTestExitCode -ne 0) {
   exit $buildingTestExitCode
+}
+
+foreach ($viewerTestSource in $viewerTestSources) {
+  $viewerTestName = [System.IO.Path]::GetFileNameWithoutExtension(
+    $viewerTestSource)
+  $viewerTestCompilerArguments = @(
+    $CompilerOptions
+    '-B'
+    '-Mdelphi'
+    '-Sa'
+    '-Cr'
+    '-Co'
+    '-Ci'
+    "-Fu$sourceDirectory"
+    "-Fu$buildingCommonDirectory"
+    "-FU$unitOutputDirectory"
+    "-FE$binaryOutputDirectory"
+    $viewerTestSource
+  )
+
+  Write-Host "Building the 3D presentation conformance suite '$viewerTestName'."
+  & $Compiler @viewerTestCompilerArguments
+  $viewerTestCompilerExitCode = $LASTEXITCODE
+  if ($viewerTestCompilerExitCode -ne 0) {
+    exit $viewerTestCompilerExitCode
+  }
+
+  $viewerTestExecutableName = if ($env:OS -eq 'Windows_NT') {
+    "$viewerTestName.exe"
+  } else {
+    $viewerTestName
+  }
+  $viewerTestExecutable = Join-Path $binaryOutputDirectory `
+    $viewerTestExecutableName
+  Write-Host "Running '$viewerTestExecutable'."
+  & $viewerTestExecutable
+  $viewerTestExitCode = $LASTEXITCODE
+  if ($viewerTestExitCode -ne 0) {
+    exit $viewerTestExitCode
+  }
 }
 
 foreach ($musicTestSource in $musicTestSources) {
@@ -731,6 +779,7 @@ $buildingExampleCompilerArguments = @(
   '-Ci'
   "-Fu$sourceDirectory"
   "-Fu$buildingExampleDirectory"
+  "-Fu$buildingCommonDirectory"
   "-FU$unitOutputDirectory"
   "-FE$binaryOutputDirectory"
   $buildingExampleSource
@@ -753,4 +802,42 @@ $buildingExampleExecutable = Join-Path $binaryOutputDirectory `
 
 Write-Host "Smoke testing '$buildingExampleExecutable' with seed 0."
 & $buildingExampleExecutable 0 | Out-Null
+$buildingExampleExitCode = $LASTEXITCODE
+if ($buildingExampleExitCode -ne 0) {
+  exit $buildingExampleExitCode
+}
+
+$buildingSvgCompilerArguments = @(
+  $CompilerOptions
+  '-B'
+  '-Mdelphi'
+  '-Sa'
+  '-Cr'
+  '-Co'
+  '-Ci'
+  "-Fu$sourceDirectory"
+  "-Fu$buildingCommonDirectory"
+  "-FU$unitOutputDirectory"
+  "-FE$binaryOutputDirectory"
+  $buildingSvgSource
+)
+
+Write-Host 'Building the dependency-free Building 3D SVG example.'
+& $Compiler @buildingSvgCompilerArguments
+$buildingSvgCompilerExitCode = $LASTEXITCODE
+if ($buildingSvgCompilerExitCode -ne 0) {
+  exit $buildingSvgCompilerExitCode
+}
+
+$buildingSvgExecutableName = if ($env:OS -eq 'Windows_NT') {
+  'Building3DSvg.exe'
+} else {
+  'Building3DSvg'
+}
+$buildingSvgExecutable = Join-Path $binaryOutputDirectory `
+  $buildingSvgExecutableName
+$buildingSvgOutput = Join-Path $binaryOutputDirectory `
+  'building3d-seed-zero.svg'
+Write-Host "Smoke testing '$buildingSvgExecutable' with seed 0."
+& $buildingSvgExecutable 0 $buildingSvgOutput | Out-Null
 exit $LASTEXITCODE

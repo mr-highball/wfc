@@ -167,16 +167,109 @@ variant tables and cell indices, so they remain valid after the building,
 graph, adapters, and kits are destroyed. The caller owns and frees each
 returned scene.
 
-The structure scene can be passed directly to `BuildVoxel3DMesh`. The current
+The structure scene can be passed directly to `BuildVoxel3DMesh`. The
 envelope layer is semantic surface classification rather than displaced
-geometry, and the prop kit uses unit solid markers. A later renderer may
-interpret those layers without placing an engine type in the canonical API.
+geometry, and the prop kit uses unit solid markers. The project-owned Building
+view interprets those layers without placing an engine type in the canonical
+API.
 
 `PipelineSignature` hashes model, blueprint, pass-bridge, solver, graph, and
 pipeline versions; dimensions and topology; all three kit identities; and
 every public token/rotation in canonical traversal order. It is portable
 between native FPC and pas2js. The seed is an input to generation, while the
 signature describes the resulting public building.
+
+## Immutable Building views and lineage
+
+`wfc_building3d_view` is the presentation bridge between a solved building and
+any renderer. `BuildBuilding3DView` returns a caller-owned immutable
+`TBuilding3DView` in one of four modes:
+
+| Mode | Geometry and style |
+| --- | --- |
+| `b3vmFootprint` | Exposed unit faces for non-void massing roles, styled by footprint semantics. |
+| `b3vmStructure` | The exact exposed structure mesh with structure material and prototype semantics. |
+| `b3vmEnvelopeRoof` | The same structure geometry, styled from the same-cell envelope/roof classification. |
+| `b3vmComplete` | The envelope-styled structure followed by the exact exposed prop mesh. |
+
+Envelope/roof does not fabricate a duplicate mesh: it is a semantic overlay on
+the matching structure face. Complete mode retains the structure prototype on
+those faces, identifies the `envelope-roof` layer, and derives material and
+semantic presentation from the envelope classification. Prop faces are exact
+mesh faces in the `props` layer.
+
+Each `TBuilding3DViewFace` contains its fixed-subcell quad, geometry kind, and
+`TBuilding3DViewLineage`. The lineage is a complete public same-cell account
+of footprint role/token plus structure, envelope/roof, and prop kind,
+prototype, material, and rotation. It deliberately contains no graph adapter
+key. The snapshot records the source seed, dimensions, building signature,
+pipeline signature, and mode; `CopyFaces` and `CopyQuads` return detached
+arrays. It remains readable if the source building is later changed or freed.
+
+The shared seed-zero showcase fixes the following observable results:
+
+| View result | Exact value |
+| --- | --- |
+| Pipeline signature | `1:F1EF0EB6` |
+| Footprint faces | `110` |
+| Structure faces | `134` |
+| Envelope/roof faces | `134` |
+| Complete faces | `140` |
+
+These counts prove that the envelope is not duplicated and that complete mode
+adds the showcase's six exposed prop faces.
+
+## Fixed-integer projection and graphical hosts
+
+`TBuilding3DView.CopyQuads` is accepted directly by
+`ProjectVoxel3DIsometric`. The projector uses signed fixed-subcell world
+coordinates where `1024` units equal one building cell. Camera options are
+integer horizontal, plan-vertical, and elevation steps plus a margin and one
+of four quarter-turn yaws. Checked arithmetic rejects unrepresentable input.
+The immutable result contains auto-fitted integer bounds, a complete portable
+view signature, a deep-copied stable far-to-near painter list, and
+reverse-painter convex hit testing.
+
+The implementation uses explicit stable sorting rather than a host sort, and
+does not depend on floating point, trigonometry, or 64-bit integer arithmetic.
+The projected metadata remains public: cell, direction, rotation, layer,
+prototype, material, and semantic fields are preserved for SVG, Canvas2D,
+inspection, or a future adapter.
+
+`examples/3D/03_BrowserBuilding` exposes two thin hosts over these same
+commands:
+
+- `Building3DSvg.lpr` is a native FPC executable that writes canonical,
+  LF-terminated SVG with its view signature and optional public polygon
+  metadata. It is deterministic and uses only repository units plus the
+  standard RTL.
+- `BrowserBuilding.lpr` is a pas2js workbench that paints the command list with
+  Canvas2D. It supports arbitrary unsigned 32-bit seeds, descendant
+  regeneration, all four presentation modes, the four yaws, Z clipping,
+  painted-face selection, validation and solve summaries, and public four-pass
+  cell lineage.
+
+The normal `build.ps1` and `build.sh` gates compile the three presentation
+conformance suites, build the native SVG host, and smoke-test its seed-zero
+artifact. The browser site is staged separately:
+
+```powershell
+.\build-browser-building3d.ps1
+```
+
+```bash
+bash ./build-browser-building3d.sh
+```
+
+Serve `build/browser/building3d/www` and append `?selftest=1`. A passing
+browser fixture finishes with pipeline signature `1:F1EF0EB6`, yaw-zero
+complete-view signature `AC7290C0`, and `140` faces. The in-page test also
+checks command hit testing, a nontransparent Canvas2D result, quarter-turn
+signature change, four-turn exact recovery, and structure/complete mode
+recovery. The view-command signature is portable; byte-identical Canvas2D
+pixels are not claimed because browser raster antialiasing is platform
+behavior. See the [graphical example guide](../examples/3D/03_BrowserBuilding/README.md)
+for the focused native command and complete DOM fixture.
 
 ## Independent validation
 
@@ -235,6 +328,16 @@ attachments should use explicit padding or roles rather than assuming a
 missing neighbor is a value: an unresolved bounded offset does not satisfy a
 spatial clause.
 
-The v1 demo is a native and pas2js/Node textual/mesh proof. A graphical browser
-viewer and optional engine adapter remain separate presentation milestones;
-neither is required to generate, validate, capture, sign, or mesh a building.
+The standard v1 examples now include native and pas2js/Node textual/mesh
+proofs, deterministic native SVG, and an interactive pas2js/Canvas2D
+workbench. There is no standard-RTL interactive native window. Engine or
+window-system integrations remain optional edge adapters and must consume the
+public command model without leaking dependencies into generation,
+validation, view construction, signatures, or canonical artifacts.
+
+The isometric projector intentionally supports four fixed yaws rather than
+arbitrary camera transforms. Its stable painter ordering is suitable for the
+current nonintersecting axis-aligned voxel surfaces; arbitrary intersecting
+geometry needs a later generalized visibility/depth renderer. These limits do
+not change the exact Building view, lineage, SVG, hit-test, or replay
+contracts.

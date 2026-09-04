@@ -15,7 +15,7 @@
     <Description Value="Wave Function Collapse, multi-pass generation, and pattern learning library"/>
     <License Value="MIT"/>
     <Version Minor="1"/>
-    <Files Count="30">
+    <Files Count="33">
       <Item1>
         <Filename Value="wfc_package.pas"/>
         <Type Value="Main Unit"/>
@@ -137,6 +137,18 @@
         <Filename Value="src/wfc_building3d_validate.pas"/>
         <UnitName Value="wfc_building3d_validate"/>
       </Item30>
+      <Item31>
+        <Filename Value="src/wfc_voxel3d_isometric.pas"/>
+        <UnitName Value="wfc_voxel3d_isometric"/>
+      </Item31>
+      <Item32>
+        <Filename Value="src/wfc_voxel3d_svg.pas"/>
+        <UnitName Value="wfc_voxel3d_svg"/>
+      </Item32>
+      <Item33>
+        <Filename Value="src/wfc_building3d_view.pas"/>
+        <UnitName Value="wfc_building3d_view"/>
+      </Item33>
     </Files>
     <UsageOptions>
       <UnitPath Value="$(PkgOutDir)"/>

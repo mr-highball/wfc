@@ -13,9 +13,10 @@ uses
   wfc_pattern2d_learn, wfc_pattern2d_text, wfc_world2d_settlement,
   wfc_world2d_settlement_validate, wfc_sequence, wfc_sequence_learn,
   wfc_sequence_graph, wfc_sequence_text, wfc_music, wfc_music_sequence,
-  wfc_music_graph, wfc_music_text, wfc_midi_smf, wfc_music_midi,
-  wfc_voxel3d, wfc_voxel3d_validate, wfc_voxel3d_mesh,
-  wfc_voxel3d_passes, wfc_building3d, wfc_building3d_validate;
+  wfc_music_graph, wfc_music_text, wfc_midi_smf, wfc_music_midi, wfc_voxel3d,
+  wfc_voxel3d_validate, wfc_voxel3d_mesh, wfc_voxel3d_passes, wfc_building3d,
+  wfc_building3d_validate, wfc_voxel3d_isometric, wfc_voxel3d_svg,
+  wfc_building3d_view;
 
 implementation
 

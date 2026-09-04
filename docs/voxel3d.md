@@ -108,6 +108,52 @@ faces are culled, and each face retains its cell, direction, prototype,
 rotation, and material identity. The canonical layer contains no floating
 point, camera, shader, canvas, engine, or file-format type.
 
+## fixed-integer presentation commands
+
+`wfc_voxel3d_isometric` is a separate, project-owned presentation core. A
+domain adapter supplies `TVoxel3DViewQuad` records with four signed
+fixed-subcell vertices, RGBA fill and edge colors, cell/direction/rotation,
+layer order, and public layer/prototype/material/semantic metadata. One voxel
+cell is exactly `WFC_VOXEL3D_SUBCELL_SCALE` (`1024`) subcells, so smaller props
+or trim can be expressed without floating point. Text fields accept portable
+public tokens and reject the reserved punctuation used by private graph keys.
+
+`ProjectVoxel3DIsometric` accepts that detached command array plus checked
+integer options:
+
+- one of the four yaw values `v3vy0`, `v3vy90`, `v3vy180`, or `v3vy270`;
+- horizontal, plan-vertical, and elevation pixel steps; and
+- an auto-fit margin.
+
+The defaults are `32`, `16`, and `32` pixel steps with a `16` pixel margin.
+Projection rotates and scales with checked `Integer` arithmetic, auto-fits the
+result, and rejects degenerate options, arithmetic overflow, or a canvas span
+that is unsafe for portable 32-bit convex hit testing. It uses no floating
+point, trigonometry, `Int64` dependency, or host-provided sort.
+
+The returned `TVoxel3DProjectedScene` is immutable and owns a deep copy of its
+commands. It exposes integer bounds, projected quads, and a portable signature
+covering camera options, geometry, style, metadata, source order, and painter
+order. An explicit iterative stable merge sort orders quads far-to-near with
+complete host-independent ties. `HitTest` scans that painter order in reverse,
+so an overlap resolves to the visible topmost command. Array copies and record
+accessors do not alias the scene.
+
+`wfc_voxel3d_svg` encodes a projected scene as deterministic LF-terminated
+SVG. It uses integer polygon points, exact project-owned RGBA formatting, an
+embedded view signature, XML-escaped public polygon metadata, and a checked
+integer stroke width. The encoder can omit metadata without changing the
+geometry. SVG is an edge artifact: neither its types nor a rendering engine
+enter generation, capture, validation, meshes, or command projection.
+
+The isometric, SVG, and Building-view conformance suites run on native FPC and
+pas2js/Node. They cover exact four-yaw projection, bounds, stable painter
+ordering, reverse hit testing, non-power-of-two sort lengths, signatures,
+deep-copy lifetime, metadata, XML and alpha encoding, invalid inputs, and
+overflow rejection. The graphical Building example applies the same signed
+command list to deterministic native SVG and an interactive pas2js Canvas2D
+host; see the [Building 3D contract](building3d.md).
+
 ## pass composition
 
 Building 3D v1 implements the pipeline:
@@ -134,10 +180,17 @@ identities, and rotations rather than internal graph values. See the
 
 Foundation version 1 is bounded to axis-aligned unit modules, quarter-turn yaw,
 finite explicit socket pairs, immediate support, discrete walk openings,
-immutable scenes, local/global validation, and exposed cube faces. It does not
-perform arbitrary-angle transforms, multi-cell module packing, continuous
-geometry booleans, physics, cumulative load analysis, automatic global
-connectivity repair, or asset import.
+immutable scenes, local/global validation, exposed cube faces, four-yaw
+fixed-integer isometric commands, and deterministic SVG. It does not perform
+arbitrary-angle camera or world transforms, multi-cell module packing,
+continuous geometry booleans, physics, cumulative load analysis, automatic
+global connectivity repair, or asset import.
+
+The painter list is the exact standard for the current nonintersecting,
+axis-aligned voxel surfaces. Arbitrary intersecting geometry will require a
+later generalized visibility/depth renderer. A native interactive engine or
+window-system adapter may consume projected commands, but remains optional and
+must not become a runtime dependency of the portable foundation.
 
 Those omissions are explicit research and ecosystem layers, not behavior
 silently delegated to a third-party dependency.

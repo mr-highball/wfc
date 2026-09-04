@@ -37,13 +37,11 @@ uses
   wfc_voxel3d,
   wfc_voxel3d_mesh,
   wfc_building3d,
-  wfc_building3d_validate;
+  wfc_building3d_validate,
+  building3d_showcase;
 
 const
-  DEMO_WIDTH = 7;
-  DEMO_HEIGHT = 5;
-  DEMO_DEPTH = 3;
-  DEFAULT_SEED = TGraphSeed(20210914);
+  DEFAULT_SEED = BUILDING3D_SHOWCASE_DEFAULT_SEED;
 
 type
   EBuilding3DDemo = class(Exception);
@@ -80,68 +78,6 @@ begin
     LParsed := (LParsed * 10) + LDigit;
   end;
   Result := LParsed;
-end;
-
-function NewShowcaseBlueprint: TBuilding3DBlueprint;
-var
-  X, Y: Integer;
-begin
-  Result := TBuilding3DBlueprint.Create(
-    DEMO_WIDTH, DEMO_HEIGHT, DEMO_DEPTH);
-  try
-    for Y := 0 to DEMO_HEIGHT - 1 do
-      for X := 1 to 5 do
-      begin
-        if (X = 1) or (X = 5) or (Y = 0) or (Y = 4) then
-          Result.SetRole(X, Y, 0, b3frGroundShell)
-        else
-          Result.SetRole(X, Y, 0, b3frInterior);
-
-        if (X = 1) or (X = 5) or (Y = 0) or (Y = 4) then
-          Result.SetRole(X, Y, 1, b3frShell)
-        else
-          Result.SetRole(X, Y, 1, b3frInterior);
-
-        Result.SetRole(X, Y, 2, b3frRoof);
-      end;
-    Result.SetRole(3, 0, 0, b3frEntranceSouth);
-    Result.SetRole(3, 0, 1, b3frLintel);
-    Result.SetRole(3, 2, 0, b3frFeature);
-  except
-    Result.Free;
-    raise;
-  end;
-end;
-
-function NewSolvedBuilding(const ASeed: TGraphSeed;
-  out AReport: TGraphSolveReport): TBuilding3D;
-var
-  B: TBuilding3DBlueprint;
-  C: TBuilding3DConfig;
-  O: TGraphSolveOptions;
-begin
-  Result := nil;
-  B := NewShowcaseBlueprint;
-  try
-    C := DefaultBuilding3DConfig;
-    C.Seed := ASeed;
-    C.WrapNeighbors := False;
-    Result := TBuilding3D.Create(B, C);
-    try
-      O := DefaultGraphSolveOptions;
-      O.MaxBacktracks := 4096;
-      if not Result.TryGenerate(O, AReport) then
-        raise EBuilding3DDemo.CreateFmt(
-          'pipeline failed in pass %d with contradiction %d',
-          [AReport.FailedPassIndex, Ord(AReport.Contradiction.Kind)]);
-    except
-      Result.Free;
-      Result := nil;
-      raise;
-    end;
-  finally
-    B.Free;
-  end;
 end;
 
 function FootprintGlyph(const AValue: TBuilding3DFootprintRole): Char;
@@ -239,18 +175,6 @@ begin
   end;
 end;
 
-procedure ValidateSolveReport(const AReport: TGraphSolveReport);
-var
-  I: Integer;
-begin
-  Require(AReport.Status = gssSolved, 'solve report is not solved');
-  Require(Length(AReport.ExecutionOrder) = 4,
-    'solve report does not contain four passes');
-  for I := 0 to 3 do
-    Require(AReport.ExecutionOrder[I] = I,
-      'solve report execution order changed');
-end;
-
 procedure RunBuilding3DDemo;
 var
   B, Replay: TBuilding3D;
@@ -261,29 +185,18 @@ var
   Signature: String;
   Stage: TBuilding3DStage;
   Validation: TBuilding3DValidationReport;
-  ValidationOptions: TBuilding3DValidationOptions;
 begin
   Seed := ParseSeed;
-  B := NewSolvedBuilding(Seed, Report);
+  B := NewSolvedBuilding3DShowcase(Seed, Report);
   Replay := nil;
   Scene := nil;
   Mesh := nil;
   try
-    ValidateSolveReport(Report);
-    ValidationOptions := DefaultBuilding3DValidationOptions;
-    ValidationOptions.RequireFeature := True;
-    Require(ValidateBuilding3D(B, ValidationOptions, Validation),
-      'independent validation failed: ' +
-      DescribeBuilding3DValidationIssue(Validation.Issue));
-    Require((Validation.FeatureCount = 1) and
-      (Validation.PropCount = 1),
-      'showcase feature did not produce exactly one prop');
-    Require(B.StageRotationAt(b3sStructure, 3, 0, 0) = v3r0,
-      'south entrance did not select the north/south door rotation');
+    VerifyBuilding3DShowcase(B, Report, Validation);
 
     Signature := B.PipelineSignature;
-    Replay := NewSolvedBuilding(Seed, ReplayReport);
-    ValidateSolveReport(ReplayReport);
+    Replay := NewSolvedBuilding3DShowcase(Seed, ReplayReport);
+    VerifyBuilding3DShowcase(Replay, ReplayReport, Validation);
     Require(Replay.PipelineSignature = Signature,
       'same-seed replay changed the public pipeline signature');
 

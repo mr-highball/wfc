@@ -4,10 +4,12 @@ The dependency-free build covers the core, specialized 2D and settlement,
 radius-one model-learning, overlapping-pattern, sequence, exact music-score,
 music projection, Standard MIDI File, score-export, and voxel-3D units and
 their conformance suites, plus the checked voxel pass bridge and multi-pass
-Building 3D owner/validator; it also runs seeded smoke checks of the portable
-console demos. It does not initialize the optional legacy music submodule or
-build the unfinished Castle Game Engine viewer. The browser world has its own
-dependency-free pas2js entry point described below.
+Building 3D owner/validator, pass-aware view, fixed-integer isometric
+projector, and canonical SVG encoder. It also runs seeded smoke checks of the
+portable console demos and writes a checked seed-zero Building SVG artifact.
+It does not initialize the optional legacy music submodule or build the
+unfinished Castle Game Engine viewer. The 2D world and Building 3D workbench
+have separate dependency-free pas2js browser entry points described below.
 
 FPC 3.2.2 is the supported stable compiler. The current FPC development
 compiler is also exercised as a compatibility canary.
@@ -30,9 +32,12 @@ format-0/1 codec, and format-0 score exporter are also project-owned portable
 Pascal. The voxel kit, semantic validator, and integer surface mesh are
 likewise project-owned and expose no engine or renderer type. The voxel pass
 bridge, typed Building 3D owner, cross-layer validator, and shared
-native/pas2js demonstration are project-owned as well. Playback systems,
-editors, and viewers remain optional edge integrations; none is required to
-learn, serialize, solve, validate, export, or mesh the portable foundations.
+native/pas2js demonstration are project-owned as well. The immutable Building
+view, fixed-integer command projection, hit testing, and SVG encoder are also
+portable project units. Playback systems, editors, native window/engine
+adapters, and media backends remain optional edge integrations; none is
+required to learn, serialize, solve, validate, export, mesh, project, or write
+the canonical graphical artifact.
 The GPL-3.0 SoundShop submodule, Lazarus/LCL, and SDL2 occur only in two
 explicitly legacy examples.
 
@@ -51,14 +56,17 @@ From the repository root, use the entry point for your shell:
 Both scripts rebuild with assertions and range, overflow, and I/O checks, run
 `wfc_test`, `wfc_world2d_test`, `wfc_world2d_settlement_test`,
 `wfc_learn_test`, `wfc_pattern2d_test`, `wfc_sequence_test`,
-`wfc_voxel3d_test`, `wfc_building3d_test`, `wfc_midi_smf_test`,
+`wfc_voxel3d_test`, `wfc_voxel3d_isometric_test`,
+`wfc_voxel3d_svg_test`, `wfc_building3d_test`,
+`wfc_building3d_view_test`, `wfc_midi_smf_test`,
 `wfc_music_test`,
 `wfc_music_graph_test`, and `wfc_music_midi_test`, then compile and smoke-test
 the portable console
 examples with seed `0`, including the bounded/wrapped spatial dependency
 self-check and depth-three Building 3D pipeline; the multi-pass and
-selective-settlement worlds also run
-with their default seeds.
+selective-settlement worlds also run with their default seeds. Finally, the
+native `Building3DSvg` host generates and validates
+`build/native/bin/building3d-seed-zero.svg`.
 A compiler error, failed check,
 or example failure produces a nonzero exit code. Compiler units and binaries
 are written beneath `build/native/`; running the gate does not modify tracked
@@ -291,6 +299,7 @@ behind thin native and Node entry points:
 mkdir -p build/pas2js/building-example-units \
   build/pas2js/building-example
 pas2js -B -Tnodejs -Mdelphi -Fusrc \
+  -Fuexamples/3D/common \
   -Fuexamples/3D/02_MultiPassBuilding \
   -FUbuild/pas2js/building-example-units \
   -FEbuild/pas2js/building-example \
@@ -302,6 +311,27 @@ It solves and independently validates footprint -> structure ->
 envelope/roof -> props, captures the structure mesh, and emits only public
 roles, prototype identities, rotations, and portable signatures. No viewer or
 engine package is needed.
+
+The fixed-integer projector, canonical SVG encoder, and pass-aware Building
+view have matching Node conformance programs:
+
+```bash
+for view_test in wfc_voxel3d_isometric_test wfc_voxel3d_svg_test
+do
+  mkdir -p "build/pas2js/${view_test}-units" \
+    "build/pas2js/${view_test}"
+  pas2js -B -Tnodejs -Mdelphi -Fusrc \
+    -FU"build/pas2js/${view_test}-units" \
+    -FE"build/pas2js/${view_test}" "test/${view_test}.lpr"
+  node "build/pas2js/${view_test}/${view_test}.js"
+done
+
+mkdir -p build/pas2js/building-view-units build/pas2js/building-view
+pas2js -B -Tnodejs -Mdelphi -Fusrc -Fuexamples/3D/common \
+  -FUbuild/pas2js/building-view-units \
+  -FEbuild/pas2js/building-view test/wfc_building3d_view_test.lpr
+node build/pas2js/building-view/wfc_building3d_view_test.js
+```
 
 A standalone `pas2js` executable is not enough when its RTL unit paths are
 missing. Use the compiler and RTL from the same installation.
@@ -340,6 +370,27 @@ seed-zero signature
 compiler units remain under the ignored `build/` tree; source distributions do
 not commit them.
 
+## pas2js browser Building 3D
+
+The graphical Building 3D workbench has its own dependency-free staging
+entry point over the shared Pascal showcase, immutable view, and fixed-integer
+command model:
+
+```powershell
+.\build-browser-building3d.ps1 -Compiler 'C:\path\to\pas2js.exe'
+```
+
+```bash
+PAS2JS=/opt/pas2js/bin/pas2js bash ./build-browser-building3d.sh
+```
+
+The complete static site is written to `build/browser/building3d/www`.
+Serve that directory and append `?selftest=1`; success is reported by
+`data-state="solved"`, `data-self-test="passed"`, pipeline signature
+`1:F1EF0EB6`, view signature `AC7290C0`, and face count `140`. The native SVG
+host and full graphical contract are documented in
+[`docs/building3d.md`](building3d.md).
+
 The hosted pas2js gate uses exact official upstream pas2js and FPC-source
 revisions, verifies both source-archive SHA-256 digests, and caches the resulting
 3.3.1 toolchain. It runs every portable conformance source, including the voxel
@@ -347,9 +398,9 @@ foundation and four music suites; the tiled-world, learned-tiles, learned-corpus
 overlapping-pattern, sequence, pass-composed-music, and spatial-dependency
 seed-zero smoke tests;
 and the multi-pass and selective-settlement worlds with both seed zero and
-their default seeds under Node.js 22.23.2. It then
-builds the browser target, serves the staged site, and checks its exact
-body-state contract in headless Chrome. A pinned development compiler is used
+their default seeds under Node.js 22.23.2. It then builds both browser targets,
+serves each staged site, and checks their exact body-state contracts in
+headless Chrome. A pinned development compiler is used
 because the official 3.2.0 binary release cannot resolve the suite's portable
 overloaded plain-procedure callback call.
 
@@ -360,7 +411,7 @@ macOS, and Windows. The Linux lane also builds the FPM and Lazarus packages,
 runs the core Lazarus project, and verifies that generation leaves the checkout
 clean. A separate Linux lane runs the complete core, 2D, voxel-3D, Building
 3D, learning, sequence, music, and pass-composition pas2js/Node.js gate, plus
-the real browser self-test in headless Chrome, while a canary runs against the
+both real browser self-tests in headless Chrome, while a canary runs against the
 current official
 FPC development image and records the image digest and compiler revision in the
 job log. Submodules are deliberately disabled for every gate.

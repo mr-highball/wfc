@@ -41,8 +41,11 @@ modular 3D structures, music, text, and other discrete design problems.
 > integer surface meshes. Building 3D v1 now composes a full depth-aware
 > footprint -> structure -> envelope/roof -> props DAG through checked public
 > prototype maps, validates the result independently, and runs the same
-> textual/mesh demonstration on native FPC and pas2js/Node. Graphical viewers
-> remain tracked in the [roadmap](ROADMAP.md).
+> textual/mesh demonstration on native FPC and pas2js/Node. Its project-owned
+> presentation layer adds immutable four-pass face lineage, fixed-integer
+> four-yaw isometric commands, stable painter ordering and hit testing,
+> deterministic native SVG, and an interactive pas2js/Canvas2D workbench with
+> an exact seeded browser fixture.
 
 ## Features
 
@@ -100,6 +103,14 @@ modular 3D structures, music, text, and other discrete design problems.
   blueprints, private-key-safe voxel projection maps, target-yaw spatial
   clauses, supported structure, facade/roof and prop overlays, independent
   validation, selective regeneration, and matching native/pas2js output
+- immutable Building presentation modes with complete public same-cell pass
+  lineage and exact structure/prop mesh composition
+- project-owned signed fixed-subcell isometric commands with checked integer
+  projection, four camera yaws, explicit stable painter sorting, reverse hit
+  testing, auto-fitted bounds, and portable view signatures
+- deterministic native SVG with public polygon metadata and an interactive
+  pas2js Canvas2D Building workbench with seed, selective-regeneration, view,
+  Z-clip, picking, and lineage controls
 - iterative traversal without a graph-sized call stack
 - extension hooks for custom graph and entry behavior
 - one Pascal core for native FPC and pas2js
@@ -158,7 +169,8 @@ For the exact score model, fixed-quantum cells, music pass projection,
 `wfcmusic=1`, Standard MIDI Files, and the optional playback boundary, see the
 [music foundation](docs/music.md).
 For the reusable footprint-to-props building owner, voxel pass bridge,
-validation, capture, signatures, and depth-three demonstration, see
+validation, capture, signatures, immutable graphical commands, native SVG,
+and depth-three browser workbench, see
 [Building 3D](docs/building3d.md).
 
 ## Build and test
@@ -178,13 +190,19 @@ Both entry points compile with checked FPC options, keep all output under
 learning, overlapping-pattern, sequence, score/cell, music-graph, SMF,
 score-to-MIDI, voxel, and Building 3D suites, smoke-test the portable console
 examples—including the bounded/wrapped spatial dependency and depth-three
-building proofs—and preserve failure exit codes.
+building proofs—compile the fixed-integer isometric, SVG, and Building-view
+suites, write a deterministic seed-zero Building SVG, and preserve failure
+exit codes.
 The repository also includes an FPM package, a runtime-only Lazarus package,
-and the same conformance sources for pas2js/Node. Separate `build-browser.ps1` and
-`build-browser.sh` entry points stage the interactive browser world without
-committing generated JavaScript.
+and the same conformance sources for pas2js/Node. Separate `build-browser.ps1`
+and `build-browser.sh` entry points stage the interactive 2D world;
+`build-browser-building3d.ps1` and `build-browser-building3d.sh` stage the
+Building workbench. Neither commits generated JavaScript.
 See [building and testing](docs/building.md) for compiler overrides, package
-commands, output paths, pas2js setup, and browser self-test details.
+commands, output paths, and pas2js setup. The
+[Building graphical guide](examples/3D/03_BrowserBuilding/README.md) records
+its native command, controls, and seed-zero pipeline `1:F1EF0EB6`, view
+`AC7290C0`, `140`-face browser contract.
 
 The core, specialized units, conformance suites, portable examples—including
 the pass-composed music example—and building-kit console need no submodule.
@@ -198,8 +216,9 @@ reasonably be implemented here instead of adding a library, the project
 implements and maintains its own FPC/pas2js version; when that choice is
 debatable, project-owned Pascal is the default. Core and runtime units depend
 only on repository units and the applicable standard FPC/pas2js RTL. Engines,
-viewers, and media backends may be optional adapters, and development tools may
-assist builds, tests, conversion, or inspection, but none may leak into
+native window systems, and media backends may be optional edge adapters, and
+development tools may assist builds, tests, conversion, or inspection, but
+none may leak into
 core/runtime APIs or define canonical algorithms, models, artifacts,
 validation, or replay behavior.
 

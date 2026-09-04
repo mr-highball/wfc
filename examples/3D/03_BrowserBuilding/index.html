@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Dependency-free four-pass Building 3D workbench compiled from Pascal with pas2js.">
+  <title>WFC Building 3D Workbench</title>
+  <link rel="stylesheet" href="browserbuilding.css">
+</head>
+<body data-state="loading" data-self-test="not-requested" data-signature=""
+      data-view-signature="" data-face-count="0" data-selected-x="-1"
+      data-selected-y="-1" data-selected-z="-1">
+  <header class="masthead">
+    <div>
+      <p class="eyebrow">WFC / PASS LAB 03</p>
+      <h1>Building 3D</h1>
+      <p class="lede">A four-pass architectural solve, projected and drawn by project-owned Pascal.</p>
+    </div>
+    <div class="pipeline" aria-label="Generation pipeline">
+      <span>footprint</span><i aria-hidden="true">→</i>
+      <span>structure</span><i aria-hidden="true">→</i>
+      <span>envelope</span><i aria-hidden="true">→</i>
+      <span>props</span>
+    </div>
+  </header>
+
+  <main>
+    <section class="control-deck" aria-label="Generation controls">
+      <label class="field seed-field">
+        <span>Seed</span>
+        <input id="seed-input" inputmode="numeric" value="20210914" aria-label="Unsigned 32-bit seed">
+      </label>
+      <button id="generate-button" class="primary" type="button">Generate all</button>
+      <button id="next-seed-button" type="button">Next seed</button>
+      <div class="divider" aria-hidden="true"></div>
+      <button id="regenerate-structure-button" type="button">Rebuild structure →</button>
+      <button id="regenerate-envelope-button" type="button">Rebuild envelope →</button>
+      <button id="regenerate-props-button" type="button">Rebuild props</button>
+    </section>
+
+    <section class="workspace">
+      <div class="viewport-card">
+        <div class="viewport-toolbar">
+          <label class="field compact">
+            <span>View</span>
+            <select id="view-mode" aria-label="Building view mode">
+              <option value="complete" selected>Complete</option>
+              <option value="envelope">Envelope / roof</option>
+              <option value="structure">Structure</option>
+              <option value="footprint">Footprint massing</option>
+            </select>
+          </label>
+          <div class="camera-group" role="group" aria-label="Camera rotation">
+            <button id="yaw-left-button" type="button" aria-label="Rotate camera left">↶</button>
+            <output id="yaw-output" aria-live="polite">0°</output>
+            <button id="yaw-right-button" type="button" aria-label="Rotate camera right">↷</button>
+          </div>
+          <label class="field clip-field">
+            <span>Z clip <output id="z-clip-output">all</output></span>
+            <input id="z-clip" type="range" min="0" max="3" value="3" step="1">
+          </label>
+        </div>
+
+        <div class="canvas-shell">
+          <canvas id="building-canvas" width="960" height="640" tabindex="0"
+                  aria-label="Isometric generated building. Click a visible face to inspect its pass lineage."></canvas>
+          <div class="axis" aria-hidden="true"><span>z ↑</span><span>x / y ◇</span></div>
+          <p class="canvas-hint">Click a face to trace the cell through every pass. Arrow keys rotate the view.</p>
+        </div>
+      </div>
+
+      <aside class="inspector" aria-label="Solve and cell inspector">
+        <section class="status-panel">
+          <div class="status-row">
+            <span class="status-light" aria-hidden="true"></span>
+            <div><small>Pipeline status</small><strong id="status">Loading Pascal…</strong></div>
+          </div>
+          <p id="validation">Independent validation has not run.</p>
+          <p id="solver-report">No solve report yet.</p>
+        </section>
+
+        <section>
+          <h2>Portable evidence</h2>
+          <dl class="evidence-grid">
+            <div><dt>Pipeline</dt><dd id="signature">—</dd></div>
+            <div><dt>View</dt><dd id="view-signature">—</dd></div>
+            <div><dt>Faces</dt><dd id="face-count">0</dd></div>
+            <div><dt>Seed</dt><dd id="seed-output">—</dd></div>
+          </dl>
+        </section>
+
+        <section>
+          <div class="section-heading">
+            <h2>Selected cell</h2>
+            <output id="selected-coordinate">none</output>
+          </div>
+          <ol class="lineage">
+            <li><span>01</span><div><small>Footprint</small><strong id="selected-footprint">—</strong></div></li>
+            <li><span>02</span><div><small>Structure</small><strong id="selected-structure">—</strong></div></li>
+            <li><span>03</span><div><small>Envelope / roof</small><strong id="selected-envelope">—</strong></div></li>
+            <li><span>04</span><div><small>Props</small><strong id="selected-prop">—</strong></div></li>
+          </ol>
+          <p id="selected-face" class="face-detail">Pick a visible face to inspect public model values.</p>
+        </section>
+      </aside>
+    </section>
+  </main>
+
+  <footer>
+    <span>FPC source → pas2js → project-owned commands → Canvas2D</span>
+    <span>No runtime network calls · no rendering framework</span>
+  </footer>
+  <script src="BrowserBuilding.js"></script>
+  <script>
+    window.addEventListener('load', function () {
+      rtl.run();
+    });
+  </script>
+</body>
+</html>

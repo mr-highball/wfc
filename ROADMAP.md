@@ -78,6 +78,14 @@ The repository already contains the beginnings of the ecosystem:
   private voxel keys, a transactional footprint -> structure -> envelope/roof
   -> props owner, independent cross-layer validation, and one shared native
   FPC/pas2js depth-three console and mesh fixture;
+- a project-owned Building presentation layer with immutable four-pass public
+  lineage, exact structure/prop mesh composition, signed fixed-subcell
+  commands, four checked integer isometric yaws, explicit stable painter
+  ordering, reverse hit testing, portable view signatures, and canonical SVG;
+- a deterministic native Building SVG host and an interactive pas2js Canvas2D
+  workbench over the same commands, with seeds, selective regeneration,
+  presentation modes, Z clipping, picking, lineage inspection, and an exact
+  seed-zero browser fixture;
 - stack-safe iterative traversal of large planes while preserving the legacy
   solver's north/east/south/west depth-first order;
 - checked one-command native build gates, an FPM package, a runtime-only
@@ -108,12 +116,15 @@ It is not yet the finished system described above:
   expected output, and troubleshooting guides remain to be written;
 - the reusable voxel substrate and footprint -> structure -> envelope/roof ->
   props wrapper are now independent of the legacy depth-one building kit and
-  have matching native/pas2js textual and mesh output, but graphical native
-  and browser viewers are not yet complete; the Castle shell still does not
-  render generated geometry;
-- the first interactive pas2js demo and browser test host now exist, but there
-  is no complete pass/domain inspector or stable native/pas2js decision-trace
-  parity suite (canonical seeded value fixtures do already match);
+  have matching native/pas2js textual and mesh output, deterministic native
+  SVG, and an interactive browser workbench; there is still no standard-RTL
+  interactive native window, the legacy Castle shell remains unconnected, and
+  arbitrary cameras or intersecting geometry need a later generalized
+  visibility/depth renderer;
+- the interactive 2D and Building 3D pas2js demos and browser test hosts now
+  exist, but there is no complete pass/domain inspector or stable
+  native/pas2js decision-trace parity suite (canonical seeded value fixtures
+  do already match);
 - model learning now covers pretokenized cardinal radius-one corpora,
   structurally compatible overlapping 2D footprints, and bounded order-N
   sequences with explicit projection; tokenizers, wrapped sequence training,
@@ -380,23 +391,35 @@ cross-pass invariants; the same model and seed match between native and web.
   spatial clauses, selective regeneration, independent cross-layer and voxel
   validation, and a shared native/pas2js depth-three fixture with public layer
   output and renderer-neutral mesh extraction.
+- Building presentation v1 now provides immutable footprint, structure,
+  envelope/roof, and complete views with public four-pass lineage; exact
+  structure and prop mesh composition; fixed-integer four-yaw commands; stable
+  painter ordering and hit testing; deterministic native SVG; and an
+  interactive pas2js Canvas2D workbench. Seed zero is pinned to pipeline
+  `1:F1EF0EB6`, complete view `AC7290C0`, and `140` faces.
 - Voxel and modular-building topologies with complete vertical constraints.
 - Rotation-aware sockets, support/load rules, empty space, entrances,
   connectivity, roofs, and multi-floor relationships.
 - Extend the implemented footprint -> structure -> facade/roof -> props
   pipeline with multi-floor circulation, attachment offsets, and richer load
   states.
-- A completed Castle Game Engine native viewer and a lightweight pas2js voxel
-  viewer using the same generated model and output data.
+- Generalize the current four-yaw painter projector when arbitrary cameras,
+  intersecting surfaces, or a depth buffer become justified by a concrete
+  domain fixture.
+- Optionally connect a native interactive window or engine adapter to the
+  public command model. It must remain an edge integration; it may not define
+  canonical geometry, ordering, signatures, validation, or replay.
 
 The foundation deliberately excludes the legacy binary FBX from the standard
-path because its source and license provenance are not established. The first
-standard building and viewers will use generated unit geometry and
+path because its source and license provenance are not established. The
+delivered standard Building presentations use generated unit geometry and
 project-authored materials.
 
 **Exit gate:** the building kit uses depth greater than one, contains no
-unsupported structural pieces or disconnected required entrances, renders the
-same validated structure in both viewers, and includes licensed source assets.
+unsupported structural pieces or disconnected required entrances, presents
+the same validated public structure through deterministic native SVG and the
+browser workbench, and uses only licensed source assets. A native interactive
+adapter is optional and cannot be required by the portable ecosystem.
 
 ### Music
 
