@@ -121,6 +121,8 @@ var
   GFailEntryCreateAt: Integer = 0;
   GTraversalCount: Integer = 0;
   GTraversalIndices: array[0..Pred(MAX_CAPTURED_PASSES)] of Integer;
+  GPassExecutionCount: Integer = 0;
+  GPassExecutionIndices: array[0..Pred(MAX_CAPTURED_PASSES)] of Integer;
   GCommitSetCount: Integer = 0;
   GFailCommitSetAt: Integer = 0;
   GCommitMutationSourceIndex: Integer = -1;
@@ -129,6 +131,9 @@ var
   GCommitIdentityCount: Integer = 0;
   GCommitIdentitySwitchSelection: Boolean = False;
   GCommitIdentityPasses: array[0..Pred(MAX_CAPTURED_PASSES)] of Integer;
+  GCommitRandomGraph: TGraph = nil;
+  GCommitRandomPassIndex: Integer = -1;
+  GCommitRandomDrawCount: Integer = 0;
   GCapturedWeightCount: Integer = 0;
   GCapturedWeights: array[0..Pred(MAX_CAPTURED_PASSES)] of TGraphWeight;
 
@@ -236,6 +241,11 @@ end;
 procedure TCommitIdentityEntry.DoAfterSetValue(const AValue: TGraphValue);
 begin
   inherited DoAfterSetValue(AValue);
+  if Assigned(GCommitRandomGraph) and (GCommitRandomPassIndex >= 0) then
+  begin
+    GCommitRandomGraph.PassGraph[GCommitRandomPassIndex].RandomIndex(1000);
+    Inc(GCommitRandomDrawCount);
+  end;
   if Assigned(GCommitIdentityGraph)
     and (GCommitIdentityCount < MAX_CAPTURED_PASSES) then
   begin
@@ -409,6 +419,20 @@ begin
   Result := AValid[0];
 end;
 
+function SelectAndCapturePassExecution(const AGraph: TGraph;
+  const {%H-}AEntry: TGraphEntry;
+  const AValid: TGraphValues): TGraphValue;
+begin
+  if GPassExecutionCount < MAX_CAPTURED_PASSES then
+    GPassExecutionIndices[GPassExecutionCount] :=
+      AGraph.CurrentPassIndex;
+  Inc(GPassExecutionCount);
+  if Length(AValid) = 0 then
+    Result := TGraphValue.Empty
+  else
+    Result := AValid[0];
+end;
+
 function SelectAndMutateNeighbor(const AGraph: TGraph;
   const AEntry: TGraphEntry;
   const AValid: TGraphValues): TGraphValue;
@@ -498,6 +522,70 @@ begin
   Result := '';
   for I := 0 to Pred(AGraph.TotalPassCount) do
     Result := Result + IntToStr(I) + ':' + SnapshotPass(AGraph, I) + '#';
+end;
+
+function SnapshotPassState(const AGraph: TGraph;
+  const APassIndex: Integer): String;
+var
+  I: Integer;
+  LEntry: TGraphEntry;
+  LPass: TGraph;
+begin
+  Result := '';
+  LPass := AGraph.PassGraph[APassIndex];
+  for I := 0 to (Integer(LPass.Dimension.Width)
+    * Integer(LPass.Dimension.Height)
+    * Integer(LPass.Dimension.Depth)) - 1 do
+  begin
+    LEntry := LPass.Entry[
+      I mod Integer(LPass.Dimension.Width),
+      (I div Integer(LPass.Dimension.Width))
+        mod Integer(LPass.Dimension.Height),
+      I div (Integer(LPass.Dimension.Width)
+        * Integer(LPass.Dimension.Height))];
+    Result := Result + IntToStr(Length(LEntry.Value)) + ':'
+      + LEntry.Value + ':' + IntToStr(Ord(LEntry.Empty)) + ':'
+      + IntToStr(Ord(LEntry.Generated)) + ';';
+  end;
+end;
+
+function SnapshotPipelineState(const AGraph: TGraph): String;
+var
+  I: Integer;
+begin
+  Result := '';
+  for I := 0 to Pred(AGraph.TotalPassCount) do
+    Result := Result + IntToStr(I) + '={'
+      + SnapshotPassState(AGraph, I) + '};';
+end;
+
+function DependencySnapshot(const AGraph: TGraph;
+  const APassIndex: Integer): String;
+var
+  I: Integer;
+  LPass: TGraph;
+begin
+  Result := '';
+  LPass := AGraph.PassGraph[APassIndex];
+  for I := 0 to Pred(LPass.DependencyCount) do
+  begin
+    if I > 0 then
+      Result := Result + ',';
+    Result := Result + IntToStr(LPass.DependencyIndex[I]);
+  end;
+end;
+
+function ExecutionOrderSnapshot(const AReport: TGraphSolveReport): String;
+var
+  I: Integer;
+begin
+  Result := '';
+  for I := 0 to High(AReport.ExecutionOrder) do
+  begin
+    if I > 0 then
+      Result := Result + ',';
+    Result := Result + IntToStr(AReport.ExecutionOrder[I]);
+  end;
 end;
 
 function NewSeededFixture(const ASeed: TGraphSeed): TGraph;
@@ -632,12 +720,163 @@ begin
   Result.SwitchToPass('copy');
 end;
 
+function NewTopologicalDagFixture: TGraph;
+begin
+  Result := TGraph.Create;
+  Result.Seed := 0;
+  Result.Reshape(1, 1, 1);
+  Result.WrapNeighbors := False;
+
+  Result.CurrentPass := 'root';
+  Result.PassMode := gpmOverlay;
+  Result.AddValue('R');
+
+  Result.SwitchToPass('late-low');
+  Result.PassMode := gpmOverlay;
+  Result.ClearDependencies;
+  Result.AddValue('L');
+
+  Result.SwitchToPass('early-ready');
+  Result.PassMode := gpmOverlay;
+  Result.ClearDependencies;
+  Result.AddValue('E');
+
+  Result.SwitchToPass('producer');
+  Result.PassMode := gpmOverlay;
+  Result.ClearDependencies;
+  Result.AddValue('P');
+
+  Result.SwitchToPass('later-ready');
+  Result.PassMode := gpmOverlay;
+  Result.ClearDependencies;
+  Result.AddValue('A');
+
+  Result.SwitchToPass('late-low').DependsOn('producer');
+  Result.SwitchToPass('early-ready').DependsOn('root');
+  Result.SwitchToPass('producer').DependsOn('root');
+  Result.SwitchToPass('later-ready').DependsOn('root');
+end;
+
+function NewNamedPassFixture: TGraph;
+begin
+  Result := TGraph.Create;
+  Result.Seed := 0;
+  Result.Reshape(4, 1, 1);
+  Result.WrapNeighbors := False;
+
+  Result.CurrentPass := 'terrain';
+  Result.PassMode := gpmOverlay;
+  Result.AddValue('land');
+  Result.AddValue('sand');
+  Result.AddValue('water');
+  Result.Entry[0, 0, 0].Value := 'land';
+  Result.Entry[1, 0, 0].Value := 'sand';
+  Result.Entry[2, 0, 0].Value := 'land';
+  Result.Entry[3, 0, 0].Value := 'water';
+
+  Result.SwitchToPass('target');
+  Result.PassMode := gpmOverlay;
+  Result.ClearDependencies;
+
+  Result.SwitchToPass('climate');
+  Result.PassMode := gpmOverlay;
+  Result.ClearDependencies;
+  Result.AddValue('warm');
+  Result.AddValue('cold');
+  Result.Entry[0, 0, 0].Value := 'warm';
+  Result.Entry[1, 0, 0].Value := 'warm';
+  Result.Entry[2, 0, 0].Value := 'cold';
+  Result.Entry[3, 0, 0].Value := 'warm';
+
+  Result.SwitchToPass('target');
+  Result.AddValue('A')
+    .RequireFromPass('terrain', ['land', 'sand'])
+    .RequireFromPass('terrain', 'sand')
+    .RequireFromPass('climate', 'warm');
+  Result.AddValue('B')
+    .RequireFromPass('terrain', 'land')
+    .RequireFromPass('climate', 'cold');
+  Result.AddValue('C')
+    .RequireFromPass('terrain', 'water')
+    .RequireFromPass('climate', 'warm');
+end;
+
+function NewSelectiveDagFixture: TGraph;
+begin
+  Result := TGraph.Create;
+  Result.Seed := $12345678;
+  Result.Reshape(1, 1, 1);
+  Result.WrapNeighbors := False;
+
+  Result.CurrentPass := 'terrain';
+  Result.PassMode := gpmOverlay;
+  Result.AddValue('land');
+  Result.Entry[0, 0, 0].Value := 'land';
+
+  Result.SwitchToPass('hydrology');
+  Result.PassMode := gpmOverlay;
+  Result.ClearDependencies;
+  Result.AddValue('dry').RequireFromPass('terrain', 'land');
+  Result.AddValue('river').RequireFromPass('terrain', 'land');
+  Result.Entry[0, 0, 0].Value := 'dry';
+
+  Result.SwitchToPass('biome');
+  Result.PassMode := gpmOverlay;
+  Result.ClearDependencies;
+  Result.AddValue('plains').RequireFromPass('terrain', 'land');
+
+  Result.SwitchToPass('roads');
+  Result.PassMode := gpmOverlay;
+  Result.ClearDependencies;
+  Result.AddValue('trail')
+    .RequireFromPass('terrain', 'land')
+    .RequireFromPass('hydrology', 'dry')
+    .RequireFromPass('biome', 'plains');
+  Result.AddValue('bridge')
+    .RequireFromPass('terrain', 'land')
+    .RequireFromPass('hydrology', 'river')
+    .RequireFromPass('biome', 'plains');
+
+  Result.SwitchToPass('housing');
+  Result.PassMode := gpmOverlay;
+  Result.ClearDependencies;
+  Result.AddValue('house')
+    .RequireFromPass('terrain', 'land')
+    .RequireFromPass('hydrology', 'dry')
+    .RequireFromPass('biome', 'plains')
+    .RequireFromPass('roads', 'trail');
+  Result.AddValue('none')
+    .RequireFromPass('terrain', 'land')
+    .RequireFromPass('hydrology', 'river')
+    .RequireFromPass('biome', 'plains')
+    .RequireFromPass('roads', 'bridge');
+
+  Result.SwitchToPass('foliage');
+  Result.PassMode := gpmOverlay;
+  Result.ClearDependencies;
+  Result.AddValue('garden')
+    .RequireFromPass('terrain', 'land')
+    .RequireFromPass('hydrology', 'dry')
+    .RequireFromPass('biome', 'plains')
+    .RequireFromPass('roads', 'trail')
+    .RequireFromPass('housing', 'house');
+  Result.AddValue('reeds')
+    .RequireFromPass('terrain', 'land')
+    .RequireFromPass('hydrology', 'river')
+    .RequireFromPass('biome', 'plains')
+    .RequireFromPass('roads', 'bridge')
+    .RequireFromPass('housing', 'none');
+end;
+
 function SamePassSolveReport(const A, B: TGraphPassSolveReport): Boolean;
 begin
   Result := (A.Decisions = B.Decisions)
     and (A.Propagations = B.Propagations)
     and (A.Contradictions = B.Contradictions)
-    and (A.Backtracks = B.Backtracks);
+    and (A.Backtracks = B.Backtracks)
+    and (A.Executed = B.Executed)
+    and (A.ExecutionOrdinal = B.ExecutionOrdinal)
+    and (A.Disposition = B.Disposition);
 end;
 
 procedure CapturePass(const AGraph: TGraph; const APass: String;
@@ -1342,10 +1581,567 @@ begin
   end;
 end;
 
-procedure TestPreviousConstraintNeedsEarlierPass;
+procedure TestDependencyDagConfiguration;
 var
   LGraph: TGraph;
+  LBefore: String;
+  LInvalidModeOrdinal: Integer;
+  LReplacementGroup: TGraphRuleGroup;
+  LRaised: Boolean;
+begin
+  LGraph := TGraph.Create.Reshape(1, 1, 1);
+  try
+    LGraph.CurrentPass := 'first';
+    Check((LGraph.PassMode = gpmLegacy)
+      and (LGraph.DependencyCount = 0),
+      'pass zero starts in legacy mode without a dependency');
+
+    LGraph.SwitchToPass('second');
+    Check((LGraph.PassMode = gpmLegacy)
+      and (DependencySnapshot(LGraph, 1) = '0'),
+      'a new legacy pass starts with its stable predecessor dependency');
+    LGraph.DependsOn('first').DependsOn('first');
+    Check(DependencySnapshot(LGraph, 1) = '0',
+      'duplicate dependency declarations are idempotent');
+
+    LRaised := False;
+    try
+      LGraph.RemoveDependency('first');
+    except
+      on E: EInvalidOperation do
+        LRaised := True;
+    end;
+    Check(LRaised and (DependencySnapshot(LGraph, 1) = '0'),
+      'the active legacy predecessor role cannot be removed');
+
+    LGraph.PassMode := gpmOverlay;
+    LGraph.ClearDependencies;
+    Check((LGraph.PassMode = gpmOverlay)
+      and (LGraph.DependencyCount = 0),
+      'an explicit overlay may clear the converted legacy edge');
+    LGraph.DependsOn('first').DependsOn('first');
+
+    LGraph.SwitchToPass('third');
+    LGraph.PassMode := gpmOverlay;
+    LGraph.ClearDependencies;
+    LGraph.SwitchToPass('second');
+    LGraph.RemoveDependency('third');
+    Check(DependencySnapshot(LGraph, 1) = '0',
+      'removing an absent dependency is idempotent');
+
+    LBefore := DependencySnapshot(LGraph, 1);
+    LRaised := False;
+    try
+      LGraph.DependsOn('missing');
+    except
+      on E: EArgumentException do
+        LRaised := True;
+    end;
+    Check(LRaised and (DependencySnapshot(LGraph, 1) = LBefore),
+      'a missing dependency label fails without mutating the plan');
+
+    LRaised := False;
+    try
+      LGraph.DependsOn('second');
+    except
+      on E: EInvalidOperation do
+        LRaised := True;
+    end;
+    Check(LRaised and (DependencySnapshot(LGraph, 1) = LBefore),
+      'a self dependency fails atomically');
+
+    LGraph.SwitchToPass('first');
+    LRaised := False;
+    try
+      LGraph.DependsOn('second');
+    except
+      on E: EInvalidOperation do
+        LRaised := True;
+    end;
+    Check(LRaised and (LGraph.DependencyCount = 0),
+      'a dependency that would close a cycle fails atomically');
+
+    LGraph.PassGraph[0].CurrentPass := 'renamed-first';
+    Check(DependencySnapshot(LGraph, 1) = '0',
+      'dependency bindings survive source-pass renaming by stable index');
+
+    LGraph.SwitchToPass('second');
+    LGraph.TransformFrom('renamed-first');
+    Check((LGraph.PassMode = gpmTransform)
+      and (LGraph.TransformSourceIndex = 0)
+      and (DependencySnapshot(LGraph, 1) = '0'),
+      'TransformFrom binds one explicit stable source');
+    LRaised := False;
+    try
+      LGraph.ClearDependencies;
+    except
+      on E: EInvalidOperation do
+        LRaised := True;
+    end;
+    Check(LRaised and (DependencySnapshot(LGraph, 1) = '0'),
+      'a transform source role protects its dependency');
+
+    LGraph.PassMode := gpmOverlay;
+    LGraph.ClearDependencies;
+    LRaised := False;
+    try
+      LGraph.PassMode := gpmTransform;
+    except
+      on E: EInvalidOperation do
+        LRaised := True;
+    end;
+    Check(LRaised and (LGraph.PassMode = gpmOverlay)
+      and (LGraph.DependencyCount = 0),
+      'an ambiguous source-free transform mode change is atomic');
+
+    LGraph.DependsOn('renamed-first').DependsOn('third');
+    LBefore := DependencySnapshot(LGraph, 1);
+    LRaised := False;
+    try
+      LGraph.PassMode := gpmTransform;
+    except
+      on E: EInvalidOperation do
+        LRaised := True;
+    end;
+    Check(LRaised and (LGraph.PassMode = gpmOverlay)
+      and (DependencySnapshot(LGraph, 1) = LBefore),
+      'a multi-source direct transform mode change is atomic');
+
+    LGraph.ClearDependencies;
+    LGraph.AddValue('candidate');
+    LRaised := False;
+    try
+      LGraph.Rules['candidate'].RequireFromPass('missing', 'value');
+    except
+      on E: EArgumentException do
+        LRaised := True;
+    end;
+    Check(LRaised and (LGraph.DependencyCount = 0),
+      'a missing named requirement adds neither requirement nor dependency');
+    LRaised := False;
+    try
+      LGraph.Rules['candidate'].RequireFromPass('second', 'value');
+    except
+      on E: EInvalidOperation do
+        LRaised := True;
+    end;
+    Check(LRaised and (LGraph.DependencyCount = 0),
+      'a self named requirement fails atomically');
+    Check((LGraph.CurrentPass = 'second')
+      and (LGraph.CurrentPassIndex = 1),
+      'dependency errors preserve the caller-selected pass');
+
+    LBefore := Format('%d|%d|%s', [Ord(LGraph.PassMode),
+      LGraph.TransformSourceIndex, DependencySnapshot(LGraph, 1)]);
+    LInvalidModeOrdinal := Ord(High(TGraphPassMode)) + 1;
+    LRaised := False;
+    try
+      LGraph.PassMode := TGraphPassMode(LInvalidModeOrdinal);
+    except
+      on E: Exception do
+        LRaised := True;
+    end;
+    Check(LRaised and (Format('%d|%d|%s', [Ord(LGraph.PassMode),
+      LGraph.TransformSourceIndex, DependencySnapshot(LGraph, 1)]) =
+      LBefore),
+      'an invalid pass mode is rejected before mutating dependency state');
+  finally
+    LGraph.Free;
+  end;
+
+  LGraph := TGraph.Create.Reshape(1, 1, 1);
+  try
+    LGraph.CurrentPass := 'source';
+    LGraph.PassMode := gpmOverlay;
+    LGraph.AddValue('A');
+    LGraph.SwitchToPass('consumer');
+    LGraph.PassMode := gpmOverlay;
+    LGraph.ClearDependencies;
+    LGraph.AddValue('X').RequireFromPass('source', 'A');
+    Check(DependencySnapshot(LGraph, 1) = '0',
+      'a live named requirement protects its source edge');
+    LGraph.RuleGroups.Remove('X');
+    LReplacementGroup := TGraphRuleGroup.Create('X');
+    LGraph.RuleGroups.Add('X', LReplacementGroup);
+    Check(LGraph.DependencyCount = 0,
+      'replacing the last constrained group removes its stale requirement edge');
+    LGraph.SwitchToPass('source');
+    LRaised := False;
+    try
+      LGraph.DependsOn('consumer');
+    except
+      on E: Exception do
+        LRaised := True;
+    end;
+    Check((not LRaised) and (DependencySnapshot(LGraph, 0) = '1'),
+      'removed requirement roles cannot create a false reverse-edge cycle');
+  finally
+    LGraph.Free;
+  end;
+end;
+
+procedure TestDeterministicDagExecution;
+const
+  EXPECTED_ORDINALS: array[0..4] of Integer = (0, 3, 1, 2, 4);
+  EXPECTED_ORDER: array[0..4] of Integer = (0, 2, 3, 1, 4);
+var
+  I: Integer;
+  LGraph: TGraph;
+  LOptions: TGraphSolveOptions;
+  LReport: TGraphSolveReport;
+begin
+  LOptions := DefaultGraphSolveOptions;
+  LGraph := NewTopologicalDagFixture;
+  try
+    Check(LGraph.TrySolve(LOptions, LReport),
+      'the non-linear dependency fixture solves');
+    Check(ExecutionOrderSnapshot(LReport) = '0,2,3,1,4',
+      'TrySolve uses stable index-priority topological order');
+    Check(LReport.PipelineAlgorithmVersion = WFC_PIPELINE_ALGORITHM_VERSION,
+      'the solve report identifies the dependency-pipeline algorithm');
+    for I := 0 to High(EXPECTED_ORDINALS) do
+      Check(LReport.Passes[I].Executed
+        and (LReport.Passes[I].ExecutionOrdinal = EXPECTED_ORDINALS[I])
+        and (LReport.Passes[I].Disposition = gpdSolved),
+        Format('pass %d reports its stable topological execution slot', [I]));
+    Check(LGraph.CurrentPassIndex = 4,
+      'topological reference solving restores caller selection');
+
+    for I := 0 to Pred(LGraph.TotalPassCount) do
+      LGraph.PassGraph[I].SelectionCallback :=
+        SelectAndCapturePassExecution;
+    GPassExecutionCount := 0;
+    LGraph.Run;
+    Check(GPassExecutionCount = Length(EXPECTED_ORDER),
+      'legacy Run executes every defined DAG pass once');
+    for I := 0 to High(EXPECTED_ORDER) do
+      Check(GPassExecutionIndices[I] = EXPECTED_ORDER[I],
+        Format('legacy Run uses topological slot %d', [I]));
+    Check(LGraph.CurrentPassIndex = 4,
+      'topological legacy Run restores caller selection');
+  finally
+    LGraph.Free;
+  end;
+end;
+
+procedure TestNamedPassRequirements;
+var
+  LGraph: TGraph;
+  LOptions: TGraphSolveOptions;
+  LReport: TGraphSolveReport;
+  LRaised: Boolean;
+  LRun: TGraph;
+  LSnapshot: String;
+begin
+  LOptions := DefaultGraphSolveOptions;
+  LGraph := NewNamedPassFixture;
+  try
+    Check(DependencySnapshot(LGraph, 1) = '0,2',
+      'named requirements add canonical direct dependency edges');
+    LGraph.PassGraph[0].CurrentPass := 'ground';
+    Check(LGraph.TrySolve(LOptions, LReport),
+      'renaming a named source does not break its bound requirements');
+    Check(ExecutionOrderSnapshot(LReport) = '0,2,1',
+      'a later-created named source executes before its consumer');
+    Check(SnapshotPass(LGraph, 1) = 'AABC/|',
+      'same-source alternatives are OR while distinct sources are AND');
+    Check((not LGraph.PassGraph[0].Entry[0, 0, 0].Generated)
+      and (not LGraph.PassGraph[2].Entry[0, 0, 0].Generated),
+      'named source locks retain caller ownership');
+    Check(LGraph.CurrentPassIndex = 1,
+      'named dependency solving restores consumer selection');
+
+    LGraph.PassGraph[1].Entry[2, 0, 0].Value := 'A';
+    LSnapshot := SnapshotPipelineState(LGraph);
+    Check(not LGraph.TryRegenerateFrom('target', LOptions, LReport),
+      'a lock violating one named source fails selective solving');
+    Check((LReport.FailedPassIndex = 1)
+      and (LReport.Contradiction.Kind = gckPassDependency)
+      and (LReport.Contradiction.PassIndex = 1)
+      and (LReport.Contradiction.DependencyPassIndex = 2)
+      and (LReport.Contradiction.EntryIndex = 2),
+      'named failure identifies consumer, source, and coordinate');
+    Check(SnapshotPipelineState(LGraph) = LSnapshot,
+      'named dependency failure is transactionally inert');
+  finally
+    LGraph.Free;
+  end;
+
+  LRun := NewNamedPassFixture;
+  try
+    ConfigureDeterministicSelection(LRun);
+    LRaised := False;
+    try
+      LRun.Run;
+    except
+      on E: Exception do
+        LRaised := True;
+    end;
+    Check((not LRaised) and (SnapshotPass(LRun, 1) = 'AABC/|'),
+      'legacy Run honors named requirements in topological order');
+  finally
+    LRun.Free;
+  end;
+end;
+
+procedure TestDefinitionlessPassModes;
+var
+  LBefore: String;
+  LGraph: TGraph;
+  LOptions: TGraphSolveOptions;
+  LReport: TGraphSolveReport;
+begin
+  LOptions := DefaultGraphSolveOptions;
+  LGraph := TGraph.Create.Reshape(2, 1, 1);
+  try
+    LGraph.WrapNeighbors := False;
+    LGraph.CurrentPass := 'source';
+    LGraph.Entry[0, 0, 0].Value := 'A';
+    LGraph.Entry[1, 0, 0].Value := 'B';
+
+    LGraph.SwitchToPass('legacy-copy');
+
+    LGraph.SwitchToPass('overlay');
+    LGraph.PassMode := gpmOverlay;
+    LGraph.ClearDependencies;
+    LGraph.DependsOn('source');
+    LGraph.Entry[1, 0, 0].Value := 'O';
+
+    LGraph.SwitchToPass('transform');
+    LGraph.PassMode := gpmOverlay;
+    LGraph.ClearDependencies;
+    LGraph.TransformFrom('source');
+    LGraph.Entry[1, 0, 0].Value := 'Z';
+
+    Check(LGraph.TrySolve(LOptions, LReport),
+      'definitionless legacy, overlay, and transform modes stage together');
+    Check((LReport.Passes[0].Disposition = gpdReused)
+      and (LReport.Passes[1].Disposition = gpdCopied)
+      and (LReport.Passes[2].Disposition = gpdCleared)
+      and (LReport.Passes[3].Disposition = gpdCopied),
+      'the report distinguishes preserved, cleared, and copied passes');
+    Check((SnapshotPass(LGraph, 0) = 'AB/|')
+      and (SnapshotPass(LGraph, 1) = 'AB/|')
+      and (SnapshotPass(LGraph, 2) = 'O/|')
+      and (SnapshotPass(LGraph, 3) = 'AZ/|'),
+      'each definitionless mode applies its documented value source');
+    Check(LGraph.PassGraph[1].Entry[0, 0, 0].Generated
+      and LGraph.PassGraph[3].Entry[0, 0, 0].Generated
+      and LGraph.PassGraph[2].Entry[0, 0, 0].Empty
+      and (not LGraph.PassGraph[2].Entry[1, 0, 0].Generated)
+      and (not LGraph.PassGraph[3].Entry[1, 0, 0].Generated),
+      'copy ownership is generated while overlay and destination locks persist');
+
+    LBefore := SnapshotPipelineState(LGraph);
+    LGraph.Run;
+    Check(SnapshotPipelineState(LGraph) = LBefore,
+      'legacy Run applies the same definitionless mode semantics');
+
+    LGraph.SwitchToPass('transform');
+    LGraph.PassMode := gpmOverlay;
+    Check(LGraph.TryRegenerateFrom('transform', LOptions, LReport),
+      'a former transform can selectively regenerate as an overlay');
+    Check((LReport.Passes[3].Disposition = gpdCleared)
+      and LGraph.PassGraph[3].Entry[0, 0, 0].Empty
+      and (LGraph.PassGraph[3].Entry[1, 0, 0].Value = 'Z')
+      and (not LGraph.PassGraph[3].Entry[1, 0, 0].Generated),
+      'overlay regeneration clears stale generated copy cells but keeps locks');
+
+    LGraph.SwitchToPass('overlay').TransformFrom('source');
+    Check(LGraph.TryRegenerateFrom('overlay', LOptions, LReport),
+      'an overlay can become an explicit transform source');
+    Check((LReport.Passes[2].Disposition = gpdCopied)
+      and (LGraph.PassGraph[2].Entry[0, 0, 0].Value = 'A')
+      and LGraph.PassGraph[2].Entry[0, 0, 0].Generated
+      and (LGraph.PassGraph[2].Entry[1, 0, 0].Value = 'O')
+      and (not LGraph.PassGraph[2].Entry[1, 0, 0].Generated),
+      'transform regeneration copies only unlocked cells from its named source');
+  finally
+    LGraph.Free;
+  end;
+end;
+
+procedure TestSelectiveDagRegeneration;
+var
+  I: Integer;
+  LBiomeEntry: TGraphEntry;
+  LBiomeSnapshot: String;
+  LGraph: TGraph;
+  LOptions: TGraphSolveOptions;
+  LReport: TGraphSolveReport;
+  LReportTwin: TGraphSolveReport;
+  LRaised: Boolean;
+  LRoots: TGraphPassLabels;
+  LSnapshot: String;
+  LTerrainEntry: TGraphEntry;
+  LTerrainSnapshot: String;
+  LTwin: TGraph;
+begin
+  LOptions := DefaultGraphSolveOptions;
+  LGraph := NewSelectiveDagFixture;
+  LTwin := NewSelectiveDagFixture;
+  try
+    Check(LGraph.TrySolve(LOptions, LReport)
+      and LTwin.TrySolve(LOptions, LReportTwin),
+      'selective DAG twins establish identical committed layers');
+    Check(SnapshotPipeline(LGraph) =
+      '0:land/|#1:dry/|#2:plains/|#3:trail/|#4:house/|#5:garden/|#',
+      'the dry branch establishes the expected complete DAG output');
+
+    LTerrainEntry := LGraph.PassGraph[0].Entry[0, 0, 0];
+    LBiomeEntry := LGraph.PassGraph[2].Entry[0, 0, 0];
+    LTerrainSnapshot := SnapshotPassState(LGraph, 0);
+    LBiomeSnapshot := SnapshotPassState(LGraph, 2);
+    LGraph.PassGraph[1].Entry[0, 0, 0].Value := 'river';
+    LTwin.PassGraph[1].Entry[0, 0, 0].Value := 'river';
+    LGraph.SwitchToPass('foliage');
+
+    Check(LGraph.PassGraph[4].TryRegenerateFrom(
+      'hydrology', LOptions, LReport),
+      'selective solving coordinates through a child pass receiver');
+    Check(ExecutionOrderSnapshot(LReport) = '1,3,4,5',
+      'hydrology regeneration executes its exact transitive consumer closure');
+    Check((not LReport.Passes[0].Executed)
+      and (LReport.Passes[0].ExecutionOrdinal = -1)
+      and (LReport.Passes[0].Disposition = gpdReused)
+      and (not LReport.Passes[2].Executed)
+      and (LReport.Passes[2].ExecutionOrdinal = -1)
+      and (LReport.Passes[2].Disposition = gpdReused),
+      'terrain and the biome sibling are explicitly reported as reused');
+    Check(LReport.Passes[1].Executed
+      and (LReport.Passes[1].ExecutionOrdinal = 0)
+      and LReport.Passes[3].Executed
+      and (LReport.Passes[3].ExecutionOrdinal = 1)
+      and LReport.Passes[4].Executed
+      and (LReport.Passes[4].ExecutionOrdinal = 2)
+      and LReport.Passes[5].Executed
+      and (LReport.Passes[5].ExecutionOrdinal = 3),
+      'dirty descendants receive contiguous topological ordinals');
+    Check(SnapshotPipeline(LGraph) =
+      '0:land/|#1:river/|#2:plains/|#3:bridge/|#4:none/|#5:reeds/|#',
+      'selective regeneration replaces only the dependent semantic branch');
+    Check((SnapshotPassState(LGraph, 0) = LTerrainSnapshot)
+      and (SnapshotPassState(LGraph, 2) = LBiomeSnapshot)
+      and (LGraph.PassGraph[0].Entry[0, 0, 0] = LTerrainEntry)
+      and (LGraph.PassGraph[2].Entry[0, 0, 0] = LBiomeEntry),
+      'unaffected layers retain values, ownership, and entry identity');
+    Check(LGraph.CurrentPassIndex = 5,
+      'selective solving restores the caller-selected pass');
+    Check(LGraph.PassGraph[0].RandomIndex(1000)
+      = LTwin.PassGraph[0].RandomIndex(1000),
+      'selective solving leaves the reused terrain random stream untouched');
+    Check(LGraph.PassGraph[2].RandomIndex(1000)
+      = LTwin.PassGraph[2].RandomIndex(1000),
+      'selective solving leaves the reused biome random stream untouched');
+
+    Check(LTwin.TryRegenerateFrom('hydrology', LOptions, LReportTwin),
+      'an equivalent selective twin solves independently');
+    Check((SnapshotPipelineState(LTwin) = SnapshotPipelineState(LGraph))
+      and (ExecutionOrderSnapshot(LReportTwin)
+        = ExecutionOrderSnapshot(LReport)),
+      'selective regeneration replays exact state and execution order');
+    for I := 0 to Pred(LGraph.TotalPassCount) do
+      Check(SamePassSolveReport(LReport.Passes[I],
+        LReportTwin.Passes[I]),
+        Format('selective replay reproduces pass report %d', [I]));
+
+    SetLength(LRoots, 3);
+    LRoots[0] := 'hydrology';
+    LRoots[1] := 'hydrology';
+    LRoots[2] := 'biome';
+    Check(LGraph.TryRegenerateFrom(LRoots, LOptions, LReport),
+      'multiple selective roots form one deduplicated dirty union');
+    Check(ExecutionOrderSnapshot(LReport) = '1,2,3,4,5',
+      'multi-root regeneration executes the canonical union closure');
+    LSnapshot := SnapshotPipelineState(LGraph);
+    SetLength(LRoots, 0);
+    LRaised := False;
+    try
+      LGraph.TryRegenerateFrom(LRoots, LOptions, LReport);
+    except
+      on E: EArgumentException do
+        LRaised := True;
+    end;
+    Check(LRaised and (SnapshotPipelineState(LGraph) = LSnapshot),
+      'an empty selective root set is rejected without mutation');
+  finally
+    LTwin.Free;
+    LGraph.Free;
+  end;
+end;
+
+procedure TestSelectiveDagRollback;
+var
+  I: Integer;
+  LGraph: TGraph;
+  LOptions: TGraphSolveOptions;
+  LReport: TGraphSolveReport;
+  LReportTwin: TGraphSolveReport;
+  LSnapshot: String;
+  LTwin: TGraph;
+begin
+  LOptions := DefaultGraphSolveOptions;
+  LGraph := NewSelectiveDagFixture;
+  LTwin := NewSelectiveDagFixture;
+  try
+    Check(LGraph.TrySolve(LOptions, LReport)
+      and LTwin.TrySolve(LOptions, LReportTwin),
+      'rollback DAG twins establish matching prior output');
+    LGraph.PassGraph[1].Entry[0, 0, 0].Value := 'river';
+    LTwin.PassGraph[1].Entry[0, 0, 0].Value := 'river';
+    LGraph.PassGraph[4].Entry[0, 0, 0].Value := 'house';
+    LTwin.PassGraph[4].Entry[0, 0, 0].Value := 'house';
+    LGraph.SwitchToPass('biome');
+    LSnapshot := SnapshotPipelineState(LGraph);
+
+    Check(not LGraph.TryRegenerateFrom('hydrology', LOptions, LReport),
+      'an invalid downstream caller lock aborts selective regeneration');
+    Check((LReport.FailedPassIndex = 4)
+      and (LReport.Contradiction.Kind = gckPassDependency)
+      and (LReport.Contradiction.PassIndex = 4)
+      and (LReport.Contradiction.DependencyPassIndex = 1)
+      and (LReport.Contradiction.EntryIndex = 0),
+      'selective failure identifies the housing-to-hydrology dependency');
+    Check(ExecutionOrderSnapshot(LReport) = '1,3,4',
+      'a failed report records only passes actually attempted');
+    Check(LReport.Passes[1].Executed
+      and LReport.Passes[3].Executed
+      and LReport.Passes[4].Executed
+      and (not LReport.Passes[5].Executed)
+      and (LReport.Passes[5].Disposition = gpdNotRun),
+      'a descendant after the failed pass is not reported as executed');
+    Check((SnapshotPipelineState(LGraph) = LSnapshot)
+      and (LGraph.CurrentPassIndex = 2),
+      'selective contradiction restores every entry and caller selection');
+    for I := 0 to Pred(LGraph.TotalPassCount) do
+      Check(LGraph.PassGraph[I].RandomIndex(1000)
+        = LTwin.PassGraph[I].RandomIndex(1000),
+        Format('selective failure restores random stream %d', [I]));
+
+    LGraph.PassGraph[4].Entry[0, 0, 0].ClearValue;
+    LTwin.PassGraph[4].Entry[0, 0, 0].ClearValue;
+    Check(LGraph.TryRegenerateFrom('hydrology', LOptions, LReport)
+      and LTwin.TryRegenerateFrom('hydrology', LOptions, LReportTwin),
+      'repairing the invalid lock permits an exact selective retry');
+    Check(SnapshotPipelineState(LGraph) = SnapshotPipelineState(LTwin),
+      'a retry after failure matches a twin that never attempted it');
+    for I := 0 to Pred(LGraph.TotalPassCount) do
+      Check(SamePassSolveReport(LReport.Passes[I],
+        LReportTwin.Passes[I]),
+        Format('selective retry reproduces pass report %d', [I]));
+  finally
+    LTwin.Free;
+    LGraph.Free;
+  end;
+end;
+
+procedure TestPreviousConstraintNeedsEarlierPass;
+var
+  LBaseGroup: TGraphRuleGroup;
+  LGraph: TGraph;
   LGroup: TGraphRuleGroup;
+  LOptions: TGraphSolveOptions;
+  LReport: TGraphSolveReport;
   LRaised: Boolean;
 begin
   LGraph := TGraph.Create;
@@ -1369,6 +2165,101 @@ begin
     LGraph.AddValue('tree').RequirePrevious('land');
     Check(ContainsGraphValue(LGraph.Rules['tree'].PreviousValues, 'land'),
       'RequirePrevious remains available on later passes');
+  finally
+    LGraph.Free;
+  end;
+
+  LGraph := TGraph.Create.Reshape(1, 1, 1);
+  try
+    LGraph.WrapNeighbors := False;
+    LGraph.CurrentPass := 'terrain';
+    LGraph.AddValue('land');
+    LGraph.AddValue('water');
+    LGraph.Entry[0, 0, 0].Value := 'water';
+    LGraph.SwitchToPass('foliage');
+    LGraph.AddValue('tree');
+    LGraph.AddValue('none');
+    LGraph.RuleGroups.Remove('tree');
+    LBaseGroup := TGraphRuleGroup.Create('tree');
+    LBaseGroup.RequirePrevious('land');
+    LGraph.RuleGroups.Add('tree', LBaseGroup);
+    LGraph.Run;
+    Check(LGraph.Entry[0, 0, 0].Value = 'none',
+      'legacy Run honors PreviousValues on a public base rule group');
+  finally
+    LGraph.Free;
+  end;
+
+  LGraph := TGraph.Create.Reshape(1, 1, 1);
+  try
+    LGraph.WrapNeighbors := False;
+    LGraph.CurrentPass := 'terrain';
+    LGraph.AddValue('land');
+    LGraph.AddValue('water');
+    LGraph.Entry[0, 0, 0].Value := 'water';
+    LGraph.SwitchToPass('foliage');
+    LGraph.AddValue('tree');
+    LGraph.AddValue('none');
+    LGraph.RuleGroups.Remove('tree');
+    LBaseGroup := TGraphRuleGroup.Create('tree');
+    LBaseGroup.RequirePrevious('land');
+    LGraph.RuleGroups.Add('tree', LBaseGroup);
+    LOptions := DefaultGraphSolveOptions;
+    Check(LGraph.TrySolve(LOptions, LReport)
+      and (LGraph.Entry[0, 0, 0].Value = 'none'),
+      'TrySolve honors PreviousValues on a public base rule group');
+  finally
+    LGraph.Free;
+  end;
+
+  LGraph := TGraph.Create.Reshape(1, 1, 1);
+  try
+    LGraph.WrapNeighbors := False;
+    LGraph.CurrentPass := 'terrain';
+    LGraph.AddValue('water');
+    LGraph.Entry[0, 0, 0].Value := 'water';
+    LGraph.SwitchToPass('foliage');
+    LGraph.AddValue('tree')
+      .RequirePrevious('land')
+      .RequireFromPass('terrain', 'water');
+    LGraph.Entry[0, 0, 0].Value := 'tree';
+    LOptions := DefaultGraphSolveOptions;
+    Check(LGraph.TrySolve(LOptions, LReport),
+      'previous and named alternatives from one source remain OR');
+  finally
+    LGraph.Free;
+  end;
+
+  LGraph := TGraph.Create.Reshape(1, 1, 1);
+  try
+    LGraph.WrapNeighbors := False;
+    LGraph.CurrentPass := 'terrain';
+    LGraph.PassMode := gpmOverlay;
+    LGraph.AddValue('land');
+    LGraph.AddValue('water');
+    LGraph.Entry[0, 0, 0].Value := 'land';
+    LGraph.SwitchToPass('foliage');
+    LGraph.PassMode := gpmOverlay;
+    LGraph.ClearDependencies;
+    LGraph.AddValue('tree');
+    LGraph.AddValue('none');
+    LGraph.RuleGroups.Remove('tree');
+    LBaseGroup := TGraphRuleGroup.Create('tree');
+    LBaseGroup.RequirePrevious('land');
+    LGraph.RuleGroups.Add('tree', LBaseGroup);
+    LGraph.RuleGroups.Remove('none');
+    LBaseGroup := TGraphRuleGroup.Create('none');
+    LBaseGroup.RequirePrevious('water');
+    LGraph.RuleGroups.Add('none', LBaseGroup);
+    LOptions := DefaultGraphSolveOptions;
+    Check(LGraph.TrySolve(LOptions, LReport)
+      and (LGraph.Entry[0, 0, 0].Value = 'tree'),
+      'base PreviousValues supply an implicit overlay predecessor edge');
+    LGraph.PassGraph[0].Entry[0, 0, 0].Value := 'water';
+    Check(LGraph.TryRegenerateFrom('terrain', LOptions, LReport)
+      and LReport.Passes[1].Executed
+      and (LGraph.PassGraph[1].Entry[0, 0, 0].Value = 'none'),
+      'the implicit previous-value edge participates in selective closure');
   finally
     LGraph.Free;
   end;
@@ -3390,6 +4281,60 @@ begin
     LGraph.Free;
   end;
 
+  LGraph := TCommitIdentityGraph.Create;
+  LTwin := TCommitIdentityGraph.Create;
+  try
+    LGraph.Seed := $2468ACE0;
+    LGraph.Reshape(1, 1, 1);
+    LGraph.WrapNeighbors := False;
+    LGraph.CurrentPass := 'clean';
+    LGraph.PassMode := gpmOverlay;
+    LGraph.AddValue('A');
+    LGraph.AddValue('B');
+    LGraph.SwitchToPass('dirty');
+    LGraph.PassMode := gpmOverlay;
+    LGraph.ClearDependencies;
+    LGraph.AddValue('X');
+    LGraph.AddValue('Y');
+
+    LTwin.Seed := $2468ACE0;
+    LTwin.Reshape(1, 1, 1);
+    LTwin.WrapNeighbors := False;
+    LTwin.CurrentPass := 'clean';
+    LTwin.PassMode := gpmOverlay;
+    LTwin.AddValue('A');
+    LTwin.AddValue('B');
+    LTwin.SwitchToPass('dirty');
+    LTwin.PassMode := gpmOverlay;
+    LTwin.ClearDependencies;
+    LTwin.AddValue('X');
+    LTwin.AddValue('Y');
+
+    Check(LGraph.TrySolve(LOptions, LReport)
+      and LTwin.TrySolve(LOptions, LReport),
+      'selective commit random-stream twins establish matching state');
+    LGraph.PassGraph[1].Entry[0, 0, 0].ClearValue;
+    GCommitRandomGraph := LGraph;
+    GCommitRandomPassIndex := 0;
+    GCommitRandomDrawCount := 0;
+    Check(LGraph.TryRegenerateFrom('dirty', LOptions, LReport)
+      and (GCommitRandomDrawCount > 0)
+      and (not LReport.Passes[0].Executed)
+      and (LReport.Passes[0].Disposition = gpdReused),
+      'a selective commit hook can probe a reused pass');
+    GCommitRandomGraph := nil;
+    GCommitRandomPassIndex := -1;
+    Check(LGraph.PassGraph[0].RandomIndex(1000)
+      = LTwin.PassGraph[0].RandomIndex(1000),
+      'successful selective commit restores a reused pass random stream');
+  finally
+    GCommitRandomGraph := nil;
+    GCommitRandomPassIndex := -1;
+    GCommitRandomDrawCount := 0;
+    LTwin.Free;
+    LGraph.Free;
+  end;
+
   LExternal := TGraphEntry.Create;
   LGraph := TGraph.Create;
   try
@@ -3672,6 +4617,10 @@ begin
       'reset removes every additional pass');
     Check((LGraph.CurrentPass = '') and (LGraph.CurrentPassIndex = 0),
       'reset restores the unnamed first pass');
+    Check((LGraph.PassMode = gpmLegacy)
+      and (LGraph.DependencyCount = 0)
+      and (LGraph.TransformSourceIndex = -1),
+      'reset clears pass modes, dependencies, and transform bindings');
     Check((LGraph.Dimension.Width = 0)
       and (LGraph.Dimension.Height = 0)
       and (LGraph.Dimension.Depth = 0),
@@ -3711,6 +4660,9 @@ begin
     LGraph.Entry[0, 0, 0].Value := 'land';
     LGraph.SwitchToPass('foliage').AddValue('tree');
     LGraph.Entry[0, 0, 0].Value := 'tree';
+    LGraph.PassMode := gpmOverlay;
+    LGraph.ClearDependencies;
+    LGraph.DependsOn('terrain');
 
     GFailPassInitializeAt := Succ(GPassInitializeCount);
     LRaised := False;
@@ -3735,6 +4687,9 @@ begin
     Check((LGraph.PassGraph[0].Entry[0, 0, 0].Value = 'land')
       and (LGraph.PassGraph[1].Entry[0, 0, 0].Value = 'tree'),
       'a failed reset preserves values in every old pass');
+    Check((LGraph.PassGraph[1].PassMode = gpmOverlay)
+      and (DependencySnapshot(LGraph, 1) = '0'),
+      'a failed reset preserves the old dependency plan');
   finally
     GFailPassInitializeAt := 0;
     LGraph.Free;
@@ -3878,10 +4833,16 @@ begin
   RunTest('inverse rule generation', @TestInverseRules);
   RunTest('required rule enforcement', @TestRequiredRules);
   RunTest('conjunctive required constraints', @TestConjunctiveRequiredRules);
+  RunTest('pass dependency configuration', @TestDependencyDagConfiguration);
   RunTest('previous-pass constraint placement',
     @TestPreviousConstraintNeedsEarlierPass);
   RunTest('graph shape and neighbors', @TestGraphShapeAndNeighbors);
   RunTest('stable pass selection', @TestStablePassSelection);
+  RunTest('deterministic DAG execution', @TestDeterministicDagExecution);
+  RunTest('named pass requirements', @TestNamedPassRequirements);
+  RunTest('definitionless pass modes', @TestDefinitionlessPassModes);
+  RunTest('selective DAG regeneration', @TestSelectiveDagRegeneration);
+  RunTest('selective DAG rollback', @TestSelectiveDagRollback);
   RunTest('portable pass iteration', @TestForEachPass);
   {$IFNDEF PAS2JS}
   RunTest('native nested pass callback', @TestNativeNestedPassCallback);

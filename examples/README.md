@@ -8,6 +8,7 @@ the [roadmap](../ROADMAP.md).
 | --- | --- | --- | --- |
 | Multi-pass 2D world | `2D/01_MultiPassWorld/MultiPassWorld.lpr` | Native FPC, pas2js/Node | Uses the reusable 2D units, solves terrain → biome → foliage atomically, independently validates every cell/relation, and prints matching portable signatures without external dependencies. |
 | Interactive browser world | `2D/02_BrowserWorld/BrowserWorld.lpr` | pas2js/browser | Runs the same model and validator in a responsive three-layer canvas UI with seeds, wrapping, cell locks, and an exact headless-browser fixture. |
+| Selective settlement | `2D/03_SelectiveSettlement/SelectiveSettlement.lpr` | Native FPC, pas2js/Node | Solves a six-layer dependency DAG, edits hydrology, regenerates only its dependent closure, independently validates the result, proves rollback and exact recovery, and uses no external dependency. |
 | Learned tiles | `learning/01_LearnTiles/LearnTiles.lpr` | Native FPC, pas2js/Node | Learns weighted cardinal constraints from a tokenized sample, serializes the immutable model canonically, generates a seeded grid, and independently validates every emitted adjacency without external dependencies. |
 | Learned corpus | `learning/02_LearnCorpus/LearnCorpus.lpr` | Native FPC, pas2js/Node | Learns one directed model from two differently sized samples, proves their local wraps and absent cross-sample seams, round-trips canonical `wfcm=2`, and independently validates generated orientation. |
 | Overlapping patterns | `learning/03_LearnPatterns/LearnPatterns.lpr` | Native FPC, pas2js/Node | Learns weighted `2x2` structure from heterogeneous grids with D4 augmentation, round-trips strict `wfcp=1`, solves private latent patterns, independently validates every overlap and projected token contribution, and prints a portable signature without external dependencies. |
@@ -53,6 +54,23 @@ build/examples/2d/native/bin/MultiPassWorld 0
 pas2js -B -Tnodejs -Mdelphi -Fusrc -Fuexamples/2D/common -FUbuild/examples/2d/pas2js/units -FEbuild/examples/2d/pas2js/bin examples/2D/01_MultiPassWorld/MultiPassWorld.lpr
 node build/examples/2d/pas2js/bin/MultiPassWorld.js 0
 ```
+
+The selective-settlement example exercises branching, joins, named cross-pass
+constraints, and descendant-only regeneration:
+
+```text
+fpc -B -Mdelphi -Sa -Cr -Co -Ci -Fusrc -Fuexamples/2D/common -FUbuild/examples/settlement/native/units -FEbuild/examples/settlement/native/bin examples/2D/03_SelectiveSettlement/SelectiveSettlement.lpr
+build/examples/settlement/native/bin/SelectiveSettlement 0
+```
+
+```text
+pas2js -B -Tnodejs -Mdelphi -Fusrc -Fuexamples/2D/common -FUbuild/examples/settlement/pas2js/units -FEbuild/examples/settlement/pas2js/bin examples/2D/03_SelectiveSettlement/SelectiveSettlement.lpr
+node build/examples/settlement/pas2js/bin/SelectiveSettlement.js 0
+```
+
+See the [selective-settlement guide](2D/03_SelectiveSettlement/README.md) and
+the [pass-DAG contract](../docs/pass-dags.md) for its dependency shape,
+constraints, transactional edit story, and replay identity.
 
 The learned-tiles example exercises training, canonical model I/O, graph
 adaptation, weighted solving, and independent output validation from one

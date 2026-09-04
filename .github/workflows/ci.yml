@@ -215,6 +215,8 @@ jobs:
           test_bin='build/pas2js/test/bin'
           world_test_units='build/pas2js/world-test/units'
           world_test_bin='build/pas2js/world-test/bin'
+          settlement_test_units='build/pas2js/settlement-test/units'
+          settlement_test_bin='build/pas2js/settlement-test/bin'
           learning_test_units='build/pas2js/learning-test/units'
           learning_test_bin='build/pas2js/learning-test/bin'
           pattern_test_units='build/pas2js/pattern-test/units'
@@ -223,6 +225,8 @@ jobs:
           example_bin='build/pas2js/example/bin'
           world_example_units='build/pas2js/world-example/units'
           world_example_bin='build/pas2js/world-example/bin'
+          settlement_example_units='build/pas2js/settlement-example/units'
+          settlement_example_bin='build/pas2js/settlement-example/bin'
           learning_example_units='build/pas2js/learning-example/units'
           learning_example_bin='build/pas2js/learning-example/bin'
           corpus_example_units='build/pas2js/corpus-example/units'
@@ -232,10 +236,12 @@ jobs:
           mkdir -p \
             "$test_units" "$test_bin" \
             "$world_test_units" "$world_test_bin" \
+            "$settlement_test_units" "$settlement_test_bin" \
             "$learning_test_units" "$learning_test_bin" \
             "$pattern_test_units" "$pattern_test_bin" \
             "$example_units" "$example_bin" \
             "$world_example_units" "$world_example_bin" \
+            "$settlement_example_units" "$settlement_example_bin" \
             "$learning_example_units" "$learning_example_bin" \
             "$corpus_example_units" "$corpus_example_bin" \
             "$pattern_example_units" "$pattern_example_bin"
@@ -248,6 +254,11 @@ jobs:
             -FU"$world_test_units" -FE"$world_test_bin" \
             test/wfc_world2d_test.lpr
           node "$world_test_bin/wfc_world2d_test.js"
+
+          "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
+            -FU"$settlement_test_units" -FE"$settlement_test_bin" \
+            test/wfc_world2d_settlement_test.lpr
+          node "$settlement_test_bin/wfc_world2d_settlement_test.js"
 
           "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
             -FU"$learning_test_units" -FE"$learning_test_bin" \
@@ -270,6 +281,13 @@ jobs:
             examples/2D/01_MultiPassWorld/MultiPassWorld.lpr
           node "$world_example_bin/MultiPassWorld.js" 0 >/dev/null
           node "$world_example_bin/MultiPassWorld.js" >/dev/null
+
+          "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
+            -Fuexamples/2D/common \
+            -FU"$settlement_example_units" -FE"$settlement_example_bin" \
+            examples/2D/03_SelectiveSettlement/SelectiveSettlement.lpr
+          node "$settlement_example_bin/SelectiveSettlement.js" 0 >/dev/null
+          node "$settlement_example_bin/SelectiveSettlement.js" >/dev/null
 
           "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
             -FU"$learning_example_units" -FE"$learning_example_bin" \

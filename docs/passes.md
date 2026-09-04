@@ -1,15 +1,19 @@
 # passes
 
 A pass is a named stage of one graph. Each pass has the same shape, but keeps
-its own values, rules, entries, planes, and callbacks. Both `Run` and
-`TrySolve` process passes in order, so a later pass can constrain its values
-from the result immediately before it.
+its own values, rules, entries, planes, and callbacks. Passes form an acyclic
+dependency graph. Both `Run` and `TrySolve` execute a stable topological plan;
+the default legacy mode retains the original creation-order chain and
+immediately-previous-pass constraints.
 
 This is useful when one rule set should not have to describe an entire result
 at once. A first pass can lay terrain, a second can place foliage, and another
 can eventually place roads or buildings.
 
 The pass API is part of `TGraph`; a separate pipeline object is not required.
+This guide introduces pass identity and the compatibility behavior. The
+[pass-DAG contract](pass-dags.md) specifies modes, dependency roles, named
+cross-pass requirements, planning, selective regeneration, and reports.
 
 ## labels and indices
 
@@ -400,32 +404,24 @@ documented in [deterministic generation](determinism.md).
 
 ## current limitations
 
-The implemented pass behavior is intentionally small and sequential:
+Version 1 dependency planning is deliberately acyclic. `RequirePrevious` and
+`RequireFromPass` read the same coordinate and compare exact values; coordinate
+offsets, source-neighborhood queries, soft predicates, and bounded feedback or
+repair are not implicit features. Transform mode has one source. Projected
+latent pattern layers require a future projection-aware transaction before a
+dependent pass may consume them.
 
-- `RequirePrevious` can inspect only the immediately preceding pass;
-- it checks only the same coordinate;
-- there are no named-pass predicates, coordinate offsets, neighborhood
-  queries, or general cross-pass expressions yet;
-- pass dependencies are a linear creation order, not a dependency graph;
-- an empty pass copies only the immediately preceding values;
-- a failed `Run` restores pass selection but is not yet a transaction over
-  generated cell values; changes completed before the failure can remain and
-  the next run will clear and regenerate solver-owned output;
-- `TrySolve` is transactional across the current linear pipeline, but there are
-  no named overlays, dependency DAGs, selective regeneration, or bounded
-  feedback between passes yet;
-- the version-2 reference solver has no restart policy, timing data, or stable
-  trace hash yet.
-
-These limits keep the current contract clear. More expressive cross-pass
-queries and specialized pass layers belong to later milestones and can be
-added without changing the meaning of the pass API documented here.
+A failed legacy `Run` restores pass selection but is not a transaction over
+generated cell values. `TrySolve` and `TryRegenerateFrom` are transactional.
+The version-2 reference solver still has no restart policy, timing data, or
+stable trace hash.
 
 ## native FPC and pas2js
 
 The pass implementation and public callback types are written for both native
 FPC and pas2js. The same `TGraph`, `SwitchToPass`, `PassGraph`, `ForEachPass`,
-`Run`, `TrySolve`, and `RequirePrevious` calls are used on both targets.
+`DependsOn`, `TransformFrom`, `Run`, `TrySolve`, `TryRegenerateFrom`,
+`RequirePrevious`, and `RequireFromPass` calls are used on both targets.
 
 The host program is responsible only for presentation: a console, Lazarus
 form, canvas, WebAudio player, or other UI can read the same pass results. For

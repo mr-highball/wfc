@@ -35,6 +35,8 @@ begin
     P.Targets.AddUnit('wfc_pattern2d_text.pas');
     P.Targets.AddUnit('wfc_world2d.pas');
     P.Targets.AddUnit('wfc_world2d_validate.pas');
+    P.Targets.AddUnit('wfc_world2d_settlement.pas');
+    P.Targets.AddUnit('wfc_world2d_settlement_validate.pas');
     Run;
   end;
 end.

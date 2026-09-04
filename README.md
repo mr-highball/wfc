@@ -2,8 +2,8 @@
 
 WFC is a constraint-driven generation library written in Pascal for Free
 Pascal Compiler (FPC) and pas2js. It models user-defined values on a 2D or 3D
-graph, applies directional constraints, and supports ordered passes whose rules
-and results remain separate.
+graph, applies directional constraints, and supports dependency-planned passes
+whose rules and results remain separate.
 
 The pass system is the larger idea: generate terrain first, then foliage,
 roads, housing, or any other layer while constraining each stage from the
@@ -13,18 +13,19 @@ modular 3D structures, music, text, and other discrete design problems.
 > **Project status:** the original API and greedy traversal solver remain
 > available. The opt-in reference solver now provides fixed-point propagation,
 > deterministic weighted Shannon-entropy observation, bounded backtracking,
-> structured contradiction reports, and an atomic sequential pass pipeline on
-> native FPC and pas2js. The first specialized ecosystem now adds a reusable,
-> independently validated terrain → biome → foliage world with portable layer
-> signatures and an interactive browser presentation compiled from the same
-> Pascal model. Deterministic training primitives can also learn cardinal
+> structured contradiction reports, atomic dependency-DAG pipelines, named
+> cross-pass constraints, and selective descendant regeneration on native FPC
+> and pas2js. The first specialized ecosystem now includes independently
+> validated terrain → biome → foliage and six-layer settlement worlds with
+> portable signatures; the former also has an interactive browser presentation
+> compiled from the same Pascal model. Deterministic training primitives learn cardinal
 > constraints and raw weights from ordered heterogeneous 1D/2D corpora, merge
 > compatible models, apply immutable results to a graph, and round-trip them
 > through a strict canonical text format. A second learner extracts weighted
 > overlapping 2D footprints, compiles exact structural overlap, captures
 > latent assignments, and independently validates projected token grids
 > through canonical `wfcp=1` artifacts.
-> Richer cross-layer constraints, additional domain libraries, restart
+> Offset/neighborhood cross-layer constraints, additional domain libraries, restart
 > policies, and broader inspection and training tools remain tracked in the
 > [roadmap](ROADMAP.md).
 
@@ -34,14 +35,19 @@ modular 3D structures, music, text, and other discrete design problems.
 - fluent rules over caller-defined string values
 - required directional rules and selection/invalid-state callbacks
 - stable, labeled, zero-based passes with isolated values, rules, and outputs
-- sequential pipeline execution with selected-pass restoration
-- empty-pass copying and same-coordinate constraints on the previous pass
+- deterministic dependency-DAG execution with stable creation-index tie breaks
+- explicit legacy, overlay, and transform pass modes
+- named same-coordinate cross-pass constraints and selective descendant-only
+  regeneration
+- transactional full and selective solves with selected-pass restoration
+- compatibility-preserving empty-pass copying and previous-pass constraints
 - explicit pipeline seeds with stable, independent per-pass random streams
 - an opt-in propagating solver with positive relative weights, deterministic
   fixed-point Shannon entropy, exact unit-weight MRV compatibility, and bounded
   backtracking
-- atomic all-pass staging, independent validation, and structured run reports
-- a typed 2D terrain/biome/foliage library with an independent semantic checker
+- atomic staging, independent validation, and structured execution reports
+- typed 2D terrain/biome/foliage and selective-settlement libraries with
+  independent semantic checkers
 - versioned, fixed-token 2D layer signatures shared by native FPC and pas2js
 - matching seeded golden fixtures on native FPC and pas2js/Node
 - an interactive browser world with synchronized layers, locks, and a seeded
@@ -94,6 +100,8 @@ end;
 
 For a complete terrain-to-foliage pipeline, including `SwitchToPass`,
 `PassGraph`, and `RequirePrevious`, see [pass-system semantics](docs/passes.md).
+For dependency roles, pass modes, `RequireFromPass`, topological execution, and
+selective regeneration, see [pass DAGs](docs/pass-dags.md).
 For the reference algorithm, atomicity contract, reports, and exact constraint
 semantics, see the [reference solver](docs/solver.md).
 For exact replay behavior, callback requirements, and algorithm versioning,
@@ -120,8 +128,9 @@ Run the checked native build and conformance suite from the repository root:
 ```
 
 Both entry points compile with checked FPC options, keep all output under
-`build/`, run the core, 2D ecosystem, radius-one learning, and overlapping
-pattern suites, smoke-test the five portable console examples, and preserve
+`build/`, run the core, 2D ecosystem, selective-settlement, radius-one
+learning, and overlapping-pattern suites, smoke-test the six portable console
+examples, and preserve
 failure exit codes. The repository
 also includes an FPM package, a runtime-only Lazarus package, and the same
 conformance sources for pas2js/Node. Separate `build-browser.ps1` and
@@ -136,11 +145,14 @@ require Lazarus/LCL, SDL2, and the optional GPL-3.0 SoundShop
 submodule; they are not part of the dependency-free MIT build path. See the
 [examples index](examples/README.md) for exact status and commands.
 
-The portable foundation is project-owned Pascal. When functionality can be
-implemented here or made dependent on another library, the default is to
-implement it here for FPC and pas2js. Engines, viewers, and media backends may
-be optional adapters, but canonical algorithms, models, validation, and replay
-behavior remain dependency-free.
+The portable foundation is project-owned Pascal. Whenever a capability can
+reasonably be implemented here instead of adding a library, the project
+implements and maintains its own FPC/pas2js version. Core and runtime units
+depend only on repository units and the applicable standard FPC/pas2js RTL.
+Engines, viewers, and media backends may be optional adapters, and development
+tools may assist builds, tests, conversion, or inspection, but none may leak
+into core/runtime APIs or define canonical algorithms, models, artifacts,
+validation, or replay behavior.
 
 ## Direction
 

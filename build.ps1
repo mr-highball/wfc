@@ -14,12 +14,16 @@ $repositoryRoot = $PSScriptRoot
 $sourceDirectory = Join-Path $repositoryRoot 'src'
 $testSource = Join-Path $repositoryRoot 'test/wfc_test.lpr'
 $worldTestSource = Join-Path $repositoryRoot 'test/wfc_world2d_test.lpr'
+$settlementTestSource = Join-Path $repositoryRoot `
+  'test/wfc_world2d_settlement_test.lpr'
 $learningTestSource = Join-Path $repositoryRoot 'test/wfc_learn_test.lpr'
 $patternTestSource = Join-Path $repositoryRoot 'test/wfc_pattern2d_test.lpr'
 $exampleSource = Join-Path $repositoryRoot `
   'examples/text/01_SimpleTiledWorld/SimpleTiledWorld.lpr'
 $worldExampleSource = Join-Path $repositoryRoot `
   'examples/2D/01_MultiPassWorld/MultiPassWorld.lpr'
+$settlementExampleSource = Join-Path $repositoryRoot `
+  'examples/2D/03_SelectiveSettlement/SelectiveSettlement.lpr'
 $learningExampleSource = Join-Path $repositoryRoot `
   'examples/learning/01_LearnTiles/LearnTiles.lpr'
 $corpusExampleSource = Join-Path $repositoryRoot `
@@ -102,6 +106,42 @@ Write-Host "Running '$worldTestExecutable'."
 $worldTestExitCode = $LASTEXITCODE
 if ($worldTestExitCode -ne 0) {
   exit $worldTestExitCode
+}
+
+$settlementTestCompilerArguments = @(
+  $CompilerOptions
+  '-B'
+  '-Mdelphi'
+  '-Sa'
+  '-Cr'
+  '-Co'
+  '-Ci'
+  "-Fu$sourceDirectory"
+  "-FU$unitOutputDirectory"
+  "-FE$binaryOutputDirectory"
+  $settlementTestSource
+)
+
+Write-Host 'Building the selective-settlement conformance suite.'
+& $Compiler @settlementTestCompilerArguments
+$settlementTestCompilerExitCode = $LASTEXITCODE
+if ($settlementTestCompilerExitCode -ne 0) {
+  exit $settlementTestCompilerExitCode
+}
+
+$settlementTestExecutableName = if ($env:OS -eq 'Windows_NT') {
+  'wfc_world2d_settlement_test.exe'
+} else {
+  'wfc_world2d_settlement_test'
+}
+$settlementTestExecutable = Join-Path $binaryOutputDirectory `
+  $settlementTestExecutableName
+
+Write-Host "Running '$settlementTestExecutable'."
+& $settlementTestExecutable
+$settlementTestExitCode = $LASTEXITCODE
+if ($settlementTestExitCode -ne 0) {
+  exit $settlementTestExitCode
 }
 
 $learningTestCompilerArguments = @(
@@ -253,6 +293,50 @@ Write-Host "Smoke testing '$worldExampleExecutable' with its default seed."
 $worldExampleDefaultExitCode = $LASTEXITCODE
 if ($worldExampleDefaultExitCode -ne 0) {
   exit $worldExampleDefaultExitCode
+}
+
+$settlementExampleCompilerArguments = @(
+  $CompilerOptions
+  '-B'
+  '-Mdelphi'
+  '-Sa'
+  '-Cr'
+  '-Co'
+  '-Ci'
+  "-Fu$sourceDirectory"
+  "-Fu$worldCommonDirectory"
+  "-FU$unitOutputDirectory"
+  "-FE$binaryOutputDirectory"
+  $settlementExampleSource
+)
+
+Write-Host 'Building the portable selective-settlement example.'
+& $Compiler @settlementExampleCompilerArguments
+$settlementExampleCompilerExitCode = $LASTEXITCODE
+if ($settlementExampleCompilerExitCode -ne 0) {
+  exit $settlementExampleCompilerExitCode
+}
+
+$settlementExampleExecutableName = if ($env:OS -eq 'Windows_NT') {
+  'SelectiveSettlement.exe'
+} else {
+  'SelectiveSettlement'
+}
+$settlementExampleExecutable = Join-Path $binaryOutputDirectory `
+  $settlementExampleExecutableName
+
+Write-Host "Smoke testing '$settlementExampleExecutable' with seed 0."
+& $settlementExampleExecutable 0 | Out-Null
+$settlementExampleSeedZeroExitCode = $LASTEXITCODE
+if ($settlementExampleSeedZeroExitCode -ne 0) {
+  exit $settlementExampleSeedZeroExitCode
+}
+
+Write-Host "Smoke testing '$settlementExampleExecutable' with its default seed."
+& $settlementExampleExecutable | Out-Null
+$settlementExampleDefaultExitCode = $LASTEXITCODE
+if ($settlementExampleDefaultExitCode -ne 0) {
+  exit $settlementExampleDefaultExitCode
 }
 
 $learningExampleCompilerArguments = @(

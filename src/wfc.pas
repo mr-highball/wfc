@@ -51,6 +51,8 @@ type
   TGraphCoordinate = UInt64;
   {$ENDIF}
   TGraphSeed = Cardinal;
+  TGraphPassLabels = array of String;
+  TGraphPassIndices = array of Integer;
 
 const
   WFC_DEFAULT_VALUE_WEIGHT = TGraphWeight(1);
@@ -60,6 +62,10 @@ const
   //Increment when propagation, observation, backtracking, or deterministic
   //tie-breaking changes reference-solver replay.
   WFC_SOLVER_ALGORITHM_VERSION = 2;
+  //Increment when dependency planning, pass-mode staging, or selective
+  //regeneration changes in a replay-incompatible way. The per-pass reference
+  //solver remains versioned independently above.
+  WFC_PIPELINE_ALGORITHM_VERSION = 1;
 
 type
 
@@ -72,6 +78,19 @@ type
   //all posible "directions" to move from a single point on the graph
   TGraphDirection = (gdNorth, gdEast, gdSouth, gdWest, gdUp, gdDown);
   TGraphDirections = set of TGraphDirection;
+
+  //gpmLegacy preserves the original hybrid contract: a defined pass solves a
+  //fresh layer, while a later definitionless pass copies its predecessor.
+  TGraphPassMode = (gpmLegacy, gpmTransform, gpmOverlay);
+
+  TGraphPassDisposition = (
+    gpdNotRun,
+    gpdReused,
+    gpdCleared,
+    gpdCopied,
+    gpdSolved,
+    gpdFailed
+  );
 
   { TGraphEntry }
   (*
@@ -152,6 +171,20 @@ type
     class to easily group rules and directions for a specified value
   *)
   TGraphRuleGroup = class(TObject)
+  private
+    type
+      TPassRequirementOrigin = (proPrevious, proNamed);
+      TPassRequirementOrigins = set of TPassRequirementOrigin;
+      TPassRequirement = record
+        PassIndex: Integer;
+        Values: TGraphValues;
+        Origins: TPassRequirementOrigins;
+      end;
+      TPassRequirements = array of TPassRequirement;
+  private
+    FPassRequirements: TPassRequirements;
+    procedure AddPassRequirement(const APassIndex: Integer;
+      const AValue: TGraphValue; const AOrigin: TPassRequirementOrigin);
   strict private
     FRules: TGraphRules;
     FPreviousValues: TGraphValues;
@@ -170,6 +203,8 @@ type
     procedure DoNewRule(const ADirections : TGraphDirections;
       const AValue : TGraphValue; const ARequireRule : Boolean); virtual;
     procedure DoRequirePrevious(const AValue : TGraphValue); virtual;
+    procedure DoRequireFromPass(const APass: String;
+      const AValue: TGraphValue); virtual;
     procedure UpsertRule(const ADirections : TGraphDirections;
       const AValue : TGraphValue; const ARequireRule : Boolean);
   public
@@ -199,6 +234,14 @@ type
     *)
     function RequirePrevious(const AValue : TGraphValue) : TGraphRuleGroup; overload;
     function RequirePrevious(const AValues : TGraphValues) : TGraphRuleGroup; overload;
+
+    //Allows this value only when a named dependency contains one of the
+    //supplied values at the same coordinate. Calls for one source merge as
+    //alternatives; requirements from distinct sources are conjunctive.
+    function RequireFromPass(const APass: String;
+      const AValue: TGraphValue): TGraphRuleGroup; overload;
+    function RequireFromPass(const APass: String;
+      const AValues: TGraphValues): TGraphRuleGroup; overload;
 
     constructor Create; virtual; overload;
     constructor Create(const AValue : TGraphValue); virtual; overload;
@@ -237,7 +280,8 @@ type
     gckAdjacency,
     gckPreviousPass,
     gckRequiredSupport,
-    gckFinalValidation
+    gckFinalValidation,
+    gckPassDependency
   );
 
   TGraphSolveOptions = record
@@ -253,6 +297,7 @@ type
     NeighborIndex: Integer;
     HasDirection: Boolean;
     Direction: TGraphDirection;
+    DependencyPassIndex: Integer;
   end;
 
   TGraphPassSolveReport = record
@@ -260,6 +305,9 @@ type
     Propagations: Integer;
     Contradictions: Integer;
     Backtracks: Integer;
+    Executed: Boolean;
+    ExecutionOrdinal: Integer;
+    Disposition: TGraphPassDisposition;
   end;
 
   TGraphPassSolveReports = array of TGraphPassSolveReport;
@@ -269,9 +317,11 @@ type
     Seed: TGraphSeed;
     RandomAlgorithmVersion: Integer;
     SolverAlgorithmVersion: Integer;
+    PipelineAlgorithmVersion: Integer;
     FailedPassIndex: Integer;
     Contradiction: TGraphContradiction;
     Passes: TGraphPassSolveReports;
+    ExecutionOrder: TGraphPassIndices;
   end;
 
   TForEachPassCallback = procedure(const AGraph : TGraph;
@@ -328,6 +378,8 @@ type
           const AValue: TGraphValue; const ARequireRule : Boolean); override;
         procedure DoRequirePrevious(
           const AValue: TGraphValue); override;
+        procedure DoRequireFromPass(const APass: String;
+          const AValue: TGraphValue); override;
         procedure SynchronizeInverseRules;
       public
         property Parent : TGraph read FParent write FParent;
@@ -346,6 +398,20 @@ type
         S2: Cardinal;
         S3: Cardinal;
       end;
+      TPassDependencyRole = (
+        pdrDeclared,
+        pdrLegacy,
+        pdrRequirement,
+        pdrPreviousValues,
+        pdrTransformSource
+      );
+      TPassDependencyRoles = set of TPassDependencyRole;
+      TPassDependency = record
+        PassIndex: Integer;
+        Roles: TPassDependencyRoles;
+      end;
+      TPassDependencies = array of TPassDependency;
+      TPassSelection = array of Byte;
   strict private
     FDimension: TDimension;
     FInv: TInvalidStateCallback;
@@ -368,6 +434,9 @@ type
     FSeedInitialized: Boolean;
     FRandomState: TRandomState;
     FExecutingPassIndex: Integer;
+    FPassMode: TGraphPassMode;
+    FPassDependencies: TPassDependencies;
+    FTransformSourceIndex: Integer;
 
     function AddUInt32(const A, B: Cardinal): Cardinal;
     function MultiplyUInt32(const A, B: Cardinal): Cardinal;
@@ -385,6 +454,26 @@ type
     procedure EnsureInitialPass;
     function NewPlanes: TPlanes;
     function GetActivePassGraph: TGraph;
+    function GetDependencyCount: Integer;
+    function GetDependencyIndex(const AOrdinal: Integer): Integer;
+    function GetPassMode: TGraphPassMode;
+    function GetTransformSourceIndex: Integer;
+    procedure SetPassMode(const AValue: TGraphPassMode);
+    function DependencySlot(const APassIndex: Integer): Integer;
+    function PassIndexForLabel(const APass, AOperation: String): Integer;
+    function WouldCreateDependencyCycle(const AConsumerIndex,
+      AProviderIndex: Integer): Boolean;
+    function HasPassRequirement(const APassIndex: Integer): Boolean;
+    function HasPreviousValueRequirement: Boolean;
+    procedure SynchronizePreviousValueDependencies;
+    procedure AddDependencyRole(const APassIndex: Integer;
+      const ARole: TPassDependencyRole);
+    procedure RemoveDependencyRole(const APassIndex: Integer;
+      const ARole: TPassDependencyRole);
+    procedure BuildPassExecutionOrder(out AOrder: TGraphPassIndices);
+    function TrySolveInternal(const AOptions: TGraphSolveOptions;
+      const ADirty: TPassSelection;
+      out AReport: TGraphSolveReport): Boolean;
     procedure BuildStorage(const AWidth, AHeight, ADepth: TGraphCoordinate;
       out AEntries: TGraphEntries; out APlanes: TPlanes);
     procedure ClearGeneratedValues;
@@ -522,6 +611,14 @@ type
     *)
     property PassGraph[const AIndex : Integer] : TGraph read GetPassGraph;
 
+    //Pass-plan configuration is pass-scoped. Access through the root addresses
+    //the selected pass; access through PassGraph addresses that pass directly.
+    property PassMode: TGraphPassMode read GetPassMode write SetPassMode;
+    property DependencyCount: Integer read GetDependencyCount;
+    property DependencyIndex[const AOrdinal: Integer]: Integer
+      read GetDependencyIndex;
+    property TransformSourceIndex: Integer read GetTransformSourceIndex;
+
     (*
       reshapes the dimension of this graph
         @AWidth - X units, 1 based
@@ -572,6 +669,11 @@ type
     *)
     function SwitchToPass(const AIndex : Integer) : TGraph; overload;
 
+    function DependsOn(const APass: String): TGraph;
+    function RemoveDependency(const APass: String): TGraph;
+    function ClearDependencies: TGraph;
+    function TransformFrom(const APass: String): TGraph;
+
     (*
       returns an unbiased value in 0..Pred(ACount) from the current pass's
       portable stream. callbacks should use this instead of System.Random
@@ -587,6 +689,13 @@ type
     *)
     function TrySolve(const AOptions: TGraphSolveOptions;
       out AReport: TGraphSolveReport): Boolean;
+
+    function TryRegenerateFrom(const APass: String;
+      const AOptions: TGraphSolveOptions;
+      out AReport: TGraphSolveReport): Boolean; overload;
+    function TryRegenerateFrom(const APasses: TGraphPassLabels;
+      const AOptions: TGraphSolveOptions;
+      out AReport: TGraphSolveReport): Boolean; overload;
 
     (*
       once all values and rules have been apply, this will
@@ -834,14 +943,71 @@ end;
 
 procedure TGraph.TParentedGraphRuleGroup.DoRequirePrevious(
   const AValue: TGraphValue);
+var
+  LPreviousIndex: Integer;
 begin
   if Assigned(Parent) and (Parent.CurrentPassIndex = 0) then
     raise EInvalidOperation.Create(
       'RequirePrevious::pass zero has no preceding pass');
+  if Assigned(Parent) then
+  begin
+    Parent.SynchronizePreviousValueDependencies;
+    LPreviousIndex := Pred(Parent.CurrentPassIndex);
+    Parent.AddDependencyRole(LPreviousIndex, pdrRequirement);
+    AddPassRequirement(LPreviousIndex, AValue, proPrevious);
+  end;
   inherited DoRequirePrevious(AValue);
 end;
 
+procedure TGraph.TParentedGraphRuleGroup.DoRequireFromPass(
+  const APass: String; const AValue: TGraphValue);
+var
+  LPassIndex: Integer;
+begin
+  if not Assigned(Parent) then
+    raise EInvalidOperation.Create(
+      'RequireFromPass::rule group is not owned by a graph');
+  LPassIndex := Parent.PassIndexForLabel(APass, 'RequireFromPass');
+  Parent.SynchronizePreviousValueDependencies;
+  Parent.AddDependencyRole(LPassIndex, pdrRequirement);
+  AddPassRequirement(LPassIndex, AValue, proNamed);
+end;
+
 { TGraphRuleGroup }
+
+procedure TGraphRuleGroup.AddPassRequirement(const APassIndex: Integer;
+  const AValue: TGraphValue; const AOrigin: TPassRequirementOrigin);
+var
+  I, LInsertIndex, LValueIndex: Integer;
+  LRequirement: TPassRequirement;
+begin
+  LInsertIndex := Length(FPassRequirements);
+  for I := 0 to High(FPassRequirements) do
+  begin
+    if FPassRequirements[I].PassIndex = APassIndex then
+    begin
+      Include(FPassRequirements[I].Origins, AOrigin);
+      if ContainsGraphValue(FPassRequirements[I].Values, AValue) then
+        Exit;
+      LValueIndex := Length(FPassRequirements[I].Values);
+      SetLength(FPassRequirements[I].Values, Succ(LValueIndex));
+      FPassRequirements[I].Values[LValueIndex] := AValue;
+      Exit;
+    end;
+    if (LInsertIndex = Length(FPassRequirements))
+      and (FPassRequirements[I].PassIndex > APassIndex) then
+      LInsertIndex := I;
+  end;
+
+  LRequirement.PassIndex := APassIndex;
+  SetLength(LRequirement.Values, 1);
+  LRequirement.Values[0] := AValue;
+  LRequirement.Origins := [AOrigin];
+  SetLength(FPassRequirements, Succ(Length(FPassRequirements)));
+  for I := High(FPassRequirements) downto Succ(LInsertIndex) do
+    FPassRequirements[I] := FPassRequirements[Pred(I)];
+  FPassRequirements[LInsertIndex] := LRequirement;
+end;
 
 function TGraphRuleGroup.GetExists(const ADirection : TGraphDirection): Boolean;
 begin
@@ -944,6 +1110,13 @@ begin
     Insert(AValue, FPreviousValues, Length(FPreviousValues));
 end;
 
+procedure TGraphRuleGroup.DoRequireFromPass(const APass: String;
+  const AValue: TGraphValue);
+begin
+  raise EInvalidOperation.CreateFmt(
+    'RequireFromPass::rule group is not owned by a graph [%s]', [APass]);
+end;
+
 
 function TGraphRuleGroup.NewRule(const ADirections: TGraphDirections;
   const AValue: TGraphValue; const ARequireRule: Boolean): TGraphRuleGroup;
@@ -980,12 +1153,30 @@ begin
     DoRequirePrevious(AValues[I]);
 end;
 
+function TGraphRuleGroup.RequireFromPass(const APass: String;
+  const AValue: TGraphValue): TGraphRuleGroup;
+begin
+  Result := Self;
+  DoRequireFromPass(APass, AValue);
+end;
+
+function TGraphRuleGroup.RequireFromPass(const APass: String;
+  const AValues: TGraphValues): TGraphRuleGroup;
+var
+  I: Integer;
+begin
+  Result := Self;
+  for I := 0 to High(AValues) do
+    DoRequireFromPass(APass, AValues[I]);
+end;
+
 constructor TGraphRuleGroup.Create;
 begin
   FVal := '';
   FWeight := WFC_DEFAULT_VALUE_WEIGHT;
   SetLength(FRules, 0);
   SetLength(FPreviousValues, 0);
+  SetLength(FPassRequirements, 0);
 end;
 
 constructor TGraphRuleGroup.Create(const AValue: TGraphValue);
@@ -1340,6 +1531,488 @@ begin
 
   EnsureInitialPass;
   Result := FPasses[FCurPassIndex];
+end;
+
+function TGraph.HasPassRequirement(const APassIndex: Integer): Boolean;
+var
+  I: Integer;
+  LGroup: TGraphRuleGroup;
+begin
+  for LGroup in FRuleGroups.Values do
+    if Assigned(LGroup) then
+      for I := 0 to High(LGroup.FPassRequirements) do
+        if LGroup.FPassRequirements[I].PassIndex = APassIndex then
+          Exit(True);
+  Result := False;
+end;
+
+function TGraph.HasPreviousValueRequirement: Boolean;
+var
+  LGroup: TGraphRuleGroup;
+begin
+  for LGroup in FRuleGroups.Values do
+    if Assigned(LGroup) and (Length(LGroup.PreviousValues) > 0) then
+      Exit(True);
+  Result := False;
+end;
+
+procedure TGraph.SynchronizePreviousValueDependencies;
+type
+  TDependencyRoleChange = record
+    ConsumerIndex: Integer;
+    ProviderIndex: Integer;
+    PreviousValuesRole: Boolean;
+  end;
+  TDependencyRoleChanges = array of TDependencyRoleChange;
+var
+  I, J, LAppliedAddCount, LSlot: Integer;
+  LAdditions, LRemovals: TDependencyRoleChanges;
+  LGraph, LRoot: TGraph;
+  LHasRole: Boolean;
+
+  procedure AppendChange(var AChanges: TDependencyRoleChanges;
+    const AConsumerIndex, AProviderIndex: Integer;
+    const APreviousValuesRole: Boolean);
+  var
+    LIndex: Integer;
+  begin
+    LIndex := Length(AChanges);
+    SetLength(AChanges, Succ(LIndex));
+    AChanges[LIndex].ConsumerIndex := AConsumerIndex;
+    AChanges[LIndex].ProviderIndex := AProviderIndex;
+    AChanges[LIndex].PreviousValuesRole := APreviousValuesRole;
+  end;
+
+  procedure RecordDifference(const AConsumerIndex,
+    AProviderIndex: Integer; const APreviousValuesRole: Boolean;
+    const ANeedsRole: Boolean);
+  begin
+    LGraph := LRoot.FPasses[AConsumerIndex];
+    LSlot := LGraph.DependencySlot(AProviderIndex);
+    if APreviousValuesRole then
+      LHasRole := (LSlot >= 0) and (pdrPreviousValues in
+        LGraph.FPassDependencies[LSlot].Roles)
+    else
+      LHasRole := (LSlot >= 0) and (pdrRequirement in
+        LGraph.FPassDependencies[LSlot].Roles);
+    if ANeedsRole = LHasRole then
+      Exit;
+    if ANeedsRole then
+      AppendChange(LAdditions, AConsumerIndex, AProviderIndex,
+        APreviousValuesRole)
+    else
+      AppendChange(LRemovals, AConsumerIndex, AProviderIndex,
+        APreviousValuesRole);
+  end;
+
+  procedure AddChange(const AChange: TDependencyRoleChange);
+  begin
+    if AChange.PreviousValuesRole then
+      LRoot.FPasses[AChange.ConsumerIndex].AddDependencyRole(
+        AChange.ProviderIndex, pdrPreviousValues)
+    else
+      LRoot.FPasses[AChange.ConsumerIndex].AddDependencyRole(
+        AChange.ProviderIndex, pdrRequirement);
+  end;
+
+  procedure RemoveChange(const AChange: TDependencyRoleChange);
+  begin
+    if AChange.PreviousValuesRole then
+      LRoot.FPasses[AChange.ConsumerIndex].RemoveDependencyRole(
+        AChange.ProviderIndex, pdrPreviousValues)
+    else
+      LRoot.FPasses[AChange.ConsumerIndex].RemoveDependencyRole(
+        AChange.ProviderIndex, pdrRequirement);
+  end;
+begin
+  if Assigned(FPassRoot) then
+    LRoot := FPassRoot
+  else
+    LRoot := Self;
+  LRoot.EnsureInitialPass;
+
+  //Both bound requirements and legacy PreviousValues can be changed through
+  //the public owning rule-group dictionary. Reconcile their internal roles
+  //from the live registry so replacement cannot leave a stale protected edge
+  //or omit an edge needed by topology and selective-closure planning.
+  for I := 0 to Pred(LRoot.FPasses.Count) do
+  begin
+    LGraph := LRoot.FPasses[I];
+    for J := 0 to Pred(LRoot.FPasses.Count) do
+      RecordDifference(I, J, False,
+        LGraph.HasPassRequirement(J));
+    if I > 0 then
+      RecordDifference(I, Pred(I), True,
+        LGraph.HasPreviousValueRequirement);
+  end;
+  if (Length(LAdditions) = 0) and (Length(LRemovals) = 0) then
+    Exit;
+  if LRoot.FRunning then
+    raise EInvalidOperation.Create(
+      'PassDependencies::cannot synchronize requirements while the pipeline is running');
+
+  //Remove obsolete roles before validating additions, then undo both phases
+  //if any later inferred edge would close a cycle. This makes reconciliation
+  //of several public dictionary edits atomic.
+  LAppliedAddCount := 0;
+  try
+    for I := 0 to High(LRemovals) do
+      RemoveChange(LRemovals[I]);
+    for I := 0 to High(LAdditions) do
+    begin
+      AddChange(LAdditions[I]);
+      Inc(LAppliedAddCount);
+    end;
+  except
+    for I := Pred(LAppliedAddCount) downto 0 do
+      RemoveChange(LAdditions[I]);
+    for I := 0 to High(LRemovals) do
+      AddChange(LRemovals[I]);
+    raise;
+  end;
+end;
+
+function TGraph.GetDependencyCount: Integer;
+var
+  LGraph, LRoot: TGraph;
+begin
+  LGraph := GetActivePassGraph;
+  if Assigned(LGraph.FPassRoot) then
+    LRoot := LGraph.FPassRoot
+  else
+    LRoot := LGraph;
+  LRoot.SynchronizePreviousValueDependencies;
+  Result := Length(LGraph.FPassDependencies);
+end;
+
+function TGraph.GetDependencyIndex(const AOrdinal: Integer): Integer;
+var
+  LGraph, LRoot: TGraph;
+begin
+  LGraph := GetActivePassGraph;
+  if Assigned(LGraph.FPassRoot) then
+    LRoot := LGraph.FPassRoot
+  else
+    LRoot := LGraph;
+  LRoot.SynchronizePreviousValueDependencies;
+  if (AOrdinal < 0) or (AOrdinal >= Length(LGraph.FPassDependencies)) then
+    raise ERangeError.CreateFmt(
+      'GetDependencyIndex::ordinal out of bounds [%d]', [AOrdinal]);
+  Result := LGraph.FPassDependencies[AOrdinal].PassIndex;
+end;
+
+function TGraph.GetPassMode: TGraphPassMode;
+begin
+  Result := GetActivePassGraph.FPassMode;
+end;
+
+function TGraph.GetTransformSourceIndex: Integer;
+begin
+  Result := GetActivePassGraph.FTransformSourceIndex;
+end;
+
+function TGraph.DependencySlot(const APassIndex: Integer): Integer;
+var
+  I: Integer;
+begin
+  Result := -1;
+  for I := 0 to High(FPassDependencies) do
+    if FPassDependencies[I].PassIndex = APassIndex then
+      Exit(I);
+end;
+
+function TGraph.PassIndexForLabel(const APass,
+  AOperation: String): Integer;
+var
+  LRoot: TGraph;
+begin
+  if Assigned(FPassRoot) then
+    LRoot := FPassRoot
+  else
+    LRoot := Self;
+  LRoot.EnsureInitialPass;
+  if not LRoot.FPassLookup.ContainsKey(APass) then
+    raise EArgumentException.CreateFmt(
+      '%s::unknown pass label "%s"', [AOperation, APass]);
+  Result := LRoot.FPassLookup[APass];
+end;
+
+function TGraph.WouldCreateDependencyCycle(const AConsumerIndex,
+  AProviderIndex: Integer): Boolean;
+var
+  I, LNode, LRootCount, LStackCount: Integer;
+  LDependency: TPassDependency;
+  LRoot: TGraph;
+  LSeen: array of Byte;
+  LStack: TGraphPassIndices;
+begin
+  if Assigned(FPassRoot) then
+    LRoot := FPassRoot
+  else
+    LRoot := Self;
+  LRoot.EnsureInitialPass;
+  LRootCount := LRoot.FPasses.Count;
+  if (AConsumerIndex < 0) or (AConsumerIndex >= LRootCount)
+    or (AProviderIndex < 0) or (AProviderIndex >= LRootCount) then
+    raise ERangeError.CreateFmt(
+      'WouldCreateDependencyCycle::pass index out of bounds [%d -> %d]',
+      [AConsumerIndex, AProviderIndex]);
+  if AConsumerIndex = AProviderIndex then
+    Exit(True);
+
+  SetLength(LSeen, LRootCount);
+  SetLength(LStack, LRootCount);
+  LStackCount := 1;
+  LStack[0] := AProviderIndex;
+  LSeen[AProviderIndex] := 1;
+  while LStackCount > 0 do
+  begin
+    Dec(LStackCount);
+    LNode := LStack[LStackCount];
+    if LNode = AConsumerIndex then
+      Exit(True);
+    LSeen[LNode] := 2;
+    for I := 0 to High(LRoot.FPasses[LNode].FPassDependencies) do
+    begin
+      LDependency := LRoot.FPasses[LNode].FPassDependencies[I];
+      if (LDependency.PassIndex < 0)
+        or (LDependency.PassIndex >= LRootCount) then
+        raise EInvalidOperation.CreateFmt(
+          'WouldCreateDependencyCycle::pass %d has invalid dependency %d',
+          [LNode, LDependency.PassIndex]);
+      if LSeen[LDependency.PassIndex] = 0 then
+      begin
+        if LStackCount >= Length(LStack) then
+          raise EInvalidOperation.Create(
+            'WouldCreateDependencyCycle::dependency graph is malformed');
+        LStack[LStackCount] := LDependency.PassIndex;
+        LSeen[LDependency.PassIndex] := 1;
+        Inc(LStackCount);
+      end;
+    end;
+  end;
+  Result := False;
+end;
+
+procedure TGraph.AddDependencyRole(const APassIndex: Integer;
+  const ARole: TPassDependencyRole);
+var
+  I, LInsertIndex, LSlot: Integer;
+  LGraph, LRoot: TGraph;
+begin
+  LGraph := GetActivePassGraph;
+  if Assigned(LGraph.FPassRoot) then
+    LRoot := LGraph.FPassRoot
+  else
+    LRoot := LGraph;
+  if LRoot.FRunning then
+    raise EInvalidOperation.Create(
+      'DependsOn::cannot change dependencies while the pipeline is running');
+  if (APassIndex < 0) or (APassIndex >= LRoot.FPasses.Count) then
+    raise ERangeError.CreateFmt(
+      'DependsOn::pass index out of bounds [%d]', [APassIndex]);
+  if APassIndex = LGraph.FPassIndex then
+    raise EInvalidOperation.CreateFmt(
+      'DependsOn::pass %d cannot depend on itself', [APassIndex]);
+
+  LSlot := LGraph.DependencySlot(APassIndex);
+  if LSlot >= 0 then
+  begin
+    Include(LGraph.FPassDependencies[LSlot].Roles, ARole);
+    Exit;
+  end;
+  if LRoot.WouldCreateDependencyCycle(LGraph.FPassIndex, APassIndex) then
+    raise EInvalidOperation.CreateFmt(
+      'DependsOn::dependency %d -> %d would create a cycle',
+      [LGraph.FPassIndex, APassIndex]);
+
+  LInsertIndex := Length(LGraph.FPassDependencies);
+  for I := 0 to High(LGraph.FPassDependencies) do
+    if LGraph.FPassDependencies[I].PassIndex > APassIndex then
+    begin
+      LInsertIndex := I;
+      Break;
+    end;
+  SetLength(LGraph.FPassDependencies,
+    Succ(Length(LGraph.FPassDependencies)));
+  for I := High(LGraph.FPassDependencies) downto Succ(LInsertIndex) do
+    LGraph.FPassDependencies[I] := LGraph.FPassDependencies[Pred(I)];
+  LGraph.FPassDependencies[LInsertIndex].PassIndex := APassIndex;
+  LGraph.FPassDependencies[LInsertIndex].Roles := [ARole];
+end;
+
+procedure TGraph.RemoveDependencyRole(const APassIndex: Integer;
+  const ARole: TPassDependencyRole);
+var
+  I, LSlot: Integer;
+  LGraph: TGraph;
+begin
+  LGraph := GetActivePassGraph;
+  LSlot := LGraph.DependencySlot(APassIndex);
+  if LSlot < 0 then
+    Exit;
+  Exclude(LGraph.FPassDependencies[LSlot].Roles, ARole);
+  if LGraph.FPassDependencies[LSlot].Roles <> [] then
+    Exit;
+  for I := LSlot to Pred(High(LGraph.FPassDependencies)) do
+    LGraph.FPassDependencies[I] := LGraph.FPassDependencies[Succ(I)];
+  SetLength(LGraph.FPassDependencies,
+    Pred(Length(LGraph.FPassDependencies)));
+end;
+
+procedure TGraph.SetPassMode(const AValue: TGraphPassMode);
+var
+  LModeOrdinal: Integer;
+  LGraph, LRoot: TGraph;
+  LPreviousIndex, LSlot, LSourceIndex: Integer;
+begin
+  LModeOrdinal := Ord(AValue);
+  if (LModeOrdinal < Ord(Low(TGraphPassMode)))
+    or (LModeOrdinal > Ord(High(TGraphPassMode))) then
+    raise ERangeError.Create('SetPassMode::invalid pass mode');
+  LGraph := GetActivePassGraph;
+  if Assigned(LGraph.FPassRoot) then
+    LRoot := LGraph.FPassRoot
+  else
+    LRoot := LGraph;
+  if LRoot.FRunning then
+    raise EInvalidOperation.Create(
+      'SetPassMode::cannot change pass mode while the pipeline is running');
+  LRoot.SynchronizePreviousValueDependencies;
+  if LGraph.FPassMode = AValue then
+    Exit;
+
+  LSourceIndex := LGraph.FTransformSourceIndex;
+  if AValue = gpmTransform then
+  begin
+    if LSourceIndex < 0 then
+    begin
+      if Length(LGraph.FPassDependencies) <> 1 then
+        raise EInvalidOperation.CreateFmt(
+          'SetPassMode::transform pass %d requires exactly one unambiguous source',
+          [LGraph.FPassIndex]);
+      LSourceIndex := LGraph.FPassDependencies[0].PassIndex;
+    end;
+    if LSourceIndex = LGraph.FPassIndex then
+      raise EInvalidOperation.Create(
+        'SetPassMode::a transform pass cannot source itself');
+  end;
+  if (AValue = gpmLegacy) and (LGraph.FPassIndex > 0) then
+  begin
+    LPreviousIndex := Pred(LGraph.FPassIndex);
+    if (LGraph.DependencySlot(LPreviousIndex) < 0)
+      and LRoot.WouldCreateDependencyCycle(LGraph.FPassIndex,
+        LPreviousIndex) then
+      raise EInvalidOperation.CreateFmt(
+        'SetPassMode::legacy predecessor %d would create a cycle',
+        [LPreviousIndex]);
+  end;
+
+  //Leaving the compatibility mode makes its sequential edge an ordinary,
+  //removable declaration. This retains sequential-by-default behavior while
+  //allowing an explicit overlay or transform to branch after ClearDependencies.
+  if (LGraph.FPassMode = gpmLegacy) and (LGraph.FPassIndex > 0) then
+  begin
+    LSlot := LGraph.DependencySlot(Pred(LGraph.FPassIndex));
+    if LSlot >= 0 then
+    begin
+      Exclude(LGraph.FPassDependencies[LSlot].Roles, pdrLegacy);
+      Include(LGraph.FPassDependencies[LSlot].Roles, pdrDeclared);
+    end;
+  end;
+  if (LGraph.FPassMode = gpmTransform)
+    and (LGraph.FTransformSourceIndex >= 0) then
+    LGraph.RemoveDependencyRole(LGraph.FTransformSourceIndex,
+      pdrTransformSource);
+  LGraph.FTransformSourceIndex := -1;
+
+  case AValue of
+    gpmLegacy:
+      begin
+        if LGraph.FPassIndex > 0 then
+          LGraph.AddDependencyRole(Pred(LGraph.FPassIndex), pdrLegacy);
+      end;
+    gpmTransform:
+      begin
+        LGraph.AddDependencyRole(LSourceIndex, pdrTransformSource);
+        LGraph.FTransformSourceIndex := LSourceIndex;
+      end;
+    gpmOverlay:
+      ;
+  else
+    raise ERangeError.Create('SetPassMode::invalid pass mode');
+  end;
+  LGraph.FPassMode := AValue;
+end;
+
+procedure TGraph.BuildPassExecutionOrder(out AOrder: TGraphPassIndices);
+var
+  I, J, LCandidate, LOrderCount, LPassCount: Integer;
+  LDependency: TPassDependency;
+  LEmitted: array of Byte;
+  LInDegree: array of Integer;
+  LRoot: TGraph;
+begin
+  if Assigned(FPassRoot) then
+    LRoot := FPassRoot
+  else
+    LRoot := Self;
+  LRoot.EnsureInitialPass;
+  LRoot.SynchronizePreviousValueDependencies;
+  LPassCount := LRoot.FPasses.Count;
+  SetLength(AOrder, LPassCount);
+  SetLength(LEmitted, LPassCount);
+  SetLength(LInDegree, LPassCount);
+  for I := 0 to Pred(LPassCount) do
+  begin
+    LInDegree[I] := Length(LRoot.FPasses[I].FPassDependencies);
+    for J := 0 to High(LRoot.FPasses[I].FPassDependencies) do
+    begin
+      LDependency := LRoot.FPasses[I].FPassDependencies[J];
+      if (LDependency.PassIndex < 0)
+        or (LDependency.PassIndex >= LPassCount) then
+        raise EInvalidOperation.CreateFmt(
+          'BuildPassExecutionOrder::pass %d has invalid dependency %d',
+          [I, LDependency.PassIndex]);
+      if LDependency.PassIndex = I then
+        raise EInvalidOperation.CreateFmt(
+          'BuildPassExecutionOrder::pass %d depends on itself', [I]);
+      if (J > 0) and
+        (LRoot.FPasses[I].FPassDependencies[Pred(J)].PassIndex >=
+          LDependency.PassIndex) then
+        raise EInvalidOperation.CreateFmt(
+          'BuildPassExecutionOrder::pass %d dependencies are not canonical',
+          [I]);
+    end;
+  end;
+
+  LOrderCount := 0;
+  while LOrderCount < LPassCount do
+  begin
+    LCandidate := -1;
+    for I := 0 to Pred(LPassCount) do
+      if (LEmitted[I] = 0) and (LInDegree[I] = 0) then
+      begin
+        LCandidate := I;
+        Break;
+      end;
+    if LCandidate < 0 then
+      raise EInvalidOperation.Create(
+        'BuildPassExecutionOrder::pass dependency graph contains a cycle');
+
+    AOrder[LOrderCount] := LCandidate;
+    Inc(LOrderCount);
+    LEmitted[LCandidate] := 1;
+    for I := 0 to Pred(LPassCount) do
+      if LEmitted[I] = 0 then
+        for J := 0 to High(LRoot.FPasses[I].FPassDependencies) do
+          if LRoot.FPasses[I].FPassDependencies[J].PassIndex =
+            LCandidate then
+          begin
+            Dec(LInDegree[I]);
+            Break;
+          end;
+  end;
 end;
 
 function TGraph.GetEntry(const X, Y, Z : TGraphCoordinate): TGraphEntry;
@@ -1954,23 +2627,39 @@ var
     Values := LVals;
   end;
 
-  procedure TrimValuesForPreviousPass;
+  procedure TrimValuesForPassRequirements;
   var
     LGroup: TGraphRuleGroup;
-    LPreviousEntry: TGraphEntry;
-    LPreviousGraph: TGraph;
+    LHasPreviousValues: Boolean;
+    LPreviousPassIndex: Integer;
+    LRequirementIndex: Integer;
+    LSourceAllowed: Boolean;
+    LSourceEntry: TGraphEntry;
+    LSourceGraph: TGraph;
     LVals: TGraphValues;
     I: Integer;
+    LAllowed: Boolean;
+
+    function SourceEntry(const ASourcePassIndex: Integer): TGraphEntry;
+    begin
+      if (ASourcePassIndex < 0)
+        or (ASourcePassIndex >= FPassRoot.FPasses.Count) then
+        raise EInvalidOperation.CreateFmt(
+          'TrimValuesForPassRequirements::invalid dependency %d',
+          [ASourcePassIndex]);
+      if DependencySlot(ASourcePassIndex) < 0 then
+        raise EInvalidOperation.CreateFmt(
+          'TrimValuesForPassRequirements::pass %d reads undeclared dependency %d',
+          [FPassIndex, ASourcePassIndex]);
+      LSourceGraph := FPassRoot.GetPassGraph(ASourcePassIndex);
+      if LSourceGraph.FEntries.Count <> FEntries.Count then
+        raise EInvalidOperation.Create(
+          'TrimValuesForPassRequirements::pass dimensions do not match');
+      Result := LSourceGraph.FEntries[AEntry.Index];
+    end;
   begin
-    if not Assigned(FPassRoot) or (FPassIndex < 1) then
+    if not Assigned(FPassRoot) then
       Exit;
-
-    LPreviousGraph := FPassRoot.GetPassGraph(Pred(FPassIndex));
-    if not LPreviousGraph.InBounds(AEntry.Index) then
-      raise EInvalidOperation.Create(
-        'TrimValuesForPreviousPass::pass dimensions do not match');
-
-    LPreviousEntry := LPreviousGraph.FEntries[AEntry.Index];
     LVals := Default(TGraphValues);
 
     for I := 0 to High(Values) do
@@ -1982,10 +2671,52 @@ var
       end;
 
       LGroup := FRuleGroups[Values[I]];
-      if (Length(LGroup.PreviousValues) = 0)
-        or ((not LPreviousEntry.Empty)
+      LAllowed := True;
+      LHasPreviousValues := (FPassIndex > 0)
+        and (Length(LGroup.PreviousValues) > 0);
+      LPreviousPassIndex := Pred(FPassIndex);
+
+      //PreviousValues predates named pass requirements and may still be
+      //populated by a base rule group or an inherited override.  It reads the
+      //stable immediate predecessor.  If the same source also has a bound
+      //requirement, both accepted-value sets are alternatives rather than two
+      //conjunctive filters.
+      if LHasPreviousValues then
+      begin
+        LSourceEntry := SourceEntry(LPreviousPassIndex);
+        LSourceAllowed := (not LSourceEntry.Empty)
           and ContainsGraphValue(LGroup.PreviousValues,
-            LPreviousEntry.Value)) then
+            LSourceEntry.Value);
+        for LRequirementIndex := 0 to
+          High(LGroup.FPassRequirements) do
+          if LGroup.FPassRequirements[LRequirementIndex].PassIndex
+            = LPreviousPassIndex then
+            LSourceAllowed := LSourceAllowed
+              or ((not LSourceEntry.Empty)
+                and ContainsGraphValue(
+                  LGroup.FPassRequirements[LRequirementIndex].Values,
+                  LSourceEntry.Value));
+        LAllowed := LSourceAllowed;
+      end;
+
+      for LRequirementIndex := 0 to High(LGroup.FPassRequirements) do
+      begin
+        if LHasPreviousValues
+          and (LGroup.FPassRequirements[LRequirementIndex].PassIndex
+            = LPreviousPassIndex) then
+          Continue;
+        LSourceEntry := SourceEntry(
+          LGroup.FPassRequirements[LRequirementIndex].PassIndex);
+        if LSourceEntry.Empty
+          or (not ContainsGraphValue(
+            LGroup.FPassRequirements[LRequirementIndex].Values,
+            LSourceEntry.Value)) then
+        begin
+          LAllowed := False;
+          Break;
+        end;
+      end;
+      if LAllowed then
         Insert(Values[I], LVals, Length(LVals));
     end;
 
@@ -2020,7 +2751,7 @@ begin
   TrimValuesForNeighbor(AEntry[gdUp], gdUp); //moving top -> bottom
   TrimValuesForNeighbor(AEntry[gdDown], gdDown); //moving bottom -> top
   RemoveUnforcedRequiredValues;
-  TrimValuesForPreviousPass;
+  TrimValuesForPassRequirements;
 end;
 
 procedure TGraph.ValidateDimensions(const AWidth, AHeight,
@@ -2379,6 +3110,124 @@ begin
   Result := SwitchToPass(PassLabelFromIndex(AIndex), I);
 end;
 
+function TGraph.DependsOn(const APass: String): TGraph;
+var
+  LGraph, LRoot: TGraph;
+  LPassIndex: Integer;
+begin
+  Result := Self;
+  LGraph := GetActivePassGraph;
+  LPassIndex := LGraph.PassIndexForLabel(APass, 'DependsOn');
+  if Assigned(LGraph.FPassRoot) then
+    LRoot := LGraph.FPassRoot
+  else
+    LRoot := LGraph;
+  LRoot.SynchronizePreviousValueDependencies;
+  LGraph.AddDependencyRole(LPassIndex, pdrDeclared);
+end;
+
+function TGraph.RemoveDependency(const APass: String): TGraph;
+var
+  LGraph, LRoot: TGraph;
+  LPassIndex, LSlot: Integer;
+  LProtected: TPassDependencyRoles;
+begin
+  Result := Self;
+  LGraph := GetActivePassGraph;
+  if Assigned(LGraph.FPassRoot) then
+    LRoot := LGraph.FPassRoot
+  else
+    LRoot := LGraph;
+  if LRoot.FRunning then
+    raise EInvalidOperation.Create(
+      'RemoveDependency::cannot change dependencies while the pipeline is running');
+  LPassIndex := LGraph.PassIndexForLabel(APass, 'RemoveDependency');
+  LRoot.SynchronizePreviousValueDependencies;
+  LSlot := LGraph.DependencySlot(LPassIndex);
+  if LSlot < 0 then
+    Exit;
+  LProtected := LGraph.FPassDependencies[LSlot].Roles
+    * [pdrLegacy, pdrRequirement, pdrPreviousValues,
+      pdrTransformSource];
+  if LProtected <> [] then
+    raise EInvalidOperation.CreateFmt(
+      'RemoveDependency::pass %d dependency %d is required by its configuration',
+      [LGraph.FPassIndex, LPassIndex]);
+  LGraph.RemoveDependencyRole(LPassIndex, pdrDeclared);
+end;
+
+function TGraph.ClearDependencies: TGraph;
+var
+  I: Integer;
+  LGraph, LRoot: TGraph;
+begin
+  Result := Self;
+  LGraph := GetActivePassGraph;
+  if Assigned(LGraph.FPassRoot) then
+    LRoot := LGraph.FPassRoot
+  else
+    LRoot := LGraph;
+  if LRoot.FRunning then
+    raise EInvalidOperation.Create(
+      'ClearDependencies::cannot change dependencies while the pipeline is running');
+  LRoot.SynchronizePreviousValueDependencies;
+  for I := 0 to High(LGraph.FPassDependencies) do
+    if (LGraph.FPassDependencies[I].Roles
+      * [pdrLegacy, pdrRequirement, pdrPreviousValues,
+        pdrTransformSource]) <> [] then
+      raise EInvalidOperation.CreateFmt(
+        'ClearDependencies::pass %d has dependencies required by its configuration',
+        [LGraph.FPassIndex]);
+  SetLength(LGraph.FPassDependencies, 0);
+end;
+
+function TGraph.TransformFrom(const APass: String): TGraph;
+var
+  LGraph, LRoot: TGraph;
+  LPassIndex, LSlot: Integer;
+begin
+  Result := Self;
+  LGraph := GetActivePassGraph;
+  if Assigned(LGraph.FPassRoot) then
+    LRoot := LGraph.FPassRoot
+  else
+    LRoot := LGraph;
+  if LRoot.FRunning then
+    raise EInvalidOperation.Create(
+      'TransformFrom::cannot change pass mode while the pipeline is running');
+  LPassIndex := LGraph.PassIndexForLabel(APass, 'TransformFrom');
+  LRoot.SynchronizePreviousValueDependencies;
+  if LPassIndex = LGraph.FPassIndex then
+    raise EInvalidOperation.CreateFmt(
+      'TransformFrom::pass %d cannot source itself', [LPassIndex]);
+  if (LGraph.DependencySlot(LPassIndex) < 0)
+    and LRoot.WouldCreateDependencyCycle(LGraph.FPassIndex,
+      LPassIndex) then
+    raise EInvalidOperation.CreateFmt(
+      'TransformFrom::dependency %d -> %d would create a cycle',
+      [LGraph.FPassIndex, LPassIndex]);
+  if (LGraph.FPassMode = gpmTransform)
+    and (LGraph.FTransformSourceIndex = LPassIndex) then
+    Exit;
+
+  if (LGraph.FPassMode = gpmLegacy) and (LGraph.FPassIndex > 0) then
+  begin
+    LSlot := LGraph.DependencySlot(Pred(LGraph.FPassIndex));
+    if LSlot >= 0 then
+    begin
+      Exclude(LGraph.FPassDependencies[LSlot].Roles, pdrLegacy);
+      Include(LGraph.FPassDependencies[LSlot].Roles, pdrDeclared);
+    end;
+  end;
+  if (LGraph.FPassMode = gpmTransform)
+    and (LGraph.FTransformSourceIndex >= 0) then
+    LGraph.RemoveDependencyRole(LGraph.FTransformSourceIndex,
+      pdrTransformSource);
+  LGraph.AddDependencyRole(LPassIndex, pdrTransformSource);
+  LGraph.FTransformSourceIndex := LPassIndex;
+  LGraph.FPassMode := gpmTransform;
+end;
+
 function TGraph.RandomIndex(const ACount: Integer): Integer;
 var
   LBound: Cardinal;
@@ -2415,6 +3264,78 @@ end;
 
 function TGraph.TrySolve(const AOptions: TGraphSolveOptions;
   out AReport: TGraphSolveReport): Boolean;
+var
+  I: Integer;
+  LDirty: TPassSelection;
+begin
+  if Assigned(FPassRoot) then
+    Exit(FPassRoot.TrySolve(AOptions, AReport));
+  if AOptions.MaxBacktracks < 0 then
+    raise ERangeError.CreateFmt(
+      'TrySolve::maximum backtracks cannot be negative [%d]',
+      [AOptions.MaxBacktracks]);
+  EnsureInitialPass;
+  SetLength(LDirty, FPasses.Count);
+  for I := 0 to High(LDirty) do
+    LDirty[I] := 1;
+  Result := TrySolveInternal(AOptions, LDirty, AReport);
+end;
+
+function TGraph.TryRegenerateFrom(const APass: String;
+  const AOptions: TGraphSolveOptions;
+  out AReport: TGraphSolveReport): Boolean;
+var
+  LPasses: TGraphPassLabels;
+begin
+  SetLength(LPasses, 1);
+  LPasses[0] := APass;
+  Result := TryRegenerateFrom(LPasses, AOptions, AReport);
+end;
+
+function TGraph.TryRegenerateFrom(const APasses: TGraphPassLabels;
+  const AOptions: TGraphSolveOptions;
+  out AReport: TGraphSolveReport): Boolean;
+var
+  I, J: Integer;
+  LChanged: Boolean;
+  LDirty: TPassSelection;
+begin
+  if Assigned(FPassRoot) then
+    Exit(FPassRoot.TryRegenerateFrom(APasses, AOptions, AReport));
+  if AOptions.MaxBacktracks < 0 then
+    raise ERangeError.CreateFmt(
+      'TryRegenerateFrom::maximum backtracks cannot be negative [%d]',
+      [AOptions.MaxBacktracks]);
+  if Length(APasses) = 0 then
+    raise EArgumentException.Create(
+      'TryRegenerateFrom::at least one pass is required');
+  EnsureInitialPass;
+  SetLength(LDirty, FPasses.Count);
+  for I := 0 to High(APasses) do
+    LDirty[PassIndexForLabel(APasses[I], 'TryRegenerateFrom')] := 1;
+  SynchronizePreviousValueDependencies;
+
+  //A changed provider conservatively invalidates every transitive consumer.
+  //The dependency list is small, stable, and index-sorted, so a fixed-point
+  //scan is both portable and deterministic.
+  repeat
+    LChanged := False;
+    for I := 0 to Pred(FPasses.Count) do
+      if LDirty[I] = 0 then
+        for J := 0 to High(FPasses[I].FPassDependencies) do
+          if LDirty[FPasses[I].FPassDependencies[J].PassIndex] <> 0 then
+          begin
+            LDirty[I] := 1;
+            LChanged := True;
+            Break;
+          end;
+  until not LChanged;
+  Result := TrySolveInternal(AOptions, LDirty, AReport);
+end;
+
+function TGraph.TrySolveInternal(const AOptions: TGraphSolveOptions;
+  const ADirty: TPassSelection;
+  out AReport: TGraphSolveReport): Boolean;
 type
   TGraphValueMatrix = array of TGraphValues;
   TRandomStateArray = array of TRandomState;
@@ -2429,6 +3350,9 @@ var
   LAssignment: TReferenceIntegerArray;
   LCommitted: Boolean;
   LEntryIndex: Integer;
+  LExecutionOrdinal: Integer;
+  LExecutionPlan: TGraphPassIndices;
+  LFullExecutionPlan: TGraphPassIndices;
   LGraph: TGraph;
   LInvalidLockEntry: Integer;
   LModel: TReferenceModel;
@@ -2439,6 +3363,8 @@ var
   LSavedPassIndex: Integer;
   LSnapshots: TPassEntryStates;
   LStaged: TGraphValueMatrix;
+  LRequirementFailureNamed: TReferenceByteArray;
+  LRequirementFailurePass: TReferenceIntegerArray;
 
   function CheckedProduct(const A, B: Integer;
     const ALabel: String): Integer;
@@ -2458,6 +3384,7 @@ var
     AReport.Seed := Seed;
     AReport.RandomAlgorithmVersion := WFC_RANDOM_ALGORITHM_VERSION;
     AReport.SolverAlgorithmVersion := WFC_SOLVER_ALGORITHM_VERSION;
+    AReport.PipelineAlgorithmVersion := WFC_PIPELINE_ALGORITHM_VERSION;
     AReport.FailedPassIndex := -1;
     AReport.Contradiction.Kind := gckNone;
     AReport.Contradiction.PassIndex := -1;
@@ -2465,6 +3392,8 @@ var
     AReport.Contradiction.NeighborIndex := -1;
     AReport.Contradiction.HasDirection := False;
     AReport.Contradiction.Direction := gdNorth;
+    AReport.Contradiction.DependencyPassIndex := -1;
+    SetLength(AReport.ExecutionOrder, 0);
     SetLength(AReport.Passes, FPasses.Count);
     for I := 0 to High(AReport.Passes) do
     begin
@@ -2472,6 +3401,9 @@ var
       AReport.Passes[I].Propagations := 0;
       AReport.Passes[I].Contradictions := 0;
       AReport.Passes[I].Backtracks := 0;
+      AReport.Passes[I].Executed := False;
+      AReport.Passes[I].ExecutionOrdinal := -1;
+      AReport.Passes[I].Disposition := gpdNotRun;
     end;
   end;
 
@@ -2608,8 +3540,10 @@ var
   end;
 
   function BuildReferenceModel(const AGraph: TGraph;
-    const APrevious: TGraphValues; out AModel: TReferenceModel;
-    out AInvalidLockEntry: Integer): Boolean;
+    const AStaged: TGraphValueMatrix; out AModel: TReferenceModel;
+    out AInvalidLockEntry: Integer;
+    out ARequirementFailurePass: TReferenceIntegerArray;
+    out ARequirementFailureNamed: TReferenceByteArray): Boolean;
   var
     LAllowed: Boolean;
     LAllowedForward: Boolean;
@@ -2620,14 +3554,22 @@ var
     LDirection: TGraphDirection;
     LDirectRequired: Boolean;
     LGroup: TGraphRuleGroup;
-    LHasPreviousFilter: Boolean;
+    LFailureNamed: Boolean;
+    LFailurePass: Integer;
+    LHasPreviousValues: Boolean;
     LIndex: Integer;
     LLockValue: Integer;
     LNeighbor: TGraphEntry;
     LNeighborIndex: Integer;
     LNeighborValue: Integer;
     LRelationCount: Integer;
+    LRequirementIndex: Integer;
+    LRequirementsAllowed: Boolean;
+    LSourceAllowed: Boolean;
+    LSourceNamed: Boolean;
     LReverseRequired: Boolean;
+    LSourcePassIndex: Integer;
+    LSourceValue: TGraphValue;
     LValue: Integer;
   begin
     Result := False;
@@ -2653,12 +3595,15 @@ var
     SetLength(AModel.InitialAllowed, LCellValueCount);
     SetLength(AModel.InitialFailureKinds, AModel.CellCount);
     SetLength(AModel.LockedValues, AModel.CellCount);
+    SetLength(ARequirementFailurePass, AModel.CellCount);
+    SetLength(ARequirementFailureNamed, AModel.CellCount);
     BuildCellOrder(AGraph, AModel.CellOrder);
 
     for LCell := 0 to Pred(AModel.CellCount) do
     begin
       AModel.LockedValues[LCell] := -1;
       AModel.InitialFailureKinds[LCell] := rckEmptyDomain;
+      ARequirementFailurePass[LCell] := -1;
       for LDirection := Low(TGraphDirection) to High(TGraphDirection) do
       begin
         LNeighbor := AGraph.FEntries[LCell][LDirection];
@@ -2686,6 +3631,40 @@ var
       AModel.ValueWeights[LValue] := LGroup.Weight;
       if LGroup.HasRequired then
         AModel.RequiredValues[LValue] := 1;
+      if (AGraph.FPassIndex > 0)
+        and (Length(LGroup.PreviousValues) > 0) then
+      begin
+        LSourcePassIndex := Pred(AGraph.FPassIndex);
+        if AGraph.DependencySlot(LSourcePassIndex) < 0 then
+          raise EInvalidOperation.CreateFmt(
+            'TrySolve::pass %d value "%s" reads undeclared dependency %d',
+            [AGraph.FPassIndex, AGraph.FValues[LValue],
+              LSourcePassIndex]);
+        if Length(AStaged[LSourcePassIndex]) <> AModel.CellCount then
+          raise EInvalidOperation.CreateFmt(
+            'TrySolve::dependency %d for pass %d has a different shape',
+            [LSourcePassIndex, AGraph.FPassIndex]);
+      end;
+      for LRequirementIndex := 0 to High(LGroup.FPassRequirements) do
+      begin
+        LSourcePassIndex :=
+          LGroup.FPassRequirements[LRequirementIndex].PassIndex;
+        if (LSourcePassIndex < 0)
+          or (LSourcePassIndex >= Length(AStaged)) then
+          raise EInvalidOperation.CreateFmt(
+            'TrySolve::pass %d value "%s" has invalid dependency %d',
+            [AGraph.FPassIndex, AGraph.FValues[LValue],
+              LSourcePassIndex]);
+        if AGraph.DependencySlot(LSourcePassIndex) < 0 then
+          raise EInvalidOperation.CreateFmt(
+            'TrySolve::pass %d value "%s" reads undeclared dependency %d',
+            [AGraph.FPassIndex, AGraph.FValues[LValue],
+              LSourcePassIndex]);
+        if Length(AStaged[LSourcePassIndex]) <> AModel.CellCount then
+          raise EInvalidOperation.CreateFmt(
+            'TrySolve::dependency %d for pass %d has a different shape',
+            [LSourcePassIndex, AGraph.FPassIndex]);
+      end;
     end;
 
     //Compile a two-sided compatibility relation. The legacy rule builder
@@ -2708,11 +3687,6 @@ var
             AModel.RequiredSupport[LIndex] := 1;
         end;
 
-    if (AGraph.FPassIndex > 0)
-      and (Length(APrevious) <> AModel.CellCount) then
-      raise EInvalidOperation.Create(
-        'TrySolve::preceding staged pass has a different shape');
-
     for LCell := 0 to Pred(AModel.CellCount) do
     begin
       LLockValue := -1;
@@ -2732,19 +3706,84 @@ var
       end;
 
       LAllowedCount := 0;
-      LHasPreviousFilter := False;
+      LFailurePass := -1;
+      LFailureNamed := False;
       for LValue := 0 to Pred(AModel.ValueCount) do
       begin
         LAllowed := (LLockValue < 0) or (LLockValue = LValue);
         LGroup := AGraph.FRuleGroups[AGraph.FValues[LValue]];
-        if (AGraph.FPassIndex > 0)
-          and (Length(LGroup.PreviousValues) > 0) then
+        if LAllowed then
         begin
-          LHasPreviousFilter := True;
-          LAllowed := LAllowed
-            and (APrevious[LCell] <> TGraphValue.Empty)
-            and ContainsGraphValue(LGroup.PreviousValues,
-              APrevious[LCell]);
+          LRequirementsAllowed := True;
+          LHasPreviousValues := (AGraph.FPassIndex > 0)
+            and (Length(LGroup.PreviousValues) > 0);
+
+          if LHasPreviousValues then
+          begin
+            LSourcePassIndex := Pred(AGraph.FPassIndex);
+            LSourceValue := AStaged[LSourcePassIndex][LCell];
+            LSourceAllowed := (LSourceValue <> TGraphValue.Empty)
+              and ContainsGraphValue(LGroup.PreviousValues,
+                LSourceValue);
+            LSourceNamed := False;
+            for LRequirementIndex := 0 to
+              High(LGroup.FPassRequirements) do
+              if LGroup.FPassRequirements[LRequirementIndex].PassIndex
+                = LSourcePassIndex then
+              begin
+                if proNamed in
+                  LGroup.FPassRequirements[LRequirementIndex].Origins then
+                  LSourceNamed := True;
+                LSourceAllowed := LSourceAllowed
+                  or ((LSourceValue <> TGraphValue.Empty)
+                    and ContainsGraphValue(
+                      LGroup.FPassRequirements[LRequirementIndex].Values,
+                      LSourceValue));
+              end;
+            if not LSourceAllowed then
+            begin
+              LRequirementsAllowed := False;
+              if (LFailurePass < 0)
+                or (LSourcePassIndex < LFailurePass) then
+              begin
+                LFailurePass := LSourcePassIndex;
+                LFailureNamed := LSourceNamed;
+              end
+              else if (LSourcePassIndex = LFailurePass)
+                and LSourceNamed then
+                LFailureNamed := True;
+            end;
+          end;
+
+          for LRequirementIndex := 0 to
+            High(LGroup.FPassRequirements) do
+          begin
+            LSourcePassIndex :=
+              LGroup.FPassRequirements[LRequirementIndex].PassIndex;
+            if LHasPreviousValues
+              and (LSourcePassIndex = Pred(AGraph.FPassIndex)) then
+              Continue;
+            LSourceValue := AStaged[LSourcePassIndex][LCell];
+            if (LSourceValue = TGraphValue.Empty)
+              or (not ContainsGraphValue(
+                LGroup.FPassRequirements[LRequirementIndex].Values,
+                LSourceValue)) then
+            begin
+              LRequirementsAllowed := False;
+              if (LFailurePass < 0)
+                or (LSourcePassIndex < LFailurePass) then
+              begin
+                LFailurePass := LSourcePassIndex;
+                LFailureNamed := proNamed in
+                  LGroup.FPassRequirements[LRequirementIndex].Origins;
+              end
+              else if (LSourcePassIndex = LFailurePass)
+                and (proNamed in
+                  LGroup.FPassRequirements[LRequirementIndex].Origins) then
+                LFailureNamed := True;
+            end;
+          end;
+          LAllowed := LRequirementsAllowed;
         end;
         if LAllowed then
         begin
@@ -2753,8 +3792,13 @@ var
           Inc(LAllowedCount);
         end;
       end;
-      if (LAllowedCount = 0) and LHasPreviousFilter then
+      if (LAllowedCount = 0) and (LFailurePass >= 0) then
+      begin
         AModel.InitialFailureKinds[LCell] := rckPreviousPass;
+        ARequirementFailurePass[LCell] := LFailurePass;
+        if LFailureNamed then
+          ARequirementFailureNamed[LCell] := 1;
+      end;
     end;
     Result := True;
   end;
@@ -2803,6 +3847,18 @@ var
       AReference.Contradiction.EntryIndex;
     AReport.Contradiction.NeighborIndex :=
       AReference.Contradiction.NeighborIndex;
+    AReport.Contradiction.DependencyPassIndex := -1;
+    if (AReference.Contradiction.Kind = rckPreviousPass)
+      and (AReference.Contradiction.EntryIndex >= 0)
+      and (AReference.Contradiction.EntryIndex <
+        Length(LRequirementFailurePass)) then
+    begin
+      AReport.Contradiction.DependencyPassIndex :=
+        LRequirementFailurePass[AReference.Contradiction.EntryIndex];
+      if LRequirementFailureNamed[
+        AReference.Contradiction.EntryIndex] <> 0 then
+        AReport.Contradiction.Kind := gckPassDependency;
+    end;
     AReport.Contradiction.HasDirection :=
       AReference.Contradiction.Direction >= 0;
     if AReport.Contradiction.HasDirection then
@@ -2810,24 +3866,72 @@ var
         AReference.Contradiction.Direction)
     else
       AReport.Contradiction.Direction := gdNorth;
+    AReport.Passes[APassIndex].Disposition := gpdFailed;
   end;
 
-  procedure StageDefinitionlessPass(const APassIndex: Integer;
+  procedure StageExistingPass(const APassIndex: Integer;
     const AGraph: TGraph);
   var
     I: Integer;
   begin
     SetLength(LStaged[APassIndex], AGraph.FEntries.Count);
     for I := 0 to Pred(AGraph.FEntries.Count) do
-      if (not AGraph.FEntries[I].Empty)
-        and (not AGraph.FEntries[I].Generated) then
-        LStaged[APassIndex][I] := AGraph.FEntries[I].Value
-      else if APassIndex > 0 then
-        LStaged[APassIndex][I] := LStaged[Pred(APassIndex)][I]
-      else if AGraph.FEntries[I].Empty then
+      if AGraph.FEntries[I].Empty then
         LStaged[APassIndex][I] := TGraphValue.Empty
       else
         LStaged[APassIndex][I] := AGraph.FEntries[I].Value;
+  end;
+
+  procedure StageDefinitionlessPass(const APassIndex: Integer;
+    const AGraph: TGraph);
+  var
+    I, LSourcePassIndex: Integer;
+  begin
+    LSourcePassIndex := -1;
+    case AGraph.FPassMode of
+      gpmLegacy:
+        if APassIndex > 0 then
+          LSourcePassIndex := Pred(APassIndex);
+      gpmTransform:
+        begin
+          LSourcePassIndex := AGraph.FTransformSourceIndex;
+          if LSourcePassIndex < 0 then
+            raise EInvalidOperation.CreateFmt(
+              'TrySolve::transform pass %d has no source', [APassIndex]);
+        end;
+      gpmOverlay:
+        ;
+    else
+      raise ERangeError.Create('TrySolve::invalid pass mode');
+    end;
+
+    if LSourcePassIndex >= 0 then
+    begin
+      if (LSourcePassIndex >= Length(LStaged))
+        or (Length(LStaged[LSourcePassIndex]) <>
+          AGraph.FEntries.Count) then
+        raise EInvalidOperation.CreateFmt(
+          'TrySolve::source %d for pass %d is not staged',
+          [LSourcePassIndex, APassIndex]);
+      AReport.Passes[APassIndex].Disposition := gpdCopied;
+    end
+    else if (AGraph.FPassMode = gpmOverlay) then
+      AReport.Passes[APassIndex].Disposition := gpdCleared
+    else
+      AReport.Passes[APassIndex].Disposition := gpdReused;
+
+    SetLength(LStaged[APassIndex], AGraph.FEntries.Count);
+    for I := 0 to Pred(AGraph.FEntries.Count) do
+      if (not AGraph.FEntries[I].Empty)
+        and (not AGraph.FEntries[I].Generated) then
+        LStaged[APassIndex][I] := AGraph.FEntries[I].Value
+      else if LSourcePassIndex >= 0 then
+        LStaged[APassIndex][I] := LStaged[LSourcePassIndex][I]
+      else if (AGraph.FPassMode = gpmLegacy)
+        and (not AGraph.FEntries[I].Empty) then
+        LStaged[APassIndex][I] := AGraph.FEntries[I].Value
+      else
+        LStaged[APassIndex][I] := TGraphValue.Empty;
   end;
 
   procedure SnapshotEntries;
@@ -2861,7 +3965,7 @@ var
 
   procedure CommitStagedEntries;
   var
-    I, J: Integer;
+    I, J, K: Integer;
 
     function MatchesExpectedState(const APassIndex,
       AEntryIndex: Integer): Boolean;
@@ -2872,8 +3976,10 @@ var
       LEntry := FPasses[APassIndex].FEntries[AEntryIndex];
       LSnapshot := LSnapshots[APassIndex][AEntryIndex];
 
-      if ((APassIndex = 0)
-        and (not FPasses[APassIndex].HasDefinition))
+      if (ADirty[APassIndex] = 0)
+        or ((APassIndex = 0)
+          and (FPasses[APassIndex].FPassMode = gpmLegacy)
+          and (not FPasses[APassIndex].HasDefinition))
         or ((not LSnapshot.Empty) and (not LSnapshot.Generated)) then
         Exit((LEntry.Value = LSnapshot.Value)
           and (LEntry.Empty = LSnapshot.Empty)
@@ -2889,14 +3995,16 @@ var
   begin
     SnapshotEntries;
     try
-      for I := 0 to Pred(FPasses.Count) do
+      for K := 0 to High(LExecutionPlan) do
       begin
+        I := LExecutionPlan[K];
         FExecutingPassIndex := I;
         FCurPassIndex := I;
         FCurPass := PassLabelFromIndex(I);
         //A definitionless first pass has no predecessor and remains exactly as
         //the caller supplied it.
-        if (I = 0) and (not FPasses[I].HasDefinition) then
+        if (I = 0) and (FPasses[I].FPassMode = gpmLegacy)
+          and (not FPasses[I].HasDefinition) then
           Continue;
         for J := 0 to Pred(FPasses[I].FEntries.Count) do
         begin
@@ -2933,14 +4041,8 @@ var
   end;
 
 var
-  I: Integer;
+  I, LExecutionCount: Integer;
 begin
-  if Assigned(FPassRoot) then
-    Exit(FPassRoot.TrySolve(AOptions, AReport));
-  if AOptions.MaxBacktracks < 0 then
-    raise ERangeError.CreateFmt(
-      'TrySolve::maximum backtracks cannot be negative [%d]',
-      [AOptions.MaxBacktracks]);
   if FInitializingPass then
     raise EInvalidOperation.Create(
       'TrySolve::cannot solve during pass initialization');
@@ -2948,23 +4050,62 @@ begin
   if FRunning then
     raise EInvalidOperation.Create(
       'TrySolve::the pass pipeline is already running');
+  if Length(ADirty) <> FPasses.Count then
+    raise EInvalidOperation.Create(
+      'TrySolve::pass selection does not match the pipeline');
 
   Result := False;
   LCommitted := False;
   InitializeReport;
+  BuildPassExecutionOrder(LFullExecutionPlan);
+  LExecutionCount := 0;
+  for I := 0 to High(LFullExecutionPlan) do
+    if ADirty[LFullExecutionPlan[I]] <> 0 then
+      Inc(LExecutionCount);
+  SetLength(LExecutionPlan, LExecutionCount);
+  LExecutionCount := 0;
+  for I := 0 to High(LFullExecutionPlan) do
+    if ADirty[LFullExecutionPlan[I]] <> 0 then
+    begin
+      LExecutionPlan[LExecutionCount] := LFullExecutionPlan[I];
+      Inc(LExecutionCount);
+    end;
+  SetLength(LStaged, FPasses.Count);
+  for I := 0 to Pred(FPasses.Count) do
+    if ADirty[I] = 0 then
+    begin
+      StageExistingPass(I, FPasses[I]);
+      AReport.Passes[I].Disposition := gpdReused;
+    end;
   LSavedPassIndex := FCurPassIndex;
   LRootRandomState := FRandomState;
   SetLength(LRandomStates, FPasses.Count);
   for I := 0 to Pred(FPasses.Count) do
     LRandomStates[I] := FPasses[I].FRandomState;
-  SetLength(LStaged, FPasses.Count);
-
   FRunning := True;
   FExecutingPassIndex := -1;
   try
-    RewindRandomStates;
-    for LPassIndex := 0 to Pred(FPasses.Count) do
+    EnsureSeedInitialized;
+    for I := 0 to Pred(FPasses.Count) do
+      if ADirty[I] <> 0 then
+      begin
+        BuildPassRandomState(I, FPasses[I].FRandomState);
+        FPasses[I].FSeed := FSeed;
+        FPasses[I].FSeedInitialized := True;
+      end;
+    for LExecutionOrdinal := 0 to High(LExecutionPlan) do
     begin
+      LPassIndex := LExecutionPlan[LExecutionOrdinal];
+      //Execution reporting describes work that was actually attempted, not
+      //the whole selected closure.  In particular, a contradiction leaves
+      //later dirty dependents as not-run rather than implying that they were
+      //visited before the failure.
+      AReport.Passes[LPassIndex].Executed := True;
+      AReport.Passes[LPassIndex].ExecutionOrdinal :=
+        Length(AReport.ExecutionOrder);
+      SetLength(AReport.ExecutionOrder,
+        Succ(Length(AReport.ExecutionOrder)));
+      AReport.ExecutionOrder[High(AReport.ExecutionOrder)] := LPassIndex;
       FExecutingPassIndex := LPassIndex;
       FCurPassIndex := LPassIndex;
       FCurPass := PassLabelFromIndex(LPassIndex);
@@ -2976,29 +4117,18 @@ begin
         Continue;
       end;
 
-      if LPassIndex = 0 then
-      begin
-        if not BuildReferenceModel(LGraph, nil, LModel,
-          LInvalidLockEntry) then
-        begin
-          AReport.Status := gssContradiction;
-          AReport.FailedPassIndex := LPassIndex;
-          AReport.Contradiction.Kind := gckInvalidLock;
-          AReport.Contradiction.PassIndex := LPassIndex;
-          AReport.Contradiction.EntryIndex := LInvalidLockEntry;
-          AReport.Passes[LPassIndex].Contradictions := 1;
-          Exit(False);
-        end;
-      end
-      else if not BuildReferenceModel(LGraph,
-        LStaged[Pred(LPassIndex)], LModel, LInvalidLockEntry) then
+      if not BuildReferenceModel(LGraph, LStaged, LModel,
+        LInvalidLockEntry, LRequirementFailurePass,
+        LRequirementFailureNamed) then
       begin
         AReport.Status := gssContradiction;
         AReport.FailedPassIndex := LPassIndex;
         AReport.Contradiction.Kind := gckInvalidLock;
         AReport.Contradiction.PassIndex := LPassIndex;
         AReport.Contradiction.EntryIndex := LInvalidLockEntry;
+        AReport.Contradiction.DependencyPassIndex := -1;
         AReport.Passes[LPassIndex].Contradictions := 1;
+        AReport.Passes[LPassIndex].Disposition := gpdFailed;
         Exit(False);
       end;
 
@@ -3010,6 +4140,7 @@ begin
         Exit(False);
       end;
       CopyPassReport(LPassIndex, LReferenceReport);
+      AReport.Passes[LPassIndex].Disposition := gpdSolved;
 
       SetLength(LStaged[LPassIndex], LGraph.FEntries.Count);
       for LEntryIndex := 0 to Pred(LGraph.FEntries.Count) do
@@ -3018,6 +4149,12 @@ begin
     end;
 
     CommitStagedEntries;
+    //A successful selective commit may execute user entry hooks.  A hook can
+    //address a reused pass directly and draw from its stream; skipped layers
+    //must remain observationally untouched, including their RNG position.
+    for I := 0 to Pred(FPasses.Count) do
+      if ADirty[I] = 0 then
+        FPasses[I].FRandomState := LRandomStates[I];
     LCommitted := True;
     AReport.Status := gssSolved;
     AReport.FailedPassIndex := -1;
@@ -3026,6 +4163,7 @@ begin
     AReport.Contradiction.EntryIndex := -1;
     AReport.Contradiction.NeighborIndex := -1;
     AReport.Contradiction.HasDirection := False;
+    AReport.Contradiction.DependencyPassIndex := -1;
     Result := True;
   finally
     if not LCommitted then
@@ -3192,7 +4330,8 @@ end;
 
 function TGraph.Run: TGraph;
 var
-  I: Integer;
+  I, LPassIndex, LSourceIndex: Integer;
+  LExecutionOrder: TGraphPassIndices;
   LGraph: TGraph;
   LSavedPassIndex: Integer;
 begin
@@ -3206,6 +4345,7 @@ begin
   EnsureInitialPass;
   if FRunning then
     raise EInvalidOperation.Create('Run::the pass pipeline is already running');
+  BuildPassExecutionOrder(LExecutionOrder);
 
   LSavedPassIndex := FCurPassIndex;
   FRunning := True;
@@ -3215,25 +4355,41 @@ begin
     //Every execution starts from the same per-pass streams. Random calls made
     //outside Run therefore cannot perturb a replay.
     RewindRandomStates;
-    for I := 0 to Pred(TotalPassCount) do
+    for I := 0 to High(LExecutionOrder) do
     begin
-      FExecutingPassIndex := I;
-      FCurPassIndex := I;
-      FCurPass := PassLabelFromIndex(I);
-      LGraph := PassGraph[I];
+      LPassIndex := LExecutionOrder[I];
+      FExecutingPassIndex := LPassIndex;
+      FCurPassIndex := LPassIndex;
+      FCurPass := PassLabelFromIndex(LPassIndex);
+      LGraph := PassGraph[LPassIndex];
 
       if not LGraph.HasDefinition then
       begin
-        if I > 0 then
-          LGraph.CopyValuesFrom(PassGraph[Pred(I)]);
+        case LGraph.FPassMode of
+          gpmLegacy:
+            if LPassIndex > 0 then
+              LGraph.CopyValuesFrom(PassGraph[Pred(LPassIndex)]);
+          gpmTransform:
+            begin
+              LSourceIndex := LGraph.FTransformSourceIndex;
+              if LSourceIndex < 0 then
+                raise EInvalidOperation.CreateFmt(
+                  'Run::transform pass %d has no source', [LPassIndex]);
+              LGraph.CopyValuesFrom(PassGraph[LSourceIndex]);
+            end;
+          gpmOverlay:
+            LGraph.ClearGeneratedValues;
+        else
+          raise ERangeError.Create('Run::invalid pass mode');
+        end;
       end
       else
         LGraph.RunOnePass;
 
       //selection callbacks are allowed to inspect or switch passes; the
       //coordinator always resumes the pass currently being solved
-      FCurPassIndex := I;
-      FCurPass := PassLabelFromIndex(I);
+      FCurPassIndex := LPassIndex;
+      FCurPass := PassLabelFromIndex(LPassIndex);
     end;
   finally
     FExecutingPassIndex := -1;
@@ -3357,6 +4513,9 @@ begin
   FSeedInitialized := False;
   SeedRandomState(FSeed, FRandomState);
   FExecutingPassIndex := -1;
+  FPassMode := gpmLegacy;
+  SetLength(FPassDependencies, 0);
+  FTransformSourceIndex := -1;
 end;
 
 constructor TGraph.CreatePass(const ARoot: TGraph;
@@ -3367,6 +4526,12 @@ begin
   InitializeStorage;
   FPassRoot := ARoot;
   FPassIndex := APassIndex;
+  if APassIndex > 0 then
+  begin
+    SetLength(FPassDependencies, 1);
+    FPassDependencies[0].PassIndex := Pred(APassIndex);
+    FPassDependencies[0].Roles := [pdrLegacy];
+  end;
   ARoot.BuildPassRandomState(APassIndex, FRandomState);
   FSeed := ARoot.FSeed;
   FSeedInitialized := True;

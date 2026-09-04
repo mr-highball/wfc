@@ -119,6 +119,44 @@ wrapping setting instead of following mutable entry links. It checks all three
 layers in stable `Y`, then `X`, order and records how many cells and relations
 were examined.
 
+## selective-settlement specialization
+
+`wfc_world2d_settlement` builds a second, independent 2D domain on the DAG
+coordinator:
+
+```text
+terrain ──> hydrology ──┐
+    └────> biome ───────┼─> roads ─> housing ─> foliage
+```
+
+Roads, housing, and foliage also retain direct dependencies on every earlier
+layer whose value they inspect. All six passes use `gpmOverlay`, so each owns a
+separate vocabulary rather than copying its input. `RequireFromPass` expresses
+same-coordinate context: a bridge requires land, river hydrology, and a
+plains/woodland biome; a house requires land, dry hydrology, plains, and a
+trail. Alternatives from one source are OR, while requirements from different
+sources are AND.
+
+`wfc_world2d_settlement_validate` independently checks the canonical DAG,
+shape, symbols, cross-layer relationships, and local adjacency. It does not
+consult the configured rule groups. `TSettlement2D.TryRegenerateFrom` exposes
+transactional descendant-only regeneration. The demonstration changes one
+hydrology lock and executes hydrology, roads, housing, and foliage while
+preserving the sibling biome and upstream terrain exactly; clearing the lock
+recovers the baseline signature. An intentionally impossible dependent lock
+proves that failure restores values, empty state, ownership, selection, and
+random streams.
+
+The settlement signature uses project-owned CRC-32 code and six fixed-token
+layer streams. It formats:
+
+```text
+<signature-version>:<terrain>:<hydrology>:<biome>:<roads>:<housing>:<foliage>
+```
+
+See the [selective-settlement example](../examples/2D/03_SelectiveSettlement/README.md)
+and the [pass-DAG contract](pass-dags.md).
+
 ## portable signatures
 
 `LayerSignature` returns a `Cardinal` CRC-32 checksum, and

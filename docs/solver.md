@@ -7,9 +7,11 @@ decision causes a contradiction. Unit-weight models take the exact original
 minimum-remaining-values path. The existing `TGraph.Run` traversal remains
 available for source and behavior compatibility.
 
-The reference solver coordinates the complete pass pipeline. It stages every
-pass in memory and commits entry values only after every pass has solved and
-the final assignments have been validated.
+The reference solver coordinates the pass dependency DAG. A full solve stages
+every pass in stable topological order and commits entry values only after all
+executed assignments have been validated. A selective solve stages only the
+requested roots and their transitive dependents while reusing skipped layers
+as immutable inputs.
 
 ## basic use
 
@@ -47,19 +49,26 @@ branch restoration. A negative value raises `ERangeError`.
 
 ## pipeline transaction
 
-`TrySolve` performs one transaction over the complete linear pipeline:
+`TrySolve` performs one transaction over the complete dependency plan:
 
 1. save the selected pass and every pass random-stream state;
 2. rewind the versioned per-pass streams from `Seed`;
-3. solve each defined pass in index order into a staging buffer;
-4. stage a copy of the preceding result for each later definitionless pass;
+3. build a stable topological order from pass dependencies;
+4. solve, clear, or copy each pass according to its mode into a staging buffer;
 5. validate each solved assignment independently; and
 6. commit every staged value only after the complete pipeline succeeds.
 
-A definitionless pass zero has no input and remains exactly as supplied. In a
-later definitionless pass, caller locks override the copied value at that
-coordinate. An entry with a nonempty value and `Generated = False` is a caller
-lock. Existing generated output is not a lock and is regenerated.
+A definitionless legacy pass zero remains exactly as supplied. A later
+definitionless legacy pass copies its predecessor; a definitionless transform
+copies its selected source; and a definitionless overlay clears generated
+cells. In every mode, caller locks take precedence. An entry with a nonempty
+value and `Generated = False` is a caller lock. Existing generated output is
+not a lock and is regenerated.
+
+`TryRegenerateFrom` uses the same transaction over the requested pass roots and
+their transitive dependents. Skipped entry state and random streams remain
+unchanged. See [pass DAGs](pass-dags.md) for mode-specific staging and the
+selective closure definition.
 
 When `TrySolve` returns `False`, entry values, `Generated` flags, selected pass,
 and pre-call random-stream states are unchanged. A later-pass contradiction
@@ -185,10 +194,15 @@ Legacy callbacks and traversal hooks are deliberately outside this algorithm.
   configured limit had been reached.
 
 The report records `Seed`, `RandomAlgorithmVersion`,
-`SolverAlgorithmVersion`, `FailedPassIndex`, terminal contradiction evidence,
-and one `TGraphPassSolveReport` per pass. Terminal contradiction kinds are
+`SolverAlgorithmVersion`, `PipelineAlgorithmVersion`, executed
+`ExecutionOrder`, `FailedPassIndex`, terminal contradiction evidence, and one
+`TGraphPassSolveReport` per pass. Per-pass records identify whether and when a
+pass executed and whether it was reused, cleared, copied, solved, or failed.
+Terminal contradiction kinds are
 `gckInvalidLock`, `gckEmptyDomain`, `gckAdjacency`, `gckPreviousPass`,
-`gckRequiredSupport`, and `gckFinalValidation`; `gckNone` is used on success.
+`gckPassDependency`, `gckRequiredSupport`, and `gckFinalValidation`; `gckNone`
+is used on success. Named dependency failures also identify the stable source
+index through `DependencyPassIndex`.
 Entry and neighbor indices are zero-based. Inspect `HasDirection` before using
 the direction field. `FailedPassIndex` and unavailable contradiction pass,
 entry, or neighbor indices are `-1`. Report contents are unspecified when
@@ -234,9 +248,10 @@ tests until a separately versioned low-level API is deliberately published.
 
 ## current scope
 
-Version 2 provides deterministic integer weights and fixed-point Shannon
-observation, but has no restart policy, timing data, stable trace hash, soft
-constraints, or minimal-unsatisfiable-core analysis. Pass dependencies are
-still linear, and `RequirePrevious` still addresses only the same coordinate in
-the immediately preceding pass. These remain roadmap work rather than hidden
-or partially specified behavior.
+Solver version 2 provides deterministic integer weights and fixed-point
+Shannon observation; pipeline version 1 adds acyclic dependency planning,
+named same-coordinate requirements, explicit pass modes, and selective
+regeneration. Restart policy, timing data, stable trace hashes, soft
+constraints, offset/neighborhood cross-layer expressions, and
+minimal-unsatisfiable-core analysis remain roadmap work rather than hidden or
+partially specified behavior.

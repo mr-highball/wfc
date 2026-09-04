@@ -45,6 +45,9 @@ A complete replay identity consists of:
 - `WFC_RANDOM_ALGORITHM_VERSION`;
 - `WFC_SOLVER_ALGORITHM_VERSION` and `TGraphSolveOptions` when using
   `TrySolve`;
+- `WFC_PIPELINE_ALGORITHM_VERSION`, pass modes, dependency edges, named
+  requirements, and requested roots when using dependency planning or
+  selective regeneration;
 - `Seed`;
 - graph dimensions, wrapping, and run mode;
 - pass creation order;
@@ -56,6 +59,11 @@ A complete replay identity consists of:
 Pass labels are not part of random-stream identity. Renaming a pass preserves
 its stream because the stable zero-based pass index is used instead. Appending
 a later pass cannot perturb an earlier stream.
+
+Labels remain part of a human-readable dependency manifest and are used to
+select roots, but declared dependency and requirement references bind to stable
+indices. Renaming a source therefore does not retarget an existing in-memory
+edge or constraint.
 
 Value construction order is part of the model. The legacy built-in selection
 chooses uniformly from valid values in that order and deliberately ignores
@@ -146,6 +154,9 @@ to reference-solver propagation, observation, candidate ordering, or
 backtracking must increment `WFC_SOLVER_ALGORITHM_VERSION`. Legacy traversal
 or built-in-selection changes must likewise receive an explicit compatibility
 version rather than silently reinterpreting existing replay inputs.
+An incompatible change to dependency planning, pass-mode staging, dirty-closure
+selection, or topological tie-breaking must increment
+`WFC_PIPELINE_ALGORITHM_VERSION` independently.
 
 The weighted entropy and ticket contract is
 `WFC_SOLVER_ALGORITHM_VERSION = 2`. It does not change seed expansion, jumping,
@@ -175,13 +186,19 @@ external callback state changed during the failed attempt remain changed.
 Every `TrySolve` also rewinds every pass stream before solving. It stages the
 complete pass pipeline, so a contradiction or backtrack-limit result leaves
 all entry values and `Generated` flags unchanged and restores the random states
-that existed before the call. Successful reports record both algorithm
+that existed before the call. Successful reports record all three algorithm
 versions. Reference observation ties use `Mode` Z order and then entry index;
 non-unit models use deterministic Q16 Shannon entropy, while canonical
 unit-weight models retain the exact minimum-domain path. Candidate order follows
 `AddValue` order from one weighted first ticket and then a frozen cyclic retry
 order. See the [reference solver contract](solver.md) for the full algorithm
 identity.
+
+`TryRegenerateFrom` rewinds and executes only the requested roots and their
+transitive dependents. Skipped pass entries and random streams remain exactly
+unchanged. Dirty pass streams restart from their stable seed/index derivation;
+failure restores every entry, ownership flag, selected pass, and pre-call
+stream state. `ExecutionOrder` records the actual stable topological plan.
 
 ## callbacks and extension hooks
 

@@ -22,9 +22,10 @@ The repository already contains the beginnings of the ecosystem:
 
 - a fluent `TGraph` API with 2D and 3D neighbors, custom string values,
   required rules, selection callbacks, and extension hooks;
-- an operational first pass-pipeline slice: stable labeled passes, isolated
-  rules and values, sequential execution, prior-output copying, and
-  same-coordinate constraints against the immediately preceding pass;
+- a versioned dependency-DAG pass coordinator with stable labeled passes,
+  isolated rules and values, deterministic topological execution, legacy,
+  overlay, and transform modes, named same-coordinate constraints, and atomic
+  descendant-only regeneration;
 - a versioned portable random source with an explicit pipeline seed,
   independent index-derived pass streams, run-to-run rewind, and matching
   native/pas2js golden fixtures;
@@ -32,12 +33,15 @@ The repository already contains the beginnings of the ecosystem:
   propagation, deterministic fixed-point weighted Shannon entropy, an exact
   unit-weight minimum-domain path, bounded chronological backtracking,
   independent final validation, and structured per-pass reports;
-- atomic reference-solver staging across the complete sequential pass pipeline,
-  including locks, previous-pass constraints, definitionless-pass copying, and
-  rollback on a failed later pass;
+- atomic reference-solver staging across full and selectively regenerated pass
+  closures, including locks, named dependencies, definitionless-pass behavior,
+  skipped-layer preservation, and rollback on any failed descendant;
 - a reusable `wfc_world2d` terrain/biome/foliage library, a separate semantic
   validator, fixed-token portable layer signatures, and a documented
   native/pas2js multi-pass demonstration;
+- a reusable six-layer selective-settlement domain and validator demonstrating
+  terrain branching into hydrology and biome, then joining through roads,
+  housing, and foliage with deterministic edit/regenerate/recover fixtures;
 - an interactive pas2js browser world with synchronized layer canvases,
   caller-owned locks, responsive controls, and a seeded headless-browser
   conformance fixture;
@@ -65,10 +69,10 @@ It is not yet the finished system described above:
 - the version-2 reference solver now supports scale-canonical integer weights,
   but deterministic restarts, timing, a stable trace hash, richer explanations,
   and more scalable domain representations remain to be built;
-- atomic prepare/solve/validate/commit now covers the sequential `TrySolve`
-  path, but named overlay layers, dependency graphs, selective regeneration,
-  and general cross-layer diagnostics remain to be built; the legacy `Run`
-  path intentionally retains its nontransactional callback behavior;
+- pass DAGs, named overlay layers, same-coordinate cross-layer requirements,
+  selective regeneration, and structured dependency diagnostics are now
+  operational; offset and neighborhood reads, cyclic negotiation/repair, and
+  projection-aware transactions remain to be designed;
 - the examples index now records targets, dependencies, build commands, and
   honest completion status, but full per-example tutorials, invariants,
   expected output, and troubleshooting guides remain to be written;
@@ -79,8 +83,8 @@ It is not yet the finished system described above:
   parity suite (canonical seeded value fixtures do already match);
 - model learning now covers pretokenized cardinal radius-one corpora and
   structurally compatible overlapping 2D footprints with explicit projection;
-  3D neighborhoods, pass dependencies, provenance metadata, and the planned
-  validation/run/inspection tools remain;
+  3D neighborhoods, learned pass dependencies, provenance metadata, and the
+  planned validation/run/inspection tools remain;
 - the hosted CI definition is present, but its first remote run still needs to
   be observed before the Phase 0 exit gate is claimed complete;
 - music playback currently depends on the GPL-licensed SoundShop submodule,
@@ -112,11 +116,13 @@ to preserve what is interesting while making the foundation trustworthy.
 - **MIT by default.** Project-authored source and assets remain MIT. External
   code and data must be optional, documented, and license-compatible with the
   way they are distributed.
-- **Own the portable foundation.** When the choice is between making a library
-  foundational or writing the needed behavior in portable Pascal, write and
-  maintain the Pascal implementation here. Third-party engines, viewers, and
-  media backends may be isolated optional adapters; canonical models,
-  algorithms, validation, and replay behavior must not depend on them.
+- **Own the portable foundation.** Whenever a capability can reasonably be
+  implemented in portable Pascal instead of adding a library, implement and
+  maintain the FPC/pas2js version here. Keep runtime dependencies minimal:
+  repository units and the applicable standard RTL only. Third-party engines,
+  viewers, and media backends may be isolated optional adapters. Optional
+  development tooling must not leak into core/runtime APIs or define canonical
+  models, algorithms, artifact formats, validation, or replay behavior.
 
 ## Phase 0: a trustworthy baseline
 
@@ -192,7 +198,7 @@ with another.
 Each pass has a stable label, index, rule set, seed, input dependencies, output
 layer, and run report. All passes share topology and coordinates.
 
-Two initial pass modes cover the intended uses:
+Two explicit pass modes extend the legacy compatibility mode:
 
 - **transform pass:** begins with a copy-on-write view of the previous output
   and refines values in the same domain;
@@ -200,15 +206,19 @@ Two initial pass modes cover the intended uses:
   such as terrain, roads, structures, or harmony.
 
 Running a pass follows `prepare -> solve -> validate -> commit`. A failed pass
-does not corrupt earlier committed layers. Sequential dependencies are the
-default; explicit dependency graphs and bounded feedback can be added after
-the sequential behavior is proven.
+does not corrupt earlier committed layers. Sequential dependencies remain the
+compatibility default. Version-1 acyclic dependency graphs, named cross-pass
+constraints, deterministic topological execution, and selective descendant
+regeneration are now implemented; bounded feedback requires a separate
+termination and replay contract.
 
-The first packaged domain fixture now proves the sequential subset with
-terrain → biome → foliage, an intentionally illegal foliage lock, rollback,
-independent validation, and matching native/pas2js layer hashes. Hydrology,
-roads/housing, selective regeneration, named overlays, and dependency graphs
-remain necessary before the full Phase 2 exit gate is satisfied.
+The first packaged domain fixture proves the sequential subset with terrain →
+biome → foliage. The selective-settlement fixture expands that proof to
+terrain → hydrology/biome → roads → housing → foliage, including named
+overlays, non-linear dependency closure, an intentionally illegal descendant
+lock, transactional rollback, independent validation, exact recovery, and
+matching native/pas2js layer signatures. Pass inspection and richer causal
+explanations remain open Phase 2 work.
 
 ### Deliverables
 
@@ -354,13 +364,11 @@ completion rather than an LLM replacement.
 Novel mechanisms will live in reproducible experiments before becoming stable
 API. Promising research areas include:
 
-- dependency DAGs rather than only linear pass sequences;
-- bounded negotiation or repair between earlier and later passes;
+- bounded negotiation or repair across the now-established acyclic pass DAG;
 - soft constraints and objective functions alongside hard constraints;
 - explanation graphs and minimal contradiction sets;
 - streaming and chunk-boundary reconciliation for large or infinite worlds;
-- counterfactual regeneration: change one result while preserving everything
-  unrelated;
+- minimal-change counterfactual search beyond dependency-closure regeneration;
 - constraint transfer between representations, such as rhythm influencing a
   visual layout or semantic layers guiding 3D decoration.
 
@@ -402,10 +410,12 @@ The project remains under the MIT license. To make that promise meaningful:
   project source;
 - maintain a third-party notice and asset manifest containing origin, author,
   version, license, modifications, and hashes;
-- replace the required SoundShop GPL playback path with an MIT-compatible
-  project implementation, or keep it as a clearly separate optional GPL
-  integration that is not part of standard builds or MIT demo binaries;
-- document the exact SDL2 binary source/version or build it reproducibly;
+- replace the required SoundShop GPL playback path with a project-owned,
+  MIT-licensed FPC/pas2js implementation; any retained SoundShop integration
+  remains a clearly separate optional GPL adapter outside standard builds and
+  MIT demo binaries;
+- treat SDL2 as an optional media-backend adapter and, when distributing it,
+  document the exact binary source/version or build it reproducibly;
 - verify or replace sheet-music images, samples, FBX models, icons, fonts, and
   browser assets whose redistribution terms are not recorded;
 - require corpus and learned-model metadata to retain source provenance and

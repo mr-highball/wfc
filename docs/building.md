@@ -1,15 +1,26 @@
 # Building and testing
 
-The dependency-free build covers the core, specialized 2D, radius-one model
-learning, and overlapping-pattern units; all four conformance suites; and
-seeded smoke runs of the text-rendered tiled world, multi-pass 2D ecosystem,
-learned-tiles, learned-corpus, and overlapping-pattern demos. It does not
+The dependency-free build covers the core, specialized 2D and settlement,
+radius-one model-learning, and overlapping-pattern units; all five conformance
+suites; and seeded smoke runs of the text-rendered tiled world, multi-pass 2D
+ecosystem, selective settlement, learned-tiles, learned-corpus, and
+overlapping-pattern demos. It does not
 initialize the optional music submodule or build the unfinished Castle Game
 Engine viewer. The browser world has its own
 dependency-free pas2js entry point described below.
 
 FPC 3.2.2 is the supported stable compiler. The current FPC development
 compiler is also exercised as a compatibility canary.
+
+## Dependency boundary
+
+Runtime units may use repository units and the applicable standard FPC/pas2js
+RTL. When a needed capability can reasonably be implemented and maintained in
+portable Pascal, it is project-owned rather than added as a third-party runtime
+dependency. Optional tools may build, test, profile, render, convert, or inspect
+project artifacts, but tool-specific units and types must not enter core/runtime
+`uses` clauses or public APIs. Canonical artifacts, validation, generation, and
+replay remain usable without those tools.
 
 ## One-command native gate
 
@@ -24,9 +35,10 @@ From the repository root, use the entry point for your shell:
 ```
 
 Both scripts rebuild with assertions and range, overflow, and I/O checks, run
-`wfc_test`, `wfc_world2d_test`, `wfc_learn_test`, and
-`wfc_pattern2d_test`, then compile and smoke-test all five portable console
-examples with seed `0` and the multi-pass world with its default seed as well.
+`wfc_test`, `wfc_world2d_test`, `wfc_world2d_settlement_test`,
+`wfc_learn_test`, and `wfc_pattern2d_test`, then compile and smoke-test all six
+portable console examples with seed `0`; the multi-pass and selective-settlement
+worlds also run with their default seeds.
 A compiler error, failed check,
 or example failure produces a nonzero exit code. Compiler units and binaries
 are written beneath `build/native/`; running the gate does not modify tracked
@@ -109,6 +121,12 @@ pas2js -B -Tnodejs -Mdelphi -Fusrc \
   test/wfc_world2d_test.lpr
 node build/pas2js/world/wfc_world2d_test.js
 
+mkdir -p build/pas2js/settlement-units build/pas2js/settlement
+pas2js -B -Tnodejs -Mdelphi -Fusrc \
+  -FUbuild/pas2js/settlement-units -FEbuild/pas2js/settlement \
+  test/wfc_world2d_settlement_test.lpr
+node build/pas2js/settlement/wfc_world2d_settlement_test.js
+
 mkdir -p build/pas2js/learning-units build/pas2js/learning
 pas2js -B -Tnodejs -Mdelphi -Fusrc \
   -FUbuild/pas2js/learning-units -FEbuild/pas2js/learning \
@@ -131,6 +149,18 @@ pas2js -B -Tnodejs -Mdelphi -Fusrc \
   -FUbuild/pas2js/world-example-units -FEbuild/pas2js/world-example \
   examples/2D/01_MultiPassWorld/MultiPassWorld.lpr
 node build/pas2js/world-example/MultiPassWorld.js 0
+```
+
+The dependency-DAG settlement host is portable in the same way:
+
+```bash
+mkdir -p build/pas2js/settlement-example-units build/pas2js/settlement-example
+pas2js -B -Tnodejs -Mdelphi -Fusrc \
+  -Fuexamples/2D/common \
+  -FUbuild/pas2js/settlement-example-units \
+  -FEbuild/pas2js/settlement-example \
+  examples/2D/03_SelectiveSettlement/SelectiveSettlement.lpr
+node build/pas2js/settlement-example/SelectiveSettlement.js 0
 ```
 
 The learned-tiles training and generation host is portable in the same way:
@@ -203,10 +233,10 @@ not commit them.
 
 The hosted pas2js gate uses exact official upstream pas2js and FPC-source
 revisions, verifies both source-archive SHA-256 digests, and caches the resulting
-3.3.1 toolchain. It runs all four conformance suites, the tiled-world,
-learned-tiles, learned-corpus, and overlapping-pattern seed-zero smoke tests,
-and the multi-pass
-world with both seed zero and its default seed under Node.js 22.23.2. It then
+3.3.1 toolchain. It runs all five conformance suites; the tiled-world,
+learned-tiles, learned-corpus, and overlapping-pattern seed-zero smoke tests;
+and the multi-pass and selective-settlement worlds with both seed zero and
+their default seeds under Node.js 22.23.2. It then
 builds the browser target, serves the staged site, and checks its exact
 body-state contract in headless Chrome. A pinned development compiler is used
 because the official 3.2.0 binary release cannot resolve the suite's portable
