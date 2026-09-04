@@ -41,6 +41,10 @@ The repository already contains the beginnings of the ecosystem:
   completed pass assignments across atomic full-pipeline rounds, separates
   local and pass budgets, preserves ordinary Trace-v1 reports per attempt, and
   publishes a versioned native/pas2js transcript;
+- an isolated Selective Negotiation v1 wrapper that applies the same bounded
+  whole-assignment search only to explicit roots and their dependency
+  descendants, canonically reports that repair horizon, and preserves every
+  reused provider value and random stream;
 - an opt-in Causal Trace v1 contract covering initial filters, decisions,
   propagation, contradictions, backtracking/restoration, pass lifecycle, and
   atomic commit/rollback; per-pass slices, provider-pass cause links, stable
@@ -135,10 +139,10 @@ It is not yet the finished system described above:
   requirements, finite any-of-neighborhood reads, selective regeneration, and
   structured dependency diagnostics are now operational; sequence maps now
   provide atomic N-source bridges between unlike public vocabularies, and the
-  first bounded acyclic backward-negotiation baseline now exists; implicit
-  radius/count/distance expressions, negotiated selective regeneration,
-  conflict-directed or cyclic repair, and general cross-representation
-  projection schemas remain to be designed;
+  first bounded acyclic full and selectively scoped backward-negotiation
+  baselines now exist; implicit radius/count/distance expressions, automatic
+  or minimal repair-horizon selection, conflict-directed or cyclic repair, and
+  general cross-representation projection schemas remain to be designed;
 - the examples index now records targets, dependencies, build commands, and
   honest completion status, but full per-example tutorials, invariants,
   expected output, and troubleshooting guides remain to be written;
@@ -297,7 +301,10 @@ clauses, deterministic topological execution, and selective descendant
 regeneration are now implemented. Pass Negotiation v1 supplies a separate
 termination and replay contract for bounded chronological reopening over the
 complete acyclic pipeline; it does not change ordinary one-way or selective
-semantics.
+semantics. Selective Negotiation v1 preserves that isolation while restricting
+choice frames to caller-requested roots and their transitive dependency
+descendants. Providers outside that canonical horizon remain immutable inputs;
+the algorithm never widens a horizon automatically.
 
 The first packaged domain fixture proves the sequential subset with terrain →
 biome → foliage. The selective-settlement fixture expands that proof to
@@ -317,6 +324,13 @@ exhaustion, and independent-provider join cases. It records exact rejected
 assignments, distinguishes local and outer limits, proves atomic rollback and
 ordinary-solver isolation, and replays attempt transcripts across native FPC
 and pas2js/Node.
+The negotiated-repair fixture then compares two explicit horizons over
+terrain/climate -> roads -> housing -> decor. A housing-root horizon fails
+without reopening roads; a roads-root horizon excludes one whole roads
+assignment, repairs housing and decor, and leaves terrain, climate, their
+values, caller ownership, and their random streams unchanged. The selective
+wrapper's scope and transcript are versioned independently from full-pipeline
+negotiation.
 
 ### Deliverables
 
@@ -334,6 +348,8 @@ and pas2js/Node.
 - Support selective regeneration with locked unaffected cells.
 - Preserve ordinary one-way replay while offering separately versioned bounded
   full-pipeline negotiation with exact chronological evidence.
+- Offer separately versioned bounded selective negotiation over a canonical
+  explicit descendant horizon, preserving all providers outside that horizon.
 - Extend the checked console inspector with interactive stepping, live domain
   snapshots, richer clause evidence, and bounded/streaming capture.
 
@@ -550,8 +566,10 @@ completion rather than an LLM replacement.
 Novel mechanisms will live in reproducible experiments before becoming stable
 API. Promising research areas include:
 
-- conflict-directed, partial-nogood, minimal-change, and selectively scoped
-  successors to the exact chronological Pass Negotiation v1 baseline;
+- conflict-directed, partial-nogood, and minimal-change successors to the exact
+  chronological full and selectively scoped negotiation baselines;
+- automatic, broader, and provably minimal repair-horizon selection beyond the
+  caller-chosen descendant closure used by Selective Negotiation v1;
 - soft constraints and objective functions alongside hard constraints;
 - explanation graphs and minimal contradiction sets;
 - streaming and chunk-boundary reconciliation for large or infinite worlds;
@@ -570,6 +588,12 @@ publishes its algorithm, fixed fixtures, seed set, counters, portable goldens,
 stopping rules, and negative findings. It does **not** yet compare the
 multi-pass search against an equivalent flattened model; that measurement is a
 required next experiment, so no relative-efficiency claim is made.
+
+The companion
+[Selective Negotiation v1 record](docs/research/selective-pass-negotiation-v1.md)
+fixes the descendant-horizon equation, immutable-provider boundary, comparison
+fixtures, portable transcripts, costs, and negative findings. It makes no
+cell-minimal, conflict-directed, horizon-minimal, or relative-efficiency claim.
 
 ### Exit gate
 

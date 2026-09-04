@@ -301,8 +301,13 @@ another whole assignment work? It retains one ordinary report per atomic
 round, excludes exact completed assignments in chronological pass order, and
 commits only the first complete success. Its local solver budget and outer pass
 budget are distinct rather than interchangeable; replaying exact exclusions
-consumes local backtracks too. Version 1 always runs the full pipeline and has
-no selective overload.
+consumes local backtracks too.
+
+`TryRegenerateNegotiatedFrom` uses that unchanged search only inside the exact
+descendant closure of canonical requested roots. Clean ancestors and siblings
+remain immutable inputs and never become choice frames. This repair horizon is
+separately versioned and reported; it is not inferred from a contradiction or
+widened on failure. See [selective pass negotiation](selective-negotiation.md).
 
 The reusable [2D world ecosystem](world2d.md) applies this transaction to a
 typed terrain → biome → foliage pipeline. Its separate validator and portable
@@ -483,10 +488,12 @@ deliberately starts a new transaction over the chosen dependent closure.
 Pass Negotiation v1 adds a separate bounded sequence of full one-way rounds.
 It is global chronological rather than conflict-directed: an unrelated later
 completed pass can consume budget before the provider named by the failure.
-It excludes exact whole assignments, can be exponential, does not permit DAG
-cycles, and does not offer negotiated selective regeneration. Soft objectives,
-partial nogoods, minimal-change repair, and cyclic fixed points remain research
-work rather than implied properties.
+It excludes exact whole assignments, can be exponential, and does not permit
+DAG cycles. Selective Negotiation v1 restricts the same search to an explicit
+descendant-closed horizon but does not discover a minimal horizon or negotiate
+clean providers. Soft objectives, partial or cell-minimal nogoods,
+minimal-change repair, conflict-directed search, and cyclic fixed points remain
+research work rather than implied properties.
 
 A failed legacy `Run` restores pass selection but is not a transaction over
 generated cell values. `TrySolve` and `TryRegenerateFrom` are transactional.
@@ -500,10 +507,10 @@ failed-clause/minimal-core explanations, an event cap, or streaming capture.
 The pass implementation and public callback types are written for both native
 FPC and pas2js. The same `TGraph`, `SwitchToPass`, `PassGraph`, `ForEachPass`,
 `DependsOn`, `TransformFrom`, `Run`, `TrySolve`, `TrySolveNegotiated`,
-`TryRegenerateFrom`,
+`TryRegenerateFrom`, `TryRegenerateNegotiatedFrom`,
 `RequirePrevious`, `RequireFromPass`, `RequireFromPassAt`, and
 `RequireAnyFromPass` calls are used on both targets. `CaptureTrace`, portable
-trace hashes, negotiation transcript hashes, per-pass slices, and the
+trace hashes, full and selective negotiation transcript hashes, per-pass slices, and the
 `wfc_trace` query/validation helpers have matching native FPC and pas2js
 fixtures as well.
 

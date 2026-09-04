@@ -18,7 +18,10 @@ modular 3D structures, music, text, and other discrete design problems.
 > constraints, selective descendant regeneration, and separately versioned
 > bounded whole-assignment pass negotiation on native FPC and pas2js. The
 > ordinary one-way solver retains its replay contract; negotiated solving keeps
-> one atomic Trace-v1 report per round and commits only final success. The first
+> one atomic Trace-v1 report per round and commits only final success. Selective
+> Negotiation v1 now restricts that search to canonical requested roots and
+> their exact descendant closure while preserving clean layers and random
+> streams. The first
 > specialized ecosystem now includes independently
 > validated terrain → biome → foliage and six-layer settlement worlds with
 > portable signatures; the former also has an interactive browser presentation
@@ -84,6 +87,8 @@ modular 3D structures, music, text, and other discrete design problems.
   assignments, with distinct local/pass budgets and atomic rounds
 - versioned negotiation attempt transcripts with copied exact exclusions,
   portable hashes, and matching native/pas2js fixtures
+- separately versioned selective negotiation over an explicit descendant-closed
+  repair horizon, with canonical scope arrays and clean-pass/RNG preservation
 - opt-in causal traces covering caller filters, decisions, propagation,
   contradictions, backtracking, pass staging/skipping, and pipeline commit or
   rollback
@@ -189,6 +194,14 @@ semantics, see the [reference solver](docs/solver.md).
 For full-pipeline chronological reopening, separate local and pass budgets,
 attempt reports, exact assignment exclusions, replay, and current complexity
 limits, see [bounded pass negotiation](docs/pass-negotiation.md).
+For bounded negotiation inside an explicit descendant closure, canonical root
+and active arrays, clean-pass ownership, outer transcript identity, and the
+non-minimal repair boundary, see
+[selective pass negotiation](docs/selective-negotiation.md).
+The self-checking
+[negotiated-repair example](examples/2D/04_NegotiatedRepair/README.md)
+contrasts a too-narrow leaf horizon with a successful provider-root repair on
+native FPC and pas2js/Node.
 For `CaptureTrace`, event/cause semantics, per-pass slices, stable hashes,
 query/validation helpers, current limits, and the console inspector, see
 [causal solve traces](docs/traces.md).
@@ -233,11 +246,11 @@ Both entry points compile with checked FPC options, keep all output under
 `build/`, run the core, 2D ecosystem, selective-settlement, radius-one
 learning, overlapping-pattern, sequence, text-completion, text-pass,
 score/cell, music-graph, SMF, score-to-MIDI, voxel, Building 3D, and
-causal-trace and pass-negotiation suites,
+causal-trace, pass-negotiation, and selective-negotiation suites,
 smoke-test the portable console examples—including the bounded/wrapped spatial
-dependency, causal-trace inspector, bounded pass-negotiation proof, anchored
-text infill, three-pass text composition, and depth-three building
-proofs—compile the
+dependency, causal-trace inspector, bounded pass-negotiation proof, negotiated
+2D repair, anchored text infill, three-pass text composition, and depth-three
+building proofs—compile the
 fixed-integer isometric, SVG, and Building-view suites, write a deterministic
 seed-zero Building SVG, and preserve failure exit codes.
 The repository also includes an FPM package, a runtime-only Lazarus package,
@@ -276,7 +289,7 @@ The complete admission rules and optional-adapter boundary are recorded in the
 ## Direction
 
 The [roadmap](ROADMAP.md) covers the remaining reference-solver work, richer
-pass composition, conflict-directed and selective negotiation research,
+pass composition, conflict-directed and partial-nogood negotiation research,
 interactive trace stepping and domain views, richer failed-clause/minimal-core
 explanations, trace streaming, higher-dimensional and
 cross-pass learning, validation tools, 2D/3D/music/text ecosystems, pas2js

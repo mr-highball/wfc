@@ -157,6 +157,30 @@ layer streams. It formats:
 See the [selective-settlement example](../examples/2D/03_SelectiveSettlement/README.md)
 and the [pass-DAG contract](pass-dags.md).
 
+## negotiated descendant repair
+
+[`NegotiatedRepair`](../examples/2D/04_NegotiatedRepair/README.md) isolates the
+difference between one-way selective regeneration and bounded search inside an
+authorized 2D repair horizon. It begins from a committed layered state, keeps
+clean provider layers immutable, and requests regeneration from an explicit
+root. The active set is that root plus its transitive descendants in stable
+topological order.
+
+The first active assignment is locally valid but makes a later active consumer
+impossible. Ordinary `TryRegenerateFrom` reports that failure and rolls back.
+`TryRegenerateNegotiatedFrom` records the same ordinary failed round, excludes
+the complete provider assignment, and recovers a compatible active composition
+without reopening any clean ancestor or sibling. A deliberately narrower
+leaf-root call demonstrates the opposite boundary: the algorithm does not
+activate a clean provider merely because changing it could solve the world.
+
+The shared native/pas2js example prints canonical root and active arrays,
+nested and outer transcript identities, clean-layer parity, independent
+validation, and deterministic replay. The method retains complete assignment
+nogoods and chronological frame selection, so the result is not presented as
+the fewest changed cells. See [selective pass negotiation](selective-negotiation.md)
+and its [research record](research/selective-pass-negotiation-v1.md).
+
 ## portable signatures
 
 `LayerSignature` returns a `Cardinal` CRC-32 checksum, and

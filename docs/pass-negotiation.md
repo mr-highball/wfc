@@ -13,7 +13,9 @@ This is a separate algorithm from `TrySolve`:
 - `TrySolveNegotiated` performs complete-pipeline rounds around that ordinary
   solver;
 - the dependency graph remains acyclic; and
-- there is no selectively regenerated negotiation overload in version 1.
+- `TryRegenerateNegotiatedFrom` applies the same search only inside an
+  explicitly requested descendant closure under a separately versioned scope
+  contract.
 
 The public negotiation contract is identified by:
 
@@ -70,8 +72,9 @@ the selected choice frame.
 
 Negotiation v1 is chronological over whole pass assignments:
 
-1. Build the complete stable topological execution plan. Every pass is dirty;
-   version 1 has no negotiated form of `TryRegenerateFrom`.
+1. Build the stable topological execution plan. For `TrySolveNegotiated` every
+   pass is dirty. The selective entry point instead supplies its exact active
+   descendant closure; frame selection and exclusions cannot escape it.
 2. Run one ordinary atomic pipeline round from the graph seed, applying any
    exact assignment exclusions accumulated for each pass.
 3. If the round succeeds, commit that final staged pipeline once and return
@@ -118,6 +121,20 @@ coordinator backtracks `A`. Changing the earlier prefix clears every later
 This is chronological nested-loop enumeration over pass assignments. It is
 not a simultaneous flattened CSP, and no cyclic dependency edge is introduced.
 
+## selective repair horizon
+
+`TryRegenerateNegotiatedFrom` reuses this exact chronological search inside a
+separately versioned scope. Requested labels canonicalize to deduplicated
+stable indices. The active passes are those roots plus all transitive
+dependency descendants in stable topological order. Ancestors and other passes
+outside that set remain immutable inputs and never become choice frames.
+
+The scope is an authorization boundary, not a hint. A leaf-only repair can
+fail even when reopening its clean provider would solve the complete pipeline;
+the caller must explicitly choose an earlier root to permit that wider change.
+See [selective pass negotiation](selective-negotiation.md) for the set equation,
+clean-state invariants, wrapper report, transcript, and fixtures.
+
 ## two distinct budgets
 
 `TGraphNegotiationOptions` contains two limits with different units:
@@ -149,6 +166,9 @@ budgets and inspect both kinds of counters.
 Each rejected round is a normal atomic pipeline failure. It commits no staged
 entry. Assignment exclusions live only inside the current negotiation call;
 they do not mutate registered values, rules, caller domains, or caller locks.
+For selective negotiation the same rule applies only to active passes, while
+clean pass entries, ownership, and random streams remain unchanged even on
+success.
 
 Only the first complete successful round commits, and it commits once. If the
 call ends in contradiction or either limit, every entry's value, empty state,
@@ -175,6 +195,11 @@ the search terminates as `gnsContradiction`.
 The report records the seed, negotiation algorithm version, completed outer
 `PassBacktracks`, rejected `Attempts`, sole terminal `FinalReport`, and portable
 `TranscriptHash`.
+
+Selective negotiation nests this complete report as
+`TGraphSelectiveNegotiationReport.Search` and adds canonical requested-root and
+active-pass arrays plus a separately versioned outer transcript. It does not
+flatten scope metadata into the Pass Negotiation v1 hash.
 
 `Attempts` contains rejected-and-reopened rounds only. Its length equals the
 number of completed pass backtracks. Each
@@ -256,13 +281,16 @@ recorded in [Pass Negotiation v1 research notes](research/pass-negotiation-v1.md
 
 Version 1 deliberately does not provide:
 
-- negotiated selective regeneration;
 - conflict-directed backjumping or clause learning;
 - minimal-change or weighted repair objectives;
 - a proof that the result is closest to the pre-call assignment;
 - compact partial-assignment nogoods;
 - cyclic dependency graphs; or
 - a flattened global domain view across passes.
+
+The selective wrapper now provides an explicit descendant-closed repair
+horizon, but it deliberately does not infer or widen that horizon, negotiate
+clean ancestors, or claim a cell-minimal repair.
 
 These are possible later algorithms, not undocumented interpretations of this
 one. The current runtime path uses repository units and the applicable standard

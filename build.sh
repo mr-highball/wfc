@@ -15,6 +15,7 @@ sequence_test_source="$repository_root/test/wfc_sequence_test.lpr"
 text_test_source="$repository_root/test/wfc_text_test.lpr"
 text_pass_test_source="$repository_root/test/wfc_text_passes_test.lpr"
 negotiation_test_source="$repository_root/test/wfc_negotiation_test.lpr"
+selective_negotiation_test_source="$repository_root/test/wfc_selective_negotiation_test.lpr"
 voxel_test_source="$repository_root/test/wfc_voxel3d_test.lpr"
 building_test_source="$repository_root/test/wfc_building3d_test.lpr"
 trace_reference_test_source="$repository_root/test/wfc_trace_reference_test.lpr"
@@ -30,6 +31,8 @@ music_midi_test_source="$repository_root/test/wfc_music_midi_test.lpr"
 example_source="$repository_root/examples/text/01_SimpleTiledWorld/SimpleTiledWorld.lpr"
 world_example_source="$repository_root/examples/2D/01_MultiPassWorld/MultiPassWorld.lpr"
 settlement_example_source="$repository_root/examples/2D/03_SelectiveSettlement/SelectiveSettlement.lpr"
+negotiated_repair_example_source="$repository_root/examples/2D/04_NegotiatedRepair/NegotiatedRepair.lpr"
+negotiated_repair_example_directory="$repository_root/examples/2D/04_NegotiatedRepair"
 learning_example_source="$repository_root/examples/learning/01_LearnTiles/LearnTiles.lpr"
 corpus_example_source="$repository_root/examples/learning/02_LearnCorpus/LearnCorpus.lpr"
 pattern_example_source="$repository_root/examples/learning/03_LearnPatterns/LearnPatterns.lpr"
@@ -64,6 +67,7 @@ compiler_sequence_test_source=$sequence_test_source
 compiler_text_test_source=$text_test_source
 compiler_text_pass_test_source=$text_pass_test_source
 compiler_negotiation_test_source=$negotiation_test_source
+compiler_selective_negotiation_test_source=$selective_negotiation_test_source
 compiler_voxel_test_source=$voxel_test_source
 compiler_building_test_source=$building_test_source
 compiler_trace_reference_test_source=$trace_reference_test_source
@@ -79,6 +83,8 @@ compiler_music_midi_test_source=$music_midi_test_source
 compiler_example_source=$example_source
 compiler_world_example_source=$world_example_source
 compiler_settlement_example_source=$settlement_example_source
+compiler_negotiated_repair_example_source=$negotiated_repair_example_source
+compiler_negotiated_repair_example_directory=$negotiated_repair_example_directory
 compiler_learning_example_source=$learning_example_source
 compiler_corpus_example_source=$corpus_example_source
 compiler_pattern_example_source=$pattern_example_source
@@ -113,6 +119,7 @@ case "$host_system" in
     compiler_text_test_source=$(cygpath -m "$text_test_source") || exit $?
     compiler_text_pass_test_source=$(cygpath -m "$text_pass_test_source") || exit $?
     compiler_negotiation_test_source=$(cygpath -m "$negotiation_test_source") || exit $?
+    compiler_selective_negotiation_test_source=$(cygpath -m "$selective_negotiation_test_source") || exit $?
     compiler_voxel_test_source=$(cygpath -m "$voxel_test_source") || exit $?
     compiler_building_test_source=$(cygpath -m "$building_test_source") || exit $?
     compiler_trace_reference_test_source=$(cygpath -m "$trace_reference_test_source") || exit $?
@@ -128,6 +135,8 @@ case "$host_system" in
     compiler_example_source=$(cygpath -m "$example_source") || exit $?
     compiler_world_example_source=$(cygpath -m "$world_example_source") || exit $?
     compiler_settlement_example_source=$(cygpath -m "$settlement_example_source") || exit $?
+    compiler_negotiated_repair_example_source=$(cygpath -m "$negotiated_repair_example_source") || exit $?
+    compiler_negotiated_repair_example_directory=$(cygpath -m "$negotiated_repair_example_directory") || exit $?
     compiler_learning_example_source=$(cygpath -m "$learning_example_source") || exit $?
     compiler_corpus_example_source=$(cygpath -m "$corpus_example_source") || exit $?
     compiler_pattern_example_source=$(cygpath -m "$pattern_example_source") || exit $?
@@ -342,6 +351,27 @@ esac
 printf "Running '%s'.\n" "$negotiation_test_executable"
 "$negotiation_test_executable" || exit $?
 
+printf "Building the selective pass-negotiation conformance suite.\n"
+"$compiler" "$@" \
+  -B \
+  -Mdelphi \
+  -Sa \
+  -Cr \
+  -Co \
+  -Ci \
+  "-Fu$compiler_source_directory" \
+  "-FU$compiler_unit_output_directory" \
+  "-FE$compiler_binary_output_directory" \
+  "$compiler_selective_negotiation_test_source" || exit $?
+
+selective_negotiation_test_executable="$binary_output_directory/wfc_selective_negotiation_test"
+case "$host_system" in
+  CYGWIN*|MINGW*|MSYS*) selective_negotiation_test_executable="${selective_negotiation_test_executable}.exe" ;;
+esac
+
+printf "Running '%s'.\n" "$selective_negotiation_test_executable"
+"$selective_negotiation_test_executable" || exit $?
+
 printf "Building the voxel-3D foundation conformance suite.\n"
 "$compiler" "$@" \
   -B \
@@ -538,6 +568,28 @@ printf "Smoke testing '%s' with seed 0.\n" "$settlement_example_executable"
 
 printf "Smoke testing '%s' with its default seed.\n" "$settlement_example_executable"
 "$settlement_example_executable" >/dev/null || exit $?
+
+printf "Building the dependency-free negotiated-repair example.\n"
+"$compiler" "$@" \
+  -B \
+  -Mdelphi \
+  -Sa \
+  -Cr \
+  -Co \
+  -Ci \
+  "-Fu$compiler_source_directory" \
+  "-Fu$compiler_negotiated_repair_example_directory" \
+  "-FU$compiler_unit_output_directory" \
+  "-FE$compiler_binary_output_directory" \
+  "$compiler_negotiated_repair_example_source" || exit $?
+
+negotiated_repair_example_executable="$binary_output_directory/NegotiatedRepair"
+case "$host_system" in
+  CYGWIN*|MINGW*|MSYS*) negotiated_repair_example_executable="${negotiated_repair_example_executable}.exe" ;;
+esac
+
+printf "Smoke testing '%s'.\n" "$negotiated_repair_example_executable"
+"$negotiated_repair_example_executable" >/dev/null || exit $?
 
 printf "Building the portable learned-tiles example.\n"
 "$compiler" "$@" \

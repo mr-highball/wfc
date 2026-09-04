@@ -229,6 +229,8 @@ jobs:
           text_pass_test_bin='build/pas2js/text-pass-test/bin'
           negotiation_test_units='build/pas2js/negotiation-test/units'
           negotiation_test_bin='build/pas2js/negotiation-test/bin'
+          selective_negotiation_test_units='build/pas2js/selective-negotiation-test/units'
+          selective_negotiation_test_bin='build/pas2js/selective-negotiation-test/bin'
           voxel_test_units='build/pas2js/voxel-test/units'
           voxel_test_bin='build/pas2js/voxel-test/bin'
           building_test_units='build/pas2js/building-test/units'
@@ -245,6 +247,8 @@ jobs:
           world_example_bin='build/pas2js/world-example/bin'
           settlement_example_units='build/pas2js/settlement-example/units'
           settlement_example_bin='build/pas2js/settlement-example/bin'
+          repair_example_units='build/pas2js/repair-example/units'
+          repair_example_bin='build/pas2js/repair-example/bin'
           learning_example_units='build/pas2js/learning-example/units'
           learning_example_bin='build/pas2js/learning-example/bin'
           corpus_example_units='build/pas2js/corpus-example/units'
@@ -277,6 +281,7 @@ jobs:
             "$text_test_units" "$text_test_bin" \
             "$text_pass_test_units" "$text_pass_test_bin" \
             "$negotiation_test_units" "$negotiation_test_bin" \
+            "$selective_negotiation_test_units" "$selective_negotiation_test_bin" \
             "$voxel_test_units" "$voxel_test_bin" \
             "$building_test_units" "$building_test_bin" \
             "$trace_test_units" "$trace_test_bin" \
@@ -285,6 +290,7 @@ jobs:
             "$example_units" "$example_bin" \
             "$world_example_units" "$world_example_bin" \
             "$settlement_example_units" "$settlement_example_bin" \
+            "$repair_example_units" "$repair_example_bin" \
             "$learning_example_units" "$learning_example_bin" \
             "$corpus_example_units" "$corpus_example_bin" \
             "$pattern_example_units" "$pattern_example_bin" \
@@ -340,6 +346,12 @@ jobs:
             -FU"$negotiation_test_units" -FE"$negotiation_test_bin" \
             test/wfc_negotiation_test.lpr
           node "$negotiation_test_bin/wfc_negotiation_test.js"
+
+          "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
+            -FU"$selective_negotiation_test_units" \
+            -FE"$selective_negotiation_test_bin" \
+            test/wfc_selective_negotiation_test.lpr
+          node "$selective_negotiation_test_bin/wfc_selective_negotiation_test.js"
 
           "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
             -FU"$voxel_test_units" -FE"$voxel_test_bin" \
@@ -404,6 +416,12 @@ jobs:
             examples/2D/03_SelectiveSettlement/SelectiveSettlement.lpr
           node "$settlement_example_bin/SelectiveSettlement.js" 0 >/dev/null
           node "$settlement_example_bin/SelectiveSettlement.js" >/dev/null
+
+          "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
+            -Fuexamples/2D/04_NegotiatedRepair \
+            -FU"$repair_example_units" -FE"$repair_example_bin" \
+            examples/2D/04_NegotiatedRepair/NegotiatedRepairNode.lpr
+          node "$repair_example_bin/NegotiatedRepairNode.js" >/dev/null
 
           "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
             -FU"$learning_example_units" -FE"$learning_example_bin" \

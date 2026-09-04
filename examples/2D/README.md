@@ -19,6 +19,14 @@ FPC/pas2js fixture changes one hydrology cell, regenerates only hydrology and
 its transitive dependents, verifies untouched layers byte-for-byte, proves
 failed edits roll back, and restores the exact baseline.
 
+[`04_NegotiatedRepair`](04_NegotiatedRepair/README.md) demonstrates bounded
+backward repair inside a caller-chosen descendant horizon. A housing-only
+horizon cannot change its reused roads provider and fails atomically; a
+roads-root horizon reopens roads, housing, and decor, excludes one exact roads
+assignment, and succeeds without changing terrain, climate, or either reused
+provider's random stream. Native FPC and pas2js/Node replay identical output
+and versioned transcript hashes.
+
 The older [text-rendered tiled world](../text/01_SimpleTiledWorld/SimpleTiledWorld.lpr)
 remains a compact single-pass legacy-`Run` example.
 
@@ -27,6 +35,8 @@ checks in `wfc_world2d_validate`. The settlement specialization and its
 independent checker live in `wfc_world2d_settlement` and
 `wfc_world2d_settlement_validate`. The shared causal-trace console inspector
 now exposes complete pass events and backward provider links; an interactive
-2D domain/decision stepper remains roadmap work. See the [2D documentation](../../docs/world2d.md),
+2D domain/decision stepper remains roadmap work. See the
+[2D documentation](../../docs/world2d.md),
+[selective-negotiation contract](../../docs/selective-negotiation.md),
 [causal-trace contract](../../docs/traces.md), [roadmap](../../ROADMAP.md), and
 [examples index](../README.md).

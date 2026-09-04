@@ -4,12 +4,13 @@ The dependency-free build covers the core, causal-trace kernel/public/utility
 contracts, specialized 2D and settlement, radius-one model-learning,
 overlapping-pattern, sequence, Unicode-scalar text completion, three-pass text
 composition, exact music-score, music projection, Standard MIDI File,
-score-export, and voxel-3D units and their conformance suites, plus
+score-export, full and selective pass negotiation, and voxel-3D units and
+their conformance suites, plus
 the checked voxel pass bridge and multi-pass Building 3D owner/validator,
 pass-aware view, fixed-integer isometric projector, and canonical SVG encoder.
 It also runs seeded smoke checks of the portable console demos, including the
-causal-trace inspector, anchored text infill, and three-pass text composition,
-and writes a checked
+causal-trace inspector, bounded pass negotiation, negotiated descendant repair,
+anchored text infill, and three-pass text composition, and writes a checked
 seed-zero Building SVG artifact.
 It does not initialize the optional legacy music submodule or build the
 unfinished Castle Game Engine viewer. The 2D world, three-pass text workbench,
@@ -69,7 +70,8 @@ From the repository root, use the entry point for your shell:
 Both scripts rebuild with assertions and range, overflow, and I/O checks, run
 `wfc_test`, `wfc_world2d_test`, `wfc_world2d_settlement_test`,
 `wfc_learn_test`, `wfc_pattern2d_test`, `wfc_sequence_test`,
-`wfc_text_test`, `wfc_text_passes_test`, `wfc_voxel3d_test`,
+`wfc_text_test`, `wfc_text_passes_test`, `wfc_negotiation_test`,
+`wfc_selective_negotiation_test`, `wfc_voxel3d_test`,
 `wfc_voxel3d_isometric_test`,
 `wfc_voxel3d_svg_test`, `wfc_building3d_test`,
 `wfc_building3d_view_test`, `wfc_midi_smf_test`,
@@ -77,11 +79,12 @@ Both scripts rebuild with assertions and range, overflow, and I/O checks, run
 `wfc_music_graph_test`, `wfc_music_midi_test`, `wfc_trace_reference_test`,
 `wfc_trace_test`, and `wfc_trace_utility_test`, then compile and smoke-test the
 portable console examples with seed `0`, including the bounded/wrapped spatial
-dependency self-check, causal-trace inspector, anchored text completion,
-three-pass text composition, and depth-three Building 3D pipeline; the
-multi-pass and selective-settlement
-worlds also run with their default seeds. Finally, the native `Building3DSvg`
-host generates and validates `build/native/bin/building3d-seed-zero.svg`.
+dependency self-check, causal-trace inspector, bounded pass-negotiation proof,
+negotiated descendant repair, anchored text completion, three-pass text
+composition, and depth-three Building 3D pipeline; the multi-pass and
+selective-settlement worlds also run with their default seeds. Finally, the
+native `Building3DSvg` host generates and validates
+`build/native/bin/building3d-seed-zero.svg`.
 A compiler error, failed check,
 or example failure produces a nonzero exit code. Compiler units and binaries
 are written beneath `build/native/`; running the gate does not modify tracked
@@ -200,6 +203,20 @@ pas2js -B -Tnodejs -Mdelphi -Fusrc \
   test/wfc_text_passes_test.lpr
 node build/pas2js/text-passes/wfc_text_passes_test.js
 
+mkdir -p build/pas2js/negotiation-units build/pas2js/negotiation
+pas2js -B -Tnodejs -Mdelphi -Fusrc \
+  -FUbuild/pas2js/negotiation-units -FEbuild/pas2js/negotiation \
+  test/wfc_negotiation_test.lpr
+node build/pas2js/negotiation/wfc_negotiation_test.js
+
+mkdir -p build/pas2js/selective-negotiation-units \
+  build/pas2js/selective-negotiation
+pas2js -B -Tnodejs -Mdelphi -Fusrc \
+  -FUbuild/pas2js/selective-negotiation-units \
+  -FEbuild/pas2js/selective-negotiation \
+  test/wfc_selective_negotiation_test.lpr
+node build/pas2js/selective-negotiation/wfc_selective_negotiation_test.js
+
 mkdir -p build/pas2js/voxel-units build/pas2js/voxel
 pas2js -B -Tnodejs -Mdelphi -Fusrc \
   -FUbuild/pas2js/voxel-units -FEbuild/pas2js/voxel \
@@ -254,6 +271,19 @@ pas2js -B -Tnodejs -Mdelphi -Fusrc \
   -FEbuild/pas2js/settlement-example \
   examples/2D/03_SelectiveSettlement/SelectiveSettlement.lpr
 node build/pas2js/settlement-example/SelectiveSettlement.js 0
+```
+
+The negotiated descendant-repair host shares one self-checking unit between
+native FPC and Node:
+
+```bash
+mkdir -p build/pas2js/repair-example-units build/pas2js/repair-example
+pas2js -B -Tnodejs -Mdelphi -Fusrc \
+  -Fuexamples/2D/04_NegotiatedRepair \
+  -FUbuild/pas2js/repair-example-units \
+  -FEbuild/pas2js/repair-example \
+  examples/2D/04_NegotiatedRepair/NegotiatedRepairNode.lpr
+node build/pas2js/repair-example/NegotiatedRepairNode.js
 ```
 
 The learned-tiles training and generation host is portable in the same way:
@@ -378,6 +408,19 @@ stream, per-pass slices, portable hash, and a backward provider-pass cause
 chain. Native and Node output is identical; no inspection library beyond the
 repository units and standard RTL is required. The full schema and limits are
 documented in [`docs/traces.md`](traces.md).
+
+The bounded full-pipeline negotiation proof uses the same pattern:
+
+```bash
+mkdir -p build/pas2js/negotiation-example-units \
+  build/pas2js/negotiation-example
+pas2js -B -Tnodejs -Mdelphi -Fusrc \
+  -Fuexamples/passes/03_PassNegotiation \
+  -FUbuild/pas2js/negotiation-example-units \
+  -FEbuild/pas2js/negotiation-example \
+  examples/passes/03_PassNegotiation/PassNegotiationNode.lpr
+node build/pas2js/negotiation-example/PassNegotiationNode.js
+```
 
 The depth-three Building 3D host also uses one shared Pascal implementation
 behind thin native and Node entry points:
@@ -509,10 +552,11 @@ host and full graphical contract are documented in
 The hosted pas2js gate uses exact official upstream pas2js and FPC-source
 revisions, verifies both source-archive SHA-256 digests, and caches the resulting
 3.3.1 toolchain. It runs every portable conformance source, including the voxel
-foundation, four music suites, and three causal-trace suites; the tiled-world,
-learned-tiles, learned-corpus, overlapping-pattern, sequence,
-anchored-completion, three-pass-text, pass-composed-music, spatial-dependency,
-and causal-trace-inspector seed-zero smoke tests;
+foundation, four music suites, three causal-trace suites, and the full and
+selective pass-negotiation suites; the tiled-world, learned-tiles,
+learned-corpus, overlapping-pattern, sequence, anchored-completion,
+three-pass-text, pass-composed-music, spatial-dependency,
+causal-trace-inspector, pass-negotiation, and negotiated-repair smoke tests;
 and the multi-pass and selective-settlement worlds with both seed zero and
 their default seeds under Node.js 22.23.2. It then builds all three browser
 targets,
@@ -527,8 +571,9 @@ The hosted workflow runs the checked native gate with FPC 3.2.2 on Linux,
 macOS, and Windows. The Linux lane also builds the FPM and Lazarus packages,
 runs the core Lazarus project, and verifies that generation leaves the checkout
 clean. A separate Linux lane runs the complete core, 2D, voxel-3D, Building
-3D, learning, sequence, music, pass-composition, and causal-trace pas2js/Node.js
-gate, plus all three real browser self-tests in headless Chrome, while a canary runs
+3D, learning, sequence, music, pass-composition, causal-trace, full-negotiation,
+and selective-negotiation pas2js/Node.js gate, including the negotiated-repair
+host, plus all three real browser self-tests in headless Chrome. A canary runs
 against the current official FPC development image and records the image digest
 and compiler revision in the job log. Submodules are deliberately disabled for
 every gate.

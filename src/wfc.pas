@@ -82,6 +82,11 @@ const
   //The ordinary one-way pipeline remains independently versioned above.
   WFC_PASS_NEGOTIATION_ALGORITHM_VERSION = 1;
   WFC_PASS_NEGOTIATION_HASH_VERSION = 1;
+  //Identifies the explicit descendant-closure scope layered around the
+  //unchanged chronological negotiation protocol. Full-pipeline negotiation
+  //keeps its own versions and portable goldens above.
+  WFC_SELECTIVE_NEGOTIATION_ALGORITHM_VERSION = 1;
+  WFC_SELECTIVE_NEGOTIATION_HASH_VERSION = 1;
 
 type
 
@@ -515,6 +520,18 @@ type
     TranscriptHash: TGraphTraceSignature;
   end;
 
+  //Selective negotiation keeps its scope identity separate from the nested
+  //Pass Negotiation v1 transcript. Requested roots are canonical stable pass
+  //indices; active passes are their exact descendant closure in execution
+  //order. Passes absent from ActivePassIndices remain immutable inputs.
+  TGraphSelectiveNegotiationReport = record
+    ScopeAlgorithmVersion: Integer;
+    RequestedRootIndices: TGraphPassIndices;
+    ActivePassIndices: TGraphPassIndices;
+    Search: TGraphNegotiationReport;
+    TranscriptHash: TGraphTraceSignature;
+  end;
+
   TForEachPassCallback = procedure(const AGraph : TGraph;
     const APass : String; const APassIndex : Integer);
 
@@ -674,6 +691,20 @@ type
     procedure RemoveDependencyRole(const APassIndex: Integer;
       const ARole: TPassDependencyRole);
     procedure BuildPassExecutionOrder(out AOrder: TGraphPassIndices);
+    procedure BuildDescendantPassSelection(
+      const APasses: TGraphPassLabels; const AOperation: String;
+      out ADirty: TPassSelection); overload;
+    procedure BuildDescendantPassSelection(
+      const APasses: TGraphPassLabels; const AOperation: String;
+      out ARequestedRootIndices, AActivePassIndices: TGraphPassIndices;
+      out ADirty: TPassSelection); overload;
+    procedure ValidateNegotiationOptions(
+      const AOptions: TGraphNegotiationOptions;
+      const AOperation: String);
+    function TryNegotiateInternal(
+      const AOptions: TGraphNegotiationOptions;
+      const ADirty: TPassSelection; const AOperation: String;
+      out AReport: TGraphNegotiationReport): Boolean;
     function TrySolveInternal(const AOptions: TGraphSolveOptions;
       const ADirty: TPassSelection;
       out AReport: TGraphSolveReport): Boolean;
@@ -946,6 +977,19 @@ type
       out AReport: TGraphSolveReport): Boolean; overload;
 
     (*
+      negotiates only within the exact descendant closure of the named roots.
+      The roots are the earliest passes the caller authorizes to change; no
+      ancestor is added implicitly, and every pass outside the closure is
+      reused as an immutable input with its random stream preserved
+    *)
+    function TryRegenerateNegotiatedFrom(const APass: String;
+      const AOptions: TGraphNegotiationOptions;
+      out AReport: TGraphSelectiveNegotiationReport): Boolean; overload;
+    function TryRegenerateNegotiatedFrom(const APasses: TGraphPassLabels;
+      const AOptions: TGraphNegotiationOptions;
+      out AReport: TGraphSelectiveNegotiationReport): Boolean; overload;
+
+    (*
       once all values and rules have been apply, this will
       execute the rules against each graph entry
         @Result - return "this" graph instance
@@ -1000,6 +1044,10 @@ var
   function CalculateGraphNegotiationTranscriptHash(
     const AOptions: TGraphNegotiationOptions;
     const AReport: TGraphNegotiationReport): TGraphTraceSignature;
+  function CalculateGraphSelectiveNegotiationTranscriptHash(
+    const AOptions: TGraphNegotiationOptions;
+    const AReport: TGraphSelectiveNegotiationReport):
+    TGraphTraceSignature;
 
 const
   AllDirections : TGraphDirections = [gdNorth, gdEast, gdSouth, gdWest, gdUp, gdDown];
@@ -1462,6 +1510,37 @@ begin
   //malformed report whose FinalReport is not the final ordered attempt.
   LSolve := AReport.FinalReport;
   MixSolveReport(LSolve);
+end;
+
+function CalculateGraphSelectiveNegotiationTranscriptHash(
+  const AOptions: TGraphNegotiationOptions;
+  const AReport: TGraphSelectiveNegotiationReport):
+  TGraphTraceSignature;
+var
+  I: Integer;
+begin
+  Result := Cardinal(2166136261);
+  GraphTraceHashText(Result, 'wfc-selective-pass-negotiation');
+  GraphTraceHashCardinal(Result,
+    WFC_SELECTIVE_NEGOTIATION_ALGORITHM_VERSION);
+  GraphTraceHashCardinal(Result,
+    WFC_SELECTIVE_NEGOTIATION_HASH_VERSION);
+  GraphTraceHashInteger(Result, AReport.ScopeAlgorithmVersion);
+
+  //Hash the canonical scope independently of caller label order and duplicate
+  //roots. The nested calculator covers every attempt, exact exclusion, trace,
+  //status, budget, and terminal ordinary solve without trusting its stored
+  //derived TranscriptHash field.
+  GraphTraceHashCardinal(Result,
+    Cardinal(Length(AReport.RequestedRootIndices)));
+  for I := 0 to High(AReport.RequestedRootIndices) do
+    GraphTraceHashInteger(Result, AReport.RequestedRootIndices[I]);
+  GraphTraceHashCardinal(Result,
+    Cardinal(Length(AReport.ActivePassIndices)));
+  for I := 0 to High(AReport.ActivePassIndices) do
+    GraphTraceHashInteger(Result, AReport.ActivePassIndices[I]);
+  GraphTraceHashCardinal(Result,
+    CalculateGraphNegotiationTranscriptHash(AOptions, AReport.Search));
 end;
 
 { TGraphRule }
@@ -3099,6 +3178,101 @@ begin
   end;
 end;
 
+procedure TGraph.BuildDescendantPassSelection(
+  const APasses: TGraphPassLabels; const AOperation: String;
+  out ADirty: TPassSelection);
+var
+  I, J: Integer;
+  LChanged: Boolean;
+begin
+  SetLength(ADirty, FPasses.Count);
+  //SetLength preserves elements when a managed-array variable is reused.
+  //Scope construction must depend only on this call's roots.
+  for I := 0 to Pred(FPasses.Count) do
+    ADirty[I] := 0;
+
+  //Resolve every public label before synchronizing derived dependency roles.
+  //A bad later label therefore cannot leave even derived model state changed.
+  for I := 0 to High(APasses) do
+    ADirty[PassIndexForLabel(APasses[I], AOperation)] := 1;
+
+  SynchronizePreviousValueDependencies;
+  //The active scope is the least set containing the canonical roots and every
+  //transitive consumer. This is exactly ordinary selective-regeneration scope,
+  //so changing an authorized provider cannot leave a stale clean descendant.
+  repeat
+    LChanged := False;
+    for I := 0 to Pred(FPasses.Count) do
+      if ADirty[I] = 0 then
+        for J := 0 to High(FPasses[I].FPassDependencies) do
+          if ADirty[FPasses[I].FPassDependencies[J].PassIndex] <> 0 then
+          begin
+            ADirty[I] := 1;
+            LChanged := True;
+            Break;
+          end;
+  until not LChanged;
+end;
+
+procedure TGraph.BuildDescendantPassSelection(
+  const APasses: TGraphPassLabels; const AOperation: String;
+  out ARequestedRootIndices, AActivePassIndices: TGraphPassIndices;
+  out ADirty: TPassSelection);
+var
+  I, LActiveCount, LRootCount: Integer;
+  LExecutionOrder: TGraphPassIndices;
+  LRoots: TPassSelection;
+begin
+  BuildDescendantPassSelection(APasses, AOperation, ADirty);
+
+  SetLength(LRoots, FPasses.Count);
+  for I := 0 to Pred(FPasses.Count) do
+    LRoots[I] := 0;
+  for I := 0 to High(APasses) do
+    LRoots[PassIndexForLabel(APasses[I], AOperation)] := 1;
+
+  LRootCount := 0;
+  for I := 0 to Pred(FPasses.Count) do
+    if LRoots[I] <> 0 then
+      Inc(LRootCount);
+  SetLength(ARequestedRootIndices, LRootCount);
+  LRootCount := 0;
+  for I := 0 to Pred(FPasses.Count) do
+    if LRoots[I] <> 0 then
+    begin
+      ARequestedRootIndices[LRootCount] := I;
+      Inc(LRootCount);
+    end;
+
+  BuildPassExecutionOrder(LExecutionOrder);
+  LActiveCount := 0;
+  for I := 0 to High(LExecutionOrder) do
+    if ADirty[LExecutionOrder[I]] <> 0 then
+      Inc(LActiveCount);
+  SetLength(AActivePassIndices, LActiveCount);
+  LActiveCount := 0;
+  for I := 0 to High(LExecutionOrder) do
+    if ADirty[LExecutionOrder[I]] <> 0 then
+    begin
+      AActivePassIndices[LActiveCount] := LExecutionOrder[I];
+      Inc(LActiveCount);
+    end;
+end;
+
+procedure TGraph.ValidateNegotiationOptions(
+  const AOptions: TGraphNegotiationOptions;
+  const AOperation: String);
+begin
+  if AOptions.SolveOptions.MaxBacktracks < 0 then
+    raise ERangeError.CreateFmt(
+      AOperation + '::maximum solver backtracks cannot be negative [%d]',
+      [AOptions.SolveOptions.MaxBacktracks]);
+  if AOptions.MaxPassBacktracks < 0 then
+    raise ERangeError.CreateFmt(
+      AOperation + '::maximum pass backtracks cannot be negative [%d]',
+      [AOptions.MaxPassBacktracks]);
+end;
+
 function TGraph.GetEntry(const X, Y, Z : TGraphCoordinate): TGraphEntry;
 var
   LGraph: TGraph;
@@ -4595,11 +4769,30 @@ function TGraph.TrySolveNegotiated(
   const AOptions: TGraphNegotiationOptions;
   out AReport: TGraphNegotiationReport): Boolean;
 var
+  I: Integer;
+  LDirty: TPassSelection;
+begin
+  if Assigned(FPassRoot) then
+    Exit(FPassRoot.TrySolveNegotiated(AOptions, AReport));
+  ValidateNegotiationOptions(AOptions, 'TrySolveNegotiated');
+  EnsureInitialPass;
+
+  SetLength(LDirty, FPasses.Count);
+  for I := 0 to High(LDirty) do
+    LDirty[I] := 1;
+  Result := TryNegotiateInternal(AOptions, LDirty,
+    'TrySolveNegotiated', AReport);
+end;
+
+function TGraph.TryNegotiateInternal(
+  const AOptions: TGraphNegotiationOptions;
+  const ADirty: TPassSelection; const AOperation: String;
+  out AReport: TGraphNegotiationReport): Boolean;
+var
   I, J: Integer;
   LAssignments: TValueIndexMatrix;
   LAttempt: TGraphNegotiationAttemptReport;
   LCompletedChoices: TPassSelection;
-  LDirty: TPassSelection;
   LDuplicate: Boolean;
   LExclusions: TPassAssignmentExclusions;
   LFullExecutionPlan: TGraphPassIndices;
@@ -4635,24 +4828,15 @@ var
     LCount := Length(AReport.Attempts);
     if LCount = High(Integer) then
       raise ERangeError.Create(
-        'TrySolveNegotiated::attempt history is too large');
+        AOperation + '::attempt history is too large');
     SetLength(AReport.Attempts, Succ(LCount));
     AReport.Attempts[LCount] := LAttempt;
   end;
 
 begin
-  if Assigned(FPassRoot) then
-    Exit(FPassRoot.TrySolveNegotiated(AOptions, AReport));
-  if AOptions.SolveOptions.MaxBacktracks < 0 then
-    raise ERangeError.CreateFmt(
-      'TrySolveNegotiated::maximum solver backtracks cannot be negative [%d]',
-      [AOptions.SolveOptions.MaxBacktracks]);
-  if AOptions.MaxPassBacktracks < 0 then
-    raise ERangeError.CreateFmt(
-      'TrySolveNegotiated::maximum pass backtracks cannot be negative [%d]',
-      [AOptions.MaxPassBacktracks]);
-
-  EnsureInitialPass;
+  if Length(ADirty) <> FPasses.Count then
+    raise EInvalidOperation.Create(
+      AOperation + '::pass selection does not match the pipeline');
   AReport := Default(TGraphNegotiationReport);
   AReport.Status := gnsContradiction;
   AReport.Seed := Seed;
@@ -4661,15 +4845,12 @@ begin
   AReport.PassBacktracks := 0;
   AReport.Attempts := nil;
 
-  SetLength(LDirty, FPasses.Count);
   SetLength(LExclusions, FPasses.Count);
-  for I := 0 to High(LDirty) do
-    LDirty[I] := 1;
   BuildPassExecutionOrder(LFullExecutionPlan);
 
   while True do
   begin
-    Result := TrySolveAttempt(AOptions.SolveOptions, LDirty,
+    Result := TrySolveAttempt(AOptions.SolveOptions, ADirty,
       LExclusions, LCompletedChoices, LAssignments,
       LSolveReport);
     AReport.FinalReport := LSolveReport;
@@ -4734,14 +4915,14 @@ begin
       end;
     if LDuplicate then
       raise EInvalidOperation.CreateFmt(
-        'TrySolveNegotiated::pass %d repeated an excluded assignment',
+        AOperation + '::pass %d repeated an excluded assignment',
         [LTargetPassIndex]);
 
     AppendRejectedAttempt;
     I := Length(LExclusions[LTargetPassIndex]);
     if I = High(Integer) then
       raise ERangeError.Create(
-        'TrySolveNegotiated::assignment exclusions are too large');
+        AOperation + '::assignment exclusions are too large');
     SetLength(LExclusions[LTargetPassIndex], Succ(I));
     LExclusions[LTargetPassIndex][I] := Copy(
       LAssignments[LTargetPassIndex], 0,
@@ -4769,8 +4950,6 @@ function TGraph.TryRegenerateFrom(const APasses: TGraphPassLabels;
   const AOptions: TGraphSolveOptions;
   out AReport: TGraphSolveReport): Boolean;
 var
-  I, J: Integer;
-  LChanged: Boolean;
   LDirty: TPassSelection;
 begin
   if Assigned(FPassRoot) then
@@ -4783,27 +4962,56 @@ begin
     raise EArgumentException.Create(
       'TryRegenerateFrom::at least one pass is required');
   EnsureInitialPass;
-  SetLength(LDirty, FPasses.Count);
-  for I := 0 to High(APasses) do
-    LDirty[PassIndexForLabel(APasses[I], 'TryRegenerateFrom')] := 1;
-  SynchronizePreviousValueDependencies;
-
-  //A changed provider conservatively invalidates every transitive consumer.
-  //The dependency list is small, stable, and index-sorted, so a fixed-point
-  //scan is both portable and deterministic.
-  repeat
-    LChanged := False;
-    for I := 0 to Pred(FPasses.Count) do
-      if LDirty[I] = 0 then
-        for J := 0 to High(FPasses[I].FPassDependencies) do
-          if LDirty[FPasses[I].FPassDependencies[J].PassIndex] <> 0 then
-          begin
-            LDirty[I] := 1;
-            LChanged := True;
-            Break;
-          end;
-  until not LChanged;
+  BuildDescendantPassSelection(APasses, 'TryRegenerateFrom', LDirty);
   Result := TrySolveInternal(AOptions, LDirty, AReport);
+end;
+
+function TGraph.TryRegenerateNegotiatedFrom(const APass: String;
+  const AOptions: TGraphNegotiationOptions;
+  out AReport: TGraphSelectiveNegotiationReport): Boolean;
+var
+  LPasses: TGraphPassLabels;
+begin
+  SetLength(LPasses, 1);
+  LPasses[0] := APass;
+  Result := TryRegenerateNegotiatedFrom(LPasses, AOptions, AReport);
+end;
+
+function TGraph.TryRegenerateNegotiatedFrom(
+  const APasses: TGraphPassLabels;
+  const AOptions: TGraphNegotiationOptions;
+  out AReport: TGraphSelectiveNegotiationReport): Boolean;
+var
+  LActivePassIndices: TGraphPassIndices;
+  LDirty: TPassSelection;
+  LRequestedRootIndices: TGraphPassIndices;
+begin
+  if Assigned(FPassRoot) then
+    Exit(FPassRoot.TryRegenerateNegotiatedFrom(
+      APasses, AOptions, AReport));
+  ValidateNegotiationOptions(AOptions,
+    'TryRegenerateNegotiatedFrom');
+  if Length(APasses) = 0 then
+    raise EArgumentException.Create(
+      'TryRegenerateNegotiatedFrom::at least one pass is required');
+  EnsureInitialPass;
+
+  //Resolve and close the complete scope before any solver or random state can
+  //change. Duplicate and reordered labels collapse to stable index order.
+  BuildDescendantPassSelection(APasses,
+    'TryRegenerateNegotiatedFrom', LRequestedRootIndices,
+    LActivePassIndices, LDirty);
+
+  AReport := Default(TGraphSelectiveNegotiationReport);
+  AReport.ScopeAlgorithmVersion :=
+    WFC_SELECTIVE_NEGOTIATION_ALGORITHM_VERSION;
+  AReport.RequestedRootIndices := LRequestedRootIndices;
+  AReport.ActivePassIndices := LActivePassIndices;
+  Result := TryNegotiateInternal(AOptions, LDirty,
+    'TryRegenerateNegotiatedFrom', AReport.Search);
+  AReport.TranscriptHash :=
+    CalculateGraphSelectiveNegotiationTranscriptHash(
+      AOptions, AReport);
 end;
 
 function TGraph.TrySolveInternal(const AOptions: TGraphSolveOptions;

@@ -17,6 +17,9 @@ as immutable inputs.
 ordinary pipeline attempts. It can chronologically reopen completed pass
 assignments after a downstream contradiction without changing `TrySolve` or
 `TryRegenerateFrom`. See [bounded pass negotiation](pass-negotiation.md).
+`TGraph.TryRegenerateNegotiatedFrom` restricts that same search to an explicit
+descendant-closed repair horizon while preserving every clean layer and random
+stream; see [selective pass negotiation](selective-negotiation.md).
 
 ## basic use
 
@@ -100,6 +103,13 @@ reopen the provider's choices.
 whole-assignment chronological search. Every rejected round remains atomic and
 only the final successful round commits. It does not add cyclic edges or
 reinterpret an ordinary solve; see [the negotiation contract](pass-negotiation.md).
+
+`TryRegenerateNegotiatedFrom` stages ordinary selective rounds instead. Its
+canonical requested roots and transitive descendants are the complete active
+set. Completed mutable passes outside that set cannot be reopened, even when a
+failure names one as a dependency provider. A successful call commits only the
+active closure once; clean entries, ownership, and random streams remain
+unchanged.
 
 Entry setters are still used during commit so derived entry behavior remains
 available. Each hook observes the pass currently being committed. If a setter
@@ -317,6 +327,13 @@ and `gnsSolved` means the final complete round committed. Rejected rounds live
 in `Attempts`; the sole terminal round lives in `FinalReport`. See
 [statuses and reports](pass-negotiation.md#statuses-and-reports).
 
+Selective negotiation nests that report in
+`TGraphSelectiveNegotiationReport.Search`. The wrapper additionally records
+canonical requested-root indices, the active topological closure, a separate
+scope algorithm version, and an outer transcript hash. With a zero pass budget,
+`Search.FinalReport` retains exact ordinary `TryRegenerateFrom` parity for the
+same roots, solve options, and initial graph state.
+
 ## causal traces
 
 `TGraphSolveOptions.CaptureTrace` enables a deterministic chronological record
@@ -392,8 +409,11 @@ finite any-of-neighborhood clauses, pass modes, and selective regeneration.
 Causal Trace v1 adds stable native/pas2js hashes and public inspection and
 validation helpers. Pass Negotiation v1 adds bounded full-pipeline
 chronological search over exact completed pass assignments with a separately
-versioned transcript. Selective negotiation, conflict-directed repair, restart
-policy, timing data, interactive stepping, bounded or streaming trace capture,
-soft constraints, implicit radius/count/distance expressions, cyclic repair,
-richer failed-clause evidence, and minimal-unsatisfiable-core analysis remain
-roadmap work rather than hidden or partially specified behavior.
+versioned transcript. Selective Negotiation v1 adds a separately versioned,
+explicit descendant-closed repair horizon around that same search while
+keeping clean passes immutable. Automatic horizon expansion,
+conflict-directed or cell-minimal repair, restart policy, timing data,
+interactive stepping, bounded or streaming trace capture, soft constraints,
+implicit radius/count/distance expressions, cyclic repair, richer failed-clause
+evidence, and minimal-unsatisfiable-core analysis remain roadmap work rather
+than hidden or partially specified behavior.

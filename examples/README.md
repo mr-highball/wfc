@@ -12,6 +12,7 @@ the [roadmap](../ROADMAP.md).
 | Multi-pass 2D world | `2D/01_MultiPassWorld/MultiPassWorld.lpr` | Native FPC, pas2js/Node | Uses the reusable 2D units, solves terrain → biome → foliage atomically, independently validates every cell/relation, and prints matching portable signatures without external dependencies. |
 | Interactive browser world | `2D/02_BrowserWorld/BrowserWorld.lpr` | pas2js/browser | Runs the same model and validator in a responsive three-layer canvas UI with seeds, wrapping, cell locks, and an exact headless-browser fixture. |
 | Selective settlement | `2D/03_SelectiveSettlement/SelectiveSettlement.lpr` | Native FPC, pas2js/Node | Solves a six-layer dependency DAG, edits hydrology, regenerates only its dependent closure, independently validates the result, proves rollback and exact recovery, and uses no external dependency. |
+| Negotiated descendant repair | `2D/04_NegotiatedRepair/NegotiatedRepair.lpr` and `NegotiatedRepairNode.lpr` | Native FPC, pas2js/Node | Contrasts a too-narrow housing repair horizon with a successful roads-root horizon, excludes one exact roads assignment, verifies immutable provider values and random streams, and replays separately versioned selective and nested transcripts using only repository units and the standard RTL. |
 | Learned tiles | `learning/01_LearnTiles/LearnTiles.lpr` | Native FPC, pas2js/Node | Learns weighted cardinal constraints from a tokenized sample, serializes the immutable model canonically, generates a seeded grid, and independently validates every emitted adjacency without external dependencies. |
 | Learned corpus | `learning/02_LearnCorpus/LearnCorpus.lpr` | Native FPC, pas2js/Node | Learns one directed model from two differently sized samples, proves their local wraps and absent cross-sample seams, round-trips canonical `wfcm=2`, and independently validates generated orientation. |
 | Overlapping patterns | `learning/03_LearnPatterns/LearnPatterns.lpr` | Native FPC, pas2js/Node | Learns weighted `2x2` structure from heterogeneous grids with D4 augmentation, round-trips strict `wfcp=1`, solves private latent patterns, independently validates every overlap and projected token contribution, and prints a portable signature without external dependencies. |
@@ -87,6 +88,28 @@ node build/examples/settlement/pas2js/bin/SelectiveSettlement.js 0
 See the [selective-settlement guide](2D/03_SelectiveSettlement/README.md) and
 the [pass-DAG contract](../docs/pass-dags.md) for its dependency shape,
 constraints, transactional edit story, and replay identity.
+
+The negotiated-repair example applies bounded pass negotiation to an explicit
+descendant horizon. Its native and Node hosts share one self-checking Pascal
+unit:
+
+```text
+fpc -B -Mdelphi -Sa -Cr -Co -Ci -Fusrc -Fuexamples/2D/04_NegotiatedRepair -FUbuild/examples/negotiated-repair/native/units -FEbuild/examples/negotiated-repair/native/bin examples/2D/04_NegotiatedRepair/NegotiatedRepair.lpr
+build/examples/negotiated-repair/native/bin/NegotiatedRepair
+```
+
+```text
+pas2js -B -Tnodejs -Mdelphi -Fusrc -Fuexamples/2D/04_NegotiatedRepair -FUbuild/examples/negotiated-repair/pas2js/units -FEbuild/examples/negotiated-repair/pas2js/bin examples/2D/04_NegotiatedRepair/NegotiatedRepairNode.lpr
+node build/examples/negotiated-repair/pas2js/bin/NegotiatedRepairNode.js
+```
+
+Both hosts print the same seed-zero proof: the housing-root horizon fails with
+hash `7A595E38`; the roads-root repair has nested negotiation hash `80926222`
+and selective transcript hash `E29050A0`; the full-pipeline comparison has
+transcript `9DB789E4`. See the
+[negotiated-repair guide](2D/04_NegotiatedRepair/README.md) and
+[Selective Negotiation v1 contract](../docs/selective-negotiation.md) for the
+scope equation, immutable-provider boundary, complete output, and limitations.
 
 The spatial-dependency example is the focused Pipeline v2 proof. Native FPC
 and pas2js/Node use separate thin hosts over the same Pascal unit:

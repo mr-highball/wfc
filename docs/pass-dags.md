@@ -261,11 +261,14 @@ unchanged. Executed streams rewind from their stable creation-index-derived
 seed, so unrelated branch insertion and unrelated regeneration do not perturb
 them.
 
-Version 1 deliberately has no negotiated selective-regeneration overload.
-Allowing a leaf request to reopen an immutable provider would change the dirty
-closure and skipped-stream contract above. Such an API needs an explicit
-upstream horizon and its own replay semantics rather than silently widening
-`TryRegenerateFrom`.
+`TryRegenerateNegotiatedFrom` now applies Pass Negotiation v1 inside this same
+descendant closure under separately versioned scope and transcript contracts.
+It does not reinterpret `TryRegenerateFrom` and does not walk upstream. A leaf
+request cannot reopen an immutable provider; the caller must name that
+provider, or another sufficiently early pass, as a root to authorize the wider
+closure. Requested roots canonicalize to unique ascending stable indices, and
+the active closure is reported in stable full-pipeline topological order. See
+[selective pass negotiation](selective-negotiation.md).
 
 ## reports and inspection
 
@@ -289,6 +292,12 @@ selected pass and copied exact assignment; the sole terminal ordinary report
 is `FinalReport`. Each round therefore retains an ordinary topological
 `ExecutionOrder` rather than pretending that repeated rounds form one pass
 plan. See [negotiation statuses and reports](pass-negotiation.md#statuses-and-reports).
+
+The selective wrapper records canonical `RequestedRootIndices` and
+`ActivePassIndices`, then nests those same round reports in `Search`. Choice
+frames are restricted to completed mutable defined passes in the active
+execution order. Passes outside the closure remain reused immutable inputs and
+cannot consume pass budget.
 
 Named constraint failures use `gckPassDependency` and report the stable source
 index through `DependencyPassIndex`. Historical `RequirePrevious` failures
@@ -322,13 +331,20 @@ Exact dependency-pipeline replay requires:
   accepted-value order;
 - graph shape, wrapping, locks, values, rules, weights, and callbacks;
 - the pipeline seed and random/solver algorithm versions; and
-- for selective runs, the ordered requested root labels.
+- for ordinary selective runs, the requested root labels; or
+- for selective negotiation, both selective versions, the canonical requested
+  root indices, and the active topological closure.
 
 Negotiated replay additionally requires both pass-negotiation versions, both
 budgets, trace-capture setting, chronological frame-selection and
 later-exclusion-clearing rules, every exact excluded assignment, and the
 ordered attempt reports. `TranscriptHash` is the portable summary; exact
 assignment arrays remain authoritative.
+
+Selective negotiated replay additionally stores a separately versioned outer
+transcript over the complete canonical scope arrays and a fresh recomputation
+of the nested negotiation transcript. It does not trust or replace the nested
+stored hash.
 
 Topological tie-breaking uses stable indices, while per-pass random streams are
 also derived from stable indices. Renaming a pass therefore changes a
@@ -349,6 +365,11 @@ failure it selects the latest completed negotiable pass, not necessarily the
 provider named by `DependencyPassIndex`. Independent later passes can therefore
 consume budget before the causally relevant provider, and exact vector
 enumeration can be exponential.
+
+Selective Negotiation v1 restricts that chronological scan to an explicit
+descendant-closed repair horizon. It neither infers a minimal horizon nor
+widens one on failure. It also retains complete pass assignments rather than
+cell-minimal or partial nogoods, so it makes no minimal-change claim.
 
 Causal Trace v1 records the lowest stable failed provider when several
 cross-pass clauses reject one candidate. It does not retain every failed term,

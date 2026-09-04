@@ -57,6 +57,10 @@ A complete replay identity consists of:
 - `WFC_PASS_NEGOTIATION_ALGORITHM_VERSION`,
   `WFC_PASS_NEGOTIATION_HASH_VERSION`, nested `SolveOptions`, and
   `MaxPassBacktracks` when using `TrySolveNegotiated`;
+- `WFC_SELECTIVE_NEGOTIATION_ALGORITHM_VERSION`,
+  `WFC_SELECTIVE_NEGOTIATION_HASH_VERSION`, canonical requested-root indices,
+  and the active descendant closure when using
+  `TryRegenerateNegotiatedFrom`;
 - `Seed`;
 - graph dimensions, wrapping, and run mode;
 - pass creation order;
@@ -204,6 +208,12 @@ An incompatible change to negotiation frame selection, exact-assignment
 scoping, later-exclusion clearing, stopping rules, or attempt ordering must
 increment `WFC_PASS_NEGOTIATION_ALGORITHM_VERSION`. A change to the portable
 transcript encoding must increment `WFC_PASS_NEGOTIATION_HASH_VERSION`.
+An incompatible change to selective root canonicalization, descendant-closure
+construction, clean-pass preservation, active frame eligibility, or scope
+reporting must increment `WFC_SELECTIVE_NEGOTIATION_ALGORITHM_VERSION`.
+A change to the outer selective transcript encoding must increment
+`WFC_SELECTIVE_NEGOTIATION_HASH_VERSION`. These versions are independent so a
+scope change does not silently reinterpret full-pipeline Pass Negotiation v1.
 
 The weighted entropy and ticket contract is
 `WFC_SOLVER_ALGORITHM_VERSION = 2`. It does not change seed expansion, jumping,
@@ -262,6 +272,22 @@ stable chronological choice-frame order, exact exclusions in their earlier
 prefix contexts, every rejected ordinary report, and `FinalReport`.
 `CalculateGraphNegotiationTranscriptHash` summarizes those numeric fields, but
 the copied assignment arrays—not the hash—are the exact nogood identity.
+
+`TryRegenerateNegotiatedFrom` runs the same round protocol over exactly the
+canonical requested roots and their transitive descendants. Active streams
+follow the round behavior above. Every stream outside the active closure
+remains byte-for-byte at its pre-call state even after success. A failed call
+restores all streams, entries, ownership flags, and pass selection. The method
+never activates a clean provider implicitly; choosing an earlier root is a
+caller-visible replay input.
+
+`CalculateGraphSelectiveNegotiationTranscriptHash` adds the two selective
+versions, scope algorithm version, complete canonical root array, and active
+topological array around a fresh recomputation of the nested negotiation
+transcript. Duplicate or reordered labels that resolve to the same stable root
+set therefore share one scope identity. With zero outer budget, the sole
+`Search.FinalReport` retains exact ordinary `TryRegenerateFrom` parity for the
+same roots and solve options.
 
 Every rejected and terminal round can retain a separate ordinary Trace-v1
 hash. This preserves contiguous per-pass slices instead of interleaving a

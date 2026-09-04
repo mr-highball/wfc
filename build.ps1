@@ -24,6 +24,8 @@ $textPassTestSource = Join-Path $repositoryRoot `
   'test/wfc_text_passes_test.lpr'
 $negotiationTestSource = Join-Path $repositoryRoot `
   'test/wfc_negotiation_test.lpr'
+$selectiveNegotiationTestSource = Join-Path $repositoryRoot `
+  'test/wfc_selective_negotiation_test.lpr'
 $voxelTestSource = Join-Path $repositoryRoot 'test/wfc_voxel3d_test.lpr'
 $buildingTestSource = Join-Path $repositoryRoot 'test/wfc_building3d_test.lpr'
 $traceTestSources = @(
@@ -48,6 +50,10 @@ $worldExampleSource = Join-Path $repositoryRoot `
   'examples/2D/01_MultiPassWorld/MultiPassWorld.lpr'
 $settlementExampleSource = Join-Path $repositoryRoot `
   'examples/2D/03_SelectiveSettlement/SelectiveSettlement.lpr'
+$negotiatedRepairExampleSource = Join-Path $repositoryRoot `
+  'examples/2D/04_NegotiatedRepair/NegotiatedRepair.lpr'
+$negotiatedRepairExampleDirectory = Join-Path $repositoryRoot `
+  'examples/2D/04_NegotiatedRepair'
 $learningExampleSource = Join-Path $repositoryRoot `
   'examples/learning/01_LearnTiles/LearnTiles.lpr'
 $corpusExampleSource = Join-Path $repositoryRoot `
@@ -413,6 +419,42 @@ if ($negotiationTestExitCode -ne 0) {
   exit $negotiationTestExitCode
 }
 
+$selectiveNegotiationTestCompilerArguments = @(
+  $CompilerOptions
+  '-B'
+  '-Mdelphi'
+  '-Sa'
+  '-Cr'
+  '-Co'
+  '-Ci'
+  "-Fu$sourceDirectory"
+  "-FU$unitOutputDirectory"
+  "-FE$binaryOutputDirectory"
+  $selectiveNegotiationTestSource
+)
+
+Write-Host 'Building the selective pass-negotiation conformance suite.'
+& $Compiler @selectiveNegotiationTestCompilerArguments
+$selectiveNegotiationTestCompilerExitCode = $LASTEXITCODE
+if ($selectiveNegotiationTestCompilerExitCode -ne 0) {
+  exit $selectiveNegotiationTestCompilerExitCode
+}
+
+$selectiveNegotiationTestExecutableName = if ($env:OS -eq 'Windows_NT') {
+  'wfc_selective_negotiation_test.exe'
+} else {
+  'wfc_selective_negotiation_test'
+}
+$selectiveNegotiationTestExecutable = Join-Path $binaryOutputDirectory `
+  $selectiveNegotiationTestExecutableName
+
+Write-Host "Running '$selectiveNegotiationTestExecutable'."
+& $selectiveNegotiationTestExecutable
+$selectiveNegotiationTestExitCode = $LASTEXITCODE
+if ($selectiveNegotiationTestExitCode -ne 0) {
+  exit $selectiveNegotiationTestExitCode
+}
+
 $voxelTestCompilerArguments = @(
   $CompilerOptions
   '-B'
@@ -724,6 +766,43 @@ Write-Host "Smoke testing '$settlementExampleExecutable' with its default seed."
 $settlementExampleDefaultExitCode = $LASTEXITCODE
 if ($settlementExampleDefaultExitCode -ne 0) {
   exit $settlementExampleDefaultExitCode
+}
+
+$negotiatedRepairExampleCompilerArguments = @(
+  $CompilerOptions
+  '-B'
+  '-Mdelphi'
+  '-Sa'
+  '-Cr'
+  '-Co'
+  '-Ci'
+  "-Fu$sourceDirectory"
+  "-Fu$negotiatedRepairExampleDirectory"
+  "-FU$unitOutputDirectory"
+  "-FE$binaryOutputDirectory"
+  $negotiatedRepairExampleSource
+)
+
+Write-Host 'Building the dependency-free negotiated-repair example.'
+& $Compiler @negotiatedRepairExampleCompilerArguments
+$negotiatedRepairExampleCompilerExitCode = $LASTEXITCODE
+if ($negotiatedRepairExampleCompilerExitCode -ne 0) {
+  exit $negotiatedRepairExampleCompilerExitCode
+}
+
+$negotiatedRepairExampleExecutableName = if ($env:OS -eq 'Windows_NT') {
+  'NegotiatedRepair.exe'
+} else {
+  'NegotiatedRepair'
+}
+$negotiatedRepairExampleExecutable = Join-Path $binaryOutputDirectory `
+  $negotiatedRepairExampleExecutableName
+
+Write-Host "Smoke testing '$negotiatedRepairExampleExecutable'."
+& $negotiatedRepairExampleExecutable | Out-Null
+$negotiatedRepairExampleExitCode = $LASTEXITCODE
+if ($negotiatedRepairExampleExitCode -ne 0) {
+  exit $negotiatedRepairExampleExitCode
 }
 
 $learningExampleCompilerArguments = @(
