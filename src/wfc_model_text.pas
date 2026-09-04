@@ -35,6 +35,8 @@ const
     Version 2 adds an ordered sample-shape corpus and is canonical only when
     that corpus contains at least two samples. }
   WFC_MODEL_TEXT_VERSION = 2;
+  WFC_MODEL_MAX_ENCODED_TEXT_LENGTH = 16777216;
+  WFC_MODEL_MAX_TEXT_LINE_COUNT = 262144;
 
 function EncodeWfcModelText(const AModel: TWfcModel): String;
 function DecodeWfcModelText(const AText: String): TWfcModel;
@@ -53,12 +55,53 @@ begin
   WfcTextError(WFC_MODEL_TEXT_ARTIFACT, AMessage);
 end;
 
+procedure PreflightTextEnvelope(const AText: String);
+var
+  I: SizeInt;
+  LLineCount: Integer;
+  LTextLength: SizeInt;
+begin
+  LTextLength := Length(AText);
+  if (LTextLength < 0) or
+      (LTextLength > SizeInt(WFC_MODEL_MAX_ENCODED_TEXT_LENGTH)) then
+    TextError('document exceeds the version-1 encoded length limit');
+  LLineCount := 0;
+  for I := 1 to LTextLength do
+    if AText[I] = #10 then
+    begin
+      if LLineCount = WFC_MODEL_MAX_TEXT_LINE_COUNT then
+        TextError('document exceeds the version-1 line-count limit');
+      Inc(LLineCount);
+    end;
+end;
+
+procedure RequireEncodedTextLength(const ALines: TWfcTextLines);
+var
+  I: Integer;
+  LLineLength: SizeInt;
+  LTotalLength: Integer;
+begin
+  LTotalLength := 0;
+  for I := 0 to Length(ALines) - 1 do
+  begin
+    LLineLength := Length(ALines[I]);
+    if LLineLength > SizeInt(
+        WFC_MODEL_MAX_ENCODED_TEXT_LENGTH - LTotalLength - 1) then
+      raise ERangeError.Create(
+        'canonical WFC model text exceeds the version-1 length limit');
+    Inc(LTotalLength, Integer(LLineLength) + 1);
+  end;
+end;
+
 function CheckedRelationSlotCount(const AValueCount: Integer): Integer;
 var
   LSquare: Integer;
 begin
   if AValueCount < 0 then
     raise ERangeError.Create('WFC model value count cannot be negative');
+  if AValueCount > WFC_MODEL_MAX_VALUE_COUNT then
+    raise ERangeError.Create(
+      'WFC model value count exceeds the version-1 limit');
   if (AValueCount <> 0) and
     (AValueCount > (High(Integer) div AValueCount)) then
     raise ERangeError.Create('WFC model relation table is too large');
@@ -66,6 +109,9 @@ begin
   if LSquare > (High(Integer) div 4) then
     raise ERangeError.Create('WFC model relation table is too large');
   Result := LSquare * 4;
+  if Result > WFC_MODEL_MAX_RELATION_SLOT_COUNT then
+    raise ERangeError.Create(
+      'WFC model relation table exceeds the version-1 slot limit');
 end;
 
 function CheckedLineCount(const AValueCount, ARelationCount,
@@ -76,6 +122,9 @@ begin
   if (AValueCount < 0) or (ARelationCount < 0) or
     (ASampleCount < 1) then
     raise ERangeError.Create('WFC model text line count cannot be negative');
+  if ASampleCount > WFC_MODEL_MAX_SAMPLE_COUNT then
+    raise ERangeError.Create(
+      'WFC model sample count exceeds the version-1 limit');
 
   case AFormatVersion of
     1:
@@ -108,6 +157,35 @@ begin
   if ARelationCount > (High(Integer) - Result) then
     raise ERangeError.Create('WFC model text has too many lines');
   Inc(Result, ARelationCount);
+  if Result > WFC_MODEL_MAX_TEXT_LINE_COUNT then
+    raise ERangeError.Create(
+      'WFC model text exceeds the version-1 line-count limit');
+end;
+
+function CheckedSampleCells(const AWidth, AHeight,
+  ASampleIndex: Integer): Integer;
+begin
+  if (AWidth < 1) or (AHeight < 1) then
+    TextError('sample dimensions must be positive');
+  if (AWidth > WFC_MODEL_MAX_SAMPLE_DIMENSION) or
+      (AHeight > WFC_MODEL_MAX_SAMPLE_DIMENSION) then
+    TextError(Format(
+      'sample %d dimension exceeds the version-1 limit', [ASampleIndex]));
+  if AWidth > WFC_MODEL_MAX_SAMPLE_CELL_COUNT div AHeight then
+    TextError(Format(
+      'sample %d cells exceed the version-1 limit', [ASampleIndex]));
+  Result := AWidth * AHeight;
+end;
+
+procedure AccumulateSampleCells(var ATotal: Integer;
+  const AWidth, AHeight, ASampleIndex: Integer);
+var
+  LCells: Integer;
+begin
+  LCells := CheckedSampleCells(AWidth, AHeight, ASampleIndex);
+  if ATotal > WFC_MODEL_MAX_TOTAL_SAMPLE_CELL_COUNT - LCells then
+    TextError('aggregate sample cells exceed the version-1 limit');
+  Inc(ATotal, LCells);
 end;
 
 function ParseCanonicalInteger(const AText, AFieldName: String): Integer;
@@ -303,8 +381,7 @@ begin
     LComma2 - LComma1 - 1), 'sample width');
   AShape.Height := ParseCanonicalInteger(Copy(ALine, LComma2 + 1,
     Length(ALine) - LComma2), 'sample height');
-  if (AShape.Width <= 0) or (AShape.Height <= 0) then
-    TextError('sample dimensions must be positive');
+  CheckedSampleCells(AShape.Width, AShape.Height, AExpectedIndex);
 end;
 
 procedure ParseRelationLine(const ALine: String;
@@ -472,6 +549,7 @@ begin
       end;
   LLines[LLineIndex] := 'end';
 
+  RequireEncodedTextLength(LLines);
   Result := JoinCanonicalLines(LLines);
 end;
 
@@ -485,6 +563,7 @@ var
   LHeight: Integer;
   LSampleCount: Integer;
   LSample: Integer;
+  LSampleCells: Integer;
   LValueCount: Integer;
   LRelationCount: Integer;
   LRelationSlots: Integer;
@@ -501,8 +580,10 @@ var
   LWeights: TWfcModelIntegerArray;
   LRelations: TWfcModelIntegerArray;
   LTextValue: String;
+  LTotalSampleCells: Integer;
 begin
   Result := nil;
+  PreflightTextEnvelope(AText);
   SplitCanonicalLines(AText, LLines);
   if Length(LLines) < 1 then
     TextError('document is incomplete');
@@ -531,6 +612,9 @@ begin
     LHeight := ParseCanonicalInteger(ValueAfterPrefix(LLines[LLineIndex],
       'height=', 'height'), 'height');
     Inc(LLineIndex);
+    LSampleCells := CheckedSampleCells(LWidth, LHeight, 0);
+    if LSampleCells > WFC_MODEL_MAX_TOTAL_SAMPLE_CELL_COUNT then
+      TextError('aggregate sample cells exceed the version-1 limit');
     SetLength(LSampleShapes, 1);
     LSampleShapes[0].Width := LWidth;
     LSampleShapes[0].Height := LHeight;
@@ -542,15 +626,21 @@ begin
     Inc(LLineIndex);
     if LSampleCount < 2 then
       TextError('version 2 requires at least two samples');
+    if LSampleCount > WFC_MODEL_MAX_SAMPLE_COUNT then
+      TextError('sample count exceeds the version-1 limit');
     { Nine non-sample lines are required by version 2. Check the
       declaration against the physical document before allocating. }
     if LSampleCount > (Length(LLines) - 9) then
       TextError('sample-shape records are incomplete');
     SetLength(LSampleShapes, LSampleCount);
+    LTotalSampleCells := 0;
     for LSample := 0 to LSampleCount - 1 do
     begin
       ParseSampleLine(LLines[LLineIndex], LSample,
         LSampleShapes[LSample]);
+      AccumulateSampleCells(LTotalSampleCells,
+        LSampleShapes[LSample].Width, LSampleShapes[LSample].Height,
+        LSample);
       Inc(LLineIndex);
     end;
   end;
@@ -583,7 +673,12 @@ begin
   Inc(LLineIndex);
   if LValueCount <= 0 then
     TextError('values must be positive');
+  if LValueCount > WFC_MODEL_MAX_VALUE_COUNT then
+    TextError('value count exceeds the version-1 limit');
   LRelationSlots := CheckedRelationSlotCount(LValueCount);
+  { The relations field and end marker remain after the value records. }
+  if LValueCount > Length(LLines) - LLineIndex - 2 then
+    TextError('value records are incomplete');
 
   SetLength(LTokens, LValueCount);
   SetLength(LWeights, LValueCount);

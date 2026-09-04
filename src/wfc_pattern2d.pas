@@ -35,6 +35,18 @@ uses
 const
   WFC_OVERLAPPING_2D_ALGORITHM_VERSION = 1;
   WFC_OVERLAPPING_2D_PROJECTION_VERSION = 1;
+  { Public resource limits for immutable overlapping-pattern data. }
+  WFC_PATTERN_2D_LIMITS_VERSION = 1;
+  WFC_PATTERN_2D_MAX_SOURCE_COUNT = 65536;
+  WFC_PATTERN_2D_MAX_SOURCE_DIMENSION = 4194304;
+  WFC_PATTERN_2D_MAX_SOURCE_CELL_COUNT = 4194304;
+  WFC_PATTERN_2D_MAX_TOTAL_SOURCE_CELL_COUNT = 4194304;
+  WFC_PATTERN_2D_MAX_FOOTPRINT_DIMENSION = 4096;
+  WFC_PATTERN_2D_MAX_FOOTPRINT_CELL_COUNT = 4096;
+  WFC_PATTERN_2D_MAX_PALETTE_COUNT = 4096;
+  WFC_PATTERN_2D_MAX_PATTERN_COUNT = 1024;
+  WFC_PATTERN_2D_MAX_TOTAL_PATTERN_CELL_COUNT = 4194304;
+  WFC_PATTERN_2D_MAX_RELATION_SLOT_COUNT = 4194304;
 
 type
   EWfcOverlapping2D = class(EWfcModel);
@@ -243,10 +255,18 @@ begin
   if APatternCount < 1 then
     raise EWfcOverlapping2D.Create(
       'an overlapping model must contain at least one pattern');
+  if APatternCount > WFC_PATTERN_2D_MAX_PATTERN_COUNT then
+    raise EWfcOverlapping2D.CreateFmt(
+      'overlapping pattern count exceeds the version-1 limit [%d > %d]',
+      [APatternCount, WFC_PATTERN_2D_MAX_PATTERN_COUNT]);
   LSquare := CheckedProduct(APatternCount, APatternCount,
     'overlapping relation dimensions');
   Result := CheckedProduct(4, LSquare,
     'overlapping relation dimensions');
+  if Result > WFC_PATTERN_2D_MAX_RELATION_SLOT_COUNT then
+    raise EWfcOverlapping2D.CreateFmt(
+      'overlapping relation slots exceed the version-1 limit [%d > %d]',
+      [Result, WFC_PATTERN_2D_MAX_RELATION_SLOT_COUNT]);
 end;
 
 procedure ValidateBoundary(const ABoundary: TWfcModelBoundary);
@@ -433,6 +453,9 @@ var
   LRelations: TWfcModelIntegerArray;
   LSampleCount: Integer;
   LShape: TWfcModelSampleShape;
+  LSourceCellCount: Integer;
+  LTotalPatternCells: Integer;
+  LTotalSourceCells: Integer;
   LTokens: TWfcModelTokens;
   LTransform: Integer;
   LTransformCount: Integer;
@@ -449,6 +472,14 @@ begin
   if (APatternWidth < 1) or (APatternHeight < 1) then
     raise EWfcOverlapping2D.Create(
       'overlapping pattern dimensions must be positive');
+  if (APatternWidth > WFC_PATTERN_2D_MAX_FOOTPRINT_DIMENSION) or
+      (APatternHeight > WFC_PATTERN_2D_MAX_FOOTPRINT_DIMENSION) then
+    raise EWfcOverlapping2D.Create(
+      'overlapping pattern dimension exceeds the version-1 limit');
+  if APatternWidth > WFC_PATTERN_2D_MAX_FOOTPRINT_CELL_COUNT div
+      APatternHeight then
+    raise EWfcOverlapping2D.Create(
+      'overlapping pattern cells exceed the version-1 limit');
   if (ASymmetry = wmsD4) and
       (APatternWidth <> APatternHeight) then
     raise EWfcOverlapping2D.Create(
@@ -461,11 +492,16 @@ begin
   if LSampleCount = 0 then
     raise EWfcOverlapping2D.Create(
       'an overlapping model must retain at least one source shape');
+  if LSampleCount > WFC_PATTERN_2D_MAX_SOURCE_COUNT then
+    raise EWfcOverlapping2D.CreateFmt(
+      'overlapping source count exceeds the version-1 limit [%d > %d]',
+      [LSampleCount, WFC_PATTERN_2D_MAX_SOURCE_COUNT]);
   if ASymmetry = wmsD4 then
     LTransformCount := D4_TRANSFORM_COUNT
   else
     LTransformCount := 1;
   LExpectedObservations := 0;
+  LTotalSourceCells := 0;
   for I := 0 to LSampleCount - 1 do
   begin
     LShape := ASourceShapes[I];
@@ -473,6 +509,20 @@ begin
       raise EWfcOverlapping2D.CreateFmt(
         'overlapping source dimensions must be positive [%d: %d x %d]',
         [I, LShape.Width, LShape.Height]);
+    if (LShape.Width > WFC_PATTERN_2D_MAX_SOURCE_DIMENSION) or
+        (LShape.Height > WFC_PATTERN_2D_MAX_SOURCE_DIMENSION) then
+      raise EWfcOverlapping2D.CreateFmt(
+        'overlapping source dimension exceeds the version-1 limit [%d]', [I]);
+    if LShape.Width > WFC_PATTERN_2D_MAX_SOURCE_CELL_COUNT div
+        LShape.Height then
+      raise EWfcOverlapping2D.CreateFmt(
+        'overlapping source cells exceed the version-1 limit [%d]', [I]);
+    LSourceCellCount := LShape.Width * LShape.Height;
+    if LTotalSourceCells > WFC_PATTERN_2D_MAX_TOTAL_SOURCE_CELL_COUNT -
+        LSourceCellCount then
+      raise EWfcOverlapping2D.Create(
+        'aggregate overlapping source cells exceed the version-1 limit');
+    Inc(LTotalSourceCells, LSourceCellCount);
     if ASourceBoundary = wmbOpen then
     begin
       if (LShape.Width < APatternWidth) or
@@ -500,6 +550,10 @@ begin
   if LPaletteCount = 0 then
     raise EWfcOverlapping2D.Create(
       'an overlapping model must contain at least one palette token');
+  if LPaletteCount > WFC_PATTERN_2D_MAX_PALETTE_COUNT then
+    raise EWfcOverlapping2D.CreateFmt(
+      'overlapping palette count exceeds the version-1 limit [%d > %d]',
+      [LPaletteCount, WFC_PATTERN_2D_MAX_PALETTE_COUNT]);
   for I := 0 to LPaletteCount - 1 do
   begin
     if not WfcModelTokenIsValid(APalette[I]) then
@@ -515,6 +569,14 @@ begin
   LPatternCount := CheckedLength(Length(APatterns),
     'overlapping pattern count');
   LRelationLength := CheckedRelationLength(LPatternCount);
+  if LPatternCount > WFC_PATTERN_2D_MAX_TOTAL_PATTERN_CELL_COUNT div
+      LFootprintSize then
+    raise EWfcOverlapping2D.Create(
+      'aggregate overlapping pattern cells exceed the version-1 limit');
+  LTotalPatternCells := LPatternCount * LFootprintSize;
+  if LTotalPatternCells > WFC_PATTERN_2D_MAX_TOTAL_PATTERN_CELL_COUNT then
+    raise EWfcOverlapping2D.Create(
+      'aggregate overlapping pattern cells exceed the version-1 limit');
   if Length(APatternWeights) <> LPatternCount then
     raise EWfcOverlapping2D.CreateFmt(
       'overlapping pattern weight count must match pattern count [%d <> %d]',

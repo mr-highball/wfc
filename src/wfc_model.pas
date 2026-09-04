@@ -138,6 +138,17 @@ type
   TWfcModels = array of TWfcModel;
 
 const
+  { Public resource limits for immutable learned-model data. These bounds are
+    part of the portable artifact contract and must be versioned when changed
+    incompatibly. }
+  WFC_MODEL_LIMITS_VERSION = 1;
+  WFC_MODEL_MAX_SAMPLE_COUNT = 65536;
+  WFC_MODEL_MAX_SAMPLE_DIMENSION = 4194304;
+  WFC_MODEL_MAX_SAMPLE_CELL_COUNT = 4194304;
+  WFC_MODEL_MAX_TOTAL_SAMPLE_CELL_COUNT = 4194304;
+  WFC_MODEL_MAX_VALUE_COUNT = 1024;
+  WFC_MODEL_MAX_RELATION_SLOT_COUNT = 4194304;
+
   WFC_MODEL_MERGE_ALGORITHM_VERSION = 1;
   //Identifies the conversion from immutable model relations to the public
   //TGraph rule model, including explicit deny-all rows for finite learned
@@ -195,12 +206,20 @@ var
 begin
   if AValueCount < 1 then
     raise EWfcModel.Create('model must contain at least one token');
+  if AValueCount > WFC_MODEL_MAX_VALUE_COUNT then
+    raise EWfcModel.CreateFmt(
+      'model value count exceeds the version-1 limit [%d > %d]',
+      [AValueCount, WFC_MODEL_MAX_VALUE_COUNT]);
   if AValueCount > High(Integer) div AValueCount then
     raise EWfcModel.Create('model relation dimensions overflow Integer');
   LSquare := AValueCount * AValueCount;
   if LSquare > High(Integer) div 4 then
     raise EWfcModel.Create('model relation dimensions overflow Integer');
   Result := 4 * LSquare;
+  if Result > WFC_MODEL_MAX_RELATION_SLOT_COUNT then
+    raise EWfcModel.CreateFmt(
+      'model relation slots exceed the version-1 limit [%d > %d]',
+      [Result, WFC_MODEL_MAX_RELATION_SLOT_COUNT]);
 end;
 
 function CheckedSampleShapeCount(
@@ -215,6 +234,29 @@ begin
     ((LLength and (not SizeInt(High(Integer)))) <> 0) then
     raise EWfcModel.Create('model has too many sample shapes');
   Result := Integer(LLength);
+  if Result > WFC_MODEL_MAX_SAMPLE_COUNT then
+    raise EWfcModel.CreateFmt(
+      'model sample count exceeds the version-1 limit [%d > %d]',
+      [Result, WFC_MODEL_MAX_SAMPLE_COUNT]);
+end;
+
+function CheckedSampleCellCount(const AShape: TWfcModelSampleShape;
+  const AShapeIndex: Integer): Integer;
+begin
+  if (AShape.Width < 1) or (AShape.Height < 1) then
+    raise EWfcModel.CreateFmt(
+      'model sample dimensions must be positive [%d: %d x %d]',
+      [AShapeIndex, AShape.Width, AShape.Height]);
+  if (AShape.Width > WFC_MODEL_MAX_SAMPLE_DIMENSION) or
+      (AShape.Height > WFC_MODEL_MAX_SAMPLE_DIMENSION) then
+    raise EWfcModel.CreateFmt(
+      'model sample dimension exceeds the version-1 limit [%d: %d x %d]',
+      [AShapeIndex, AShape.Width, AShape.Height]);
+  if AShape.Width > WFC_MODEL_MAX_SAMPLE_CELL_COUNT div AShape.Height then
+    raise EWfcModel.CreateFmt(
+      'model sample cells exceed the version-1 limit [%d: %d x %d]',
+      [AShapeIndex, AShape.Width, AShape.Height]);
+  Result := AShape.Width * AShape.Height;
 end;
 
 function CheckedModelCount(const AModels: TWfcModels): Integer;
@@ -501,8 +543,10 @@ var
   D: TWfcModelDirection;
   I: Integer;
   J: Integer;
+  LSampleCells: Integer;
   LSampleCount: Integer;
   LShapeIndex: Integer;
+  LTotalSampleCells: Integer;
   LExpectedRelations: Integer;
   LOpposite: TWfcModelDirection;
   LValueCount: Integer;
@@ -524,14 +568,16 @@ begin
   if (ARank <> 1) and (ARank <> 2) then
     raise EWfcModel.CreateFmt('model rank must be 1 or 2 [%d]', [ARank]);
   LSampleCount := CheckedSampleShapeCount(ASampleShapes);
+  LTotalSampleCells := 0;
   for LShapeIndex := 0 to LSampleCount - 1 do
   begin
-    if (ASampleShapes[LShapeIndex].Width < 1) or
-        (ASampleShapes[LShapeIndex].Height < 1) then
-      raise EWfcModel.CreateFmt(
-        'model sample dimensions must be positive [%d: %d x %d]',
-        [LShapeIndex, ASampleShapes[LShapeIndex].Width,
-          ASampleShapes[LShapeIndex].Height]);
+    LSampleCells := CheckedSampleCellCount(
+      ASampleShapes[LShapeIndex], LShapeIndex);
+    if LTotalSampleCells > WFC_MODEL_MAX_TOTAL_SAMPLE_CELL_COUNT -
+        LSampleCells then
+      raise EWfcModel.Create(
+        'aggregate model sample cells exceed the version-1 limit');
+    Inc(LTotalSampleCells, LSampleCells);
     if (ARank = 1) and (ASampleShapes[LShapeIndex].Height <> 1) then
       raise EWfcModel.CreateFmt(
         'rank-1 model sample height must be 1 [%d: %d]',
@@ -708,11 +754,14 @@ var
   LModelIndex: Integer;
   LRelationIndex: Integer;
   LRelations: TWfcModelIntegerArray;
+  LSampleCells: Integer;
   LSampleIndex: Integer;
   LSampleOffset: Integer;
+  LSampleShape: TWfcModelSampleShape;
   LSampleShapes: TWfcModelSampleShapes;
   LToken: TWfcModelToken;
   LTokens: TWfcModelTokens;
+  LTotalSampleCells: Integer;
   LTotalSamples: Integer;
   LValueIndex: Integer;
   LWeights: TWfcModelIntegerArray;
@@ -746,6 +795,7 @@ begin
         [LModelIndex]);
 
   LBase := AModels[0];
+  LTotalSampleCells := 0;
   LTotalSamples := 0;
   SetLength(LTokens, 0);
   for LModelIndex := 0 to LModelCount - 1 do
@@ -762,17 +812,29 @@ begin
     if LModel.Directions <> LBase.Directions then
       raise EWfcModel.Create(
         'cannot merge models with different direction policies');
-    if LModel.SampleCount > High(Integer) - LTotalSamples then
-      raise EWfcModel.Create('merged model has too many sample shapes');
+    if LTotalSamples > WFC_MODEL_MAX_SAMPLE_COUNT - LModel.SampleCount then
+      raise EWfcModel.Create(
+        'merged model sample count exceeds the version-1 limit');
     Inc(LTotalSamples, LModel.SampleCount);
+    for LSampleIndex := 0 to LModel.SampleCount - 1 do
+    begin
+      LSampleShape := LModel.SampleShapeAt(LSampleIndex);
+      LSampleCells := CheckedSampleCellCount(LSampleShape, LSampleIndex);
+      if LTotalSampleCells > WFC_MODEL_MAX_TOTAL_SAMPLE_CELL_COUNT -
+          LSampleCells then
+        raise EWfcModel.Create(
+          'aggregate merged-model sample cells exceed the version-1 limit');
+      Inc(LTotalSampleCells, LSampleCells);
+    end;
 
     for I := 0 to Pred(LModel.ValueCount) do
     begin
       LToken := LModel.TokenAt(I);
       if FindMergedToken(LToken) < 0 then
       begin
-        if Length(LTokens) = High(Integer) then
-          raise EWfcModel.Create('merged model has too many tokens');
+        if Length(LTokens) >= WFC_MODEL_MAX_VALUE_COUNT then
+          raise EWfcModel.Create(
+            'merged model value count exceeds the version-1 limit');
         SetLength(LTokens, Length(LTokens) + 1);
         LTokens[High(LTokens)] := LToken;
       end;

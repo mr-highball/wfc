@@ -6,7 +6,8 @@ overlapping-pattern and projected-pattern passes, sequence, Unicode-scalar
 text completion, three-pass text composition, exact music-score, music
 projection, Standard MIDI File,
 score-export, negotiated music variation/result replay, full and selective
-pass negotiation, and voxel-3D units and
+pass negotiation, canonical numeric text primitives, immutable authored-rule
+models, declarative pipeline recipes, and voxel-3D units and
 their conformance suites, plus
 the checked voxel pass bridge and multi-pass Building 3D owner/validator,
 pass-aware view, fixed-integer isometric projector, and canonical SVG encoder.
@@ -82,7 +83,9 @@ Both scripts rebuild with assertions and range, overflow, and I/O checks, run
 `wfc_building3d_view_test`, `wfc_midi_smf_test`,
 `wfc_music_test`,
 `wfc_music_graph_test`, `wfc_music_midi_test`, `wfc_music_passes_test`,
-`wfc_music_passes_text_test`, `wfc_trace_reference_test`,
+`wfc_music_passes_text_test`, `wfc_text_codec_test`, `wfc_rule_model_test`,
+`wfc_rule_text_test`, `wfc_pipeline_model_test`, `wfc_pipeline_text_test`,
+`wfc_trace_reference_test`,
 `wfc_trace_test`, and `wfc_trace_utility_test`, then compile and smoke-test the
 portable console examples with seed `0`, including the bounded/wrapped spatial
 dependency self-check, causal-trace inspector, bounded pass-negotiation proof,
@@ -262,6 +265,16 @@ do
     -FUbuild/pas2js/music-units -FEbuild/pas2js/music \
     "test/${music_test}.lpr"
   node "build/pas2js/music/${music_test}.js"
+done
+
+mkdir -p build/pas2js/artifact-units build/pas2js/artifact
+for artifact_test in wfc_text_codec_test wfc_rule_model_test \
+  wfc_rule_text_test wfc_pipeline_model_test wfc_pipeline_text_test
+do
+  pas2js -B -Tnodejs -Mdelphi -Fusrc \
+    -FUbuild/pas2js/artifact-units -FEbuild/pas2js/artifact \
+    "test/${artifact_test}.lpr"
+  node "build/pas2js/artifact/${artifact_test}.js"
 done
 ```
 

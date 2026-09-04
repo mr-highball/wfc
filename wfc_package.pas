@@ -18,7 +18,8 @@ uses
   wfc_voxel3d_validate, wfc_voxel3d_mesh, wfc_voxel3d_passes, wfc_building3d,
   wfc_building3d_validate, wfc_voxel3d_isometric, wfc_voxel3d_svg,
   wfc_building3d_view, wfc_sequence_analyze, wfc_text_tokenize,
-  wfc_text_complete, wfc_text_passes, wfc_music_passes, wfc_music_passes_text;
+  wfc_text_complete, wfc_text_passes, wfc_music_passes, wfc_music_passes_text,
+  wfc_rule_model, wfc_rule_text, wfc_pipeline_model, wfc_pipeline_text;
 
 implementation
 

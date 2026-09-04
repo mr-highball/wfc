@@ -32,6 +32,8 @@ uses
 
 const
   WFC_SEQUENCE_TEXT_VERSION = 1;
+  WFC_SEQUENCE_MAX_ENCODED_TEXT_LENGTH = 16777216;
+  WFC_SEQUENCE_MAX_TEXT_LINE_COUNT = 262144;
 
 function EncodeWfcSequenceText(
   const AModel: TWfcSequenceModel): String;
@@ -88,6 +90,47 @@ begin
     'sequence text line count');
   Result := CheckedAdd(Result, AStateCount,
     'sequence text line count');
+  if Result > WFC_SEQUENCE_MAX_TEXT_LINE_COUNT then
+    TextError(
+      'canonical WFC sequence text exceeds the version-1 line-count limit');
+end;
+
+procedure RequireEncodedTextLength(const ALines: TWfcTextLines);
+var
+  I: Integer;
+  LLineLength: SizeInt;
+  LTotalLength: Integer;
+begin
+  LTotalLength := 0;
+  for I := 0 to Length(ALines) - 1 do
+  begin
+    LLineLength := Length(ALines[I]);
+    if LLineLength > SizeInt(
+        WFC_SEQUENCE_MAX_ENCODED_TEXT_LENGTH - LTotalLength - 1) then
+      raise ERangeError.Create(
+        'canonical WFC sequence text exceeds the version-1 length limit');
+    Inc(LTotalLength, Integer(LLineLength) + 1);
+  end;
+end;
+
+procedure PreflightTextEnvelope(const AText: String);
+var
+  I: SizeInt;
+  LLineCount: Integer;
+  LTextLength: SizeInt;
+begin
+  LTextLength := Length(AText);
+  if (LTextLength < 0) or
+      (LTextLength > SizeInt(WFC_SEQUENCE_MAX_ENCODED_TEXT_LENGTH)) then
+    TextError('document exceeds the version-1 encoded length limit');
+  LLineCount := 0;
+  for I := 1 to LTextLength do
+    if AText[I] = #10 then
+    begin
+      if LLineCount = WFC_SEQUENCE_MAX_TEXT_LINE_COUNT then
+        TextError('document exceeds the version-1 line-count limit');
+      Inc(LLineCount);
+    end;
 end;
 
 function RequireLine(const ALines: TWfcTextLines;
@@ -329,6 +372,7 @@ begin
   end;
   LLines[LLineIndex] := 'end';
 
+  RequireEncodedTextLength(LLines);
   Result := WfcTextJoinCanonicalLines(LLines,
     WFC_SEQUENCE_TEXT_ARTIFACT);
 end;
@@ -351,6 +395,7 @@ var
   LTokens: TWfcModelTokens;
 begin
   Result := nil;
+  PreflightTextEnvelope(AText);
   WfcTextSplitCanonicalLines(AText, WFC_SEQUENCE_TEXT_ARTIFACT,
     LLines);
   if Length(LLines) < WFC_SEQUENCE_FIXED_LINE_COUNT then
@@ -367,6 +412,8 @@ begin
     'order=', 'order'), 'order');
   if LOrder < 1 then
     TextError('order must be positive');
+  if LOrder > WFC_SEQUENCE_MAX_ORDER then
+    TextError('order exceeds the version-1 limit');
   Inc(LLineIndex);
 
   LSampleCount := ParseCanonicalInteger(ValueAfterPrefix(
@@ -374,6 +421,8 @@ begin
     'samples=', 'samples'), 'samples');
   if LSampleCount < 1 then
     TextError('samples must be positive');
+  if LSampleCount > WFC_SEQUENCE_MAX_SAMPLE_COUNT then
+    TextError('sample count exceeds the version-1 limit');
   Inc(LLineIndex);
   { tokens, at least one token, states, at least one state, and end remain. }
   if LSampleCount > Length(LLines) - LLineIndex - 5 then
@@ -391,6 +440,8 @@ begin
     'tokens=', 'tokens'), 'tokens');
   if LTokenCount < 1 then
     TextError('tokens must be positive');
+  if LTokenCount > WFC_SEQUENCE_MAX_PUBLIC_TOKEN_COUNT then
+    TextError('token count exceeds the version-1 limit');
   Inc(LLineIndex);
   { states, at least one state, and end remain after token records. }
   if LTokenCount > Length(LLines) - LLineIndex - 3 then
@@ -408,6 +459,12 @@ begin
     'states=', 'states'), 'states');
   if LStateCount < 1 then
     TextError('states must be positive');
+  if LStateCount > WFC_SEQUENCE_MAX_STATE_COUNT then
+    TextError('state count exceeds the version-1 limit');
+  if (LOrder > 1) and
+      (LStateCount > WFC_SEQUENCE_MAX_TOTAL_HISTORY_ITEM_COUNT div
+        (LOrder - 1)) then
+    TextError('state history exceeds the version-1 aggregate limit');
   Inc(LLineIndex);
   if LStateCount > Length(LLines) - LLineIndex - 1 then
     TextError('state records are incomplete');

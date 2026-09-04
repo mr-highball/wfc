@@ -155,6 +155,9 @@ var
 begin
   if APatternCount < 1 then
     Exit;
+  if APatternCount > WFC_PATTERN_2D_MAX_PATTERN_COUNT then
+    raise EWfcOverlapping2D.Create(
+      'overlapping pattern count exceeds the version-1 limit');
   if APatternCount > High(Integer) div APatternCount then
     raise EWfcOverlapping2D.Create(
       'overlapping relation dimensions exceed the Integer range');
@@ -162,6 +165,9 @@ begin
   if LSquare > High(Integer) div 4 then
     raise EWfcOverlapping2D.Create(
       'overlapping relation dimensions exceed the Integer range');
+  if 4 * LSquare > WFC_PATTERN_2D_MAX_RELATION_SLOT_COUNT then
+    raise EWfcOverlapping2D.Create(
+      'overlapping relation slots exceed the version-1 limit');
 end;
 
 procedure TransformDimensions(const ASourceWidth, ASourceHeight,
@@ -260,6 +266,11 @@ begin
     raise EWfcOverlapping2D.Create(
       'overlapping pattern count exceeds the Integer range');
   CheckRelationCapacity(LCount + 1);
+  if (Length(APayload) < 1) or
+      (LCount + 1 > WFC_PATTERN_2D_MAX_TOTAL_PATTERN_CELL_COUNT div
+        Length(APayload)) then
+    raise EWfcOverlapping2D.Create(
+      'aggregate overlapping pattern cells exceed the version-1 limit');
   SetLength(APatterns, LCount + 1);
   SetLength(APatterns[LCount], Length(APayload));
   for I := 0 to Length(APayload) - 1 do
@@ -288,12 +299,14 @@ var
   LPatternWeights: TWfcModelIntegerArray;
   LPayload: TWfcPattern2DPayload;
   LSampleCount: Integer;
+  LSampleCellCount: Integer;
   LSampleIndex: Integer;
   LSampleShapes: TWfcModelSampleShapes;
   LSourceX: Integer;
   LSourceY: Integer;
   LTransform: Integer;
   LTransformCount: Integer;
+  LTotalSourceCells: Integer;
   LTransformedWidth: Integer;
   LTransformedHeight: Integer;
   LValues: TIntArrays;
@@ -308,6 +321,14 @@ begin
   if (APatternWidth < 1) or (APatternHeight < 1) then
     raise EWfcOverlapping2D.Create(
       'overlapping pattern dimensions must be positive');
+  if (APatternWidth > WFC_PATTERN_2D_MAX_FOOTPRINT_DIMENSION) or
+      (APatternHeight > WFC_PATTERN_2D_MAX_FOOTPRINT_DIMENSION) then
+    raise EWfcOverlapping2D.Create(
+      'overlapping pattern dimension exceeds the version-1 limit');
+  if APatternWidth > WFC_PATTERN_2D_MAX_FOOTPRINT_CELL_COUNT div
+      APatternHeight then
+    raise EWfcOverlapping2D.Create(
+      'overlapping pattern cells exceed the version-1 limit');
   if (ASymmetry = wmsD4) and
       (APatternWidth <> APatternHeight) then
     raise EWfcOverlapping2D.Create(
@@ -319,14 +340,16 @@ begin
   if LSampleCount = 0 then
     raise EWfcOverlapping2D.Create(
       'an overlapping learning corpus cannot be empty');
+  if LSampleCount > WFC_PATTERN_2D_MAX_SOURCE_COUNT then
+    raise EWfcOverlapping2D.Create(
+      'overlapping corpus sample count exceeds the version-1 limit');
   if ASymmetry = wmsD4 then
     LTransformCount := D4_TRANSFORM_COUNT
   else
     LTransformCount := 1;
 
-  SetLength(LSampleShapes, LSampleCount);
-  SetLength(LValues, LSampleCount);
   LExpectedObservations := 0;
+  LTotalSourceCells := 0;
   for LSampleIndex := 0 to LSampleCount - 1 do
   begin
     if (ASamples[LSampleIndex].Width < 1) or
@@ -335,8 +358,27 @@ begin
         'overlapping sample dimensions must be positive [%d: %d x %d]',
         [LSampleIndex, ASamples[LSampleIndex].Width,
           ASamples[LSampleIndex].Height]);
-    LExpectedSize := CheckedProduct(ASamples[LSampleIndex].Width,
-      ASamples[LSampleIndex].Height, 'overlapping sample dimensions');
+    if (ASamples[LSampleIndex].Width >
+        WFC_PATTERN_2D_MAX_SOURCE_DIMENSION) or
+        (ASamples[LSampleIndex].Height >
+        WFC_PATTERN_2D_MAX_SOURCE_DIMENSION) then
+      raise EWfcOverlapping2D.CreateFmt(
+        'overlapping sample dimension exceeds the version-1 limit [%d]',
+        [LSampleIndex]);
+    if ASamples[LSampleIndex].Width >
+        WFC_PATTERN_2D_MAX_SOURCE_CELL_COUNT div
+        ASamples[LSampleIndex].Height then
+      raise EWfcOverlapping2D.CreateFmt(
+        'overlapping sample cells exceed the version-1 limit [%d]',
+        [LSampleIndex]);
+    LSampleCellCount := ASamples[LSampleIndex].Width *
+      ASamples[LSampleIndex].Height;
+    if LTotalSourceCells > WFC_PATTERN_2D_MAX_TOTAL_SOURCE_CELL_COUNT -
+        LSampleCellCount then
+      raise EWfcOverlapping2D.Create(
+        'aggregate overlapping sample cells exceed the version-1 limit');
+    Inc(LTotalSourceCells, LSampleCellCount);
+    LExpectedSize := LSampleCellCount;
     if CheckedLength(Length(ASamples[LSampleIndex].Tokens),
         Format('overlapping sample %d token count', [LSampleIndex])) <>
         LExpectedSize then
@@ -362,13 +404,15 @@ begin
       CheckedProduct(LBaseOrigins, LTransformCount,
         'overlapping transformed observation count'),
       'overlapping corpus observation count');
-    LSampleShapes[LSampleIndex] := MakeWfcModelSampleShape(
-      ASamples[LSampleIndex].Width, ASamples[LSampleIndex].Height);
   end;
 
+  SetLength(LSampleShapes, LSampleCount);
+  SetLength(LValues, LSampleCount);
   SetLength(LPalette, 0);
   for LSampleIndex := 0 to LSampleCount - 1 do
   begin
+    LSampleShapes[LSampleIndex] := MakeWfcModelSampleShape(
+      ASamples[LSampleIndex].Width, ASamples[LSampleIndex].Height);
     SetLength(LValues[LSampleIndex],
       Length(ASamples[LSampleIndex].Tokens));
     for I := 0 to Length(ASamples[LSampleIndex].Tokens) - 1 do
@@ -381,9 +425,9 @@ begin
         ASamples[LSampleIndex].Tokens[I]);
       if LPaletteIndex < 0 then
       begin
-        if Length(LPalette) >= High(Integer) then
+        if Length(LPalette) >= WFC_PATTERN_2D_MAX_PALETTE_COUNT then
           raise EWfcOverlapping2D.Create(
-            'overlapping palette count exceeds the Integer range');
+            'overlapping palette count exceeds the version-1 limit');
         LPaletteIndex := Integer(Length(LPalette));
         SetLength(LPalette, LPaletteIndex + 1);
         LPalette[LPaletteIndex] := ASamples[LSampleIndex].Tokens[I];

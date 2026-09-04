@@ -32,6 +32,8 @@ uses
 
 const
   WFC_PATTERN_2D_TEXT_VERSION = 1;
+  WFC_PATTERN_2D_MAX_ENCODED_TEXT_LENGTH = 16777216;
+  WFC_PATTERN_2D_MAX_TEXT_LINE_COUNT = 262144;
 
 function EncodeWfcPattern2DText(
   const AModel: TWfcOverlappingModel2D): String;
@@ -57,6 +59,44 @@ type
 procedure TextError(const AMessage: String);
 begin
   WfcTextError(WFC_PATTERN_TEXT_ARTIFACT, AMessage);
+end;
+
+procedure PreflightTextEnvelope(const AText: String);
+var
+  I: SizeInt;
+  LLineCount: Integer;
+  LTextLength: SizeInt;
+begin
+  LTextLength := Length(AText);
+  if (LTextLength < 0) or
+      (LTextLength > SizeInt(WFC_PATTERN_2D_MAX_ENCODED_TEXT_LENGTH)) then
+    TextError('document exceeds the version-1 encoded length limit');
+  LLineCount := 0;
+  for I := 1 to LTextLength do
+    if AText[I] = #10 then
+    begin
+      if LLineCount = WFC_PATTERN_2D_MAX_TEXT_LINE_COUNT then
+        TextError('document exceeds the version-1 line-count limit');
+      Inc(LLineCount);
+    end;
+end;
+
+procedure RequireEncodedTextLength(const ALines: TWfcTextLines);
+var
+  I: Integer;
+  LLineLength: SizeInt;
+  LTotalLength: Integer;
+begin
+  LTotalLength := 0;
+  for I := 0 to Length(ALines) - 1 do
+  begin
+    LLineLength := Length(ALines[I]);
+    if LLineLength > SizeInt(
+        WFC_PATTERN_2D_MAX_ENCODED_TEXT_LENGTH - LTotalLength - 1) then
+      raise ERangeError.Create(
+        'canonical WFC pattern text exceeds the version-1 length limit');
+    Inc(LTotalLength, Integer(LLineLength) + 1);
+  end;
 end;
 
 function ParseCanonicalInteger(const AText,
@@ -107,10 +147,14 @@ function CheckedRelationSlotCount(
 begin
   if APatternCount < 1 then
     TextError('patterns must be positive');
+  if APatternCount > WFC_PATTERN_2D_MAX_PATTERN_COUNT then
+    TextError('pattern count exceeds the version-1 limit');
   Result := CheckedProduct(APatternCount, APatternCount,
     'relation table dimensions');
   Result := CheckedProduct(WFC_PATTERN_DIRECTION_COUNT, Result,
     'relation table dimensions');
+  if Result > WFC_PATTERN_2D_MAX_RELATION_SLOT_COUNT then
+    TextError('relation table exceeds the version-1 slot limit');
 end;
 
 function CheckedLineCount(const ASourceCount, APaletteCount,
@@ -125,6 +169,46 @@ begin
     'pattern text line count');
   Result := CheckedAdd(Result, ARelationCount,
     'pattern text line count');
+  if Result > WFC_PATTERN_2D_MAX_TEXT_LINE_COUNT then
+    TextError('pattern text exceeds the version-1 line-count limit');
+end;
+
+function CheckedSourceCells(const AWidth, AHeight,
+  ASourceIndex: Integer): Integer;
+begin
+  if (AWidth < 1) or (AHeight < 1) then
+    TextError('sample dimensions must be positive');
+  if (AWidth > WFC_PATTERN_2D_MAX_SOURCE_DIMENSION) or
+      (AHeight > WFC_PATTERN_2D_MAX_SOURCE_DIMENSION) then
+    TextError(Format(
+      'sample %d dimension exceeds the version-1 limit', [ASourceIndex]));
+  if AWidth > WFC_PATTERN_2D_MAX_SOURCE_CELL_COUNT div AHeight then
+    TextError(Format(
+      'sample %d cells exceed the version-1 limit', [ASourceIndex]));
+  Result := AWidth * AHeight;
+end;
+
+procedure AccumulateSourceCells(var ATotal: Integer;
+  const AWidth, AHeight, ASourceIndex: Integer);
+var
+  LCells: Integer;
+begin
+  LCells := CheckedSourceCells(AWidth, AHeight, ASourceIndex);
+  if ATotal > WFC_PATTERN_2D_MAX_TOTAL_SOURCE_CELL_COUNT - LCells then
+    TextError('aggregate sample cells exceed the version-1 limit');
+  Inc(ATotal, LCells);
+end;
+
+function CheckedFootprintCells(const AWidth, AHeight: Integer): Integer;
+begin
+  if (AWidth < 1) or (AHeight < 1) then
+    TextError('footprint dimensions must be positive');
+  if (AWidth > WFC_PATTERN_2D_MAX_FOOTPRINT_DIMENSION) or
+      (AHeight > WFC_PATTERN_2D_MAX_FOOTPRINT_DIMENSION) then
+    TextError('footprint dimension exceeds the version-1 limit');
+  if AWidth > WFC_PATTERN_2D_MAX_FOOTPRINT_CELL_COUNT div AHeight then
+    TextError('footprint cells exceed the version-1 limit');
+  Result := AWidth * AHeight;
 end;
 
 procedure ValidateBoundary(const ABoundary: TWfcModelBoundary);
@@ -560,8 +644,7 @@ begin
     LComma2 - LComma1 - 1), 'sample width');
   AShape.Height := ParseCanonicalInteger(Copy(ALine, LComma2 + 1,
     Length(ALine) - LComma2), 'sample height');
-  if (AShape.Width < 1) or (AShape.Height < 1) then
-    TextError('sample dimensions must be positive');
+  CheckedSourceCells(AShape.Width, AShape.Height, AExpectedIndex);
 end;
 
 procedure ParseFootprintLine(const ALine: String;
@@ -580,9 +663,7 @@ begin
     LComma - 11), 'footprint width');
   AHeight := ParseCanonicalInteger(Copy(ALine, LComma + 1,
     Length(ALine) - LComma), 'footprint height');
-  if (AWidth < 1) or (AHeight < 1) then
-    TextError('footprint dimensions must be positive');
-  CheckedProduct(AWidth, AHeight, 'pattern footprint');
+  CheckedFootprintCells(AWidth, AHeight);
 end;
 
 procedure ParsePaletteLine(const ALine: String;
@@ -791,6 +872,7 @@ begin
           Inc(LLineIndex);
         end;
   LLines[LLineIndex] := 'end';
+  RequireEncodedTextLength(LLines);
   Result := WfcTextJoinCanonicalLines(LLines,
     WFC_PATTERN_TEXT_ARTIFACT);
 end;
@@ -819,9 +901,11 @@ var
   LSlot: Integer;
   LSymmetry: TWfcModelSymmetry;
   LTextValue: String;
+  LTotalSourceCells: Integer;
   LWeights: TWfcModelIntegerArray;
 begin
   Result := nil;
+  PreflightTextEnvelope(AText);
   WfcTextSplitCanonicalLines(AText, WFC_PATTERN_TEXT_ARTIFACT,
     LLines);
   if Length(LLines) < WFC_PATTERN_FIXED_LINE_COUNT then
@@ -843,21 +927,25 @@ begin
   Inc(LLineIndex);
   if LSampleCount < 1 then
     TextError('samples must be positive');
+  if LSampleCount > WFC_PATTERN_2D_MAX_SOURCE_COUNT then
+    TextError('sample count exceeds the version-1 limit');
   { Eight fixed lines remain after the sample records. }
   if LSampleCount > Length(LLines) - LLineIndex - 8 then
     TextError('sample records are incomplete');
   SetLength(LShapes, LSampleCount);
+  LTotalSourceCells := 0;
   for I := 0 to LSampleCount - 1 do
   begin
     ParseShapeLine(RequireLine(LLines, LLineIndex,
       'sample record'), I, LShapes[I]);
+    AccumulateSourceCells(LTotalSourceCells, LShapes[I].Width,
+      LShapes[I].Height, I);
     Inc(LLineIndex);
   end;
 
   ParseFootprintLine(RequireLine(LLines, LLineIndex,
     'footprint'), LPatternWidth, LPatternHeight);
-  LFootprintSize := CheckedProduct(LPatternWidth, LPatternHeight,
-    'pattern footprint');
+  LFootprintSize := CheckedFootprintCells(LPatternWidth, LPatternHeight);
   Inc(LLineIndex);
 
   LTextValue := ValueAfterPrefix(RequireLine(LLines, LLineIndex,
@@ -891,6 +979,8 @@ begin
   Inc(LLineIndex);
   if LPaletteCount < 1 then
     TextError('palette must be positive');
+  if LPaletteCount > WFC_PATTERN_2D_MAX_PALETTE_COUNT then
+    TextError('palette count exceeds the version-1 limit');
   { The patterns field, at least one pattern, relations, and end remain. }
   if LPaletteCount > Length(LLines) - LLineIndex - 4 then
     TextError('palette records are incomplete');
@@ -908,10 +998,15 @@ begin
   Inc(LLineIndex);
   if LPatternCount < 1 then
     TextError('patterns must be positive');
+  if LPatternCount > WFC_PATTERN_2D_MAX_PATTERN_COUNT then
+    TextError('pattern count exceeds the version-1 limit');
   { The relations field and end remain after the pattern records. }
   if LPatternCount > Length(LLines) - LLineIndex - 2 then
     TextError('pattern records are incomplete');
   LRelationSlots := CheckedRelationSlotCount(LPatternCount);
+  if LPatternCount > WFC_PATTERN_2D_MAX_TOTAL_PATTERN_CELL_COUNT div
+      LFootprintSize then
+    TextError('aggregate pattern cells exceed the version-1 limit');
   SetLength(LPatterns, LPatternCount);
   SetLength(LWeights, LPatternCount);
   for I := 0 to LPatternCount - 1 do

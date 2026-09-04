@@ -166,27 +166,6 @@ begin
   Result := WfcTextJoinCanonicalLines(LLines, MUSIC_PASS_ARTIFACT);
 end;
 
-function ParseCanonicalSeed(const AText: String): TGraphSeed;
-var
-  I: Integer;
-  LDigit: TGraphSeed;
-begin
-  if AText = '' then
-    TextError('seed is empty');
-  if (Length(AText) > 1) and (AText[1] = '0') then
-    TextError('seed has a leading zero');
-  Result := 0;
-  for I := 1 to Length(AText) do
-  begin
-    if not (AText[I] in ['0'..'9']) then
-      TextError('seed is not a canonical unsigned decimal integer');
-    LDigit := TGraphSeed(Ord(AText[I]) - Ord('0'));
-    if Result > (High(TGraphSeed) - LDigit) div 10 then
-      TextError('seed exceeds the unsigned 32-bit range');
-    Result := Result * 10 + LDigit;
-  end;
-end;
-
 function ParseInteger(const AText, AField: String): Integer;
 begin
   Result := WfcTextParseCanonicalInteger(AText, AField,
@@ -291,8 +270,8 @@ begin
     TextError('expected wfcmusicpass=1 header');
   Inc(LLineIndex);
 
-  LSeed := ParseCanonicalSeed(ReadValueLine(LLines, LLineIndex,
-    'seed=', 'seed'));
+  LSeed := WfcTextParseCanonicalCardinal(ReadValueLine(LLines,
+    LLineIndex, 'seed=', 'seed'), 'seed', MUSIC_PASS_ARTIFACT);
   LQuantumTicks := ParseInteger(ReadValueLine(LLines, LLineIndex,
     'quantum=', 'quantum ticks'), 'quantum ticks');
   LCellCount := ParseInteger(ReadValueLine(LLines, LLineIndex,

@@ -165,6 +165,10 @@ function DefaultWfcPattern2DPassConfig(
   const AWidth, AHeight: Integer;
   const ASeed: TGraphSeed): TWfcPattern2DPassConfig;
 
+{ Public bridge preflight shared by declarative recipes and graph adapters. }
+function WfcPattern2DTokenUsesReservedKeySyntax(
+  const AToken: TWfcModelToken): Boolean;
+
 { Preflights the complete bridge without changing the target pass. The active
   target must be an empty overlay pass in the same wrapped, depth-one graph as
   the named source pass. Source identity means its exact compiled latent graph
@@ -265,7 +269,8 @@ begin
   {$ENDIF}
 end;
 
-function IsPatternKeyLike(const AToken: TWfcModelToken): Boolean;
+function WfcPattern2DTokenUsesReservedKeySyntax(
+  const AToken: TWfcModelToken): Boolean;
 var
   I: Integer;
 begin
@@ -548,7 +553,8 @@ begin
   SetLength(APrepared.PublicValues, AModel.PaletteCount);
   for I := 0 to AModel.PaletteCount - 1 do
   begin
-    if IsPatternKeyLike(AModel.PaletteTokenAt(I)) then
+    if WfcPattern2DTokenUsesReservedKeySyntax(
+        AModel.PaletteTokenAt(I)) then
       raise EWfcPattern2DGraph.CreateFmt(
         'overlapping palette token %d uses the reserved latent-key syntax',
         [I]);

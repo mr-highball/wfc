@@ -36,6 +36,10 @@ type
 procedure WfcTextError(const AArtifactName, AMessage: String);
 function WfcTextParseCanonicalInteger(const AText, AFieldName,
   AArtifactName: String): Integer;
+function WfcTextParseCanonicalCardinal(const AText, AFieldName,
+  AArtifactName: String): Cardinal;
+function WfcTextParseCanonicalSignedInteger(const AText, AFieldName,
+  AArtifactName: String): Integer;
 function WfcTextValueAfterPrefix(const ALine, APrefix, AFieldName,
   AArtifactName: String): String;
 function WfcTextEncodeToken(const AToken: TWfcModelToken;
@@ -89,6 +93,83 @@ begin
         AFieldName + ' exceeds the supported integer range');
     Result := (Result * 10) + LDigit;
   end;
+end;
+
+function WfcTextParseCanonicalCardinal(const AText, AFieldName,
+  AArtifactName: String): Cardinal;
+var
+  I: Integer;
+  LDigit: Cardinal;
+begin
+  if AText = '' then
+    WfcTextError(AArtifactName, AFieldName + ' is empty');
+  if (Length(AText) > 1) and (AText[1] = '0') then
+    WfcTextError(AArtifactName, AFieldName + ' has a leading zero');
+
+  Result := 0;
+  for I := 1 to Length(AText) do
+  begin
+    if not (AText[I] in ['0'..'9']) then
+      WfcTextError(AArtifactName,
+        AFieldName + ' is not a canonical unsigned decimal integer');
+    LDigit := Cardinal(Ord(AText[I]) - Ord('0'));
+    if Result > ((High(Cardinal) - LDigit) div Cardinal(10)) then
+      WfcTextError(AArtifactName,
+        AFieldName + ' exceeds the supported Cardinal range');
+    Result := (Result * Cardinal(10)) + LDigit;
+  end;
+end;
+
+function WfcTextParseCanonicalSignedInteger(const AText, AFieldName,
+  AArtifactName: String): Integer;
+var
+  I: Integer;
+  LDigit: Cardinal;
+  LFirstDigit: Integer;
+  LLimit: Cardinal;
+  LMagnitude: Cardinal;
+  LNegative: Boolean;
+begin
+  if AText = '' then
+    WfcTextError(AArtifactName, AFieldName + ' is empty');
+
+  LNegative := AText[1] = '-';
+  if LNegative then
+    LFirstDigit := 2
+  else
+    LFirstDigit := 1;
+  if LFirstDigit > Length(AText) then
+    WfcTextError(AArtifactName,
+      AFieldName + ' is not a canonical signed decimal integer');
+  if (Length(AText) - LFirstDigit >= 1) and
+      (AText[LFirstDigit] = '0') then
+    WfcTextError(AArtifactName, AFieldName + ' has a leading zero');
+  if LNegative and (AText[LFirstDigit] = '0') then
+    WfcTextError(AArtifactName, AFieldName + ' is negative zero');
+
+  if LNegative then
+    LLimit := Cardinal(High(Integer)) + Cardinal(1)
+  else
+    LLimit := Cardinal(High(Integer));
+  LMagnitude := 0;
+  for I := LFirstDigit to Length(AText) do
+  begin
+    if not (AText[I] in ['0'..'9']) then
+      WfcTextError(AArtifactName,
+        AFieldName + ' is not a canonical signed decimal integer');
+    LDigit := Cardinal(Ord(AText[I]) - Ord('0'));
+    if LMagnitude > ((LLimit - LDigit) div Cardinal(10)) then
+      WfcTextError(AArtifactName,
+        AFieldName + ' exceeds the supported Integer range');
+    LMagnitude := (LMagnitude * Cardinal(10)) + LDigit;
+  end;
+
+  if not LNegative then
+    Result := Integer(LMagnitude)
+  else if LMagnitude = Cardinal(High(Integer)) + Cardinal(1) then
+    Result := Low(Integer)
+  else
+    Result := -Integer(LMagnitude);
 end;
 
 function WfcTextValueAfterPrefix(const ALine, APrefix, AFieldName,

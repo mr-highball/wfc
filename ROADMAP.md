@@ -408,9 +408,16 @@ cycles, composes latent and public-token passes in either direction, and
 round-trips strict standalone `wfcs=1` artifacts. Atomic positional masks and
 exact forward/backward domain analysis now support project-owned Unicode-scalar
 text completion. Corpus seams are absent, while compatible states may
-intentionally recombine. The broader tools, word-boundary tables, wrapped
-sequence training, provenance metadata, higher-dimensional extraction, and
-complete exit gate remain open.
+intentionally recombine. Portable Recipe Foundation v1 now adds strict
+`wfcrules=1` artifacts for exact hand-authored rank-1/2/3 rules and an
+immutable `wfcpipeline=1` recipe IR. The recipe owns canonical `wfcm`,
+`wfcrules`, `wfcp`, and `wfcs` resources; pins replay-relevant versions;
+validates provenance, topology, visibility, dependencies, typed projection
+bridges, public vocabularies, and signed-offset requirements; and round-trips
+through the same dependency-free codec on native FPC and pas2js. It does not
+yet compile the recipe into a live graph or define run/result artifacts. The
+runtime compiler, headless tools, word-boundary tables, wrapped sequence
+training, higher-dimensional extraction, and complete exit gate remain open.
 
 ### Deliverables
 

@@ -64,6 +64,10 @@ begin
     P.Targets.AddUnit('wfc_building3d.pas');
     P.Targets.AddUnit('wfc_building3d_validate.pas');
     P.Targets.AddUnit('wfc_building3d_view.pas');
+    P.Targets.AddUnit('wfc_rule_model.pas');
+    P.Targets.AddUnit('wfc_rule_text.pas');
+    P.Targets.AddUnit('wfc_pipeline_model.pas');
+    P.Targets.AddUnit('wfc_pipeline_text.pas');
     Run;
   end;
 end.

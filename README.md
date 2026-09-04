@@ -56,6 +56,13 @@ modular 3D structures, music, text, and other discrete design problems.
 > locks, immutable validated compositions, ordinary and bounded negotiated
 > full/selective regeneration, portable public signatures, and strict
 > `wfcmusicpass=1` result replay.
+> Portable Recipe Foundation v1 adds an immutable rank-1/2/3 authored-rule
+> model with explicit denials and required directions, strict `wfcrules=1`
+> text, and an immutable `wfcpipeline=1` recipe that owns canonical model,
+> rules, pattern, and sequence resources. Recipes validate version pins,
+> topology, pass visibility, the complete dependency DAG, typed projection
+> bridges, public vocabularies, provenance, and signed-offset token
+> requirements before any runtime graph exists.
 > Pipeline v2 adds exact signed-offset and finite any-of-neighborhood reads
 > across staged provider passes. Causal Trace v1 adds opt-in chronological
 > decision/removal/backtrack evidence, provider-pass cause links, per-pass
@@ -116,6 +123,13 @@ modular 3D structures, music, text, and other discrete design problems.
   cross-sample seam relations
 - strict canonical `.wfcm` text with UTF-8 percent encoding and byte-exact
   decode/re-encode validation
+- immutable rank-1/2/3 hand-authored local rules with positive weights,
+  legacy wildcards, explicit deny-all directions, required support, exact
+  reciprocal closure, fresh-pass adaptation, and strict `wfcrules=1` text
+- immutable `wfcpipeline=1` recipes with owned canonical typed resources,
+  closed adapter and bridge kinds, explicit acyclic dependencies, static
+  public vocabularies, provenance, version pins, fixed resource/complexity
+  limits, and exact decode/re-encode validation
 - deterministic overlapping 2D pattern extraction with heterogeneous corpora,
   open/wrapped sources, square-footprint D4 augmentation, structural
   compatibility, explicit latent-to-token projection, and strict `.wfcp`
@@ -228,6 +242,8 @@ and browser demonstrations, see the [2D ecosystem](docs/world2d.md).
 For learned frequencies and adjacency, immutable model data, graph adaptation,
 the `.wfcm` format, and exact replay inputs, see
 [model learning and priming](docs/learning.md).
+For hand-authored rank-1/2/3 rule artifacts and declarative multi-resource
+pipeline recipes, see [portable rules and pipeline recipes](docs/pipeline-artifacts.md).
 For multi-cell extraction, structural overlap, latent assignment, projection,
 independent validation, and the `.wfcp` format, see
 [overlapping 2D patterns](docs/patterns.md).
@@ -267,7 +283,7 @@ Run the checked native build and conformance suite from the repository root:
 Both entry points compile with checked FPC options, keep all output under
 `build/`, run the core, 2D ecosystem, selective-settlement, radius-one
 learning, overlapping-pattern, pattern-pass composition, sequence,
-text-completion, text-pass,
+text-completion, text-pass, authored-rule and pipeline-recipe artifacts,
 score/cell, music-graph, music-pass, music-result-codec, SMF, score-to-MIDI,
 voxel, Building 3D, and
 causal-trace, pass-negotiation, and selective-negotiation suites,

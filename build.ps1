@@ -48,6 +48,13 @@ $musicTestSources = @(
   (Join-Path $repositoryRoot 'test/wfc_music_passes_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_music_passes_text_test.lpr')
 )
+$artifactTestSources = @(
+  (Join-Path $repositoryRoot 'test/wfc_text_codec_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_rule_model_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_rule_text_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_pipeline_model_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_pipeline_text_test.lpr')
+)
 $exampleSource = Join-Path $repositoryRoot `
   'examples/text/01_SimpleTiledWorld/SimpleTiledWorld.lpr'
 $worldExampleSource = Join-Path $repositoryRoot `
@@ -690,6 +697,45 @@ foreach ($musicTestSource in $musicTestSources) {
   $musicTestExitCode = $LASTEXITCODE
   if ($musicTestExitCode -ne 0) {
     exit $musicTestExitCode
+  }
+}
+
+foreach ($artifactTestSource in $artifactTestSources) {
+  $artifactTestName = [System.IO.Path]::GetFileNameWithoutExtension(
+    $artifactTestSource)
+  $artifactTestCompilerArguments = @(
+    $CompilerOptions
+    '-B'
+    '-Mdelphi'
+    '-Sa'
+    '-Cr'
+    '-Co'
+    '-Ci'
+    "-Fu$sourceDirectory"
+    "-FU$unitOutputDirectory"
+    "-FE$binaryOutputDirectory"
+    $artifactTestSource
+  )
+
+  Write-Host "Building the portable-artifact suite '$artifactTestName'."
+  & $Compiler @artifactTestCompilerArguments
+  $artifactTestCompilerExitCode = $LASTEXITCODE
+  if ($artifactTestCompilerExitCode -ne 0) {
+    exit $artifactTestCompilerExitCode
+  }
+
+  $artifactTestExecutableName = if ($env:OS -eq 'Windows_NT') {
+    "$artifactTestName.exe"
+  } else {
+    $artifactTestName
+  }
+  $artifactTestExecutable = Join-Path $binaryOutputDirectory `
+    $artifactTestExecutableName
+  Write-Host "Running '$artifactTestExecutable'."
+  & $artifactTestExecutable
+  $artifactTestExitCode = $LASTEXITCODE
+  if ($artifactTestExitCode -ne 0) {
+    exit $artifactTestExitCode
   }
 }
 

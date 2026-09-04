@@ -193,6 +193,121 @@ begin
   Check(LRaised, AMessage);
 end;
 
+procedure CheckSequenceLimitRejected(const AOperation: Integer;
+  const AExpected, AMessage: String);
+var
+  LCounts: TWfcModelIntegerArray;
+  LHistoryCount: Integer;
+  LMessage: String;
+  LModel: TWfcSequenceModel;
+  LOrder: Integer;
+  LRaised: Boolean;
+  LSampleLengths: TWfcSequenceSampleLengths;
+  LStates: TWfcSequenceStates;
+  LTokens: TWfcModelTokens;
+begin
+  LModel := nil;
+  LMessage := '';
+  LCounts := nil;
+  LOrder := 1;
+  case AOperation of
+    0:
+      LOrder := WFC_SEQUENCE_MAX_ORDER + 1;
+    1:
+      SetLength(LSampleLengths, WFC_SEQUENCE_MAX_SAMPLE_COUNT + 1);
+    2:
+      begin
+        SetLength(LSampleLengths, 1);
+        LSampleLengths[0] := 1;
+        SetLength(LTokens, WFC_SEQUENCE_MAX_PUBLIC_TOKEN_COUNT + 1);
+      end;
+    3:
+      begin
+        SetLength(LSampleLengths, 1);
+        LSampleLengths[0] := 1;
+        LTokens := TokensOf(['A']);
+        SetLength(LStates, WFC_SEQUENCE_MAX_STATE_COUNT + 1);
+      end;
+    4:
+      begin
+        LOrder := WFC_SEQUENCE_MAX_ORDER;
+        SetLength(LSampleLengths, 1);
+        LSampleLengths[0] := 1;
+        LTokens := TokensOf(['A']);
+        LHistoryCount :=
+          (WFC_SEQUENCE_MAX_TOTAL_HISTORY_ITEM_COUNT div
+            (LOrder - 1)) + 1;
+        SetLength(LStates, LHistoryCount);
+      end;
+  end;
+  LRaised := False;
+  try
+    try
+      LModel := TWfcSequenceModel.Create(LOrder, LSampleLengths,
+        LTokens, LStates, LCounts, LCounts, LCounts);
+    except
+      on E: EWfcSequence do
+      begin
+        LRaised := True;
+        LMessage := E.Message;
+      end;
+    end;
+  finally
+    LModel.Free;
+  end;
+  Check(LRaised and (Pos(AExpected, LMessage) > 0), AMessage);
+end;
+
+procedure TestVersionedResourceLimits;
+begin
+  Check((WFC_SEQUENCE_LIMITS_VERSION = 1) and
+    (WFC_SEQUENCE_MAX_ORDER = 1024) and
+    (WFC_SEQUENCE_MAX_SAMPLE_COUNT = 4096) and
+    (WFC_SEQUENCE_MAX_PUBLIC_TOKEN_COUNT = 1024) and
+    (WFC_SEQUENCE_MAX_STATE_COUNT = 1024) and
+    (WFC_SEQUENCE_MAX_TOTAL_HISTORY_ITEM_COUNT = 65536) and
+    (WFC_SEQUENCE_MAX_ENCODED_TEXT_LENGTH = 16777216) and
+    (WFC_SEQUENCE_MAX_TEXT_LINE_COUNT = 262144),
+    'version-one sequence cardinality and envelope limits are exact');
+  CheckSequenceLimitRejected(0, 'order exceeds the version-1 limit',
+    'order cardinality is rejected before owned allocation');
+  CheckSequenceLimitRejected(1,
+    'sample count exceeds the version-1 limit',
+    'sample cardinality is rejected before owned allocation');
+  CheckSequenceLimitRejected(2,
+    'public-token count exceeds the version-1 limit',
+    'token cardinality is rejected before quadratic uniqueness work');
+  CheckSequenceLimitRejected(3,
+    'state count exceeds the version-1 limit',
+    'state cardinality is rejected before dense graph planning');
+  CheckSequenceLimitRejected(4,
+    'history size exceeds the version-1 aggregate limit',
+    'aggregate state history bounds structural comparison work');
+
+  CheckDecodeRejected(StringOfChar('x',
+    WFC_SEQUENCE_MAX_ENCODED_TEXT_LENGTH + 1),
+    'oversized sequence text is rejected before line splitting');
+  CheckDecodeRejected(StringOfChar(#10,
+    WFC_SEQUENCE_MAX_TEXT_LINE_COUNT + 1),
+    'excessive sequence-text newlines are rejected before line splitting');
+  CheckDecodeRejected(ReplaceOnce(GOLDEN_BRANCHING_ORDER_2,
+    'order=2', 'order=1025'),
+    'serialized order cardinality is rejected before state parsing');
+  CheckDecodeRejected(ReplaceOnce(GOLDEN_BRANCHING_ORDER_2,
+    'samples=2', 'samples=4097'),
+    'serialized sample cardinality is rejected before allocation');
+  CheckDecodeRejected(ReplaceOnce(GOLDEN_BRANCHING_ORDER_2,
+    'tokens=3', 'tokens=1025'),
+    'serialized token cardinality is rejected before allocation');
+  CheckDecodeRejected(ReplaceOnce(GOLDEN_BRANCHING_ORDER_2,
+    'states=5', 'states=1025'),
+    'serialized state cardinality is rejected before allocation');
+  CheckDecodeRejected(ReplaceOnce(ReplaceOnce(
+    GOLDEN_BRANCHING_ORDER_2, 'order=2', 'order=1024'),
+    'states=5', 'states=65'),
+    'serialized aggregate history is rejected before state allocation');
+end;
+
 procedure TestOrderOne;
 var
   I: Integer;
@@ -1259,6 +1374,7 @@ begin
     @TestUnicodeProviderProjection);
   RunTest('canonical sequence text codec',
     @TestCanonicalTextCodec);
+  RunTest('versioned resource limits', @TestVersionedResourceLimits);
   RunTest('versions and private-key collision',
     @TestVersionsAndPrivateKeyCollision);
   WriteLn('========================================');

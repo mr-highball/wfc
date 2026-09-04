@@ -558,6 +558,47 @@ begin
   end;
 end;
 
+function ModelLimitRejected(const ARank: Integer;
+  const ASampleShapes: TWfcModelSampleShapes;
+  const ATokens: TWfcModelTokens;
+  const AExpectedMessage: String): Boolean;
+var
+  LDirections: TWfcModelDirections;
+  LMessage: String;
+  LModel: TWfcModel;
+  LRelations: TWfcModelIntegerArray;
+  LWeights: TWfcModelIntegerArray;
+begin
+  Result := False;
+  LMessage := '';
+  LModel := nil;
+  if Length(ATokens) = 1 then
+  begin
+    SetLength(LWeights, 1);
+    LWeights[0] := 1;
+    SetLength(LRelations, 4);
+  end;
+  if ARank = 1 then
+    LDirections := [wmdEast, wmdWest]
+  else
+    LDirections := [wmdNorth, wmdEast, wmdSouth, wmdWest];
+  try
+    try
+      LModel := TWfcModel.Create(ARank, ASampleShapes, wmbOpen,
+        wmsNone, LDirections, ATokens, LWeights, LRelations);
+    except
+      on E: EWfcModel do
+      begin
+        Result := True;
+        LMessage := E.Message;
+      end;
+    end;
+  finally
+    LModel.Free;
+  end;
+  Result := Result and (Pos(AExpectedMessage, LMessage) > 0);
+end;
+
 function MergeRejected(const AModels: TWfcModels): Boolean;
 var
   LMerged: TWfcModel;
@@ -1697,6 +1738,73 @@ begin
     'the model constructor requires height one for every rank-1 shape');
 end;
 
+procedure TestVersionedResourceLimits;
+var
+  LShapes: TWfcModelSampleShapes;
+  LTokens: TWfcModelTokens;
+begin
+  Check((WFC_MODEL_LIMITS_VERSION = 1) and
+    (WFC_MODEL_MAX_SAMPLE_COUNT = 65536) and
+    (WFC_MODEL_MAX_SAMPLE_DIMENSION = 4194304) and
+    (WFC_MODEL_MAX_SAMPLE_CELL_COUNT = 4194304) and
+    (WFC_MODEL_MAX_TOTAL_SAMPLE_CELL_COUNT = 4194304) and
+    (WFC_MODEL_MAX_VALUE_COUNT = 1024) and
+    (WFC_MODEL_MAX_RELATION_SLOT_COUNT = 4194304) and
+    (WFC_MODEL_MAX_ENCODED_TEXT_LENGTH = 16777216) and
+    (WFC_MODEL_MAX_TEXT_LINE_COUNT = 262144),
+    'version-one model cardinality, shape, dense-slot, and envelope limits are exact');
+
+  SetLength(LShapes, WFC_MODEL_MAX_SAMPLE_COUNT + 1);
+  Check(ModelLimitRejected(2, LShapes, Tokens('X'),
+    'sample count exceeds the version-1 limit'),
+    'sample cardinality is rejected before inspecting or copying shapes');
+
+  SetLength(LShapes, 1);
+  LShapes[0] := MakeWfcModelSampleShape(
+    WFC_MODEL_MAX_SAMPLE_DIMENSION + 1, 1);
+  Check(ModelLimitRejected(2, LShapes, Tokens('X'),
+    'sample dimension exceeds the version-1 limit'),
+    'an oversized sample dimension is rejected before multiplication');
+
+  LShapes[0] := MakeWfcModelSampleShape(2049, 2048);
+  Check(ModelLimitRejected(2, LShapes, Tokens('X'),
+    'sample cells exceed the version-1 limit'),
+    'an oversized sample area is rejected before multiplication');
+
+  SetLength(LShapes, 2);
+  LShapes[0] := MakeWfcModelSampleShape(2097153, 1);
+  LShapes[1] := MakeWfcModelSampleShape(2097153, 1);
+  Check(ModelLimitRejected(2, LShapes, Tokens('X'),
+    'aggregate model sample cells exceed the version-1 limit'),
+    'aggregate sample cells are bounded before model validation work');
+
+  SetLength(LShapes, 1);
+  LShapes[0] := MakeWfcModelSampleShape(1, 1);
+  SetLength(LTokens, WFC_MODEL_MAX_VALUE_COUNT + 1);
+  Check(ModelLimitRejected(2, LShapes, LTokens,
+    'model value count exceeds the version-1 limit'),
+    'value cardinality is rejected before quadratic uniqueness work or dense allocation');
+
+  CheckDecodeRejected(StringOfChar('x',
+    WFC_MODEL_MAX_ENCODED_TEXT_LENGTH + 1),
+    'oversized model text is rejected before line splitting');
+  CheckDecodeRejected(StringOfChar(#10,
+    WFC_MODEL_MAX_TEXT_LINE_COUNT + 1),
+    'excessive model-text newlines are rejected before line splitting');
+  CheckDecodeRejected(ReplaceOnce(GOLDEN_WRAP_ABA,
+    'width=3', 'width=4194305'),
+    'serialized sample dimensions are bounded before allocation');
+  CheckDecodeRejected(ReplaceOnce(GOLDEN_WRAP_ABA,
+    'width=3'#10'height=1', 'width=2049'#10'height=2048'),
+    'serialized sample cells are bounded before multiplication');
+  CheckDecodeRejected(ReplaceOnce(GOLDEN_WRAP_CORPUS,
+    'samples=2', 'samples=65537'),
+    'serialized sample cardinality is bounded before shape allocation');
+  CheckDecodeRejected(ReplaceOnce(GOLDEN_WRAP_ABA,
+    'values=2', 'values=1025'),
+    'serialized value cardinality is bounded before dense allocation');
+end;
+
 procedure TestModelMerging;
 var
   LDirect: TWfcModel;
@@ -2122,6 +2230,7 @@ begin
     @TestCorpusD4AndDuplicateSamples);
   RunTest('model sample-shape immutability and guards',
     @TestModelSampleShapes);
+  RunTest('versioned resource limits', @TestVersionedResourceLimits);
   RunTest('deterministic model merging and guards', @TestModelMerging);
   RunTest('model merge algebra and ownership',
     @TestModelMergeAlgebraAndOwnership);

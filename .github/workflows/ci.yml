@@ -243,6 +243,8 @@ jobs:
           viewer_test_bin='build/pas2js/viewer-test/bin'
           music_test_units='build/pas2js/music-test/units'
           music_test_bin='build/pas2js/music-test/bin'
+          artifact_test_units='build/pas2js/artifact-test/units'
+          artifact_test_bin='build/pas2js/artifact-test/bin'
           example_units='build/pas2js/example/units'
           example_bin='build/pas2js/example/bin'
           world_example_units='build/pas2js/world-example/units'
@@ -292,6 +294,7 @@ jobs:
             "$trace_test_units" "$trace_test_bin" \
             "$viewer_test_units" "$viewer_test_bin" \
             "$music_test_units" "$music_test_bin" \
+            "$artifact_test_units" "$artifact_test_bin" \
             "$example_units" "$example_bin" \
             "$world_example_units" "$world_example_bin" \
             "$settlement_example_units" "$settlement_example_bin" \
@@ -409,6 +412,19 @@ jobs:
               -FU"$music_test_units" -FE"$music_test_bin" \
               "test/$music_test.lpr"
             node "$music_test_bin/$music_test.js"
+          done
+
+          for artifact_test in \
+            wfc_text_codec_test \
+            wfc_rule_model_test \
+            wfc_rule_text_test \
+            wfc_pipeline_model_test \
+            wfc_pipeline_text_test
+          do
+            "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
+              -FU"$artifact_test_units" -FE"$artifact_test_bin" \
+              "test/$artifact_test.lpr"
+            node "$artifact_test_bin/$artifact_test.js"
           done
 
           "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \

@@ -258,6 +258,64 @@ begin
   Check(LRaised, AMessage);
 end;
 
+function PatternModelLimitRejected(const APatternWidth,
+  APatternHeight: Integer; const AShapes: TWfcModelSampleShapes;
+  const APalette: TWfcModelTokens;
+  const APatterns: TWfcPattern2DPayloads;
+  const AWeights: TWfcModelIntegerArray;
+  const AExpectedMessage: String): Boolean;
+var
+  LMessage: String;
+  LModel: TWfcOverlappingModel2D;
+begin
+  Result := False;
+  LMessage := '';
+  LModel := nil;
+  try
+    try
+      LModel := TWfcOverlappingModel2D.Create(APatternWidth,
+        APatternHeight, wmbWrap, wmsNone, AShapes, APalette,
+        APatterns, AWeights);
+    except
+      on E: EWfcModel do
+      begin
+        Result := True;
+        LMessage := E.Message;
+      end;
+    end;
+  finally
+    LModel.Free;
+  end;
+  Result := Result and (Pos(AExpectedMessage, LMessage) > 0);
+end;
+
+function PatternLearningLimitRejected(const ASamples: TWfcLearnSamples;
+  const APatternWidth, APatternHeight: Integer;
+  const AExpectedMessage: String): Boolean;
+var
+  LMessage: String;
+  LModel: TWfcOverlappingModel2D;
+begin
+  Result := False;
+  LMessage := '';
+  LModel := nil;
+  try
+    try
+      LModel := LearnOverlappingModel2DCorpus(ASamples,
+        APatternWidth, APatternHeight, wmbWrap, wmsNone);
+    except
+      on E: EWfcModel do
+      begin
+        Result := True;
+        LMessage := E.Message;
+      end;
+    end;
+  finally
+    LModel.Free;
+  end;
+  Result := Result and (Pos(AExpectedMessage, LMessage) > 0);
+end;
+
 function OpenNineModel: TWfcOverlappingModel2D;
 begin
   Result := LearnOverlappingModel2D(TokensOf([
@@ -950,6 +1008,128 @@ begin
     'the decoder requires a final LF');
 end;
 
+procedure TestVersionedResourceLimits;
+var
+  LPalette: TWfcModelTokens;
+  LPatterns: TWfcPattern2DPayloads;
+  LSamples: TWfcLearnSamples;
+  LShapes: TWfcModelSampleShapes;
+  LWeights: TWfcModelIntegerArray;
+begin
+  Check((WFC_PATTERN_2D_LIMITS_VERSION = 1) and
+    (WFC_PATTERN_2D_MAX_SOURCE_COUNT = 65536) and
+    (WFC_PATTERN_2D_MAX_SOURCE_DIMENSION = 4194304) and
+    (WFC_PATTERN_2D_MAX_SOURCE_CELL_COUNT = 4194304) and
+    (WFC_PATTERN_2D_MAX_TOTAL_SOURCE_CELL_COUNT = 4194304) and
+    (WFC_PATTERN_2D_MAX_FOOTPRINT_DIMENSION = 4096) and
+    (WFC_PATTERN_2D_MAX_FOOTPRINT_CELL_COUNT = 4096) and
+    (WFC_PATTERN_2D_MAX_PALETTE_COUNT = 4096) and
+    (WFC_PATTERN_2D_MAX_PATTERN_COUNT = 1024) and
+    (WFC_PATTERN_2D_MAX_TOTAL_PATTERN_CELL_COUNT = 4194304) and
+    (WFC_PATTERN_2D_MAX_RELATION_SLOT_COUNT = 4194304) and
+    (WFC_PATTERN_2D_MAX_ENCODED_TEXT_LENGTH = 16777216) and
+    (WFC_PATTERN_2D_MAX_TEXT_LINE_COUNT = 262144),
+    'version-one pattern cardinality, dimension, dense-slot, and envelope limits are exact');
+
+  SetLength(LShapes, 1);
+  LShapes[0] := MakeWfcModelSampleShape(1, 1);
+  LPalette := TokensOf(['A']);
+  SetLength(LPatterns, 1);
+  LPatterns[0] := PayloadOf([0]);
+  LWeights := IntegersOf([1]);
+
+  Check(PatternModelLimitRejected(
+    WFC_PATTERN_2D_MAX_FOOTPRINT_DIMENSION + 1, 1,
+    LShapes, LPalette, LPatterns, LWeights,
+    'pattern dimension exceeds the version-1 limit'),
+    'an oversized footprint dimension is rejected before multiplication');
+  Check(PatternModelLimitRejected(65, 64,
+    LShapes, LPalette, LPatterns, LWeights,
+    'pattern cells exceed the version-1 limit'),
+    'an oversized footprint area is rejected before multiplication');
+
+  SetLength(LShapes, WFC_PATTERN_2D_MAX_SOURCE_COUNT + 1);
+  Check(PatternModelLimitRejected(1, 1,
+    LShapes, LPalette, LPatterns, LWeights,
+    'source count exceeds the version-1 limit'),
+    'source cardinality is rejected before inspecting or copying shapes');
+
+  SetLength(LShapes, 1);
+  LShapes[0] := MakeWfcModelSampleShape(
+    WFC_PATTERN_2D_MAX_SOURCE_DIMENSION + 1, 1);
+  Check(PatternModelLimitRejected(1, 1,
+    LShapes, LPalette, LPatterns, LWeights,
+    'source dimension exceeds the version-1 limit'),
+    'an oversized source dimension is rejected before multiplication');
+  LShapes[0] := MakeWfcModelSampleShape(2049, 2048);
+  Check(PatternModelLimitRejected(1, 1,
+    LShapes, LPalette, LPatterns, LWeights,
+    'source cells exceed the version-1 limit'),
+    'an oversized source area is rejected before multiplication');
+  SetLength(LShapes, 2);
+  LShapes[0] := MakeWfcModelSampleShape(2097153, 1);
+  LShapes[1] := MakeWfcModelSampleShape(2097153, 1);
+  Check(PatternModelLimitRejected(1, 1,
+    LShapes, LPalette, LPatterns, LWeights,
+    'aggregate overlapping source cells exceed the version-1 limit'),
+    'aggregate source cells are bounded before pattern validation work');
+
+  SetLength(LShapes, 1);
+  LShapes[0] := MakeWfcModelSampleShape(1, 1);
+  SetLength(LPalette, WFC_PATTERN_2D_MAX_PALETTE_COUNT + 1);
+  Check(PatternModelLimitRejected(1, 1,
+    LShapes, LPalette, LPatterns, LWeights,
+    'palette count exceeds the version-1 limit'),
+    'palette cardinality is rejected before quadratic uniqueness work');
+
+  LPalette := TokensOf(['A']);
+  SetLength(LPatterns, WFC_PATTERN_2D_MAX_PATTERN_COUNT + 1);
+  Check(PatternModelLimitRejected(1, 1,
+    LShapes, LPalette, LPatterns, nil,
+    'pattern count exceeds the version-1 limit'),
+    'pattern cardinality is rejected before dense relation allocation');
+
+  SetLength(LSamples, 1);
+  LSamples[0].Width := WFC_PATTERN_2D_MAX_SOURCE_DIMENSION + 1;
+  LSamples[0].Height := 1;
+  LSamples[0].Tokens := nil;
+  Check(PatternLearningLimitRejected(LSamples, 1, 1,
+    'sample dimension exceeds the version-1 limit'),
+    'the overlapping learner applies source limits before owned allocation');
+
+  CheckDecodeRejected(StringOfChar('x',
+    WFC_PATTERN_2D_MAX_ENCODED_TEXT_LENGTH + 1),
+    'oversized pattern text is rejected before line splitting');
+  CheckDecodeRejected(StringOfChar(#10,
+    WFC_PATTERN_2D_MAX_TEXT_LINE_COUNT + 1),
+    'excessive pattern-text newlines are rejected before line splitting');
+  CheckDecodeRejected(ReplaceOnce(GOLDEN_PUNCTUATION_UNICODE,
+    'samples=1', 'samples=65537'),
+    'serialized source cardinality is bounded before shape allocation');
+  CheckDecodeRejected(ReplaceOnce(GOLDEN_PUNCTUATION_UNICODE,
+    's=0,2,1', 's=0,4194305,1'),
+    'serialized source dimensions are bounded before multiplication');
+  CheckDecodeRejected(ReplaceOnce(GOLDEN_PUNCTUATION_UNICODE,
+    's=0,2,1', 's=0,2049,2048'),
+    'serialized source cells are bounded before multiplication');
+  CheckDecodeRejected(ReplaceOnce(GOLDEN_PUNCTUATION_UNICODE,
+    'samples=1'#10's=0,2,1',
+    'samples=2'#10's=0,2097153,1'#10's=1,2097153,1'),
+    'serialized aggregate source cells are bounded before later allocations');
+  CheckDecodeRejected(ReplaceOnce(GOLDEN_PUNCTUATION_UNICODE,
+    'footprint=2,1', 'footprint=4097,1'),
+    'serialized footprint dimensions are bounded before multiplication');
+  CheckDecodeRejected(ReplaceOnce(GOLDEN_PUNCTUATION_UNICODE,
+    'footprint=2,1', 'footprint=65,64'),
+    'serialized footprint cells are bounded before payload allocation');
+  CheckDecodeRejected(ReplaceOnce(GOLDEN_PUNCTUATION_UNICODE,
+    'palette=2', 'palette=4097'),
+    'serialized palette cardinality is bounded before allocation');
+  CheckDecodeRejected(ReplaceOnce(GOLDEN_PUNCTUATION_UNICODE,
+    'patterns=2', 'patterns=1025'),
+    'serialized pattern cardinality is bounded before dense allocation');
+end;
+
 begin
   WriteLn('WFC overlapping-pattern 2D conformance suite');
   WriteLn('============================================');
@@ -970,6 +1150,7 @@ begin
     @TestWrappedProjectionAndTamperReports);
   RunTest('graph apply, solve, and capture', @TestGraphApplySolveAndCapture);
   RunTest('adapter open-boundary support', @TestAdapterOpenBoundarySupport);
+  RunTest('versioned resource limits', @TestVersionedResourceLimits);
   RunTest('canonical wfcp=1 text codec', @TestCanonicalPatternTextCodec);
   WriteLn('============================================');
   WriteLn(Format('%d checks, %d failures',

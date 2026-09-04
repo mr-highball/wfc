@@ -36,6 +36,16 @@ const
   WFC_SEQUENCE_GRAPH_MODEL_VERSION = 1;
   WFC_SEQUENCE_EXTENT_VERSION = 1;
 
+  { Version-1 portability and denial-of-service boundaries. Together the
+    state and history limits bound quadratic structural uniqueness and graph
+    relation work while retaining room for large practical corpora. }
+  WFC_SEQUENCE_LIMITS_VERSION = 1;
+  WFC_SEQUENCE_MAX_ORDER = 1024;
+  WFC_SEQUENCE_MAX_SAMPLE_COUNT = 4096;
+  WFC_SEQUENCE_MAX_PUBLIC_TOKEN_COUNT = 1024;
+  WFC_SEQUENCE_MAX_STATE_COUNT = 1024;
+  WFC_SEQUENCE_MAX_TOTAL_HISTORY_ITEM_COUNT = 65536;
+
 type
   EWfcSequence = class(EWfcModel);
 
@@ -385,10 +395,31 @@ begin
   if AOrder < 1 then
     raise EWfcSequence.CreateFmt(
       'sequence order must be positive [%d]', [AOrder]);
+  if AOrder > WFC_SEQUENCE_MAX_ORDER then
+    raise EWfcSequence.Create(
+      'sequence order exceeds the version-1 limit');
   LHistorySize := AOrder - 1;
 
   LSampleCount := CheckedLength(Length(ASampleLengths),
     'sequence sample count');
+  if LSampleCount > WFC_SEQUENCE_MAX_SAMPLE_COUNT then
+    raise EWfcSequence.Create(
+      'sequence sample count exceeds the version-1 limit');
+  LPublicTokenCount := CheckedLength(Length(APublicTokens),
+    'sequence public-token count');
+  if LPublicTokenCount > WFC_SEQUENCE_MAX_PUBLIC_TOKEN_COUNT then
+    raise EWfcSequence.Create(
+      'sequence public-token count exceeds the version-1 limit');
+  LStateCount := CheckedLength(Length(AStates),
+    'sequence state count');
+  if LStateCount > WFC_SEQUENCE_MAX_STATE_COUNT then
+    raise EWfcSequence.Create(
+      'sequence state count exceeds the version-1 limit');
+  if (LStateCount > 0) and (LHistorySize > 0) and
+      (LStateCount > WFC_SEQUENCE_MAX_TOTAL_HISTORY_ITEM_COUNT div
+        LHistorySize) then
+    raise EWfcSequence.Create(
+      'sequence history size exceeds the version-1 aggregate limit');
   if LSampleCount = 0 then
     raise EWfcSequence.Create(
       'a sequence model must retain at least one sample');
@@ -440,8 +471,6 @@ begin
     end;
   end;
 
-  LPublicTokenCount := CheckedLength(Length(APublicTokens),
-    'sequence public-token count');
   if LPublicTokenCount = 0 then
     raise EWfcSequence.Create(
       'a sequence model must contain at least one public token');
@@ -459,8 +488,6 @@ begin
     FPublicTokens[I] := APublicTokens[I];
   end;
 
-  LStateCount := CheckedLength(Length(AStates),
-    'sequence state count');
   CheckedGraphRelationLength(LStateCount);
   if Length(AStateCounts) <> LStateCount then
     raise EWfcSequence.CreateFmt(

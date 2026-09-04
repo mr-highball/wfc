@@ -333,6 +333,13 @@ earlier dependency partially installed. The standard
 [text pass composition](text.md#pass-composition) uses the same mechanism for
 structure -> lexical -> punctuation.
 
+For definitions that must be exchanged without capturing a live graph,
+`wfcrules=1` preserves exact hand-authored local rules and `wfcpipeline=1`
+describes typed resources, pass modes, the dependency DAG, built-in projection
+bridges, and public token requirements. The current immutable recipe layer and
+its deliberate boundary before runtime compilation are documented in
+[portable rules and pipeline recipes](pipeline-artifacts.md).
+
 ## constraints from the previous pass
 
 `RequirePrevious` filters a value using the entry at the same coordinate in

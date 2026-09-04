@@ -31,6 +31,11 @@ music_graph_test_source="$repository_root/test/wfc_music_graph_test.lpr"
 music_midi_test_source="$repository_root/test/wfc_music_midi_test.lpr"
 music_passes_test_source="$repository_root/test/wfc_music_passes_test.lpr"
 music_passes_text_test_source="$repository_root/test/wfc_music_passes_text_test.lpr"
+text_codec_test_source="$repository_root/test/wfc_text_codec_test.lpr"
+rule_model_test_source="$repository_root/test/wfc_rule_model_test.lpr"
+rule_text_test_source="$repository_root/test/wfc_rule_text_test.lpr"
+pipeline_model_test_source="$repository_root/test/wfc_pipeline_model_test.lpr"
+pipeline_text_test_source="$repository_root/test/wfc_pipeline_text_test.lpr"
 example_source="$repository_root/examples/text/01_SimpleTiledWorld/SimpleTiledWorld.lpr"
 world_example_source="$repository_root/examples/2D/01_MultiPassWorld/MultiPassWorld.lpr"
 settlement_example_source="$repository_root/examples/2D/03_SelectiveSettlement/SelectiveSettlement.lpr"
@@ -90,6 +95,11 @@ compiler_music_graph_test_source=$music_graph_test_source
 compiler_music_midi_test_source=$music_midi_test_source
 compiler_music_passes_test_source=$music_passes_test_source
 compiler_music_passes_text_test_source=$music_passes_text_test_source
+compiler_text_codec_test_source=$text_codec_test_source
+compiler_rule_model_test_source=$rule_model_test_source
+compiler_rule_text_test_source=$rule_text_test_source
+compiler_pipeline_model_test_source=$pipeline_model_test_source
+compiler_pipeline_text_test_source=$pipeline_text_test_source
 compiler_example_source=$example_source
 compiler_world_example_source=$world_example_source
 compiler_settlement_example_source=$settlement_example_source
@@ -149,6 +159,11 @@ case "$host_system" in
     compiler_music_midi_test_source=$(cygpath -m "$music_midi_test_source") || exit $?
     compiler_music_passes_test_source=$(cygpath -m "$music_passes_test_source") || exit $?
     compiler_music_passes_text_test_source=$(cygpath -m "$music_passes_text_test_source") || exit $?
+    compiler_text_codec_test_source=$(cygpath -m "$text_codec_test_source") || exit $?
+    compiler_rule_model_test_source=$(cygpath -m "$rule_model_test_source") || exit $?
+    compiler_rule_text_test_source=$(cygpath -m "$rule_text_test_source") || exit $?
+    compiler_pipeline_model_test_source=$(cygpath -m "$pipeline_model_test_source") || exit $?
+    compiler_pipeline_text_test_source=$(cygpath -m "$pipeline_text_test_source") || exit $?
     compiler_example_source=$(cygpath -m "$example_source") || exit $?
     compiler_world_example_source=$(cygpath -m "$world_example_source") || exit $?
     compiler_settlement_example_source=$(cygpath -m "$settlement_example_source") || exit $?
@@ -540,6 +555,36 @@ do
   esac
   printf "Running '%s'.\n" "$music_suite_executable"
   "$music_suite_executable" || exit $?
+done
+
+for compiler_artifact_suite in \
+  "$compiler_text_codec_test_source" \
+  "$compiler_rule_model_test_source" \
+  "$compiler_rule_text_test_source" \
+  "$compiler_pipeline_model_test_source" \
+  "$compiler_pipeline_text_test_source"
+do
+  artifact_suite_name=$(basename -- "$compiler_artifact_suite" .lpr)
+  printf "Building the portable-artifact suite '%s'.\n" \
+    "$artifact_suite_name"
+  "$compiler" "$@" \
+    -B \
+    -Mdelphi \
+    -Sa \
+    -Cr \
+    -Co \
+    -Ci \
+    "-Fu$compiler_source_directory" \
+    "-FU$compiler_unit_output_directory" \
+    "-FE$compiler_binary_output_directory" \
+    "$compiler_artifact_suite" || exit $?
+
+  artifact_suite_executable="$binary_output_directory/$artifact_suite_name"
+  case "$host_system" in
+    CYGWIN*|MINGW*|MSYS*) artifact_suite_executable="${artifact_suite_executable}.exe" ;;
+  esac
+  printf "Running '%s'.\n" "$artifact_suite_executable"
+  "$artifact_suite_executable" || exit $?
 done
 
 printf "Building the dependency-free tiled-world example.\n"
