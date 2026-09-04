@@ -1,1 +1,5 @@
 /build.sh text eol=lf
+/test/fixtures/pipeline-cli/*.wfcpipeline text eol=lf
+/test/fixtures/pipeline-cli/*.wfcrun text eol=lf
+/test/fixtures/pipeline-cli/*.wfcresult text eol=lf
+/test/wfc_pipeline_cli_process_test.sh text eol=lf

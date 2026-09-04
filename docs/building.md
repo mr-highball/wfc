@@ -107,6 +107,10 @@ the multi-pass and
 selective-settlement worlds also run with their default seeds. Finally, the
 native `Building3DSvg` host generates and validates
 `build/native/bin/building3d-seed-zero.svg`.
+A checked process suite also runs both native pipeline tools against the
+canonical files in `test/fixtures/pipeline-cli`: file and standard-input paths,
+exact validator and result bytes, quiet output, and the documented invalid,
+usage, I/O, solved, and non-solved exit classes are all exercised.
 A compiler error, failed check,
 or example failure produces a nonzero exit code. Compiler units and binaries
 are written beneath `build/native/`; running the gate does not modify tracked
@@ -682,7 +686,9 @@ three-pass-text, pass-composed-music, negotiated-music-variation,
 spatial-dependency,
 causal-trace-inspector, pass-negotiation, and negotiated-repair smoke tests;
 and the multi-pass and selective-settlement worlds with both seed zero and
-their default seeds under Node.js 22.23.2. It then builds all three browser
+their default seeds under Node.js 22.23.2. The two Node pipeline hosts also run
+the same exact 15-case process suite as the native hosts. The gate then builds
+all three browser
 targets,
 serves each staged site, and checks their exact body-state contracts in
 headless Chrome. A pinned development compiler is used

@@ -69,6 +69,8 @@ $toolSources = @(
   (Join-Path $repositoryRoot 'tools/wfc_validate.lpr')
   (Join-Path $repositoryRoot 'tools/wfc_run.lpr')
 )
+$pipelineCliProcessTestSource = Join-Path $repositoryRoot `
+  'test/wfc_pipeline_cli_process_test.ps1'
 $exampleSource = Join-Path $repositoryRoot `
   'examples/text/01_SimpleTiledWorld/SimpleTiledWorld.lpr'
 $worldExampleSource = Join-Path $repositoryRoot `
@@ -791,6 +793,16 @@ foreach ($toolSource in $toolSources) {
     exit $toolExitCode
   }
 }
+
+$toolExecutableSuffix = if ($env:OS -eq 'Windows_NT') { '.exe' } else { '' }
+$validatorToolExecutable = Join-Path $binaryOutputDirectory `
+  "wfc_validate$toolExecutableSuffix"
+$runnerToolExecutable = Join-Path $binaryOutputDirectory `
+  "wfc_run$toolExecutableSuffix"
+Write-Host 'Running the portable pipeline CLI process conformance suite.'
+& $pipelineCliProcessTestSource `
+  -Validator $validatorToolExecutable `
+  -Runner $runnerToolExecutable
 
 $exampleCompilerArguments = @(
   $CompilerOptions

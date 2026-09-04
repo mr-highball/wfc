@@ -345,6 +345,12 @@ Options must precede positional paths. `--` permits a path beginning with a
 hyphen. Diagnostics are one line on standard error, while canonical artifacts
 are written only to standard output.
 
+The native build drivers and pas2js/Node CI run both hosts as real child
+processes against the committed `test/fixtures/pipeline-cli` artifacts. The
+gate compares canonical and summary output byte for byte, exercises file and
+anonymous-pipe input, and checks quiet, invalid-artifact, usage, I/O, solved,
+and non-solved exit behavior with bounded captures and finite timeouts.
+
 ## Scope
 
 A recipe is deliberately not a snapshot of a live graph. Procedure pointers,

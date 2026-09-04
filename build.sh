@@ -48,6 +48,7 @@ validate_app_test_source="$repository_root/test/wfc_validate_app_test.lpr"
 run_app_test_source="$repository_root/test/wfc_run_app_test.lpr"
 validate_tool_source="$repository_root/tools/wfc_validate.lpr"
 run_tool_source="$repository_root/tools/wfc_run.lpr"
+pipeline_cli_process_test_source="$repository_root/test/wfc_pipeline_cli_process_test.sh"
 example_source="$repository_root/examples/text/01_SimpleTiledWorld/SimpleTiledWorld.lpr"
 world_example_source="$repository_root/examples/2D/01_MultiPassWorld/MultiPassWorld.lpr"
 settlement_example_source="$repository_root/examples/2D/03_SelectiveSettlement/SelectiveSettlement.lpr"
@@ -659,6 +660,18 @@ do
   printf "Smoke testing '%s --version'.\n" "$tool_executable"
   "$tool_executable" --version || exit $?
 done
+
+validator_tool_executable="$binary_output_directory/wfc_validate"
+runner_tool_executable="$binary_output_directory/wfc_run"
+case "$host_system" in
+  CYGWIN*|MINGW*|MSYS*)
+    validator_tool_executable="${validator_tool_executable}.exe"
+    runner_tool_executable="${runner_tool_executable}.exe"
+    ;;
+esac
+printf 'Running the portable pipeline CLI process conformance suite.\n'
+bash "$pipeline_cli_process_test_source" \
+  "$validator_tool_executable" -- "$runner_tool_executable" || exit $?
 
 printf "Building the dependency-free tiled-world example.\n"
 "$compiler" "$@" \

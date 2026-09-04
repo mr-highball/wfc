@@ -32,6 +32,7 @@ uses
 
 const
   WFC_VALIDATE_IO_CHUNK_SIZE = 65536;
+  WFC_VALIDATE_OUTPUT_CHUNK_SIZE = 4096;
   {$IFDEF MSWINDOWS}
   { A drained redirected standard-input pipe reports this terminal condition
     through GetLastOSError instead of returning a zero-byte read. }
@@ -140,15 +141,36 @@ end;
 procedure WriteHandleExact(const AHandle: THandle;
   const AText: String);
 var
-  LStream: THandleStream;
+  LErrorCode: Integer;
+  LErrorMessage: String;
+  LRequest: LongInt;
+  LWritten: LongInt;
+  LTotal: Integer;
 begin
   if AText = '' then
     Exit;
-  LStream := THandleStream.Create(AHandle);
-  try
-    LStream.WriteBuffer(AText[1], Length(AText));
-  finally
-    LStream.Free;
+  LTotal := 0;
+  while LTotal < Length(AText) do
+  begin
+    LRequest := Length(AText) - LTotal;
+    if LRequest > WFC_VALIDATE_OUTPUT_CHUNK_SIZE then
+      LRequest := WFC_VALIDATE_OUTPUT_CHUNK_SIZE;
+    LWritten := FileWrite(AHandle, AText[LTotal + 1],
+      LRequest);
+    if LWritten < 0 then
+    begin
+      LErrorCode := GetLastOSError;
+      if LErrorCode = 0 then
+        LErrorMessage := 'unknown operating-system error'
+      else
+        LErrorMessage := SysErrorMessage(LErrorCode);
+      raise EWriteError.Create('output handle write failed: ' +
+        LErrorMessage);
+    end;
+    if LWritten = 0 then
+      raise EWriteError.Create(
+        'output handle write made no progress');
+    Inc(LTotal, LWritten);
   end;
 end;
 

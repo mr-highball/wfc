@@ -444,6 +444,10 @@ jobs:
             node "$artifact_test_bin/$portable_host.js" --version
           done
 
+          bash test/wfc_pipeline_cli_process_test.sh \
+            node "$artifact_test_bin/wfc_validate_node.js" -- \
+            node "$artifact_test_bin/wfc_run_node.js"
+
           "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
             -FU"$example_units" -FE"$example_bin" \
             examples/text/01_SimpleTiledWorld/SimpleTiledWorld.lpr

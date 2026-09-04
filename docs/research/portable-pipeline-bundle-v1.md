@@ -389,9 +389,10 @@ development FPC, and pas2js/Node:
   intersection, explicit contradictions, deterministic replay, real outer-pass
   repair, pass-budget exhaustion, and detached result lifetime;
 - application fixtures execute encoded recipe-plus-run input into decoded
-  canonical results and verify non-solved behavior; native and Node hosts are
-  compiled and process-smoked while the shared codecs retain pinned bytes and
-  signatures on both targets.
+  canonical results and verify non-solved behavior; native and Node hosts run a
+  committed process matrix covering exact bytes, both legal standard-input
+  positions, quiet output, and every ordinary exit class while the shared
+  codecs retain pinned bytes and signatures on both targets.
 
 The next domain-scale bundle fixture will package the existing
 LearnedPatternWorld pipeline:
