@@ -7,8 +7,10 @@ text completion, three-pass text composition, exact music-score, music
 projection, Standard MIDI File,
 score-export, negotiated music variation/result replay, full and selective
 pass negotiation, canonical numeric text primitives, immutable authored-rule
-models, declarative pipeline recipes, and voxel-3D units and
-their conformance suites, plus
+models, declarative pipeline recipes, recipe-bound run artifacts, the closed
+pipeline compiler/runtime, immutable public result artifacts, strict run/result
+codecs, the recipe validator and pipeline runner applications, and voxel-3D
+units and their conformance suites, plus
 the checked voxel pass bridge and multi-pass Building 3D owner/validator,
 pass-aware view, fixed-integer isometric projector, and canonical SVG encoder.
 It also runs seeded smoke checks of the portable console demos, including the
@@ -27,9 +29,9 @@ compiler is also exercised as a compatibility canary.
 ## Dependency boundary
 
 Runtime units may use repository units and the applicable standard FPC/pas2js
-RTL. When a needed capability can reasonably be implemented and maintained in
-portable Pascal, it is project-owned rather than added as a third-party runtime
-dependency; uncertain cases resolve in favor of the project-owned FPC/pas2js
+RTL. The dependency admission rule is hard: when a needed capability can
+reasonably be implemented and maintained in portable Pascal, or that judgment
+is debatable, the dependency is rejected and WFC owns the FPC/pas2js
 implementation. Optional tools may build, test, profile, render, convert, or
 inspect project artifacts, but tool-specific units and types must not enter
 core/runtime `uses` clauses or public APIs. Canonical artifacts, validation,
@@ -49,6 +51,11 @@ native/pas2js demonstration are project-owned as well. The immutable Building
 view, fixed-integer command projection, hit testing, and SVG encoder are also
 portable project units. Causal capture, hashing, formatting, query, and
 validation are likewise project-owned Pascal in `wfc` and `wfc_trace`.
+The `wfcpipeline=1`, `wfcpipeline-run=1`, and `wfcpipeline-result=1` codecs,
+recipe compiler, transactional runtime, result capture, validator application,
+and command-line parsing are also shared native/pas2js Pascal. Native and Node
+hosts add only bounded byte I/O and process-exit plumbing.
+
 Playback systems, editors, native window/engine
 adapters, and media backends remain optional edge integrations; none is
 required to learn, serialize, solve, validate, export, mesh, project, or write
@@ -85,6 +92,10 @@ Both scripts rebuild with assertions and range, overflow, and I/O checks, run
 `wfc_music_graph_test`, `wfc_music_midi_test`, `wfc_music_passes_test`,
 `wfc_music_passes_text_test`, `wfc_text_codec_test`, `wfc_rule_model_test`,
 `wfc_rule_text_test`, `wfc_pipeline_model_test`, `wfc_pipeline_text_test`,
+`wfc_pipeline_run_test`, `wfc_pipeline_run_text_test`,
+`wfc_pipeline_compile_test`, `wfc_pipeline_result_test`,
+`wfc_pipeline_result_text_test`, `wfc_pipeline_runtime_test`,
+`wfc_token_lookup_test`, `wfc_validate_app_test`, `wfc_run_app_test`,
 `wfc_trace_reference_test`,
 `wfc_trace_test`, and `wfc_trace_utility_test`, then compile and smoke-test the
 portable console examples with seed `0`, including the bounded/wrapped spatial
@@ -112,6 +123,44 @@ $env:FPC = 'C:\FPC\3.2.2\bin\i386-win32\fpc.exe'
 ```bash
 FPC=/opt/fpc/bin/fpc ./build.sh -O2
 ```
+
+## Headless pipeline tools
+
+The native and pas2js/Node builds expose the same project-owned application
+logic through thin hosts. The recipe-only validator accepts one file or
+standard input:
+
+```text
+wfc-validate recipe [--quiet | --emit-canonical] [--] INPUT
+```
+
+Default success output is a one-line static summary. `--emit-canonical` emits
+the exact strictly verified `wfcpipeline=1` input, and `--quiet` emits nothing.
+This command validates the recipe and its embedded resources; it does not
+compile or solve.
+
+The runner accepts one recipe and its bound run artifact:
+
+```text
+wfc-run [--quiet] [--] RECIPE RUN
+```
+
+These are the distribution-facing command names used in help and diagnostics.
+The checked repository build writes the native source-host names
+`build/native/bin/wfc_validate[.exe]` and
+`build/native/bin/wfc_run[.exe]`; direct pas2js builds write
+`wfc_validate_node.js` and `wfc_run_node.js` in the selected output directory.
+Packagers may expose the documented hyphenated names without changing the
+shared application units or artifact contracts.
+
+One positional path may be `-`, but both cannot read standard input. By
+default, solved and non-solved executions both emit one canonical
+`wfcpipeline-result=1` document. `--quiet` suppresses that output. Exit `0`
+means solved, `1` means an invalid recipe/run/executable invocation, `2` is a
+usage error, `3` is an I/O error, `4` means a valid canonical non-solved
+result, and `70` is an unexpected internal failure. The complete lifecycle,
+ownership, safety bounds, and CLI contracts are in
+[Portable pipeline artifacts](pipeline-artifacts.md).
 
 ## FPM package
 
@@ -269,12 +318,25 @@ done
 
 mkdir -p build/pas2js/artifact-units build/pas2js/artifact
 for artifact_test in wfc_text_codec_test wfc_rule_model_test \
-  wfc_rule_text_test wfc_pipeline_model_test wfc_pipeline_text_test
+  wfc_rule_text_test wfc_pipeline_model_test wfc_pipeline_text_test \
+  wfc_pipeline_run_test wfc_pipeline_run_text_test \
+  wfc_pipeline_compile_test wfc_pipeline_result_test \
+  wfc_pipeline_result_text_test wfc_pipeline_runtime_test \
+  wfc_token_lookup_test
 do
   pas2js -B -Tnodejs -Mdelphi -Fusrc \
     -FUbuild/pas2js/artifact-units -FEbuild/pas2js/artifact \
     "test/${artifact_test}.lpr"
   node "build/pas2js/artifact/${artifact_test}.js"
+done
+
+mkdir -p build/pas2js/tool-test-units build/pas2js/tool-test
+for tool_test in wfc_validate_app_test wfc_run_app_test
+do
+  pas2js -B -Tnodejs -Mdelphi -Fusrc -Futools \
+    -FUbuild/pas2js/tool-test-units -FEbuild/pas2js/tool-test \
+    "test/${tool_test}.lpr"
+  node "build/pas2js/tool-test/${tool_test}.js"
 done
 ```
 
@@ -611,8 +673,10 @@ host and full graphical contract are documented in
 The hosted pas2js gate uses exact official upstream pas2js and FPC-source
 revisions, verifies both source-archive SHA-256 digests, and caches the resulting
 3.3.1 toolchain. It runs every portable conformance source, including the voxel
-foundation, six music suites, three causal-trace suites, and the full and
-selective pass-negotiation suites; the tiled-world, learned-tiles,
+foundation, the recipe/run/compiler/runtime/result artifact suites, the token
+lookup, recipe-validator, and pipeline-runner suites, six music suites, three
+causal-trace suites, and
+the full and selective pass-negotiation suites; the tiled-world, learned-tiles,
 learned-corpus, overlapping-pattern, sequence, anchored-completion,
 three-pass-text, pass-composed-music, negotiated-music-variation,
 spatial-dependency,
@@ -630,8 +694,9 @@ overloaded plain-procedure callback call.
 The hosted workflow runs the checked native gate with FPC 3.2.2 on Linux,
 macOS, and Windows. The Linux lane also builds the FPM and Lazarus packages,
 runs the core Lazarus project, and verifies that generation leaves the checkout
-clean. A separate Linux lane runs the complete core, 2D, voxel-3D, Building
-3D, learning, sequence, music, pass-composition, causal-trace, full-negotiation,
+clean. A separate Linux lane runs the complete core, pipeline-artifact,
+token-lookup, recipe-validator, pipeline-runner, 2D, voxel-3D, Building 3D,
+learning, sequence, music, pass-composition, causal-trace, full-negotiation,
 and selective-negotiation pas2js/Node.js gate, including the negotiated-repair
 host, plus all three real browser self-tests in headless Chrome. A canary runs
 against the current official FPC development image and records the image digest

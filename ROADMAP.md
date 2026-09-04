@@ -123,6 +123,17 @@ The repository already contains the beginnings of the ecosystem:
   workbench over the same commands, with seeds, selective regeneration,
   presentation modes, Z clipping, picking, lineage inspection, and an exact
   seed-zero browser fixture;
+- a complete Portable Pipeline Execution v1 path that compiles immutable
+  recipes into fresh transactional graphs, applies typed adapters, projection
+  bridges, public requirements, and independent commit validators, then accepts
+  canonical recipe-bound locks and domains through transform aliases;
+- strict canonical `wfcpipeline-run=1` and `wfcpipeline-result=1` artifacts,
+  deterministic one-way and bounded negotiated replay, public-only successful
+  layers, structured non-solved results, fixed allocation/encoding limits, and
+  matching native FPC/pas2js fixtures;
+- a project-owned collision-safe token lookup plus shared Pascal application
+  logic for strict recipe validation and headless recipe-plus-run execution,
+  with thin bounded-I/O native and pas2js/Node hosts;
 - stack-safe iterative traversal of large planes while preserving the legacy
   solver's north/east/south/west depth-first order;
 - checked one-command native build gates, an FPM package, a runtime-only
@@ -173,8 +184,8 @@ It is not yet the finished system described above:
   sequences with explicit projection; Unicode-scalar text tokenization and
   exact completion domains now sit above that sequence layer, while a
   project-owned versioned word-boundary table, wrapped sequence training, 3D
-  neighborhoods, provenance metadata, and the planned
-  validation/run/inspection tools remain;
+  neighborhoods, richer provenance metadata, learning tools, artifact-family
+  lint, and general inspection tools remain;
 - the hosted CI definition is present, but its first remote run still needs to
   be observed before the Phase 0 exit gate is claimed complete;
 - the portable music path has no playback or browser UI yet; SoundShop/SDL2
@@ -414,10 +425,15 @@ immutable `wfcpipeline=1` recipe IR. The recipe owns canonical `wfcm`,
 `wfcrules`, `wfcp`, and `wfcs` resources; pins replay-relevant versions;
 validates provenance, topology, visibility, dependencies, typed projection
 bridges, public vocabularies, and signed-offset requirements; and round-trips
-through the same dependency-free codec on native FPC and pas2js. It does not
-yet compile the recipe into a live graph or define run/result artifacts. The
-runtime compiler, headless tools, word-boundary tables, wrapped sequence
-training, higher-dimensional extraction, and complete exit gate remain open.
+through the same dependency-free codec on native FPC and pas2js. Portable
+Pipeline Execution v1 now compiles that recipe into a fresh transactional
+graph, installs every supported adapter, bridge, requirement, and independent
+validator, resolves public inputs through transform aliases, and emits strict
+canonical `wfcpipeline-run=1` and `wfcpipeline-result=1` replay artifacts.
+Shared Pascal application logic now drives a strict recipe validator and a
+headless recipe-plus-run executor through thin native and pas2js/Node hosts.
+Word-boundary tables, wrapped sequence training, higher-dimensional extraction,
+broader artifact lint/inspection, and the complete exit gate remain open.
 
 ### Deliverables
 
@@ -428,9 +444,11 @@ training, higher-dimensional extraction, and complete exit gate remain open.
 - Build `wfc-learn` to extract adjacency, frequencies, neighborhoods, rotations,
   and reflections from grids, sequences, voxel samples, text, and musical event
   streams.
-- Build `wfc-validate` to lint schemas, unreachable values, asymmetric rules,
-  impossible requirements, missing assets, and contradictory pass inputs.
-- Build `wfc-run` for headless, seeded generation and reproducible batch runs.
+- Extend the current strict recipe `wfc-validate` host across the run/result
+  family and add unreachable-value, asymmetric-rule, impossible-input, and
+  missing-asset lint profiles.
+- Extend the current deterministic recipe-plus-run `wfc-run` host with explicit
+  reproducible batch orchestration.
 - Generalize the existing fixed-fixture causal-trace inspector into
   `wfc-inspect` for arbitrary rule graphs, pass layers, entropy/domain views,
   interactive decision replay, and richer contradiction explanations.

@@ -7,10 +7,20 @@ service, or separately fetched third-party runtime. pas2js output and its
 matching standard RTL are generated from the Pascal toolchain and staged with
 browser demos; they are not hand-maintained alternative implementations.
 
-The decision rule is deliberately simple: when including a library and writing
-the capability in portable Pascal are both plausible choices, WFC writes and
-maintains the Pascal implementation. A debatable dependency is not admitted to
-the runtime graph.
+## hard admission gate
+
+The decision rule is a release gate, not a preference: when including a library
+and writing the capability in portable Pascal are both plausible choices, WFC
+writes and maintains the FPC/pas2js implementation. If reasonable reviewers can
+debate whether the capability belongs in project Pascal, the external
+dependency is rejected. Convenience, package popularity, a smaller diff, or a
+ready-made serializer is not an exception.
+
+The burden is on a proposed dependency to prove that it is an optional host
+edge and cannot define portable behavior. Until that proof is clear, no package
+declaration, downloader, submodule, generated binding, runtime initialization,
+or test requirement may admit it to the maintained path. Implement the missing
+project-owned unit and its native/pas2js conformance test first.
 
 ## what the project owns
 
@@ -40,6 +50,11 @@ In project documentation, “dependency-free” means free of third-party runtim
 libraries. Repository units, the applicable standard RTL, the selected
 compiler, and host APIs such as the console, Node process, or browser DOM are
 still the execution substrate.
+
+Thin native and Node command hosts may call the standard stream/filesystem and
+process APIs needed for bounded byte I/O and exit status. Those calls may not
+parse, normalize, validate, hash, compile, solve, or serialize a portable
+artifact; the shared repository Pascal implementation remains authoritative.
 
 An optional edge must satisfy all of these conditions:
 
@@ -71,7 +86,8 @@ project-owned FPC/pas2js unit first.
 Every proposed dependency should answer four questions:
 
 1. Can the required behavior reasonably be implemented in portable Pascal?
-   If the answer is uncertain, implement it here.
+   If the answer is yes, maybe, or uncertain, implement it here; admission
+   fails until that implementation exists.
 2. Does it influence a canonical algorithm, artifact, validator, or replay
    result? If so, it must be replaced by project-owned Pascal.
 3. Can all maintained native and pas2js conformance tests run without it?

@@ -15,7 +15,7 @@
     <Description Value="Wave Function Collapse, multi-pass generation, and pattern learning library"/>
     <License Value="MIT"/>
     <Version Minor="1"/>
-    <Files Count="45">
+    <Files Count="52">
       <Item1>
         <Filename Value="wfc_package.pas"/>
         <Type Value="Main Unit"/>
@@ -197,6 +197,34 @@
         <Filename Value="src/wfc_pipeline_text.pas"/>
         <UnitName Value="wfc_pipeline_text"/>
       </Item45>
+      <Item46>
+        <Filename Value="src/wfc_token_lookup.pas"/>
+        <UnitName Value="wfc_token_lookup"/>
+      </Item46>
+      <Item47>
+        <Filename Value="src/wfc_pipeline_compile.pas"/>
+        <UnitName Value="wfc_pipeline_compile"/>
+      </Item47>
+      <Item48>
+        <Filename Value="src/wfc_pipeline_run.pas"/>
+        <UnitName Value="wfc_pipeline_run"/>
+      </Item48>
+      <Item49>
+        <Filename Value="src/wfc_pipeline_run_text.pas"/>
+        <UnitName Value="wfc_pipeline_run_text"/>
+      </Item49>
+      <Item50>
+        <Filename Value="src/wfc_pipeline_result.pas"/>
+        <UnitName Value="wfc_pipeline_result"/>
+      </Item50>
+      <Item51>
+        <Filename Value="src/wfc_pipeline_result_text.pas"/>
+        <UnitName Value="wfc_pipeline_result_text"/>
+      </Item51>
+      <Item52>
+        <Filename Value="src/wfc_pipeline_runtime.pas"/>
+        <UnitName Value="wfc_pipeline_runtime"/>
+      </Item52>
     </Files>
     <UsageOptions>
       <UnitPath Value="$(PkgOutDir)"/>

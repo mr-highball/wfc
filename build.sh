@@ -6,6 +6,7 @@ set -o pipefail
 repository_root=$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 compiler=${FPC:-fpc}
 source_directory="$repository_root/src"
+tools_directory="$repository_root/tools"
 test_source="$repository_root/test/wfc_test.lpr"
 world_test_source="$repository_root/test/wfc_world2d_test.lpr"
 settlement_test_source="$repository_root/test/wfc_world2d_settlement_test.lpr"
@@ -36,6 +37,17 @@ rule_model_test_source="$repository_root/test/wfc_rule_model_test.lpr"
 rule_text_test_source="$repository_root/test/wfc_rule_text_test.lpr"
 pipeline_model_test_source="$repository_root/test/wfc_pipeline_model_test.lpr"
 pipeline_text_test_source="$repository_root/test/wfc_pipeline_text_test.lpr"
+token_lookup_test_source="$repository_root/test/wfc_token_lookup_test.lpr"
+pipeline_compile_test_source="$repository_root/test/wfc_pipeline_compile_test.lpr"
+pipeline_run_test_source="$repository_root/test/wfc_pipeline_run_test.lpr"
+pipeline_run_text_test_source="$repository_root/test/wfc_pipeline_run_text_test.lpr"
+pipeline_result_test_source="$repository_root/test/wfc_pipeline_result_test.lpr"
+pipeline_result_text_test_source="$repository_root/test/wfc_pipeline_result_text_test.lpr"
+pipeline_runtime_test_source="$repository_root/test/wfc_pipeline_runtime_test.lpr"
+validate_app_test_source="$repository_root/test/wfc_validate_app_test.lpr"
+run_app_test_source="$repository_root/test/wfc_run_app_test.lpr"
+validate_tool_source="$repository_root/tools/wfc_validate.lpr"
+run_tool_source="$repository_root/tools/wfc_run.lpr"
 example_source="$repository_root/examples/text/01_SimpleTiledWorld/SimpleTiledWorld.lpr"
 world_example_source="$repository_root/examples/2D/01_MultiPassWorld/MultiPassWorld.lpr"
 settlement_example_source="$repository_root/examples/2D/03_SelectiveSettlement/SelectiveSettlement.lpr"
@@ -70,6 +82,7 @@ binary_output_directory="$repository_root/build/native/bin"
 mkdir -p -- "$unit_output_directory" "$binary_output_directory" || exit $?
 
 compiler_source_directory=$source_directory
+compiler_tools_directory=$tools_directory
 compiler_test_source=$test_source
 compiler_world_test_source=$world_test_source
 compiler_settlement_test_source=$settlement_test_source
@@ -100,6 +113,17 @@ compiler_rule_model_test_source=$rule_model_test_source
 compiler_rule_text_test_source=$rule_text_test_source
 compiler_pipeline_model_test_source=$pipeline_model_test_source
 compiler_pipeline_text_test_source=$pipeline_text_test_source
+compiler_token_lookup_test_source=$token_lookup_test_source
+compiler_pipeline_compile_test_source=$pipeline_compile_test_source
+compiler_pipeline_run_test_source=$pipeline_run_test_source
+compiler_pipeline_run_text_test_source=$pipeline_run_text_test_source
+compiler_pipeline_result_test_source=$pipeline_result_test_source
+compiler_pipeline_result_text_test_source=$pipeline_result_text_test_source
+compiler_pipeline_runtime_test_source=$pipeline_runtime_test_source
+compiler_validate_app_test_source=$validate_app_test_source
+compiler_run_app_test_source=$run_app_test_source
+compiler_validate_tool_source=$validate_tool_source
+compiler_run_tool_source=$run_tool_source
 compiler_example_source=$example_source
 compiler_world_example_source=$world_example_source
 compiler_settlement_example_source=$settlement_example_source
@@ -134,6 +158,7 @@ host_system=$(uname -s)
 case "$host_system" in
   CYGWIN*|MINGW*|MSYS*)
     compiler_source_directory=$(cygpath -m "$source_directory") || exit $?
+    compiler_tools_directory=$(cygpath -m "$tools_directory") || exit $?
     compiler_test_source=$(cygpath -m "$test_source") || exit $?
     compiler_world_test_source=$(cygpath -m "$world_test_source") || exit $?
     compiler_settlement_test_source=$(cygpath -m "$settlement_test_source") || exit $?
@@ -164,6 +189,17 @@ case "$host_system" in
     compiler_rule_text_test_source=$(cygpath -m "$rule_text_test_source") || exit $?
     compiler_pipeline_model_test_source=$(cygpath -m "$pipeline_model_test_source") || exit $?
     compiler_pipeline_text_test_source=$(cygpath -m "$pipeline_text_test_source") || exit $?
+    compiler_token_lookup_test_source=$(cygpath -m "$token_lookup_test_source") || exit $?
+    compiler_pipeline_compile_test_source=$(cygpath -m "$pipeline_compile_test_source") || exit $?
+    compiler_pipeline_run_test_source=$(cygpath -m "$pipeline_run_test_source") || exit $?
+    compiler_pipeline_run_text_test_source=$(cygpath -m "$pipeline_run_text_test_source") || exit $?
+    compiler_pipeline_result_test_source=$(cygpath -m "$pipeline_result_test_source") || exit $?
+    compiler_pipeline_result_text_test_source=$(cygpath -m "$pipeline_result_text_test_source") || exit $?
+    compiler_pipeline_runtime_test_source=$(cygpath -m "$pipeline_runtime_test_source") || exit $?
+    compiler_validate_app_test_source=$(cygpath -m "$validate_app_test_source") || exit $?
+    compiler_run_app_test_source=$(cygpath -m "$run_app_test_source") || exit $?
+    compiler_validate_tool_source=$(cygpath -m "$validate_tool_source") || exit $?
+    compiler_run_tool_source=$(cygpath -m "$run_tool_source") || exit $?
     compiler_example_source=$(cygpath -m "$example_source") || exit $?
     compiler_world_example_source=$(cygpath -m "$world_example_source") || exit $?
     compiler_settlement_example_source=$(cygpath -m "$settlement_example_source") || exit $?
@@ -562,7 +598,16 @@ for compiler_artifact_suite in \
   "$compiler_rule_model_test_source" \
   "$compiler_rule_text_test_source" \
   "$compiler_pipeline_model_test_source" \
-  "$compiler_pipeline_text_test_source"
+  "$compiler_pipeline_text_test_source" \
+  "$compiler_token_lookup_test_source" \
+  "$compiler_pipeline_compile_test_source" \
+  "$compiler_pipeline_run_test_source" \
+  "$compiler_pipeline_run_text_test_source" \
+  "$compiler_pipeline_result_test_source" \
+  "$compiler_pipeline_result_text_test_source" \
+  "$compiler_pipeline_runtime_test_source" \
+  "$compiler_validate_app_test_source" \
+  "$compiler_run_app_test_source"
 do
   artifact_suite_name=$(basename -- "$compiler_artifact_suite" .lpr)
   printf "Building the portable-artifact suite '%s'.\n" \
@@ -575,6 +620,7 @@ do
     -Co \
     -Ci \
     "-Fu$compiler_source_directory" \
+    "-Fu$compiler_tools_directory" \
     "-FU$compiler_unit_output_directory" \
     "-FE$compiler_binary_output_directory" \
     "$compiler_artifact_suite" || exit $?
@@ -585,6 +631,33 @@ do
   esac
   printf "Running '%s'.\n" "$artifact_suite_executable"
   "$artifact_suite_executable" || exit $?
+done
+
+for compiler_tool_source in \
+  "$compiler_validate_tool_source" \
+  "$compiler_run_tool_source"
+do
+  tool_name=$(basename -- "$compiler_tool_source" .lpr)
+  printf "Building the portable command-line host '%s'.\n" "$tool_name"
+  "$compiler" "$@" \
+    -B \
+    -Mdelphi \
+    -Sa \
+    -Cr \
+    -Co \
+    -Ci \
+    "-Fu$compiler_source_directory" \
+    "-Fu$compiler_tools_directory" \
+    "-FU$compiler_unit_output_directory" \
+    "-FE$compiler_binary_output_directory" \
+    "$compiler_tool_source" || exit $?
+
+  tool_executable="$binary_output_directory/$tool_name"
+  case "$host_system" in
+    CYGWIN*|MINGW*|MSYS*) tool_executable="${tool_executable}.exe" ;;
+  esac
+  printf "Smoke testing '%s --version'.\n" "$tool_executable"
+  "$tool_executable" --version || exit $?
 done
 
 printf "Building the dependency-free tiled-world example.\n"

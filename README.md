@@ -63,6 +63,14 @@ modular 3D structures, music, text, and other discrete design problems.
 > topology, pass visibility, the complete dependency DAG, typed projection
 > bridges, public vocabularies, provenance, and signed-offset token
 > requirements before any runtime graph exists.
+> Portable Pipeline Execution v1 compiles those recipes into fresh transactional
+> graphs, resolves caller locks and domains through transform aliases, and runs
+> deterministic one-way or bounded negotiated solves. Strict canonical
+> `wfcpipeline-run=1` and `wfcpipeline-result=1` artifacts preserve provenance,
+> options, reports, public layers, and failed outcomes across native FPC and
+> pas2js/Node. Shared Pascal application units power a recipe validator and a
+> headless recipe-plus-run executor; their native and Node hosts contain only
+> bounded file, standard-stream, and process plumbing.
 > Pipeline v2 adds exact signed-offset and finite any-of-neighborhood reads
 > across staged provider passes. Causal Trace v1 adds opt-in chronological
 > decision/removal/backtrack evidence, provider-pass cause links, per-pass
@@ -130,6 +138,17 @@ modular 3D structures, music, text, and other discrete design problems.
   closed adapter and bridge kinds, explicit acyclic dependencies, static
   public vocabularies, provenance, version pins, fixed resource/complexity
   limits, and exact decode/re-encode validation
+- fresh transactional compilation of portable recipes, including typed
+  resource adapters, materializing projection bridges, public requirements,
+  independent commit validators, and definition-surface verification
+- immutable `wfcpipeline-run=1` invocations and `wfcpipeline-result=1` outcomes
+  with strict canonical text, complete provenance, deterministic replay,
+  structured failures, public-only layers, and fixed allocation/encoding limits
+- transform-alias-aware public locks and domains with exact intersection,
+  pre-publication conflict detection, and a project-owned collision-safe token
+  lookup shared by native FPC and pas2js
+- dependency-free recipe-validation and headless-execution application units
+  with thin native and Node command-line hosts and documented exit contracts
 - deterministic overlapping 2D pattern extraction with heterogeneous corpora,
   open/wrapped sources, square-footprint D4 augmentation, structural
   compatibility, explicit latent-to-token projection, and strict `.wfcp`
@@ -242,8 +261,9 @@ and browser demonstrations, see the [2D ecosystem](docs/world2d.md).
 For learned frequencies and adjacency, immutable model data, graph adaptation,
 the `.wfcm` format, and exact replay inputs, see
 [model learning and priming](docs/learning.md).
-For hand-authored rank-1/2/3 rule artifacts and declarative multi-resource
-pipeline recipes, see [portable rules and pipeline recipes](docs/pipeline-artifacts.md).
+For hand-authored rank-1/2/3 rules, declarative multi-resource pipeline recipes,
+run/result artifacts, runtime alias semantics, and the portable command-line
+contracts, see [portable pipeline artifacts](docs/pipeline-artifacts.md).
 For multi-cell extraction, structural overlap, latent assignment, projection,
 independent validation, and the `.wfcp` format, see
 [overlapping 2D patterns](docs/patterns.md).
@@ -283,7 +303,8 @@ Run the checked native build and conformance suite from the repository root:
 Both entry points compile with checked FPC options, keep all output under
 `build/`, run the core, 2D ecosystem, selective-settlement, radius-one
 learning, overlapping-pattern, pattern-pass composition, sequence,
-text-completion, text-pass, authored-rule and pipeline-recipe artifacts,
+text-completion, text-pass, authored-rule and portable pipeline recipe,
+compile, run, result, runtime, validator, and runner artifacts,
 score/cell, music-graph, music-pass, music-result-codec, SMF, score-to-MIDI,
 voxel, Building 3D, and
 causal-trace, pass-negotiation, and selective-negotiation suites,
@@ -291,7 +312,7 @@ smoke-test the portable console examples—including the bounded/wrapped spatial
 dependency, causal-trace inspector, bounded pass-negotiation proof, negotiated
 2D repair, anchored text infill, three-pass text composition, negotiated music
 variation, learned-pattern four-pass world, and depth-three building
-proofs—compile the
+proofs—compile and smoke-test the native portable command-line hosts, compile the
 fixed-integer isometric, SVG, and Building-view suites, write a deterministic
 seed-zero Building SVG, and preserve failure exit codes.
 The repository also includes an FPM package, a runtime-only Lazarus package,
@@ -334,7 +355,8 @@ The [roadmap](ROADMAP.md) covers the remaining reference-solver work, richer
 pass composition, conflict-directed and partial-nogood negotiation research,
 interactive trace stepping and domain views, richer failed-clause/minimal-core
 explanations, trace streaming, higher-dimensional and
-cross-pass learning, validation tools, 2D/3D/music/text ecosystems, pas2js
+cross-pass learning, richer validation and inspection tools,
+2D/3D/music/text ecosystems, pas2js
 playgrounds, reproducible research, documentation, and release provenance.
 Current examples are indexed under [examples](examples/README.md).
 

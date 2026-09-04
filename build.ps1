@@ -12,6 +12,7 @@ if (Get-Variable -Name PSNativeCommandUseErrorActionPreference `
 
 $repositoryRoot = $PSScriptRoot
 $sourceDirectory = Join-Path $repositoryRoot 'src'
+$toolsDirectory = Join-Path $repositoryRoot 'tools'
 $testSource = Join-Path $repositoryRoot 'test/wfc_test.lpr'
 $worldTestSource = Join-Path $repositoryRoot 'test/wfc_world2d_test.lpr'
 $settlementTestSource = Join-Path $repositoryRoot `
@@ -54,6 +55,19 @@ $artifactTestSources = @(
   (Join-Path $repositoryRoot 'test/wfc_rule_text_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_pipeline_model_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_pipeline_text_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_token_lookup_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_pipeline_compile_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_pipeline_run_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_pipeline_run_text_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_pipeline_result_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_pipeline_result_text_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_pipeline_runtime_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_validate_app_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_run_app_test.lpr')
+)
+$toolSources = @(
+  (Join-Path $repositoryRoot 'tools/wfc_validate.lpr')
+  (Join-Path $repositoryRoot 'tools/wfc_run.lpr')
 )
 $exampleSource = Join-Path $repositoryRoot `
   'examples/text/01_SimpleTiledWorld/SimpleTiledWorld.lpr'
@@ -712,6 +726,7 @@ foreach ($artifactTestSource in $artifactTestSources) {
     '-Co'
     '-Ci'
     "-Fu$sourceDirectory"
+    "-Fu$toolsDirectory"
     "-FU$unitOutputDirectory"
     "-FE$binaryOutputDirectory"
     $artifactTestSource
@@ -736,6 +751,44 @@ foreach ($artifactTestSource in $artifactTestSources) {
   $artifactTestExitCode = $LASTEXITCODE
   if ($artifactTestExitCode -ne 0) {
     exit $artifactTestExitCode
+  }
+}
+
+foreach ($toolSource in $toolSources) {
+  $toolName = [System.IO.Path]::GetFileNameWithoutExtension($toolSource)
+  $toolCompilerArguments = @(
+    $CompilerOptions
+    '-B'
+    '-Mdelphi'
+    '-Sa'
+    '-Cr'
+    '-Co'
+    '-Ci'
+    "-Fu$sourceDirectory"
+    "-Fu$toolsDirectory"
+    "-FU$unitOutputDirectory"
+    "-FE$binaryOutputDirectory"
+    $toolSource
+  )
+
+  Write-Host "Building the portable command-line host '$toolName'."
+  & $Compiler @toolCompilerArguments
+  $toolCompilerExitCode = $LASTEXITCODE
+  if ($toolCompilerExitCode -ne 0) {
+    exit $toolCompilerExitCode
+  }
+
+  $toolExecutableName = if ($env:OS -eq 'Windows_NT') {
+    "$toolName.exe"
+  } else {
+    $toolName
+  }
+  $toolExecutable = Join-Path $binaryOutputDirectory $toolExecutableName
+  Write-Host "Smoke testing '$toolExecutable --version'."
+  & $toolExecutable '--version'
+  $toolExitCode = $LASTEXITCODE
+  if ($toolExitCode -ne 0) {
+    exit $toolExitCode
   }
 }
 

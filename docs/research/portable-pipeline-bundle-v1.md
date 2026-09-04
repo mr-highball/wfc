@@ -1,7 +1,7 @@
 # Portable Pipeline Bundle v1
 
-Status: implementation contract; immutable rule/recipe IR and codecs complete,
-runtime compilation, run/result artifacts, and tools pending
+Status: implemented contract; immutable recipe, run, and result IR; strict
+canonical codecs; transactional runtime compiler; native and pas2js/Node tools
 
 ## Purpose
 
@@ -11,44 +11,42 @@ WFC already has portable semantic artifacts for learned adjacency models
 hand-authored pass-local rule surface that a learned model does not represent:
 3D directions, explicit denials, and required-direction metadata. WFC also
 has a transactional dependency-DAG solver, typed adapters, deterministic pass
-streams, and domain-specific commit validators. What it does not yet have is a
-portable description of how those pieces form one pipeline.
+streams, and domain-specific commit validators. Portable Pipeline Bundle v1
+gives those pieces one closed, replayable execution boundary.
 
-The implemented Portable Pipeline Bundle foundation fills the declarative part
-of that gap. A `wfcpipeline=1` document is an immutable, self-contained recipe
+The implemented bundle fills both the declarative and execution parts of that
+gap. A `wfcpipeline=1` document is an immutable, self-contained recipe
 made from known WFC artifact and adapter versions, and it can already be
 strictly decoded and validated by native FPC and pas2js without application
-callbacks or third-party serialization libraries. Runtime compilation and the
-headless tools described below are the next implementation slice.
+callbacks or third-party serialization libraries. A recipe can be compiled
+into a fresh graph, combined with a canonical run document, and executed into
+a canonical public result by either native FPC or pas2js/Node.
 
 The bundle is intentionally not a dump of a live `TGraph`. A live graph may
 contain procedure pointers, derived pass classes, owner-backed commit hooks,
 private dependency roles, mutable dictionaries, and a random-stream cursor.
 Writing their visible fragments would create an artifact that looked portable
 while silently changing its behavior when loaded. Version 1 instead records
-declarative inputs; the pending compiler will regenerate every supported
-private rule from a named, versioned adapter.
+declarative inputs; the compiler regenerates every supported private rule from
+a named, versioned adapter.
 
 ## Artifact family
 
-The planned pipeline ecosystem separates three contracts. This slice
-implements only `wfcpipeline=1`; the run and result contracts remain pending:
+The pipeline ecosystem separates three implemented contracts:
 
 - `wfcpipeline=1` describes an immutable pipeline recipe.
-- `wfcpipeline-run=1` will describe one execution: dimensions, seed, solver
+- `wfcpipeline-run=1` describes one execution: dimensions, seed, solver
   options, locks, and domains.
-- `wfcpipeline-result=1` will describe one public result and its effective replay
+- `wfcpipeline-result=1` describes one public result and its effective replay
   metadata.
 
 Keeping these separate means one recipe can be run at many sizes and seeds,
-while a result can identify the exact recipe and run that produced it. The
-first implementation slice builds the recipe IR and codec before the run and
-result artifacts are added.
+while a result identifies the exact recipe and run that produced it.
 
 The implemented recipe format uses the project-owned canonical text rules in
 `wfc_text_codec`: ASCII syntax, UTF-8 percent-encoded tokens, LF line endings,
 one final LF, canonical integers, checked counts, and exact decode/re-encode
-identity. The planned run and result formats will use the same rules.
+identity. The run and result formats use the same rules.
 
 ## Bundle identity
 
@@ -134,7 +132,7 @@ their large allocations. Each nested decoder applies its own limits before
 dense allocation; the recipe accounts the decoded resource's relation slots
 before accepting it and continuing to the next resource. The exact public
 constants are documented in
-[Portable rules and pipeline recipes](../pipeline-artifacts.md#version-1-safety-limits)
+[Portable pipeline artifacts](../pipeline-artifacts.md#version-1-safety-limits)
 and are identical on native FPC and pas2js.
 
 ## Pass definitions
@@ -180,45 +178,45 @@ rejected before any runtime graph exists.
 
 Every edge implied by a transform, bridge, or token requirement must also be
 present in this list. The explicit list therefore documents the complete DAG,
-and the pending compiler will compare the constructed graph's dependency
+and the compiler compares the constructed graph's dependency
 surface with the recipe before solving.
 
-The runtime compiler will use stable topological order with the existing
-pass-index tie break. Resource and bridge declaration order will not change
+The runtime compiler uses stable topological order with the existing
+pass-index tie break. Resource and bridge declaration order does not change
 that rule.
 
 ## Built-in materializing bridges
 
-The implemented recipe validates closed bridge declarations and derives their
-target vocabularies. The pending runtime compiler, materializer, and
-tentative-commit validator will implement the following semantics. Private
+The recipe validates closed bridge declarations and derives their target
+vocabularies. The runtime compiler, materializer, and tentative-commit
+validator implement the following semantics. Private
 representations may reach a public pass only through a closed bridge kind whose
 compiler and independent validator are versioned.
 
 ### `pattern2d-projection`
 
 The source uses the `pattern2d` adapter and the target is an empty public
-overlay pass. The bridge will regenerate the complete palette and one exact
+overlay pass. The bridge regenerates the complete palette and one exact
 wrapped offset clause per footprint coordinate by calling the checked
-overlapping-pattern projection adapter. It will never write private pattern
+overlapping-pattern projection adapter. It never writes private pattern
 keys into the document.
 
 The recipe must be rank 2 and wrapped. One bridge owns the target vocabulary.
 Palette tokens using the reserved latent-key grammar, `@p` followed only by
 decimal digits, are rejected through the same predicate used by the runtime
 adapter. This keeps recipe validation and later materialization in lockstep.
-At tentative commit, validation will capture the latent pattern grid and
-verify every projected footprint contribution independently.
+At tentative commit, validation captures the latent pattern grid and
+verifies every projected footprint contribution independently.
 
 ### `sequence-projection`
 
 The source uses the `sequence` adapter and the target is an empty public
-overlay pass. The bridge will install the source model's complete public
-vocabulary with neutral weights and will make each public token require every
+overlay pass. The bridge installs the source model's complete public
+vocabulary with neutral weights and makes each public token require every
 latent state that emits that token.
 
-The recipe must be rank 1. At tentative commit, validation will capture and
-check the latent state path, then compare every target token with the
+The recipe must be rank 1. At tentative commit, validation captures and
+checks the latent state path, then compares every target token with the
 independently projected public token.
 
 No bridge kind accepts an arbitrary procedure name, class name, expression,
@@ -235,9 +233,9 @@ requirement identifies:
 - one or more signed-offset terms;
 - a nonempty ordered set of allowed provider tokens for every term.
 
-An `exact` requirement contains one term and will compile to
-`RequireFromPassAt`. An `any` requirement contains one or more terms and will
-compile to one `RequireAnyFromPass` clause. Terms in an `any` clause are in
+An `exact` requirement contains one term and compiles to
+`RequireFromPassAt`. An `any` requirement contains one or more terms and
+compiles to one `RequireAnyFromPass` clause. Terms in an `any` clause are in
 strict signed X/Y/Z order, matching the core's canonical term order. Distinct
 requirements are conjunctive. A definitionless transform can expose a static
 vocabulary but cannot consume a requirement because it has no rule group;
@@ -259,7 +257,7 @@ by spelling latent keys in a token requirement.
 ## Construction transaction
 
 The immutable recipe performs complete static validation before it can be
-observed. Runtime compilation will then use a fresh graph owned by a pipeline
+observed. Runtime compilation then uses a fresh graph owned by a pipeline
 runtime:
 
 1. validate the requested dimensions and run inputs;
@@ -276,16 +274,17 @@ runtime:
 11. compare the resulting public definition with the recipe;
 12. expose the runtime only after all steps succeed.
 
-Any exception will free the unpublished graph and decoded temporary state.
-There will be no partially configured caller-owned target.
+Any exception frees the unpublished graph and temporary state. There is no
+partially configured caller-owned target.
 
-The runtime graph will be a closed project class whose tentative-commit hook
-calls only validators named by the recipe. The immutable bundle will outlive
-its runtime; the runtime will own the graph and any pending result capture.
+The runtime graph is a closed project class whose tentative-commit hook calls
+only validators named by the recipe. The immutable recipe and run must outlive
+their runtime; the runtime owns the graph and results are detached caller-owned
+objects.
 
 ## Run artifact
 
-`wfcpipeline-run=1` will record the invocation rather than changing the
+`wfcpipeline-run=1` records the invocation rather than changing the
 recipe:
 
 - recipe signature;
@@ -304,31 +303,36 @@ Pattern selection is constrained through its public projection. Sequence
 selection is constrained through its public projection or a future typed
 sequence-input record, never through a private state key.
 
-The run manifest and CLI override policy must be explicit. A command must not
-quietly prefer an argument over an artifact field.
+A lock or domain on a definitionless public transform is resolved to the final
+materialized public source. Alias domains at the same effective cell are
+intersected in canonical vocabulary-index order; equal locks coalesce, while
+conflicting locks or lock/domain exclusions fail before graph publication. A
+project-owned open-addressed token lookup keeps this resolution bounded without
+introducing a collection dependency.
+
+The command-line runner has no solver-option overrides: every replay field
+comes from the run artifact. Its only execution option is output suppression.
 
 ## Commit validation
 
-Once implemented, pipeline solving will remain
-`prepare -> solve -> validate -> commit`. The runtime's commit validator will
-check, in stable order:
+Pipeline solving remains `prepare -> solve -> validate -> commit`. The core
+solver first enforces local rules, generic models, caller domains, and
+completeness. Before publication, the compiler-owned commit hook then checks,
+in stable order:
 
-1. every rules or generic-model pass against its immutable local model;
-2. every sequence state path and endpoint/extent rule;
-3. every pattern overlap;
+1. every private pattern assignment and overlap;
+2. every private sequence path and endpoint/extent rule;
+3. every definitionless transform against its exact source copy;
 4. every typed projection bridge;
-5. every public token requirement;
-6. every public lock and domain;
-7. completeness of every public pass.
+5. every public token requirement.
 
-The first failure will report its pass and cell through `gckFinalValidation`
+The first failure reports its pass and cell through `gckFinalValidation`
 while the core can still restore all entries and random streams. Validation
-will not be performed after publishing a result.
+is not deferred until after publishing a result.
 
 ## Public result artifact
 
-The planned `wfcpipeline-result=1` will contain only public layers. It will
-record:
+`wfcpipeline-result=1` contains only public layers. It records:
 
 - recipe and run signatures;
 - effective algorithm versions, shape, seed, and solve options;
@@ -337,35 +341,60 @@ record:
 - every public pass label and row-major token grid;
 - a signature over the complete public result.
 
-Private passes will be represented only by their existence and validator
-outcome, not by values. A result encoder will scan public tokens against every
-applicable private-key grammar and fail if a private representation escaped.
+Private passes are represented only by pass outcomes and validator success,
+not by values. Capture verifies every published pass index and label against
+the recipe and requires every cell token to be an exact member of that pass's
+public vocabulary. Private representations therefore have no result-layer
+route; typed bridge validators separately protect their projection boundary.
 
-Failed runs will produce a diagnostic result variant with the structured
-contradiction and no partial public layers. A failure will never masquerade as
+Failed runs produce a diagnostic result variant with the structured
+contradiction and no partial public layers. A failure never masquerades as
 an empty successful result.
 
-## Planned headless tools
+## Headless tools
 
-The next implementation slice will add two thin hosts sharing portable Pascal
-application logic:
+Two implemented tools use shared portable Pascal application logic:
 
-- `wfc-validate` will strictly decode a recipe or run artifact, check resource
-  canonicality, references, topology compatibility, the dependency DAG,
-  vocabularies, zero-support rows, impossible static inputs, provenance, and
-  signatures, then exit with a documented status code.
-- `wfc-run` will load a recipe and run artifact, construct a fresh runtime,
-  execute it, and write one canonical result artifact to standard output.
+- `wfc-validate recipe [--quiet | --emit-canonical] [--] INPUT` strictly
+  decodes one recipe, including nested resource canonicality, references,
+  topology, dependency DAG, vocabularies, provenance, and signatures. The
+  optional canonical mode writes its exact normalized recipe.
+- `wfc-run [--quiet] [--] RECIPE RUN` strictly decodes the two artifacts,
+  constructs a fresh runtime, executes it, and normally writes one canonical
+  result artifact even when the solve is not successful. At most one input may
+  be `-` for standard input.
 
-Native and pas2js/Node hosts will own only argument, file, standard-input, and
-standard-output plumbing. They will not reimplement model or validation rules.
-No JSON, YAML, CLI framework, hashing package, filesystem abstraction, or
-serializer dependency will be introduced.
+Both tools reserve exit `0` for success, `1` for invalid artifacts or an
+invalid execution boundary, `2` for command usage, `3` for I/O, and `70` for
+an internal failure. `wfc-run` additionally uses `4` for a valid non-solved
+result. Quiet mode changes output, not validation or solve semantics.
+
+Native and pas2js/Node hosts own only argument, bounded file, standard-input,
+standard-output, and process-exit plumbing. They do not reimplement model or
+validation rules. No JSON, YAML, CLI framework, hashing package, filesystem
+abstraction, or serializer dependency was introduced.
 
 ## Portable proof
 
-The planned first end-to-end fixture will package the LearnedPatternWorld
-recipe:
+The implementation is covered as a layered portable proof on stable FPC,
+development FPC, and pas2js/Node:
+
+- compiler fixtures build empty, rules, generic-model, pattern, and sequence
+  passes; install both bridge kinds and exact/any public requirements; and
+  exercise independent commit failures;
+- recipe, run, and result codecs round-trip exact canonical bytes with pinned
+  semantic signatures and reject malformed envelopes, versions, references,
+  ordering, and provenance;
+- runtime fixtures exercise transform-targeted locks and domains, alias-domain
+  intersection, explicit contradictions, deterministic replay, real outer-pass
+  repair, pass-budget exhaustion, and detached result lifetime;
+- application fixtures execute encoded recipe-plus-run input into decoded
+  canonical results and verify non-solved behavior; native and Node hosts are
+  compiled and process-smoked while the shared codecs retain pinned bytes and
+  signatures on both targets.
+
+The next domain-scale bundle fixture will package the existing
+LearnedPatternWorld pipeline:
 
 ```text
 private patterns -> public terrain -> public foliage
@@ -377,15 +406,10 @@ will be materialized by `pattern2d-projection`; foliage and structure will use
 small canonical `wfcrules=1` resources plus public token requirements. The
 bundle will record the sample source and MIT license.
 
-The proof must establish:
+That domain packaging step must additionally establish:
 
 - programmatic and decoded recipes have the same semantic signature;
-- native FPC stable, native FPC development, and pas2js/Node encode identical
-  recipe, run, and result bytes;
 - seed zero retains the existing model and layer goldens;
-- a corrupted resource, unknown version, cycle, private-pass input, missing
-  dependency, malformed token, and signature mismatch are rejected;
-- a typed commit-validation failure rolls back entries and random streams;
 - no public result contains a private pattern or sequence key.
 
 ## Deliberate nonclaims
@@ -408,7 +432,7 @@ run-artifact versions. They are not approximated with unversioned strings.
 
 ## Research questions
 
-The implemented recipe foundation creates a stable experimental boundary for
+The implemented execution bundle creates a stable experimental boundary for
 questions that are difficult to compare in application source alone:
 
 - How much smaller is typed pattern projection than a flattened public rule
@@ -422,5 +446,5 @@ questions that are difficult to compare in application source alone:
 - Can future voxel and musical resource kinds share the same pass and result
   contracts without adding domain knowledge to the solver?
 
-The implementation and fixtures will publish the exact algorithms, limits,
-and negative results rather than treating the file format as self-validating.
+The implementation and fixtures publish the exact algorithms, limits, and
+negative results rather than treating the file format as self-validating.
