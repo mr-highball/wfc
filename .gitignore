@@ -82,3 +82,4 @@ lib/
 /.build/
 /build/
 /test/wfc_test
+/wfc-*.fpm

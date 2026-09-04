@@ -30,6 +30,8 @@ The repository already contains the beginnings of the ecosystem:
   native/pas2js golden fixtures;
 - stack-safe iterative traversal of large planes while preserving the legacy
   solver's north/east/south/west depth-first order;
+- checked one-command native build gates, an FPM package, a runtime-only
+  Lazarus package, and a hosted stable/development CI workflow;
 - a console tiled-world example;
 - two music experiments, including manually inferred note adjacency;
 - building-kit constraints, a console renderer, and a Castle Game Engine
@@ -54,7 +56,8 @@ It is not yet the finished system described above:
 - there is no interactive pas2js demo, browser test host, or complete stable
   native/pas2js decision-trace parity suite (canonical seeded value fixtures
   do already match);
-- the conformance runner is not yet wired into a one-command build or CI;
+- the hosted CI definition is present, but its first remote run still needs to
+  be observed before the Phase 0 exit gate is claimed complete;
 - music playback currently depends on the GPL-licensed SoundShop submodule,
   which cannot be a required dependency of an MIT-only demo distribution
   without resolving or replacing that dependency.

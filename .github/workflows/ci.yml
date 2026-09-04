@@ -1,0 +1,149 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  stable:
+    name: Stable FPC 3.2.2 (${{ matrix.platform }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: Linux
+            runner: ubuntu-24.04
+          - platform: macOS
+            runner: macos-15-intel
+          - platform: Windows
+            runner: windows-2025
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: false
+
+      - name: Install stable FPC on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes \
+            fp-compiler-3.2.2 \
+            fp-units-fcl-3.2.2 \
+            fp-utils-3.2.2 \
+            lcl-utils-3.0
+
+      - name: Install stable FPC on macOS
+        if: runner.os == 'macOS'
+        shell: bash
+        run: brew install fpc
+
+      - name: Install stable FPC on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $uri = 'https://downloads.freepascal.org/fpc/dist/3.2.2/i386-win32/fpc-3.2.2.i386-win32.exe'
+          $installer = Join-Path $env:RUNNER_TEMP 'fpc-3.2.2.i386-win32.exe'
+          $expectedHash = '7ec78b1790ecac7685f440b17f9e03865bc09846b7c068a9270c4d37704b5ac8'
+          $installDirectory = 'C:\FPC\3.2.2'
+          $fpcDirectory = Join-Path $installDirectory 'bin/i386-win32'
+          $fpcPath = Join-Path $fpcDirectory 'fpc.exe'
+
+          Invoke-WebRequest -Uri $uri -OutFile $installer
+          $actualHash = (Get-FileHash $installer -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actualHash -ne $expectedHash) {
+            throw "FPC installer checksum mismatch: $actualHash"
+          }
+
+          $process = Start-Process $installer -Wait -PassThru -WindowStyle Hidden -ArgumentList @(
+            '/SP-'
+            '/VERYSILENT'
+            '/SUPPRESSMSGBOXES'
+            '/NORESTART'
+            "/DIR=$installDirectory"
+          )
+          if ($process.ExitCode -ne 0) {
+            throw "FPC installer exited with code $($process.ExitCode)."
+          }
+          if (-not (Test-Path -LiteralPath $fpcPath)) {
+            throw "FPC was not installed at $fpcPath."
+          }
+
+          $fpcDirectory | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          "FPC=$fpcPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Verify stable FPC version
+        if: runner.os != 'Windows'
+        shell: bash
+        run: test "$(fpc -iV)" = '3.2.2'
+
+      - name: Verify stable FPC version
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $installedVersion = (& $env:FPC -iV).Trim()
+          if ($installedVersion -ne '3.2.2') {
+            throw "Expected FPC 3.2.2, found $installedVersion."
+          }
+
+      - name: Build and test
+        if: runner.os != 'Windows'
+        shell: bash
+        run: bash ./build.sh
+
+      - name: Build and test
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./build.ps1
+
+      - name: Validate FPM and Lazarus packages
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          mkdir -p \
+            build/fpm/bootstrap/units \
+            build/fpm/bootstrap/bin
+          fpc -B -Mobjfpc -Sa -Cr -Co -Ci \
+            -FUbuild/fpm/bootstrap/units \
+            -FEbuild/fpm/bootstrap/bin \
+            fpmake.pp
+          ./build/fpm/bootstrap/bin/fpmake build \
+            --globalunitdir=/usr/lib/x86_64-linux-gnu/fpc/3.2.2
+          lazbuild -B --no-write-project wfc.lpk
+          lazbuild -B --no-write-project test/wfc_test.lpi
+          ./build/lazarus/test/bin/wfc_test
+          test -z "$(git status --short)"
+
+  development:
+    name: Development FPC (official trunk image)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: false
+
+      - name: Build and test with current FPC trunk
+        shell: bash
+        run: |
+          docker pull freepascal/fpc:trunk-bookworm-full
+          docker image inspect \
+            --format 'FPC trunk image: {{index .RepoDigests 0}}' \
+            freepascal/fpc:trunk-bookworm-full
+          docker run --rm freepascal/fpc:trunk-bookworm-full fpc -iW
+          docker run --rm \
+            --user "$(id -u):$(id -g)" \
+            --volume "$GITHUB_WORKSPACE:/workspace" \
+            --workdir /workspace \
+            freepascal/fpc:trunk-bookworm-full \
+            bash ./build.sh

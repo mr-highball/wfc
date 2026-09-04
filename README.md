@@ -62,28 +62,25 @@ see [deterministic generation](docs/determinism.md).
 
 ## Build and test
 
-Add `src` to the unit search path, then compile the conformance runner:
+Run the checked native build and conformance suite from the repository root:
 
-```text
-fpc -B -Mdelphi -Sa -Cr -Co -Ci -Fusrc -FUbuild/native/units -FEbuild/native/bin test/wfc_test.lpr
+```powershell
+.\build.ps1
 ```
 
-Run the produced `build/native/bin/wfc_test` executable (`wfc_test.exe` on
-Windows). It returns a nonzero exit code when a check fails. The same test
-source also compiles for a Node.js pas2js target and checks the same seeded
-output vectors. A configured pas2js RTL toolchain can use:
-
-```text
-pas2js -B -Tnodejs -Mdelphi -Fusrc -FUbuild/pas2js/units -FEbuild/pas2js test/wfc_test.lpr
-node build/pas2js/wfc_test.js
+```bash
+./build.sh
 ```
 
-Create the output directories first. A compiler executable without its
-matching pas2js RTL unit paths is not sufficient.
+Both entry points compile with checked FPC options, keep all output under
+`build/`, run the tests, and preserve failure exit codes. The repository also
+includes an FPM package, a runtime-only Lazarus package, and the same
+conformance source for pas2js/Node. See [building and testing](docs/building.md)
+for compiler overrides, package commands, output paths, and pas2js setup.
 
-Lazarus can open `test/wfc_test.lpi`. The core, conformance suite, tiled-world
-example, and building-kit console need no submodule. The two legacy music
-experiments require Lazarus/LCL, SDL2, and the optional GPL-3.0 SoundShop
+The core, conformance suite, tiled-world example, and building-kit console need
+no submodule. The two legacy music experiments require Lazarus/LCL, SDL2, and
+the optional GPL-3.0 SoundShop
 submodule; they are not part of the dependency-free MIT build path. See the
 [examples index](examples/README.md) for exact status and commands.
 
