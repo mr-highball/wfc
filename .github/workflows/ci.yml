@@ -213,20 +213,37 @@ jobs:
           pas2js="$PAS2JS_ROOT/bin/x86_64-linux/pas2js"
           test_units='build/pas2js/test/units'
           test_bin='build/pas2js/test/bin'
+          world_test_units='build/pas2js/world-test/units'
+          world_test_bin='build/pas2js/world-test/bin'
           example_units='build/pas2js/example/units'
           example_bin='build/pas2js/example/bin'
+          world_example_units='build/pas2js/world-example/units'
+          world_example_bin='build/pas2js/world-example/bin'
           mkdir -p \
             "$test_units" "$test_bin" \
-            "$example_units" "$example_bin"
+            "$world_test_units" "$world_test_bin" \
+            "$example_units" "$example_bin" \
+            "$world_example_units" "$world_example_bin"
 
           "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
             -FU"$test_units" -FE"$test_bin" test/wfc_test.lpr
           node "$test_bin/wfc_test.js"
 
           "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
+            -FU"$world_test_units" -FE"$world_test_bin" \
+            test/wfc_world2d_test.lpr
+          node "$world_test_bin/wfc_world2d_test.js"
+
+          "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
             -FU"$example_units" -FE"$example_bin" \
             examples/text/01_SimpleTiledWorld/SimpleTiledWorld.lpr
           node "$example_bin/SimpleTiledWorld.js" 0 >/dev/null
+
+          "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
+            -FU"$world_example_units" -FE"$world_example_bin" \
+            examples/2D/01_MultiPassWorld/MultiPassWorld.lpr
+          node "$world_example_bin/MultiPassWorld.js" 0 >/dev/null
+          node "$world_example_bin/MultiPassWorld.js" >/dev/null
 
   development:
     name: Development FPC (official trunk image)

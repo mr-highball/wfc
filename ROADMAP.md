@@ -34,16 +34,19 @@ The repository already contains the beginnings of the ecosystem:
 - atomic reference-solver staging across the complete sequential pass pipeline,
   including locks, previous-pass constraints, definitionless-pass copying, and
   rollback on a failed later pass;
+- a reusable `wfc_world2d` terrain/biome/foliage library, a separate semantic
+  validator, fixed-token portable layer signatures, and a documented
+  native/pas2js multi-pass demonstration;
 - stack-safe iterative traversal of large planes while preserving the legacy
   solver's north/east/south/west depth-first order;
 - checked one-command native build gates, an FPM package, a runtime-only
   Lazarus package, and a hosted stable/development CI workflow;
-- a console tiled-world example;
+- single-pass and multi-pass console world examples;
 - two music experiments, including manually inferred note adjacency;
 - building-kit constraints, a console renderer, and a Castle Game Engine
   project skeleton;
-- a native/pas2js conformance runner covering the current core and pass
-  contracts.
+- native/pas2js conformance runners covering the core, pass contracts, 2D
+  domain semantics, atomic failure, and layer-signature parity.
 
 It is not yet the finished system described above:
 
@@ -179,6 +182,12 @@ does not corrupt earlier committed layers. Sequential dependencies are the
 default; explicit dependency graphs and bounded feedback can be added after
 the sequential behavior is proven.
 
+The first packaged domain fixture now proves the sequential subset with
+terrain → biome → foliage, an intentionally illegal foliage lock, rollback,
+independent validation, and matching native/pas2js layer hashes. Hydrology,
+roads/housing, selective regeneration, named overlays, and dependency graphs
+remain necessary before the full Phase 2 exit gate is satisfied.
+
 ### Deliverables
 
 - Make `CurrentPass`, entries, planes, values, rules, callbacks, wrapping, run
@@ -239,8 +248,14 @@ tests, and an explanation is not a finished ecosystem.
 
 ### 2D worlds
 
-- Topologies for bounded, wrapped, masked, and chunked grids.
-- Terrain, coast/hydrology, biome, road, settlement, and decoration helpers.
+Model version 1 now provides a bounded/wrapped depth-one wrapper, typed
+terrain/biome/foliage layers, caller locks, an independent semantic validator,
+portable CRC signatures, a focused conformance suite, and a shared-source
+console demo. This is the first vertical slice, not the completed exit gate.
+
+- Extend the current bounded/wrapped grid with masked and chunked topologies.
+- Extend the current terrain/biome/foliage model with coast/hydrology, roads,
+  settlements, and richer decoration helpers.
 - Image/tile-set learning with rotation and reflection policies.
 - A console example, a native visual inspector, and an interactive browser
   playground showing the complete multi-pass world pipeline.

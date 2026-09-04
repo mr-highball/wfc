@@ -245,6 +245,11 @@ not invoked by `TrySolve`; `Run` remains available when that extension model is
 required. Exact algorithm, constraint, counter, and error semantics are in the
 [reference solver documentation](solver.md).
 
+The reusable [2D world ecosystem](world2d.md) applies this transaction to a
+typed terrain → biome → foliage pipeline. Its separate validator and portable
+layer signatures provide a domain-level check that the generic core does not
+need to know about.
+
 ## constraints from the previous pass
 
 `RequirePrevious` filters a value using the entry at the same coordinate in

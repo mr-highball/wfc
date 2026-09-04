@@ -14,8 +14,10 @@ modular 3D structures, music, text, and other discrete design problems.
 > available. The opt-in reference solver now provides fixed-point propagation,
 > deterministic minimum-domain observation, bounded backtracking, structured
 > contradiction reports, and an atomic sequential pass pipeline on native FPC
-> and pas2js. Weights, richer cross-layer constraints, polished domain
-> libraries, and complete native/browser demos remain tracked in the
+> and pas2js. The first specialized ecosystem now adds a reusable, independently
+> validated terrain → biome → foliage world with portable layer signatures.
+> Weights, richer cross-layer constraints, additional domain libraries, and
+> complete browser demos remain tracked in the
 > [roadmap](ROADMAP.md).
 
 ## Features
@@ -29,6 +31,8 @@ modular 3D structures, music, text, and other discrete design problems.
 - explicit pipeline seeds with stable, independent per-pass random streams
 - an opt-in propagating solver with deterministic MRV and bounded backtracking
 - atomic all-pass staging, independent validation, and structured run reports
+- a typed 2D terrain/biome/foliage library with an independent semantic checker
+- versioned, fixed-token 2D layer signatures shared by native FPC and pas2js
 - matching seeded golden fixtures on native FPC and pas2js/Node
 - iterative traversal without a graph-sized call stack
 - extension hooks for custom graph and entry behavior
@@ -70,6 +74,8 @@ For the reference algorithm, atomicity contract, reports, and exact constraint
 semantics, see the [reference solver](docs/solver.md).
 For exact replay behavior, callback requirements, and algorithm versioning,
 see [deterministic generation](docs/determinism.md).
+For the reusable world model, typed locks, validator, signatures, and complete
+multi-pass demo, see the [2D ecosystem](docs/world2d.md).
 
 ## Build and test
 
@@ -84,14 +90,15 @@ Run the checked native build and conformance suite from the repository root:
 ```
 
 Both entry points compile with checked FPC options, keep all output under
-`build/`, run the tests, and preserve failure exit codes. The repository also
-includes an FPM package, a runtime-only Lazarus package, and the same
-conformance source for pas2js/Node. See [building and testing](docs/building.md)
-for compiler overrides, package commands, output paths, and pas2js setup.
+`build/`, run the core and 2D ecosystem suites, smoke-test both portable
+examples, and preserve failure exit codes. The repository also includes an FPM
+package, a runtime-only Lazarus package, and the same conformance sources for
+pas2js/Node. See [building and testing](docs/building.md) for compiler
+overrides, package commands, output paths, and pas2js setup.
 
-The core, conformance suite, tiled-world example, and building-kit console need
-no submodule. The two legacy music experiments require Lazarus/LCL, SDL2, and
-the optional GPL-3.0 SoundShop
+The core, specialized 2D units, conformance suites, portable 2D examples, and
+building-kit console need no submodule. The two legacy music experiments
+require Lazarus/LCL, SDL2, and the optional GPL-3.0 SoundShop
 submodule; they are not part of the dependency-free MIT build path. See the
 [examples index](examples/README.md) for exact status and commands.
 

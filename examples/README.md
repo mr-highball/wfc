@@ -6,17 +6,17 @@ the [roadmap](../ROADMAP.md).
 
 | Area | Entry point | Targets | Current proof and dependencies |
 | --- | --- | --- | --- |
+| Multi-pass 2D world | `2D/01_MultiPassWorld/MultiPassWorld.lpr` | Native FPC, pas2js/Node | Uses the reusable 2D units, solves terrain → biome → foliage atomically, independently validates every cell/relation, and prints matching portable signatures without external dependencies. |
 | Text-rendered 2D world | `text/01_SimpleTiledWorld/SimpleTiledWorld.lpr` | Native FPC, pas2js/Node | Builds and runs from the same Pascal source, prints and accepts an optional replay seed, and needs no external dependency. This is world generation rendered as text, not a text-prediction model. |
 | Building-kit console | `3D/01_SimpleBuildingKit/tester.lpr` | Native FPC | Builds without Castle Game Engine, but currently generates and renders a depth-one slice. It does not yet prove vertical 3D constraints. |
 | Castle viewer shell | `3D/01_SimpleBuildingKit/castle-demo/` | Native Castle Game Engine | The project shell and assets exist, but its game state does not yet call WFC or render generated building geometry. |
 | A-major music experiment | `music/01_simple_A_major/simple_a_major.lpi` | Native Lazarus/LCL | Legacy optional experiment using the SoundShop submodule and SDL2 playback. |
 | Learned-riff music experiment | `music/02_simple_song_riffs/simple_song_riffs.lpi` | Native Lazarus/LCL | Legacy optional experiment using manually inferred note adjacency, SoundShop, and SDL2 playback. |
-| Dedicated 2D visual demo | — | — | Not implemented yet; the tiled-world console currently exercises the 2D topology. |
 
 There is not yet an HTML/browser UI, a text-prediction demo, a depth-greater-
 than-one building demonstration, or a connected Castle visualization.
-pas2js/Node proves that the Pascal core and tiled-world host transpile and run;
-it should not be confused with a finished web demo.
+pas2js/Node proves that the Pascal core and both portable 2D hosts transpile and
+run; it should not be confused with a finished browser demo.
 
 ## dependency-free builds
 
@@ -37,6 +37,18 @@ node build/examples/text/pas2js/bin/SimpleTiledWorld.js
 Pass an optional unsigned 32-bit seed as the first argument on either target,
 for example `SimpleTiledWorld.exe 3735928559` or
 `node SimpleTiledWorld.js 3735928559`.
+
+The multi-pass world uses the same dependency-free pattern:
+
+```text
+fpc -B -Mdelphi -Sa -Cr -Co -Ci -Fusrc -FUbuild/examples/2d/native/units -FEbuild/examples/2d/native/bin examples/2D/01_MultiPassWorld/MultiPassWorld.lpr
+build/examples/2d/native/bin/MultiPassWorld 0
+```
+
+```text
+pas2js -B -Tnodejs -Mdelphi -Fusrc -FUbuild/examples/2d/pas2js/units -FEbuild/examples/2d/pas2js/bin examples/2D/01_MultiPassWorld/MultiPassWorld.lpr
+node build/examples/2d/pas2js/bin/MultiPassWorld.js 0
+```
 
 The native building-kit console additionally needs its unit directory:
 

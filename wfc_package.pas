@@ -8,7 +8,7 @@ unit wfc_package;
 interface
 
 uses
-  wfc_solver_reference, wfc;
+  wfc_solver_reference, wfc, wfc_world2d, wfc_world2d_validate;
 
 implementation
 

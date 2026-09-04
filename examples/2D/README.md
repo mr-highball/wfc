@@ -1,10 +1,16 @@
 # 2D examples
 
-There is not yet a dedicated graphical 2D example. The
-[text-rendered tiled world](../text/01_SimpleTiledWorld/SimpleTiledWorld.lpr)
-uses a `Width x Height x 1` graph and is the current dependency-free 2D
-demonstration for native FPC and pas2js/Node.
+[`01_MultiPassWorld`](01_MultiPassWorld/README.md) is the dedicated portable 2D
+ecosystem demo. It generates terrain, then biome, then foliage with the atomic
+reference solver, validates the result independently, renders every layer, and
+prints stable per-layer signatures. The same source builds with native FPC and
+pas2js/Node without external dependencies.
 
-The planned 2D ecosystem adds reusable terrain, hydrology, biome, road,
-settlement, and decoration passes plus native and browser inspectors. See the
-[roadmap](../../ROADMAP.md) and [examples index](../README.md).
+The older [text-rendered tiled world](../text/01_SimpleTiledWorld/SimpleTiledWorld.lpr)
+remains a compact single-pass legacy-`Run` example.
+
+Reusable terrain/biome/foliage types now live in `wfc_world2d`, with semantic
+checks in `wfc_world2d_validate`. Hydrology, roads, settlements, selective
+regeneration, and an interactive browser inspector remain roadmap work. See
+the [2D documentation](../../docs/world2d.md), [roadmap](../../ROADMAP.md), and
+[examples index](../README.md).

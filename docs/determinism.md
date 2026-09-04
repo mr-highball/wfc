@@ -106,6 +106,13 @@ sampling, bottom-up and wrapped top-down 3D grids, and a three-pass
 terrain/foliage/copy pipeline. Those output fixtures are checked by both native
 FPC and pas2js/Node.
 
+The specialized 2D suite also freezes a complete terrain → biome → foliage
+fixture as `1:F7B994F3:E2E8E15B:21B79A66`. Its versioned CRC-32 stream uses
+fixed model tokens rather than compiler string bytes, so native FPC and pas2js
+hash exactly the same canonical layer data. This is an output checksum, not a
+decision trace and not a replacement for the core replay identity. See the
+[2D signature contract](world2d.md#portable-signatures).
+
 Any incompatible change to seed expansion, stream derivation, or bounded
 sampling must increment `WFC_RANDOM_ALGORITHM_VERSION`. An incompatible change
 to reference-solver propagation, observation, candidate ordering, or

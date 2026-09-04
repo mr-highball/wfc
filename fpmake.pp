@@ -26,6 +26,8 @@ begin
     P.SourcePath.Add('src');
     P.Targets.AddUnit('wfc_solver_reference.pas');
     P.Targets.AddUnit('wfc.pas');
+    P.Targets.AddUnit('wfc_world2d.pas');
+    P.Targets.AddUnit('wfc_world2d_validate.pas');
     Run;
   end;
 end.
