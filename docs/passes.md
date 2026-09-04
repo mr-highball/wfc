@@ -473,11 +473,13 @@ explicit finite any-of-neighborhood. These are exact hard value comparisons,
 not radius searches, counts, distance metrics, soft predicates, or a
 conflict-directed repair language. Transform mode has one source. Sequence
 projection helpers now bridge exact public tokens and private latent states in
-both directions; exact N-source sequence token-map bundles are atomic, but
-general projection schemas and overlapping-pattern pass projection remain
-future work. Generic pass rules can place projected values in finite offset
-clauses, but the adapters do not infer offset relations, arithmetic predicates,
-soft preferences, or many-cell semantic joins.
+both directions; exact N-source sequence token-map bundles are atomic.
+`wfc_pattern2d_graph` expresses wrapped, same-shape, depth-one overlapping
+pattern projection as one exact provider clause per footprint coordinate and
+validates the materialized public pass independently at commit time. General
+projection schemas remain future work. Generic pass rules can place projected
+values in finite offset clauses, but adapters do not infer resampling,
+arithmetic predicates, soft preferences, or arbitrary many-cell semantic joins.
 
 The staged DAG remains one-way within ordinary `TrySolve`. A downstream
 requirement filters its candidate domain against provider values already

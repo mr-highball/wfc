@@ -2,8 +2,9 @@
 
 The dependency-free build covers the core, causal-trace kernel/public/utility
 contracts, specialized 2D and settlement, radius-one model-learning,
-overlapping-pattern, sequence, Unicode-scalar text completion, three-pass text
-composition, exact music-score, music projection, Standard MIDI File,
+overlapping-pattern and projected-pattern passes, sequence, Unicode-scalar
+text completion, three-pass text composition, exact music-score, music
+projection, Standard MIDI File,
 score-export, negotiated music variation/result replay, full and selective
 pass negotiation, and voxel-3D units and
 their conformance suites, plus
@@ -12,7 +13,8 @@ pass-aware view, fixed-integer isometric projector, and canonical SVG encoder.
 It also runs seeded smoke checks of the portable console demos, including the
 causal-trace inspector, bounded pass negotiation, negotiated descendant repair,
 anchored text infill, three-pass text composition, and negotiated music
-variation, and writes a checked seed-zero Building SVG artifact.
+variation, the four-pass learned-pattern world, and writes a checked seed-zero
+Building SVG artifact.
 It does not initialize the optional legacy music submodule or build the
 unfinished Castle Game Engine viewer. The 2D world, three-pass text workbench,
 and Building 3D workbench have separate dependency-free pas2js browser entry
@@ -71,7 +73,8 @@ From the repository root, use the entry point for your shell:
 
 Both scripts rebuild with assertions and range, overflow, and I/O checks, run
 `wfc_test`, `wfc_world2d_test`, `wfc_world2d_settlement_test`,
-`wfc_learn_test`, `wfc_pattern2d_test`, `wfc_sequence_test`,
+`wfc_learn_test`, `wfc_pattern2d_test`, `wfc_pattern2d_passes_test`,
+`wfc_sequence_test`,
 `wfc_text_test`, `wfc_text_passes_test`, `wfc_negotiation_test`,
 `wfc_selective_negotiation_test`, `wfc_voxel3d_test`,
 `wfc_voxel3d_isometric_test`,
@@ -84,7 +87,8 @@ Both scripts rebuild with assertions and range, overflow, and I/O checks, run
 portable console examples with seed `0`, including the bounded/wrapped spatial
 dependency self-check, causal-trace inspector, bounded pass-negotiation proof,
 negotiated descendant repair, anchored text completion, three-pass text
-composition, negotiated music variation, and depth-three Building 3D pipeline;
+composition, negotiated music variation, the learned-pattern world, and
+depth-three Building 3D pipeline;
 the multi-pass and
 selective-settlement worlds also run with their default seeds. Finally, the
 native `Building3DSvg` host generates and validates
@@ -188,6 +192,12 @@ pas2js -B -Tnodejs -Mdelphi -Fusrc \
   -FUbuild/pas2js/pattern-units -FEbuild/pas2js/pattern \
   test/wfc_pattern2d_test.lpr
 node build/pas2js/pattern/wfc_pattern2d_test.js
+
+mkdir -p build/pas2js/pattern-pass-units build/pas2js/pattern-pass
+pas2js -B -Tnodejs -Mdelphi -Fusrc \
+  -FUbuild/pas2js/pattern-pass-units -FEbuild/pas2js/pattern-pass \
+  test/wfc_pattern2d_passes_test.lpr
+node build/pas2js/pattern-pass/wfc_pattern2d_passes_test.js
 
 mkdir -p build/pas2js/sequence-units build/pas2js/sequence
 pas2js -B -Tnodejs -Mdelphi -Fusrc \
@@ -320,6 +330,18 @@ pas2js -B -Tnodejs -Mdelphi -Fusrc \
   -FUbuild/pas2js/pattern-example-units -FEbuild/pas2js/pattern-example \
   examples/learning/03_LearnPatterns/LearnPatterns.lpr
 node build/pas2js/pattern-example/LearnPatterns.js 0
+```
+
+The learned-pattern world materializes that projection inside a four-pass DAG
+and proves exact rollback and recovery:
+
+```bash
+mkdir -p build/pas2js/pattern-world-units build/pas2js/pattern-world
+pas2js -B -Tnodejs -Mdelphi -Fusrc \
+  -Fuexamples/2D/05_LearnedPatternWorld \
+  -FUbuild/pas2js/pattern-world-units -FEbuild/pas2js/pattern-world \
+  examples/2D/05_LearnedPatternWorld/LearnedPatternWorldNode.lpr
+node build/pas2js/pattern-world/LearnedPatternWorldNode.js 0
 ```
 
 The sequence host exercises bounded order-N learning, canonical `wfcs=1`,

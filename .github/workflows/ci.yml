@@ -221,6 +221,8 @@ jobs:
           learning_test_bin='build/pas2js/learning-test/bin'
           pattern_test_units='build/pas2js/pattern-test/units'
           pattern_test_bin='build/pas2js/pattern-test/bin'
+          pattern_pass_test_units='build/pas2js/pattern-pass-test/units'
+          pattern_pass_test_bin='build/pas2js/pattern-pass-test/bin'
           sequence_test_units='build/pas2js/sequence-test/units'
           sequence_test_bin='build/pas2js/sequence-test/bin'
           text_test_units='build/pas2js/text-test/units'
@@ -249,6 +251,8 @@ jobs:
           settlement_example_bin='build/pas2js/settlement-example/bin'
           repair_example_units='build/pas2js/repair-example/units'
           repair_example_bin='build/pas2js/repair-example/bin'
+          learned_pattern_example_units='build/pas2js/learned-pattern-example/units'
+          learned_pattern_example_bin='build/pas2js/learned-pattern-example/bin'
           learning_example_units='build/pas2js/learning-example/units'
           learning_example_bin='build/pas2js/learning-example/bin'
           corpus_example_units='build/pas2js/corpus-example/units'
@@ -277,6 +281,7 @@ jobs:
             "$settlement_test_units" "$settlement_test_bin" \
             "$learning_test_units" "$learning_test_bin" \
             "$pattern_test_units" "$pattern_test_bin" \
+            "$pattern_pass_test_units" "$pattern_pass_test_bin" \
             "$sequence_test_units" "$sequence_test_bin" \
             "$text_test_units" "$text_test_bin" \
             "$text_pass_test_units" "$text_pass_test_bin" \
@@ -291,6 +296,7 @@ jobs:
             "$world_example_units" "$world_example_bin" \
             "$settlement_example_units" "$settlement_example_bin" \
             "$repair_example_units" "$repair_example_bin" \
+            "$learned_pattern_example_units" "$learned_pattern_example_bin" \
             "$learning_example_units" "$learning_example_bin" \
             "$corpus_example_units" "$corpus_example_bin" \
             "$pattern_example_units" "$pattern_example_bin" \
@@ -326,6 +332,11 @@ jobs:
             -FU"$pattern_test_units" -FE"$pattern_test_bin" \
             test/wfc_pattern2d_test.lpr
           node "$pattern_test_bin/wfc_pattern2d_test.js"
+
+          "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
+            -FU"$pattern_pass_test_units" -FE"$pattern_pass_test_bin" \
+            test/wfc_pattern2d_passes_test.lpr
+          node "$pattern_pass_test_bin/wfc_pattern2d_passes_test.js"
 
           "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
             -FU"$sequence_test_units" -FE"$sequence_test_bin" \
@@ -424,6 +435,13 @@ jobs:
             -FU"$repair_example_units" -FE"$repair_example_bin" \
             examples/2D/04_NegotiatedRepair/NegotiatedRepairNode.lpr
           node "$repair_example_bin/NegotiatedRepairNode.js" >/dev/null
+
+          "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
+            -Fuexamples/2D/05_LearnedPatternWorld \
+            -FU"$learned_pattern_example_units" \
+            -FE"$learned_pattern_example_bin" \
+            examples/2D/05_LearnedPatternWorld/LearnedPatternWorldNode.lpr
+          node "$learned_pattern_example_bin/LearnedPatternWorldNode.js" 0 >/dev/null
 
           "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
             -FU"$learning_example_units" -FE"$learning_example_bin" \

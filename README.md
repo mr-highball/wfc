@@ -31,8 +31,11 @@ modular 3D structures, music, text, and other discrete design problems.
 > through a strict canonical text format. A second learner extracts weighted
 > overlapping 2D footprints, compiles exact structural overlap, captures
 > latent assignments, and independently validates projected token grids
-> through canonical `wfcp=1` artifacts. The sequence foundation learns bounded
-> order-N models from pretokenized UTF-8 corpora, derives structural
+> through canonical `wfcp=1` artifacts. Pattern-Projected Pass Composition v1
+> now materializes wrapped pattern contributions as an exact public-token pass,
+> keeps learned weights solely on the latent layer, and validates the complete
+> representation boundary before atomic commit. The sequence foundation learns
+> bounded order-N models from pretokenized UTF-8 corpora, derives structural
 > suffix/prefix recombination, applies whole/prefix/suffix/fragment or derived
 > wrapped graph domains, composes latent and public-token passes in either
 > direction, and round-trips strict canonical `wfcs=1` artifacts. The text
@@ -117,6 +120,9 @@ modular 3D structures, music, text, and other discrete design problems.
   open/wrapped sources, square-footprint D4 augmentation, structural
   compatibility, explicit latent-to-token projection, and strict `.wfcp`
   replay artifacts
+- wrapped same-shape pattern-to-public pass composition with one exact clause
+  per footprint coordinate, unit-weight public values, independent commit-time
+  validation, and a reusable two-pass owner
 - deterministic bounded sequence learning with typed BOS history, raw counts,
   order-N latent states, structural suffix/prefix recombination, explicit
   public-token projection, and strict canonical `wfcs=1` artifacts
@@ -225,6 +231,11 @@ the `.wfcm` format, and exact replay inputs, see
 For multi-cell extraction, structural overlap, latent assignment, projection,
 independent validation, and the `.wfcp` format, see
 [overlapping 2D patterns](docs/patterns.md).
+The self-checking
+[learned-pattern world](examples/2D/05_LearnedPatternWorld/README.md) connects
+that latent model to public terrain, foliage, and structure in one four-pass
+native/pas2js pipeline; its exact hypothesis and nonclaims are in the
+[Pattern-Projected Pass Composition v1 record](docs/research/pattern-projected-passes-v1.md).
 For bounded order-N learning, typed BOS boundaries, open and derived wrapped
 generation, pass projection, and canonical `wfcs=1` text, see
 [sequence models](docs/sequences.md).
@@ -255,14 +266,16 @@ Run the checked native build and conformance suite from the repository root:
 
 Both entry points compile with checked FPC options, keep all output under
 `build/`, run the core, 2D ecosystem, selective-settlement, radius-one
-learning, overlapping-pattern, sequence, text-completion, text-pass,
+learning, overlapping-pattern, pattern-pass composition, sequence,
+text-completion, text-pass,
 score/cell, music-graph, music-pass, music-result-codec, SMF, score-to-MIDI,
 voxel, Building 3D, and
 causal-trace, pass-negotiation, and selective-negotiation suites,
 smoke-test the portable console examples—including the bounded/wrapped spatial
 dependency, causal-trace inspector, bounded pass-negotiation proof, negotiated
 2D repair, anchored text infill, three-pass text composition, negotiated music
-variation, and depth-three building proofs—compile the
+variation, learned-pattern four-pass world, and depth-three building
+proofs—compile the
 fixed-integer isometric, SVG, and Building-view suites, write a deterministic
 seed-zero Building SVG, and preserve failure exit codes.
 The repository also includes an FPM package, a runtime-only Lazarus package,

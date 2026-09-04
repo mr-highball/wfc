@@ -14,7 +14,9 @@ format.
 For multi-cell footprints rather than single-token adjacency, see the
 separate [overlapping 2D patterns](patterns.md) layer. It builds on the same
 tokens and graph adapter while retaining pattern payloads and projection data
-that do not belong in the generic `TWfcModel` IR.
+that do not belong in the generic `TWfcModel` IR. Its wrapped pass adapter can
+materialize learned private patterns as a validated public-token layer for
+ordinary downstream terrain, foliage, settlement, or other semantic passes.
 
 This is the first training primitive for the wider ecosystem. A tile, note,
 word, voxel label, or other discrete symbol uses the same frequency and
@@ -284,6 +286,9 @@ The current learner handles ordered heterogeneous pretokenized corpora of
 single-layer 1D or 2D samples with cardinal radius-one relations. The separate
 pattern layer extracts overlapping multi-cell 2D footprints, and the sequence
 layer learns bounded order-N latent states from pretokenized UTF-8 corpora.
+Wrapped depth-one pattern assignments can now project into a same-sized public
+pass inside an atomic DAG; the public pass uses unit weights and independently
+checks every footprint contribution at the tentative commit boundary.
 Sequence samples reset a typed BOS history and add no cross-sample seam, while
 exact suffix/prefix compatibility intentionally permits recombination. These
 generic learners retain their explicit token boundary; the specialized

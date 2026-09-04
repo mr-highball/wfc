@@ -173,9 +173,41 @@ Loading or applying a model never silently copies one policy into another.
 
 Because latent keys and projected tokens are different domains, projection is
 also an explicit pass boundary. A later pass cannot honestly consume the
-latent graph as though it contained palette tokens. General projection-aware
-pass dependencies remain future pipeline work; the current API keeps that
-distinction visible instead of hiding a lossy conversion.
+latent graph as though it contained palette tokens.
+
+## pass-composed wrapped projection
+
+`wfc_pattern2d_graph` materializes that boundary inside the pass DAG for the
+wrapped, same-shape, depth-one case. For each public cell `(x,y)`, palette token
+`t`, and footprint coordinate `(px,py)`, the projection pass adds an exact
+requirement on the latent anchor at `(x-px,y-py)`, wrapped to the graph. The
+allowed provider values are every pattern whose payload at `(px,py)` is `t`.
+Alternatives within one footprint coordinate are OR choices; the separate
+coordinates are AND clauses, so every overlapping contribution must agree.
+
+Use `ValidateOverlappingProjectionFromPass2D` for non-mutating preflight and
+`ApplyOverlappingProjectionFromPass2D` to install the public palette and exact
+offset clauses on the active empty overlay pass. Both reject open or non-2D
+topology, a mismatched source model, missing palette support, a nonempty target,
+and a dependency cycle before changing the target. Public values have unit
+weight: learned frequency already belongs to the private pattern pass and is
+not counted again at the representation boundary.
+
+Public palette tokens matching the private `@p` plus a nonempty decimal-digit
+suffix are reserved on this bridge and rejected during preflight. The source
+check proves the exact applied latent graph semantics—ordered keys, weights,
+directional rules, and denials. Two wrappers that compile to that same latent
+graph remain interchangeable as solvers; the composition signature separately
+includes the complete palette and pattern payload interpretation.
+
+`CaptureSolvedOverlappingProjectionPass2D` independently captures the latent
+assignment and verifies every public contribution. The reusable
+`TWfcPattern2DPassPipeline` owns a `patterns -> projection` graph and performs
+that validation from the tentative commit hook, so semantic failure reports
+`gckFinalValidation` and restores entries and per-pass random streams. Its
+model remains caller-owned and must outlive the pipeline. Larger domain DAGs
+can use the free bridge and the same capture validator from their own commit
+hook, as the learned-pattern world example does.
 
 ## canonical `wfcp=1`
 
@@ -253,6 +285,10 @@ This first implementation is cardinal 2D with rectangular footprints and
 optional square-footprint D4 augmentation. It uses a dense compatibility
 matrix and portable linear first-seen lookup for deterministic identity.
 Sparse acceleration, 3D patterns, provenance/source licenses, raw image
-ingestion, and projection-aware pass composition remain later milestones.
-The complete native and pas2js example is
-[LearnPatterns](../examples/learning/03_LearnPatterns/README.md).
+ingestion, open or differently sized pass projection, and a general
+resampling/projection language remain later milestones. The standalone learner
+example is [LearnPatterns](../examples/learning/03_LearnPatterns/README.md).
+The four-pass native and pas2js composition example is
+[LearnedPatternWorld](../examples/2D/05_LearnedPatternWorld/README.md), with the
+exact experimental contract in the
+[Pattern-Projected Pass Composition v1 record](research/pattern-projected-passes-v1.md).

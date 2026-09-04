@@ -73,6 +73,10 @@ The repository already contains the beginnings of the ecosystem:
   exact structural compatibility, latent assignment capture, independently
   checked projection, strict canonical `.wfcp` text I/O, and a portable seeded
   demonstration;
+- Pattern-Projected Pass Composition v1 with a wrapped, depth-one adapter that
+  compiles every overlapping footprint contribution into exact cross-pass
+  clauses, a reusable validated `patterns -> projection` owner, and a
+  four-pass learned terrain/foliage/structure fixture on native FPC and pas2js;
 - an immutable bounded sequence model with typed BOS history, deterministic
   order-N learning from pretokenized UTF-8 corpora, raw counts, structural
   suffix/prefix recombination, whole/prefix/suffix/fragment and derived wrapped
@@ -147,7 +151,8 @@ It is not yet the finished system described above:
   first bounded acyclic full and selectively scoped backward-negotiation
   baselines now exist; implicit radius/count/distance expressions, automatic
   or minimal repair-horizon selection, conflict-directed or cyclic repair, and
-  general cross-representation projection schemas remain to be designed;
+  general cross-representation projection schemas beyond the exact wrapped
+  pattern and sequence adapters remain to be designed;
 - the examples index now records targets, dependencies, build commands, and
   honest completion status, but full per-example tutorials, invariants,
   expected output, and troubleshooting guides remain to be written;
@@ -326,6 +331,11 @@ failed-clause evidence, minimal contradiction sets, and streaming remain open.
 A focused spatial fixture additionally proves bounded out-of-bounds rejection
 and wrapped edge sampling for terrain consumers without adding domain knowledge
 or a runtime dependency to the core.
+Pattern-Projected Pass Composition v1 now proves that a private overlapping-
+pattern assignment can feed a real public-token pass through one exact offset
+clause per footprint coordinate. Its reusable two-pass owner and four-pass
+world fixture validate the representation boundary before commit, keep public
+weights neutral, and roll back both entries and random streams on rejection.
 The focused pass-negotiation fixture adds one-cell, two-cell, provider-
 exhaustion, and independent-provider join cases. It records exact rejected
 assignments, distinguishes local and outer limits, proves atomic rollback and
@@ -387,7 +397,9 @@ overlapping-pattern version-1 layer additionally extracts deterministic
 rectangular 2D payloads, supports open/wrapped heterogeneous sources and
 square-footprint D4 augmentation, compiles exact structural overlap, keeps
 latent assignments separate from projected tokens, independently validates
-both, and round-trips strict standalone `wfcp=1` artifacts.
+both, and round-trips strict standalone `wfcp=1` artifacts. Its first pass
+adapter now materializes wrapped, same-size, depth-one projections for ordinary
+downstream semantic layers without exposing private pattern keys.
 The sequence version-1 layer learns bounded order-N latent states from ordered
 pretokenized UTF-8 corpora, resets typed BOS history at every sample boundary,
 retains raw observation/start/end counts, derives exact suffix/prefix
@@ -440,6 +452,12 @@ console demo. An interactive browser field instrument now runs the same model,
 shows all three layers, supports cell locks, and exposes a deterministic
 headless self-test. This is the first vertical slice, not the completed exit
 gate.
+
+The learned-pattern vertical slice now trains a wrapped `2x2` model at runtime,
+materializes its private anchors as public terrain, and feeds foliage and
+structure in the same atomic four-pass DAG. Native FPC and pas2js/Node replay
+the same seed-zero signatures, deliberate contradiction, exact rollback, and
+selective recovery without an external runtime library.
 
 - Extend the current bounded/wrapped grid with masked and chunked topologies.
 - Extend the current terrain/biome/foliage model with coast/hydrology, roads,

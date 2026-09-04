@@ -18,6 +18,8 @@ $settlementTestSource = Join-Path $repositoryRoot `
   'test/wfc_world2d_settlement_test.lpr'
 $learningTestSource = Join-Path $repositoryRoot 'test/wfc_learn_test.lpr'
 $patternTestSource = Join-Path $repositoryRoot 'test/wfc_pattern2d_test.lpr'
+$patternPassTestSource = Join-Path $repositoryRoot `
+  'test/wfc_pattern2d_passes_test.lpr'
 $sequenceTestSource = Join-Path $repositoryRoot 'test/wfc_sequence_test.lpr'
 $textTestSource = Join-Path $repositoryRoot 'test/wfc_text_test.lpr'
 $textPassTestSource = Join-Path $repositoryRoot `
@@ -56,6 +58,10 @@ $negotiatedRepairExampleSource = Join-Path $repositoryRoot `
   'examples/2D/04_NegotiatedRepair/NegotiatedRepair.lpr'
 $negotiatedRepairExampleDirectory = Join-Path $repositoryRoot `
   'examples/2D/04_NegotiatedRepair'
+$learnedPatternWorldExampleSource = Join-Path $repositoryRoot `
+  'examples/2D/05_LearnedPatternWorld/LearnedPatternWorld.lpr'
+$learnedPatternWorldExampleDirectory = Join-Path $repositoryRoot `
+  'examples/2D/05_LearnedPatternWorld'
 $learningExampleSource = Join-Path $repositoryRoot `
   'examples/learning/01_LearnTiles/LearnTiles.lpr'
 $corpusExampleSource = Join-Path $repositoryRoot `
@@ -279,6 +285,42 @@ Write-Host "Running '$patternTestExecutable'."
 $patternTestExitCode = $LASTEXITCODE
 if ($patternTestExitCode -ne 0) {
   exit $patternTestExitCode
+}
+
+$patternPassTestCompilerArguments = @(
+  $CompilerOptions
+  '-B'
+  '-Mdelphi'
+  '-Sa'
+  '-Cr'
+  '-Co'
+  '-Ci'
+  "-Fu$sourceDirectory"
+  "-FU$unitOutputDirectory"
+  "-FE$binaryOutputDirectory"
+  $patternPassTestSource
+)
+
+Write-Host 'Building the pattern-projected-pass conformance suite.'
+& $Compiler @patternPassTestCompilerArguments
+$patternPassTestCompilerExitCode = $LASTEXITCODE
+if ($patternPassTestCompilerExitCode -ne 0) {
+  exit $patternPassTestCompilerExitCode
+}
+
+$patternPassTestExecutableName = if ($env:OS -eq 'Windows_NT') {
+  'wfc_pattern2d_passes_test.exe'
+} else {
+  'wfc_pattern2d_passes_test'
+}
+$patternPassTestExecutable = Join-Path $binaryOutputDirectory `
+  $patternPassTestExecutableName
+
+Write-Host "Running '$patternPassTestExecutable'."
+& $patternPassTestExecutable
+$patternPassTestExitCode = $LASTEXITCODE
+if ($patternPassTestExitCode -ne 0) {
+  exit $patternPassTestExitCode
 }
 
 $sequenceTestCompilerArguments = @(
@@ -809,6 +851,43 @@ Write-Host "Smoke testing '$negotiatedRepairExampleExecutable'."
 $negotiatedRepairExampleExitCode = $LASTEXITCODE
 if ($negotiatedRepairExampleExitCode -ne 0) {
   exit $negotiatedRepairExampleExitCode
+}
+
+$learnedPatternWorldExampleCompilerArguments = @(
+  $CompilerOptions
+  '-B'
+  '-Mdelphi'
+  '-Sa'
+  '-Cr'
+  '-Co'
+  '-Ci'
+  "-Fu$sourceDirectory"
+  "-Fu$learnedPatternWorldExampleDirectory"
+  "-FU$unitOutputDirectory"
+  "-FE$binaryOutputDirectory"
+  $learnedPatternWorldExampleSource
+)
+
+Write-Host 'Building the dependency-free learned-pattern-world example.'
+& $Compiler @learnedPatternWorldExampleCompilerArguments
+$learnedPatternWorldExampleCompilerExitCode = $LASTEXITCODE
+if ($learnedPatternWorldExampleCompilerExitCode -ne 0) {
+  exit $learnedPatternWorldExampleCompilerExitCode
+}
+
+$learnedPatternWorldExampleExecutableName = if ($env:OS -eq 'Windows_NT') {
+  'LearnedPatternWorld.exe'
+} else {
+  'LearnedPatternWorld'
+}
+$learnedPatternWorldExampleExecutable = Join-Path $binaryOutputDirectory `
+  $learnedPatternWorldExampleExecutableName
+
+Write-Host "Smoke testing '$learnedPatternWorldExampleExecutable' with seed 0."
+& $learnedPatternWorldExampleExecutable 0 | Out-Null
+$learnedPatternWorldExampleExitCode = $LASTEXITCODE
+if ($learnedPatternWorldExampleExitCode -ne 0) {
+  exit $learnedPatternWorldExampleExitCode
 }
 
 $learningExampleCompilerArguments = @(

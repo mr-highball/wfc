@@ -17,6 +17,30 @@ Both units use the same source on FPC 3.2.2 and pas2js. Conformance runs under
 Node.js, and `BrowserWorld` compiles the same model and validator to a real
 interactive browser host with a separate headless-browser fixture.
 
+## learned-pattern world pipeline
+
+The general 2D ecosystem can also begin with structure learned from examples
+instead of a hand-authored terrain adjacency table. `wfc_pattern2d_graph`
+provides a reusable two-pass owner and a lower-level bridge for this shape:
+
+```text
+private learned patterns -> public terrain -> foliage
+                                      \-> structure
+```
+
+The bridge compiles every wrapped footprint contribution into exact signed-
+offset clauses. Public terrain has unit weights and contains palette tokens,
+never private pattern keys. The domain owner independently recomputes the
+projection and validates downstream semantics from `DoValidateCommit`, while
+the graph can still roll back the complete candidate and all pass streams.
+
+[`05_LearnedPatternWorld`](../examples/2D/05_LearnedPatternWorld/README.md)
+learns a nontrivial `2x2` model at runtime, round-trips canonical `wfcp=1`,
+solves four passes, proves a deliberately incompatible structure edit is
+atomic, and replays exact native/pas2js signatures. The underlying contract and
+nonclaims are recorded in
+[Pattern-Projected Pass Composition v1](research/pattern-projected-passes-v1.md).
+
 ## standard model
 
 The versioned model is intentionally small enough to understand at a glance

@@ -11,6 +11,7 @@ world_test_source="$repository_root/test/wfc_world2d_test.lpr"
 settlement_test_source="$repository_root/test/wfc_world2d_settlement_test.lpr"
 learning_test_source="$repository_root/test/wfc_learn_test.lpr"
 pattern_test_source="$repository_root/test/wfc_pattern2d_test.lpr"
+pattern_pass_test_source="$repository_root/test/wfc_pattern2d_passes_test.lpr"
 sequence_test_source="$repository_root/test/wfc_sequence_test.lpr"
 text_test_source="$repository_root/test/wfc_text_test.lpr"
 text_pass_test_source="$repository_root/test/wfc_text_passes_test.lpr"
@@ -35,6 +36,8 @@ world_example_source="$repository_root/examples/2D/01_MultiPassWorld/MultiPassWo
 settlement_example_source="$repository_root/examples/2D/03_SelectiveSettlement/SelectiveSettlement.lpr"
 negotiated_repair_example_source="$repository_root/examples/2D/04_NegotiatedRepair/NegotiatedRepair.lpr"
 negotiated_repair_example_directory="$repository_root/examples/2D/04_NegotiatedRepair"
+learned_pattern_world_example_source="$repository_root/examples/2D/05_LearnedPatternWorld/LearnedPatternWorld.lpr"
+learned_pattern_world_example_directory="$repository_root/examples/2D/05_LearnedPatternWorld"
 learning_example_source="$repository_root/examples/learning/01_LearnTiles/LearnTiles.lpr"
 corpus_example_source="$repository_root/examples/learning/02_LearnCorpus/LearnCorpus.lpr"
 pattern_example_source="$repository_root/examples/learning/03_LearnPatterns/LearnPatterns.lpr"
@@ -67,6 +70,7 @@ compiler_world_test_source=$world_test_source
 compiler_settlement_test_source=$settlement_test_source
 compiler_learning_test_source=$learning_test_source
 compiler_pattern_test_source=$pattern_test_source
+compiler_pattern_pass_test_source=$pattern_pass_test_source
 compiler_sequence_test_source=$sequence_test_source
 compiler_text_test_source=$text_test_source
 compiler_text_pass_test_source=$text_pass_test_source
@@ -91,6 +95,8 @@ compiler_world_example_source=$world_example_source
 compiler_settlement_example_source=$settlement_example_source
 compiler_negotiated_repair_example_source=$negotiated_repair_example_source
 compiler_negotiated_repair_example_directory=$negotiated_repair_example_directory
+compiler_learned_pattern_world_example_source=$learned_pattern_world_example_source
+compiler_learned_pattern_world_example_directory=$learned_pattern_world_example_directory
 compiler_learning_example_source=$learning_example_source
 compiler_corpus_example_source=$corpus_example_source
 compiler_pattern_example_source=$pattern_example_source
@@ -123,6 +129,7 @@ case "$host_system" in
     compiler_settlement_test_source=$(cygpath -m "$settlement_test_source") || exit $?
     compiler_learning_test_source=$(cygpath -m "$learning_test_source") || exit $?
     compiler_pattern_test_source=$(cygpath -m "$pattern_test_source") || exit $?
+    compiler_pattern_pass_test_source=$(cygpath -m "$pattern_pass_test_source") || exit $?
     compiler_sequence_test_source=$(cygpath -m "$sequence_test_source") || exit $?
     compiler_text_test_source=$(cygpath -m "$text_test_source") || exit $?
     compiler_text_pass_test_source=$(cygpath -m "$text_pass_test_source") || exit $?
@@ -147,6 +154,8 @@ case "$host_system" in
     compiler_settlement_example_source=$(cygpath -m "$settlement_example_source") || exit $?
     compiler_negotiated_repair_example_source=$(cygpath -m "$negotiated_repair_example_source") || exit $?
     compiler_negotiated_repair_example_directory=$(cygpath -m "$negotiated_repair_example_directory") || exit $?
+    compiler_learned_pattern_world_example_source=$(cygpath -m "$learned_pattern_world_example_source") || exit $?
+    compiler_learned_pattern_world_example_directory=$(cygpath -m "$learned_pattern_world_example_directory") || exit $?
     compiler_learning_example_source=$(cygpath -m "$learning_example_source") || exit $?
     compiler_corpus_example_source=$(cygpath -m "$corpus_example_source") || exit $?
     compiler_pattern_example_source=$(cygpath -m "$pattern_example_source") || exit $?
@@ -278,6 +287,27 @@ esac
 
 printf "Running '%s'.\n" "$pattern_test_executable"
 "$pattern_test_executable" || exit $?
+
+printf "Building the pattern-projected-pass conformance suite.\n"
+"$compiler" "$@" \
+  -B \
+  -Mdelphi \
+  -Sa \
+  -Cr \
+  -Co \
+  -Ci \
+  "-Fu$compiler_source_directory" \
+  "-FU$compiler_unit_output_directory" \
+  "-FE$compiler_binary_output_directory" \
+  "$compiler_pattern_pass_test_source" || exit $?
+
+pattern_pass_test_executable="$binary_output_directory/wfc_pattern2d_passes_test"
+case "$host_system" in
+  CYGWIN*|MINGW*|MSYS*) pattern_pass_test_executable="${pattern_pass_test_executable}.exe" ;;
+esac
+
+printf "Running '%s'.\n" "$pattern_pass_test_executable"
+"$pattern_pass_test_executable" || exit $?
 
 printf "Building the sequence-foundation conformance suite.\n"
 "$compiler" "$@" \
@@ -604,6 +634,28 @@ esac
 
 printf "Smoke testing '%s'.\n" "$negotiated_repair_example_executable"
 "$negotiated_repair_example_executable" >/dev/null || exit $?
+
+printf "Building the dependency-free learned-pattern-world example.\n"
+"$compiler" "$@" \
+  -B \
+  -Mdelphi \
+  -Sa \
+  -Cr \
+  -Co \
+  -Ci \
+  "-Fu$compiler_source_directory" \
+  "-Fu$compiler_learned_pattern_world_example_directory" \
+  "-FU$compiler_unit_output_directory" \
+  "-FE$compiler_binary_output_directory" \
+  "$compiler_learned_pattern_world_example_source" || exit $?
+
+learned_pattern_world_example_executable="$binary_output_directory/LearnedPatternWorld"
+case "$host_system" in
+  CYGWIN*|MINGW*|MSYS*) learned_pattern_world_example_executable="${learned_pattern_world_example_executable}.exe" ;;
+esac
+
+printf "Smoke testing '%s' with seed 0.\n" "$learned_pattern_world_example_executable"
+"$learned_pattern_world_example_executable" 0 >/dev/null || exit $?
 
 printf "Building the portable learned-tiles example.\n"
 "$compiler" "$@" \

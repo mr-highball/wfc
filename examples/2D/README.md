@@ -27,6 +27,14 @@ assignment, and succeeds without changing terrain, climate, or either reused
 provider's random stream. Native FPC and pas2js/Node replay identical output
 and versioned transcript hashes.
 
+[`05_LearnedPatternWorld`](05_LearnedPatternWorld/README.md) learns wrapped
+`2x2` terrain structure from two token grids at runtime, turns private pattern
+anchors into an exact public terrain pass, then solves foliage and structure in
+the same atomic DAG. Its native FPC and pas2js/Node self-checks pin model and
+layer signatures, validate every overlap and projected contribution, prove no
+private key escaped, and exercise failed structure-only regeneration with exact
+entry and random-stream rollback.
+
 The older [text-rendered tiled world](../text/01_SimpleTiledWorld/SimpleTiledWorld.lpr)
 remains a compact single-pass legacy-`Run` example.
 
