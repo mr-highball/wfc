@@ -100,7 +100,7 @@ why the retained alternative was reached.
 | `gtckPassDependency` | A staged provider failed a cross-pass requirement or supplied a copied value rejected by a definitionless destination. |
 | `gtckRequiredSupport` | No eligible physical neighbor could trigger a required-only candidate. |
 | `gtckBacktrack` | Restoration was caused by abandoning a failed branch. |
-| `gtckFinalValidation` | Independent assignment validation found an invalid final relation. |
+| `gtckFinalValidation` | Independent assignment validation or a derived whole-candidate commit validator found an invalid final relation. |
 | `gtckTransaction` | Pass or pipeline lifecycle bookkeeping caused the event. |
 | `gtckExactAssignmentExclusion` | A complete pass assignment exactly matched a versioned outer-negotiation exclusion. |
 

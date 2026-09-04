@@ -758,6 +758,14 @@ type
     function DoCreatePass(const APassIndex: Integer): TGraph; virtual;
     //initialize fields owned by a derived graph on each pass instance
     procedure DoInitializePass; virtual;
+    //Runs after a complete candidate has been written to live entries but
+    //while the entry and random-stream snapshots are still rollback capable.
+    //Derived domain owners can reject a semantically invalid composition
+    //without publishing it. The reported pass must identify an active layer
+    //whose final domain validation failed; entry may be -1 for a whole-pass
+    //issue.
+    function DoValidateCommit(out AFailedPassIndex,
+      AFailedEntryIndex: Integer): Boolean; virtual;
     function PassLabelFromIndex(const AIndex : Integer) : String;
     function DoHandleInvalidState(const AEntry : TGraphEntry) : TGraphValue;
     procedure DoGetStartCoord(out X, Y : TGraphCoordinate); virtual;
@@ -3730,6 +3738,14 @@ begin
   //pass zero, later passes, and the replacement pass created by Reset
 end;
 
+function TGraph.DoValidateCommit(out AFailedPassIndex,
+  AFailedEntryIndex: Integer): Boolean;
+begin
+  AFailedPassIndex := -1;
+  AFailedEntryIndex := -1;
+  Result := True;
+end;
+
 function TGraph.DoHandleInvalidState(const AEntry: TGraphEntry): TGraphValue;
 var
   LCallbackGraph: TGraph;
@@ -5052,6 +5068,9 @@ var
   LEntryIndex: Integer;
   LExecutionOrdinal: Integer;
   LExecutionPlan: TGraphPassIndices;
+  LFinalValidationEntry: Integer;
+  LFinalValidationPass: Integer;
+  LFinalValidationValid: Boolean;
   LFullExecutionPlan: TGraphPassIndices;
   LGraph: TGraph;
   LHasNegotiableEntry: Boolean;
@@ -6084,7 +6103,8 @@ var
           LSnapshots[I][J].Generated);
   end;
 
-  procedure CommitStagedEntries;
+  function CommitStagedEntries(out AFinalValidationPass,
+    AFinalValidationEntry: Integer): Boolean;
   var
     I, J, K: Integer;
 
@@ -6147,14 +6167,21 @@ var
         end;
       end;
 
+      Result := DoValidateCommit(AFinalValidationPass,
+        AFinalValidationEntry);
+      if not Result then
+        Exit;
+
       //A hook can also rewrite an entry that has already been committed, or a
-      //caller lock that is intentionally skipped. Detect every such mutation
-      //before reporting success so the existing raw-state rollback applies.
+      //caller lock that is intentionally skipped. The domain final validator
+      //runs before this guard as well, so it cannot mutate live state and then
+      //publish an unchecked candidate by returning success.
       for I := 0 to Pred(FPasses.Count) do
         for J := 0 to Pred(FPasses[I].FEntries.Count) do
           if not MatchesExpectedState(I, J) then
             raise EInvalidOperation.CreateFmt(
               'TrySolve::commit hook mutated pass %d entry %d', [I, J]);
+      Result := True;
     except
       RestoreEntries;
       raise;
@@ -6391,7 +6418,53 @@ begin
     end;
 
     ReserveTerminalTraceSlot;
-    CommitStagedEntries;
+    LFinalValidationPass := -1;
+    LFinalValidationEntry := -1;
+    LFinalValidationValid := CommitStagedEntries(
+      LFinalValidationPass, LFinalValidationEntry);
+    if not LFinalValidationValid then
+    begin
+      RestoreEntries;
+      if (LFinalValidationPass < 0)
+        or (LFinalValidationPass >= FPasses.Count) then
+        raise EInvalidOperation.CreateFmt(
+          'TrySolve::final validator returned invalid pass %d',
+          [LFinalValidationPass]);
+      if ADirty[LFinalValidationPass] = 0 then
+        raise EInvalidOperation.CreateFmt(
+          'TrySolve::final validator returned inactive pass %d',
+          [LFinalValidationPass]);
+      if (LFinalValidationEntry < -1)
+        or (LFinalValidationEntry >=
+          FPasses[LFinalValidationPass].FEntries.Count) then
+        raise EInvalidOperation.CreateFmt(
+          'TrySolve::final validator returned invalid entry %d',
+          [LFinalValidationEntry]);
+
+      AReport.Status := gssContradiction;
+      AReport.FailedPassIndex := LFinalValidationPass;
+      AReport.Contradiction.Kind := gckFinalValidation;
+      AReport.Contradiction.PassIndex := LFinalValidationPass;
+      AReport.Contradiction.EntryIndex := LFinalValidationEntry;
+      AReport.Contradiction.NeighborIndex := -1;
+      AReport.Contradiction.HasDirection := False;
+      AReport.Contradiction.Direction := gdNorth;
+      AReport.Contradiction.DependencyPassIndex := -1;
+      Inc(AReport.Passes[LFinalValidationPass].Contradictions);
+      AReport.Passes[LFinalValidationPass].Disposition := gpdFailed;
+
+      LTraceEvent := NewTraceEvent(gtekContradiction,
+        gtckFinalValidation, LFinalValidationPass);
+      LTraceEvent.CauseEventId := LastPassTraceEvent(
+        LFinalValidationPass);
+      LTraceEvent.EntryIndex := LFinalValidationEntry;
+      LTraceCauseEventId := AppendTraceEvent(LTraceEvent);
+      LTraceEvent := NewTraceEvent(gtekPassFailed,
+        gtckTransaction, LFinalValidationPass);
+      LTraceEvent.CauseEventId := LTraceCauseEventId;
+      AppendTraceEvent(LTraceEvent);
+      Exit(False);
+    end;
     //A successful selective commit may execute user entry hooks.  A hook can
     //address a reused pass directly and draw from its stream; skipped layers
     //must remain observationally untouched, including their RNG position.

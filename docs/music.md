@@ -134,6 +134,69 @@ remain `ValidateSequenceProjectionMapFromPass` and
 `RequireSequenceProjectionMapFromPass`. These APIs can express other music
 relations without adding domain knowledge to the graph core.
 
+## persistent pass owner and negotiated variation
+
+`wfc_music_passes` turns the focused three-pass relation into a reusable,
+persistent owner. `TWfcMusicPassConfig` keeps the harmony, rhythm, and melody
+sequence models caller-owned while the pipeline deep-copies its exact
+single-voice score template. The template fixes ticks per quarter, meter,
+tempo, track/voice metadata, score length, and step system; its length must be
+an exact positive multiple of the configured quantum.
+
+The stable typed layer order is harmony `0`, rhythm `1`, and melody `2`.
+`TWfcMusicPassPipeline` exposes public-token intersections, atomic token
+constraint sets, exact locked spans, and a melody-cell lock helper. These APIs
+translate public cells through the existing sequence adapter; callers never
+need a latent state key. Models must outlive the owner, but subsequent caller
+mutation of the score-template arrays or object cannot change its captured
+configuration.
+
+The generation surface distinguishes four operations:
+
+- ordinary initial generation and descendant-only regeneration use one-way
+  transactional solving;
+- negotiated initial generation may reopen any completed provider within a
+  finite pass-backtrack budget;
+- selective negotiated regeneration accepts explicit typed roots and searches
+  only their exact descendant closure;
+- every failure leaves the previously committed graph values and any earlier
+  caller-owned composition object unchanged.
+
+Complete latent capture and music-domain validation run at the graph's
+tentative commit boundary, while its exact entry and random-stream snapshots
+are still live. A syntactically reachable but musically invalid candidate,
+such as a leading melody hold, is reported as `gckFinalValidation`; ordinary
+generation rolls it back, and bounded negotiation may exclude that exact
+assignment before trying another round. Unexpected runtime or resource
+exceptions are not converted into search alternatives: they propagate after
+the same transactional rollback.
+
+The returned `TWfcMusicComposition` is caller-owned and immutable. It exposes
+deep copies of all three public cell streams and the rebuilt score, along with
+seed, quantum, cell count, latent-capture availability, and a versioned public
+signature. Pipeline results retain copied latent state paths. The pipeline's
+`Validate` method therefore requires a latent capture and checks its state
+paths, projections, caller constraints, public relations, exact score rebuild,
+and recomputed signature. A composition reconstructed through the checked
+public factory deliberately does not invent latent paths; that factory instead
+checks the public token syntax, equal layer lengths, rhythm action equality,
+sounding pitch-class harmony, melody attack/hold rules, and exact score
+rebuild. The canonical artifact decoder uses that public-only validation path
+and independently verifies the stored signature.
+
+For diagnostics, `TryCopyCommittedLayer` returns a detached checked latent
+capture and `CopyCommittedTokens` returns detached public tokens. The owner
+does not expose its mutable graph or per-pass random streams, so inspection
+cannot bypass dirty tracking or perturb replay.
+
+Negotiation remains bounded chronological feasibility search over complete
+pass assignments. Public locks preserve an exact motif, while the selective
+root controls which provider layers may change. Neither mechanism implies a
+coordinate-minimal phrase edit, a conflict-directed repair, or a musical
+objective. The self-checking
+[NegotiatedVariation fixture](../examples/music/04_NegotiatedVariation/README.md)
+publishes that distinction and its exact native/pas2js evidence.
+
 ## canonical score text: strict `wfcmusic=1`
 
 `EncodeWfcMusicText` writes a strict ASCII, LF-only document with a final LF.
@@ -175,6 +238,45 @@ belong to learned cardinal models documented in
 [model learning and priming](learning.md). The names are intentionally
 distinct, so dispatch and diagnostics never have to infer an artifact family
 from its later fields.
+
+## canonical composition result: strict `wfcmusicpass=1`
+
+`wfc_music_passes_text` serializes one immutable public composition as strict
+ASCII with LF line endings and a final LF. Its fixed order is:
+
+```text
+wfcmusicpass=1
+seed=4045620583
+quantum=120
+cells=4
+harmony=0,wh1%3Ap%3A12%3A0
+...
+rhythm=0,wr1%3Aa
+...
+melody=0,wm1%3Aa%3A60%3A90
+...
+signature=C8541A90
+score=wfcmusic%3D1%0Atpq%3D120%0A...
+end
+```
+
+The excerpt elides the remaining indexed cell lines and score fields; the
+conformance suite pins the complete document and signature shown above.
+
+There are exactly `cells` indexed records for each layer. Public tokens and
+the complete canonical `wfcmusic=1` score are encoded with the shared UTF-8
+percent codec, so the outer document remains one unambiguous line sequence.
+The eight uppercase hexadecimal signature is recomputed from the public
+configuration, ordered cells, relevant algorithm/format versions, and exact
+score semantics.
+
+Decoding validates every canonical field, reconstructs the composition through
+the checked public factory, verifies the stored signature, and requires
+byte-identical re-encoding. No latent key, private history state, path, graph
+domain, or platform path enters the file. This is a result-replay artifact,
+not a complete generation replay: reproducing the search also requires the
+learned models, constraints, solver and negotiation options, and negotiation
+transcript.
 
 ## project-owned Standard MIDI Files
 
@@ -247,12 +349,18 @@ gate. It currently has:
   timing, or automatic quantizer;
 - pitch-class harmony constraints, not chord symbols, keys, scale spelling,
   voice leading, consonance objectives, or functional harmony;
-- hard same-coordinate cross-pass constraints, without offset look-ahead,
-  phrase-level repair, negotiation, or soft scoring;
+- hard same-coordinate cross-pass constraints and bounded pass-level
+  negotiation, without offset look-ahead, coordinate-minimal phrase repair,
+  conflict-directed search, or soft scoring;
 - raw token corpora supplied by the caller, without a semantic MIDI learner;
 - an SMF format-0 score exporter but no score importer;
 - console/Node output only: no browser UI, native playback, or WebAudio
   playback is claimed.
+
+Negotiated Variation v1 adds exact public motif locks, atomic ordinary and
+bounded negotiated regeneration, explicit selective provider horizons,
+immutable result capture, and strict public replay. It does not change the
+fixed-quantum monophonic representation or claim a musical objective.
 
 Promising next passes include meter and phrase structure, rhythm, harmonic
 motion, melody, bass, voicing, counterpoint, dynamics, and ornamentation. The

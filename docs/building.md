@@ -4,14 +4,15 @@ The dependency-free build covers the core, causal-trace kernel/public/utility
 contracts, specialized 2D and settlement, radius-one model-learning,
 overlapping-pattern, sequence, Unicode-scalar text completion, three-pass text
 composition, exact music-score, music projection, Standard MIDI File,
-score-export, full and selective pass negotiation, and voxel-3D units and
+score-export, negotiated music variation/result replay, full and selective
+pass negotiation, and voxel-3D units and
 their conformance suites, plus
 the checked voxel pass bridge and multi-pass Building 3D owner/validator,
 pass-aware view, fixed-integer isometric projector, and canonical SVG encoder.
 It also runs seeded smoke checks of the portable console demos, including the
 causal-trace inspector, bounded pass negotiation, negotiated descendant repair,
-anchored text infill, and three-pass text composition, and writes a checked
-seed-zero Building SVG artifact.
+anchored text infill, three-pass text composition, and negotiated music
+variation, and writes a checked seed-zero Building SVG artifact.
 It does not initialize the optional legacy music submodule or build the
 unfinished Castle Game Engine viewer. The 2D world, three-pass text workbench,
 and Building 3D workbench have separate dependency-free pas2js browser entry
@@ -35,9 +36,10 @@ The sequence learner, extent-aware graph adapter, exact public-domain analyzer,
 validator, canonical `wfcs=1` codec, Unicode-scalar tokenizer, and text
 completion/validation owner follow this boundary. The exact music score,
 fixed-quantum cell codecs,
-cross-model projection maps, strict `wfcmusic=1` score codec, raw SMF
-format-0/1 codec, and format-0 score exporter are also project-owned portable
-Pascal. The voxel kit, semantic validator, and integer surface mesh are
+cross-model projection maps, persistent pass owner, strict `wfcmusic=1` score
+and `wfcmusicpass=1` result codecs, raw SMF format-0/1 codec, and format-0
+score exporter are also project-owned portable Pascal. The voxel kit, semantic
+validator, and integer surface mesh are
 likewise project-owned and expose no engine or renderer type. The voxel pass
 bridge, typed Building 3D owner, cross-layer validator, and shared
 native/pas2js demonstration are project-owned as well. The immutable Building
@@ -76,12 +78,14 @@ Both scripts rebuild with assertions and range, overflow, and I/O checks, run
 `wfc_voxel3d_svg_test`, `wfc_building3d_test`,
 `wfc_building3d_view_test`, `wfc_midi_smf_test`,
 `wfc_music_test`,
-`wfc_music_graph_test`, `wfc_music_midi_test`, `wfc_trace_reference_test`,
+`wfc_music_graph_test`, `wfc_music_midi_test`, `wfc_music_passes_test`,
+`wfc_music_passes_text_test`, `wfc_trace_reference_test`,
 `wfc_trace_test`, and `wfc_trace_utility_test`, then compile and smoke-test the
 portable console examples with seed `0`, including the bounded/wrapped spatial
 dependency self-check, causal-trace inspector, bounded pass-negotiation proof,
 negotiated descendant repair, anchored text completion, three-pass text
-composition, and depth-three Building 3D pipeline; the multi-pass and
+composition, negotiated music variation, and depth-three Building 3D pipeline;
+the multi-pass and
 selective-settlement worlds also run with their default seeds. Finally, the
 native `Building3DSvg` host generates and validates
 `build/native/bin/building3d-seed-zero.svg`.
@@ -241,7 +245,8 @@ done
 
 mkdir -p build/pas2js/music-units build/pas2js/music
 for music_test in wfc_midi_smf_test wfc_music_test \
-  wfc_music_graph_test wfc_music_midi_test
+  wfc_music_graph_test wfc_music_midi_test \
+  wfc_music_passes_test wfc_music_passes_text_test
 do
   pas2js -B -Tnodejs -Mdelphi -Fusrc \
     -FUbuild/pas2js/music-units -FEbuild/pas2js/music \
@@ -374,6 +379,25 @@ node build/pas2js/music-example/PassComposition.js 0
 
 This host validates artifacts held in memory. It does not provide a browser UI
 or playback backend.
+
+The negotiated-variation host exercises public motif locks, atomic ordinary
+failure, bounded provider reopening, selective repair scope, independent
+composition validation, and strict public-result replay:
+
+```bash
+mkdir -p build/pas2js/music-variation-units \
+  build/pas2js/music-variation
+pas2js -B -Tnodejs -Mdelphi -Fusrc \
+  -Fuexamples/music/04_NegotiatedVariation \
+  -FUbuild/pas2js/music-variation-units \
+  -FEbuild/pas2js/music-variation \
+  examples/music/04_NegotiatedVariation/NegotiatedVariationNode.lpr
+node build/pas2js/music-variation/NegotiatedVariationNode.js 0
+```
+
+Its finite local and pass-backtrack budgets are part of the example contract;
+success proves a deterministic compatible result, not edit-minimal or
+musically optimal repair.
 
 The Pipeline v2 spatial host uses a thin Node entry point over the same Pascal
 unit as the native executable:
@@ -552,10 +576,11 @@ host and full graphical contract are documented in
 The hosted pas2js gate uses exact official upstream pas2js and FPC-source
 revisions, verifies both source-archive SHA-256 digests, and caches the resulting
 3.3.1 toolchain. It runs every portable conformance source, including the voxel
-foundation, four music suites, three causal-trace suites, and the full and
+foundation, six music suites, three causal-trace suites, and the full and
 selective pass-negotiation suites; the tiled-world, learned-tiles,
 learned-corpus, overlapping-pattern, sequence, anchored-completion,
-three-pass-text, pass-composed-music, spatial-dependency,
+three-pass-text, pass-composed-music, negotiated-music-variation,
+spatial-dependency,
 causal-trace-inspector, pass-negotiation, and negotiated-repair smoke tests;
 and the multi-pass and selective-settlement worlds with both seed zero and
 their default seeds under Node.js 22.23.2. It then builds all three browser

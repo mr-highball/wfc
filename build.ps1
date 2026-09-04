@@ -43,6 +43,8 @@ $musicTestSources = @(
   (Join-Path $repositoryRoot 'test/wfc_music_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_music_graph_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_music_midi_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_music_passes_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_music_passes_text_test.lpr')
 )
 $exampleSource = Join-Path $repositoryRoot `
   'examples/text/01_SimpleTiledWorld/SimpleTiledWorld.lpr'
@@ -72,6 +74,10 @@ $textPassExampleDirectory = Join-Path $repositoryRoot `
   'examples/text/03_PassComposition'
 $musicExampleSource = Join-Path $repositoryRoot `
   'examples/music/03_PassComposition/PassComposition.lpr'
+$musicVariationExampleSource = Join-Path $repositoryRoot `
+  'examples/music/04_NegotiatedVariation/NegotiatedVariation.lpr'
+$musicVariationExampleDirectory = Join-Path $repositoryRoot `
+  'examples/music/04_NegotiatedVariation'
 $spatialExampleSource = Join-Path $repositoryRoot `
   'examples/passes/01_SpatialDependencies/SpatialDependencies.lpr'
 $traceExampleSource = Join-Path $repositoryRoot `
@@ -1057,6 +1063,43 @@ Write-Host "Smoke testing '$musicExampleExecutable' with seed 0."
 $musicExampleExitCode = $LASTEXITCODE
 if ($musicExampleExitCode -ne 0) {
   exit $musicExampleExitCode
+}
+
+$musicVariationExampleCompilerArguments = @(
+  $CompilerOptions
+  '-B'
+  '-Mdelphi'
+  '-Sa'
+  '-Cr'
+  '-Co'
+  '-Ci'
+  "-Fu$sourceDirectory"
+  "-Fu$musicVariationExampleDirectory"
+  "-FU$unitOutputDirectory"
+  "-FE$binaryOutputDirectory"
+  $musicVariationExampleSource
+)
+
+Write-Host 'Building the negotiated music-variation example.'
+& $Compiler @musicVariationExampleCompilerArguments
+$musicVariationExampleCompilerExitCode = $LASTEXITCODE
+if ($musicVariationExampleCompilerExitCode -ne 0) {
+  exit $musicVariationExampleCompilerExitCode
+}
+
+$musicVariationExampleExecutableName = if ($env:OS -eq 'Windows_NT') {
+  'NegotiatedVariation.exe'
+} else {
+  'NegotiatedVariation'
+}
+$musicVariationExampleExecutable = Join-Path $binaryOutputDirectory `
+  $musicVariationExampleExecutableName
+
+Write-Host "Smoke testing '$musicVariationExampleExecutable' with seed 0."
+& $musicVariationExampleExecutable 0 | Out-Null
+$musicVariationExampleExitCode = $LASTEXITCODE
+if ($musicVariationExampleExitCode -ne 0) {
+  exit $musicVariationExampleExitCode
 }
 
 $spatialExampleCompilerArguments = @(

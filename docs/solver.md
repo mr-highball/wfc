@@ -72,8 +72,10 @@ undefined.
 2. rewind the versioned per-pass streams from `Seed`;
 3. build a stable topological order from pass dependencies;
 4. solve, clear, or copy each pass according to its mode into a staging buffer;
-5. validate each solved assignment independently; and
-6. commit every staged value only after the complete pipeline succeeds.
+5. validate each solved assignment independently;
+6. tentatively write every staged value under an exact entry/RNG snapshot;
+7. run any derived whole-pipeline final validator; and
+8. publish the commit only after the complete pipeline succeeds.
 
 A definitionless legacy pass zero remains exactly as supplied. A later
 definitionless legacy pass copies its predecessor; a definitionless transform
@@ -120,6 +122,19 @@ can therefore be overwritten by that entry's own commit. Side effects outside
 those three fields cannot be undone. Commit hooks must not mutate topology,
 rules, pass configuration, or other model state; such mutations are unsupported,
 and validation applies to the prepared pre-commit snapshot.
+
+A derived graph may override protected `DoValidateCommit` to inspect the
+complete tentatively written candidate as one domain object. Returning `False`
+with a valid active failed pass and optional entry produces
+`gckFinalValidation`,
+restores every entry and random stream, and returns an ordinary failed solve.
+Pass negotiation can therefore exclude that exact rejected assignment and
+continue within its existing budget. Returning `True` is followed by the same
+exact staged-entry mutation guard used for setter hooks. The override must be
+deterministic and inspection-only: external side effects are not
+transactional, and model/topology mutation while a pipeline is running is not
+supported. The default implementation accepts the candidate, so ordinary
+`TGraph` behavior and replay remain unchanged.
 
 ## constraint semantics
 
@@ -290,7 +305,9 @@ reused, cleared, copied, solved, or failed.
 Terminal contradiction kinds are
 `gckInvalidLock`, `gckEntryDomain`, `gckEmptyDomain`, `gckAdjacency`,
 `gckPreviousPass`, `gckPassDependency`, `gckRequiredSupport`, and
-`gckFinalValidation`. A negotiated pass attempt can additionally report
+`gckFinalValidation`. The latter covers both the reference solver's final
+assignment relation check and a derived `DoValidateCommit` rejection. A
+negotiated pass attempt can additionally report
 `gckExcludedAssignment` when every locally reachable complete assignment is
 among its exact outer exclusions. `gckNone` is used on success. Named
 dependency failures also identify the stable source index through

@@ -390,7 +390,9 @@ jobs:
             wfc_midi_smf_test \
             wfc_music_test \
             wfc_music_graph_test \
-            wfc_music_midi_test
+            wfc_music_midi_test \
+            wfc_music_passes_test \
+            wfc_music_passes_text_test
           do
             "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
               -FU"$music_test_units" -FE"$music_test_bin" \
@@ -459,6 +461,12 @@ jobs:
             -FU"$music_example_units" -FE"$music_example_bin" \
             examples/music/03_PassComposition/PassComposition.lpr
           node "$music_example_bin/PassComposition.js" 0 >/dev/null
+
+          "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
+            -Fuexamples/music/04_NegotiatedVariation \
+            -FU"$music_example_units" -FE"$music_example_bin" \
+            examples/music/04_NegotiatedVariation/NegotiatedVariationNode.lpr
+          node "$music_example_bin/NegotiatedVariationNode.js" 0 >/dev/null
 
           "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
             -FU"$spatial_example_units" -FE"$spatial_example_bin" \

@@ -96,6 +96,11 @@ The repository already contains the beginnings of the ecosystem:
 - strict canonical `wfcmusic=1` score text, a defensive project-owned SMF
   format-0/1 byte codec, deterministic format-0 score export, four focused
   conformance suites, and a native/pas2js three-pass composition example;
+- Music Negotiated Variation v1 with a reusable persistent three-pass owner,
+  public motif locks, atomic ordinary and bounded negotiated regeneration,
+  explicit selective repair horizons, immutable independently validated
+  results, portable signatures, strict `wfcmusicpass=1` replay, and matching
+  native/pas2js fixtures;
 - a project-owned Voxel Foundation v1 with immutable prototypes, deterministic
   yaw variants, explicit socket pairs, support-aware six-face graph
   compilation, immutable scenes with portable signatures, independent
@@ -170,10 +175,12 @@ It is not yet the finished system described above:
 - the portable music path has no playback or browser UI yet; SoundShop/SDL2
   remains only in two legacy Lazarus experiments behind an optional GPL-3.0
   submodule and is not part of the MIT runtime or standard demo;
-- Music Foundation v1 proves quantized single-voice pitch-class composition
-  and score-to-SMF export, but polyphonic cell projection, key and chord
-  semantics, MIDI-to-score import/learning, phrasing, voicing, ornamentation,
-  and the complete music exit gate remain open.
+- Music Foundation v1 and Negotiated Variation v1 prove quantized single-voice
+  pitch-class composition, public motif preservation, bounded pass-level
+  repair, result replay, and score-to-SMF export. Polyphonic cell projection,
+  key and chord semantics, MIDI-to-score import/learning, phrase-aware
+  coordinate repair, voicing, ornamentation, and the complete music exit gate
+  remain open.
 
 These are starting points, not embarrassments. The first job of the roadmap is
 to preserve what is interesting while making the foundation trustworthy.
@@ -499,6 +506,12 @@ adapter is optional and cannot be required by the portable ecosystem.
   composes both constraints through latent sequence projection maps,
   independently validates the public relation, rebuilds a score, and checks
   canonical text and MIDI bytes on native FPC and pas2js/Node.
+- A reusable persistent music-pass owner now supports public-token constraints
+  and motif locks, immutable composition capture, ordinary regeneration,
+  bounded full-pipeline negotiation, and selective negotiated repair from an
+  explicit typed provider horizon. `wfcmusicpass=1` preserves only public
+  cells, score semantics, seed/configuration, and the recomputed signature;
+  latent sequence keys remain private.
 - The project-owned SMF layer reads and writes format 0 and 1 event streams;
   the score exporter emits deterministic format 0. A semantic score importer
   and event-stream learner remain to be designed.
@@ -507,16 +520,17 @@ adapter is optional and cannot be required by the portable ecosystem.
   key/scale spelling, voice leading, instrument ranges, and locked motifs.
 - Build optional project-owned native playback and a thin WebAudio host from
   pas2js without making a media backend part of the exact runtime foundation.
-- Seeded variation and locked motifs so part of a composition can be preserved
-  while another part is regenerated.
+- Extend motif work from exact public-token locks and pass-level repair to
+  phrase-aware coordinate scopes, transformations, and deterministic musical
+  objectives.
 
 **Exit gate:** generated measures have valid duration totals, pitches and
 harmonies meet the selected model's constraints, semantic score/MIDI
 round-trips are tested, native and web agree on the event list, optional native
 and WebAudio presentations consume the same validated result, and the standard
-demo has no required GPL dependency. Foundation v1 satisfies important parts
-of this gate but not the importer, polyphonic/harmonic breadth, browser UI, or
-playback requirements.
+demo has no required GPL dependency. Foundation v1 and Negotiated Variation v1
+satisfy important parts of this gate but not the importer,
+polyphonic/harmonic breadth, browser UI, or playback requirements.
 
 ### Text and sequences
 

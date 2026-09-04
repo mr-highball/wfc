@@ -211,9 +211,17 @@ Version 1 is the baseline for comparing:
 - an equivalent flattened-model baseline measuring rule/state count, runtime,
   memory, propagation, and backtracking;
 - bounded minimal-change objectives;
-- selective negotiated regeneration with an explicit upstream horizon;
+- broader selective negotiated regeneration experiments beyond the delivered
+  explicit-horizon algorithm;
 - compact or streaming attempt evidence; and
-- domain integrations in 2D, 3D, music, and text.
+- further domain integrations in 3D and text, plus richer 2D/music fixtures.
+
+Selective Negotiation v1 and the first 2D and music integrations are now
+published separately in
+[`selective-pass-negotiation-v1.md`](selective-pass-negotiation-v1.md), the
+[negotiated 2D repair guide](../../examples/2D/04_NegotiatedRepair/README.md),
+and
+[`music-negotiated-variation-v1.md`](music-negotiated-variation-v1.md).
 
 Those mechanisms should keep separate algorithm versions and publish the same
 fixtures, seed sets, counters, negative findings, and stopping rules before

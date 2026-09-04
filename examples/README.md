@@ -20,6 +20,7 @@ the [roadmap](../ROADMAP.md).
 | Text constraint completion | `text/02_ConstraintCompletion/ConstraintCompletion.lpr` and `ConstraintCompletionNode.lpr` | Native FPC, pas2js/Node | Learns project-authored raw text with the project-owned Unicode-scalar tokenizer, exposes exact feasible domains, composes prefix/suffix/mask/interior locks, distinguishes prefix from whole-sample boundaries, independently validates anchored infill, and replays without an external dependency. |
 | Three-pass text composition | `text/03_PassComposition/TextPassComposition.lpr`, `TextPassCompositionNode.lpr`, and `BrowserTextPassComposition.lpr` | Native FPC, pas2js/Node, pas2js/browser | Gives structure, lexical choice, and punctuation separate latent owners; constrains the surface from both prior passes; independently validates and renders exact fragments; publishes a private-key-safe trace; and provides an interactive lock/contradiction workbench with an exact browser fixture. Repository units and the standard RTL are the complete runtime path. |
 | Pass-composed music | `music/03_PassComposition/PassComposition.lpr` | Native FPC, pas2js/Node | Solves harmony and rhythm before a jointly constrained melody, rebuilds an exact score, round-trips strict `wfcmusic=1` and project-owned SMF bytes, and needs no playback or external dependency. |
+| Negotiated music variation | `music/04_NegotiatedVariation/NegotiatedVariation.lpr` and `NegotiatedVariationNode.lpr` | Native FPC, pas2js/Node | Preserves a public melody motif, proves an ordinary atomic regeneration failure, reopens an explicit provider horizon through bounded negotiation, validates the immutable composition, and replays strict `wfcmusicpass=1` without exposing latent keys or adding a runtime dependency. |
 | Text-rendered 2D world | `text/01_SimpleTiledWorld/SimpleTiledWorld.lpr` | Native FPC, pas2js/Node | Builds and runs from the same Pascal source, prints and accepts an optional replay seed, and needs no external dependency. This is world generation rendered as text, not a text-prediction model. |
 | Voxel 3D foundation | `../test/wfc_voxel3d_test.lpr` | Native FPC, pas2js/Node | Proves deterministic yaw variants, exact six-face sockets, vertical support, captured scene signatures, independent entrance/connectivity validation, wrapped seams, and renderer-neutral integer meshes using only repository units and the standard RTL. |
 | Multi-pass Building 3D | `3D/02_MultiPassBuilding/MultiPassBuilding.lpr` and `MultiPassBuildingNode.lpr` | Native FPC, pas2js/Node | Runs one depth-three footprint -> structure -> envelope/roof -> props DAG, keeps voxel keys private through checked prototype maps, validates support/entrance/reachability and every cross-layer cell independently, captures an integer mesh, and replays a portable public signature without external dependencies. |
@@ -339,6 +340,25 @@ Create the named output directories first. See the
 [music foundation](../docs/music.md) for the exact cell, score, artifact, and
 MIDI contracts. This is a console/Node proof; it does not claim a browser UI or
 playback.
+
+The negotiated-variation example uses the reusable owner and an explicit
+repair horizon. Native and Node hosts share the same fixture unit. Create the
+named native or pas2js output directories first; the linked guide gives both
+PowerShell and POSIX commands:
+
+```text
+fpc -B -Mdelphi -Sa -Cr -Co -Ci -Fusrc -Fuexamples/music/04_NegotiatedVariation -FUbuild/examples/music-variation/native/units -FEbuild/examples/music-variation/native/bin examples/music/04_NegotiatedVariation/NegotiatedVariation.lpr
+build/examples/music-variation/native/bin/NegotiatedVariation 0
+```
+
+```text
+pas2js -B -Tnodejs -Mdelphi -Fusrc -Fuexamples/music/04_NegotiatedVariation -FUbuild/examples/music-variation/pas2js/units -FEbuild/examples/music-variation/pas2js/bin examples/music/04_NegotiatedVariation/NegotiatedVariationNode.lpr
+node build/examples/music-variation/pas2js/bin/NegotiatedVariationNode.js 0
+```
+
+See the
+[negotiated-variation guide](music/04_NegotiatedVariation/README.md) for the
+exact failure, lock, bounded-search, replay, and non-optimality contracts.
 
 The text pass workbench has dedicated staging entry points and writes its
 complete static site beneath `build/browser/text-passes/www`:

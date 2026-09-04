@@ -83,7 +83,7 @@ Omit the argument for seed zero, or pass any unsigned 32-bit decimal seed.
 Malformed arguments and every validation failure return a nonzero exit code.
 
 The repository-level `build.ps1` and `build.sh` also compile and smoke-test
-this example with seed zero after running the four music conformance suites.
+this example with seed zero as part of the six-suite music gate.
 
 ## what this proves—and does not
 
@@ -93,6 +93,11 @@ third-party unit. Atomic means all-or-nothing commit/rollback. The staged v1
 solver does not reopen harmony or rhythm decisions when melody fails. The
 fixture proves hard pitch-class and action constraints over one quantized
 voice.
+
+The reusable owner and the separate
+[NegotiatedVariation fixture](../04_NegotiatedVariation/README.md) now address
+that one-way boundary through finite full/selective pass negotiation while
+keeping this smaller foundation proof stable.
 
 It does not yet prove polyphonic cell projection, key spelling, functional
 harmony, voice leading, MIDI-to-score learning, interactive editing, browser

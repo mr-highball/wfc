@@ -48,6 +48,11 @@ modular 3D structures, music, text, and other discrete design problems.
 > pass projection, strict `wfcmusic=1` score text, a project-owned SMF
 > format-0/1 codec, and a format-0 score exporter. Its portable three-pass
 > example runs on native FPC and pas2js/Node without a playback dependency.
+> Music Negotiated Variation v1 promotes that path into a reusable persistent
+> harmony -> rhythm -> melody owner with public-token constraints and motif
+> locks, immutable validated compositions, ordinary and bounded negotiated
+> full/selective regeneration, portable public signatures, and strict
+> `wfcmusicpass=1` result replay.
 > Pipeline v2 adds exact signed-offset and finite any-of-neighborhood reads
 > across staged provider passes. Causal Trace v1 adds opt-in chronological
 > decision/removal/backtrack evidence, provider-pass cause links, per-pass
@@ -132,8 +137,13 @@ modular 3D structures, music, text, and other discrete design problems.
   aligned monophonic projection and rebuild
 - rhythm + harmony -> melody pass composition through public-token maps over
   private latent sequence states
+- a reusable persistent music-pass owner with public motif locks, atomic
+  ordinary regeneration, bounded full/selective negotiated repair, independent
+  validation, immutable score capture, and portable public signatures
 - strict canonical `wfcmusic=1` score text, a project-owned SMF format-0/1
   byte codec, and deterministic format-0 score export
+- strict canonical `wfcmusicpass=1` public composition results with no latent
+  graph keys or external runtime dependency
 - [immutable voxel kits](docs/voxel3d.md) with deterministic yaw variants,
   explicit socket relations, support-aware six-direction graph compilation,
   portable scene signatures, independent connectivity validation, and integer
@@ -223,7 +233,8 @@ interior locks, deterministic infill, the three-pass text owner and browser
 workbench, validation, and current non-LLM scope, see
 [text constraint completion](docs/text.md).
 For the exact score model, fixed-quantum cells, music pass projection,
-`wfcmusic=1`, Standard MIDI Files, and the optional playback boundary, see the
+public motif locks and negotiated variation, `wfcmusic=1` and
+`wfcmusicpass=1`, Standard MIDI Files, and the optional playback boundary, see the
 [music foundation](docs/music.md).
 For the reusable footprint-to-props building owner, voxel pass bridge,
 validation, capture, signatures, immutable graphical commands, native SVG,
@@ -245,12 +256,13 @@ Run the checked native build and conformance suite from the repository root:
 Both entry points compile with checked FPC options, keep all output under
 `build/`, run the core, 2D ecosystem, selective-settlement, radius-one
 learning, overlapping-pattern, sequence, text-completion, text-pass,
-score/cell, music-graph, SMF, score-to-MIDI, voxel, Building 3D, and
+score/cell, music-graph, music-pass, music-result-codec, SMF, score-to-MIDI,
+voxel, Building 3D, and
 causal-trace, pass-negotiation, and selective-negotiation suites,
 smoke-test the portable console examples—including the bounded/wrapped spatial
 dependency, causal-trace inspector, bounded pass-negotiation proof, negotiated
-2D repair, anchored text infill, three-pass text composition, and depth-three
-building proofs—compile the
+2D repair, anchored text infill, three-pass text composition, negotiated music
+variation, and depth-three building proofs—compile the
 fixed-integer isometric, SVG, and Building-view suites, write a deterministic
 seed-zero Building SVG, and preserve failure exit codes.
 The repository also includes an FPM package, a runtime-only Lazarus package,
@@ -267,7 +279,8 @@ its native command, controls, and seed-zero pipeline `1:F1EF0EB6`, view
 `AC7290C0`, `140`-face browser contract.
 
 The core, specialized units, conformance suites, portable examples—including
-the pass-composed music example—and building-kit console need no submodule.
+the pass-composed and negotiated-variation music examples—and building-kit
+console need no submodule.
 Only the two legacy music playback experiments require Lazarus/LCL, SDL2, and
 the optional GPL-3.0 SoundShop submodule; they are isolated from the
 dependency-free MIT build path. See the [examples index](examples/README.md)

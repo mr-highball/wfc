@@ -107,6 +107,27 @@ type
     function DoCreateEntry: TGraphEntry; override;
   end;
 
+  TFinalValidationGraph = class(TGraph)
+  strict private
+    FMutateDuringValidation: Boolean;
+    FObservedCompleteCandidate: Boolean;
+    FRejectAll: Boolean;
+    FRejectedValue: TGraphValue;
+    FValidationCalls: Integer;
+  strict protected
+    function DoValidateCommit(out AFailedPassIndex,
+      AFailedEntryIndex: Integer): Boolean; override;
+  public
+    property MutateDuringValidation: Boolean
+      read FMutateDuringValidation write FMutateDuringValidation;
+    property ObservedCompleteCandidate: Boolean
+      read FObservedCompleteCandidate;
+    property RejectAll: Boolean read FRejectAll write FRejectAll;
+    property RejectedValue: TGraphValue
+      read FRejectedValue write FRejectedValue;
+    property ValidationCalls: Integer read FValidationCalls;
+  end;
+
   TReferenceRandomProbe = class
   strict private
     FCallCount: Integer;
@@ -304,6 +325,34 @@ end;
 function TCommitIdentityGraph.DoCreateEntry: TGraphEntry;
 begin
   Result := TCommitIdentityEntry.Create;
+end;
+
+function TFinalValidationGraph.DoValidateCommit(
+  out AFailedPassIndex, AFailedEntryIndex: Integer): Boolean;
+var
+  I: Integer;
+begin
+  Inc(FValidationCalls);
+  FObservedCompleteCandidate := True;
+  for I := 0 to Integer(Dimension.Width) - 1 do
+    if Entry[I, 0, 0].Empty or
+        (not Entry[I, 0, 0].Generated) then
+      FObservedCompleteCandidate := False;
+  if FMutateDuringValidation then
+    Entry[0, 0, 0].Value := 'validator-mutation';
+  Result := not FRejectAll;
+  if Result and (FRejectedValue <> '') then
+    Result := Entry[0, 0, 0].Value <> FRejectedValue;
+  if Result then
+  begin
+    AFailedPassIndex := -1;
+    AFailedEntryIndex := -1;
+  end
+  else
+  begin
+    AFailedPassIndex := 0;
+    AFailedEntryIndex := 0;
+  end;
 end;
 
 function TReferenceRandomProbe.GetCount(const AIndex: Integer): Integer;
@@ -6370,6 +6419,143 @@ begin
   end;
 end;
 
+procedure TestReferenceFinalCommitValidation;
+var
+  LEmpty0: Boolean;
+  LEmpty1: Boolean;
+  LGenerated0: Boolean;
+  LGenerated1: Boolean;
+  LGraph: TFinalValidationGraph;
+  LNegotiationOptions: TGraphNegotiationOptions;
+  LNegotiationReport: TGraphNegotiationReport;
+  LOptions: TGraphSolveOptions;
+  LRejectedValue: TGraphValue;
+  LReport: TGraphSolveReport;
+  LRaised: Boolean;
+  LTwin: TFinalValidationGraph;
+  LValue0: TGraphValue;
+  LValue1: TGraphValue;
+begin
+  LOptions := DefaultGraphSolveOptions;
+  LOptions.CaptureTrace := True;
+  LGraph := TFinalValidationGraph.Create;
+  LTwin := TFinalValidationGraph.Create;
+  try
+    LGraph.Seed := $31415926;
+    LGraph.Reshape(2, 1, 1);
+    LGraph.WrapNeighbors := False;
+    LGraph.AddValue('A');
+    LGraph.AddValue('B');
+
+    LTwin.Seed := $31415926;
+    LTwin.Reshape(2, 1, 1);
+    LTwin.WrapNeighbors := False;
+    LTwin.AddValue('A');
+    LTwin.AddValue('B');
+
+    Check(LGraph.TrySolve(LOptions, LReport)
+      and LTwin.TrySolve(LOptions, LReport),
+      'final-validator twins establish matching committed output');
+    LValue0 := LGraph.Entry[0, 0, 0].Value;
+    LValue1 := LGraph.Entry[1, 0, 0].Value;
+    LEmpty0 := LGraph.Entry[0, 0, 0].Empty;
+    LEmpty1 := LGraph.Entry[1, 0, 0].Empty;
+    LGenerated0 := LGraph.Entry[0, 0, 0].Generated;
+    LGenerated1 := LGraph.Entry[1, 0, 0].Generated;
+
+    LGraph.RejectAll := True;
+    Check(not LGraph.TrySolve(LOptions, LReport),
+      'a derived final validator can reject a complete candidate');
+    Check(LGraph.ObservedCompleteCandidate
+      and (LGraph.ValidationCalls = 2),
+      'the final validator observes each complete tentative candidate once');
+    Check((LReport.Status = gssContradiction)
+      and (LReport.FailedPassIndex = 0)
+      and (LReport.Contradiction.Kind = gckFinalValidation)
+      and (LReport.Contradiction.PassIndex = 0)
+      and (LReport.Contradiction.EntryIndex = 0)
+      and (LReport.Passes[0].Disposition = gpdFailed),
+      'final rejection publishes precise graph-level validation evidence');
+    Check(LReport.TraceCaptured and (Length(LReport.Trace) >= 3)
+      and (LReport.Trace[High(LReport.Trace)].Kind =
+        gtekPipelineRollback)
+      and (LReport.Trace[High(LReport.Trace) - 1].Kind = gtekPassFailed)
+      and (LReport.Trace[High(LReport.Trace) - 2].Kind =
+        gtekContradiction)
+      and (LReport.Trace[High(LReport.Trace) - 2].CauseKind =
+        gtckFinalValidation),
+      'final rejection retains contradiction, pass-failure, and rollback trace');
+    Check((LGraph.Entry[0, 0, 0].Value = LValue0)
+      and (LGraph.Entry[1, 0, 0].Value = LValue1)
+      and (LGraph.Entry[0, 0, 0].Empty = LEmpty0)
+      and (LGraph.Entry[1, 0, 0].Empty = LEmpty1)
+      and (LGraph.Entry[0, 0, 0].Generated = LGenerated0)
+      and (LGraph.Entry[1, 0, 0].Generated = LGenerated1),
+      'final rejection restores the exact previously committed entries');
+    Check(LGraph.PassGraph[0].RandomIndex(1000003)
+      = LTwin.PassGraph[0].RandomIndex(1000003),
+      'final rejection restores the pre-call random stream');
+
+    LGraph.RejectAll := False;
+    LGraph.MutateDuringValidation := True;
+    LRaised := False;
+    try
+      LGraph.TrySolve(LOptions, LReport);
+    except
+      on E: EInvalidOperation do
+        LRaised := True;
+    end;
+    Check(LRaised,
+      'a final validator cannot mutate tentative entries and return success');
+    Check((LGraph.Entry[0, 0, 0].Value = LValue0)
+      and (LGraph.Entry[1, 0, 0].Value = LValue1)
+      and (LGraph.Entry[0, 0, 0].Empty = LEmpty0)
+      and (LGraph.Entry[1, 0, 0].Empty = LEmpty1)
+      and (LGraph.Entry[0, 0, 0].Generated = LGenerated0)
+      and (LGraph.Entry[1, 0, 0].Generated = LGenerated1),
+      'mutating final validation restores exact committed entry state');
+    Check(LGraph.PassGraph[0].RandomIndex(1000003)
+      = LTwin.PassGraph[0].RandomIndex(1000003),
+      'mutating final validation restores the pre-call random stream');
+  finally
+    LTwin.Free;
+    LGraph.Free;
+  end;
+
+  LGraph := TFinalValidationGraph.Create;
+  try
+    LGraph.Seed := $27182818;
+    LGraph.Reshape(1, 1, 1);
+    LGraph.WrapNeighbors := False;
+    LGraph.AddValue('A');
+    LGraph.AddValue('B');
+    Check(LGraph.TrySolve(LOptions, LReport),
+      'negotiated final-validation fixture establishes a baseline');
+    LRejectedValue := LGraph.Entry[0, 0, 0].Value;
+    LGraph.RejectedValue := LRejectedValue;
+    LNegotiationOptions := DefaultGraphNegotiationOptions;
+    LNegotiationOptions.SolveOptions := LOptions;
+    LNegotiationOptions.MaxPassBacktracks := 1;
+    Check(LGraph.TrySolveNegotiated(LNegotiationOptions,
+        LNegotiationReport),
+      'negotiation can exclude a domain-rejected complete assignment');
+    Check((LNegotiationReport.Status = gnsSolved)
+      and (LNegotiationReport.PassBacktracks = 1)
+      and (Length(LNegotiationReport.Attempts) = 1)
+      and (LNegotiationReport.Attempts[0].SolveReport.
+        Contradiction.Kind = gckFinalValidation)
+      and (LNegotiationReport.Attempts[0].BacktrackedPassIndex = 0)
+      and (Length(LNegotiationReport.Attempts[0].
+        ExcludedAssignment) = 1),
+      'domain rejection participates in exact assignment negotiation');
+    Check((LGraph.Entry[0, 0, 0].Value <> LRejectedValue)
+      and (LGraph.ValidationCalls = 3),
+      'negotiation validates each round and commits the alternate assignment');
+  finally
+    LGraph.Free;
+  end;
+end;
+
 procedure TestReferenceReplayAndLegacyIsolation;
 var
   LFresh: TGraph;
@@ -6848,6 +7034,8 @@ begin
     @TestReferenceLocksAndAtomicPasses);
   RunTest('reference commit rollback and topology',
     @TestReferenceCommitRollbackAndTopology);
+  RunTest('reference final commit validation',
+    @TestReferenceFinalCommitValidation);
   RunTest('reference replay and legacy isolation',
     @TestReferenceReplayAndLegacyIsolation);
   RunTest('transactional reshape', @TestTransactionalReshape);

@@ -254,6 +254,12 @@ units and the applicable standard FPC or pas2js RTL. No third-party solver,
 graph library, serializer, or hosted service participates in scope planning,
 search, validation, hashing, or replay.
 
+The first non-spatial application is recorded independently in
+[`music-negotiated-variation-v1.md`](music-negotiated-variation-v1.md). It
+uses the same exact descendant-closure contract to repair harmony and melody
+while retaining rhythm as an immutable clean provider; it does not extend the
+algorithmic claims made here.
+
 ## next experiments
 
 Later work may compare:

@@ -28,6 +28,8 @@ midi_test_source="$repository_root/test/wfc_midi_smf_test.lpr"
 music_test_source="$repository_root/test/wfc_music_test.lpr"
 music_graph_test_source="$repository_root/test/wfc_music_graph_test.lpr"
 music_midi_test_source="$repository_root/test/wfc_music_midi_test.lpr"
+music_passes_test_source="$repository_root/test/wfc_music_passes_test.lpr"
+music_passes_text_test_source="$repository_root/test/wfc_music_passes_text_test.lpr"
 example_source="$repository_root/examples/text/01_SimpleTiledWorld/SimpleTiledWorld.lpr"
 world_example_source="$repository_root/examples/2D/01_MultiPassWorld/MultiPassWorld.lpr"
 settlement_example_source="$repository_root/examples/2D/03_SelectiveSettlement/SelectiveSettlement.lpr"
@@ -42,6 +44,8 @@ text_completion_example_directory="$repository_root/examples/text/02_ConstraintC
 text_pass_example_source="$repository_root/examples/text/03_PassComposition/TextPassComposition.lpr"
 text_pass_example_directory="$repository_root/examples/text/03_PassComposition"
 music_example_source="$repository_root/examples/music/03_PassComposition/PassComposition.lpr"
+music_variation_example_source="$repository_root/examples/music/04_NegotiatedVariation/NegotiatedVariation.lpr"
+music_variation_example_directory="$repository_root/examples/music/04_NegotiatedVariation"
 spatial_example_source="$repository_root/examples/passes/01_SpatialDependencies/SpatialDependencies.lpr"
 trace_example_source="$repository_root/examples/passes/02_TraceInspector/TraceInspector.lpr"
 trace_example_directory="$repository_root/examples/passes/02_TraceInspector"
@@ -80,6 +84,8 @@ compiler_midi_test_source=$midi_test_source
 compiler_music_test_source=$music_test_source
 compiler_music_graph_test_source=$music_graph_test_source
 compiler_music_midi_test_source=$music_midi_test_source
+compiler_music_passes_test_source=$music_passes_test_source
+compiler_music_passes_text_test_source=$music_passes_text_test_source
 compiler_example_source=$example_source
 compiler_world_example_source=$world_example_source
 compiler_settlement_example_source=$settlement_example_source
@@ -94,6 +100,8 @@ compiler_text_completion_example_directory=$text_completion_example_directory
 compiler_text_pass_example_source=$text_pass_example_source
 compiler_text_pass_example_directory=$text_pass_example_directory
 compiler_music_example_source=$music_example_source
+compiler_music_variation_example_source=$music_variation_example_source
+compiler_music_variation_example_directory=$music_variation_example_directory
 compiler_spatial_example_source=$spatial_example_source
 compiler_trace_example_source=$trace_example_source
 compiler_trace_example_directory=$trace_example_directory
@@ -132,6 +140,8 @@ case "$host_system" in
     compiler_music_test_source=$(cygpath -m "$music_test_source") || exit $?
     compiler_music_graph_test_source=$(cygpath -m "$music_graph_test_source") || exit $?
     compiler_music_midi_test_source=$(cygpath -m "$music_midi_test_source") || exit $?
+    compiler_music_passes_test_source=$(cygpath -m "$music_passes_test_source") || exit $?
+    compiler_music_passes_text_test_source=$(cygpath -m "$music_passes_text_test_source") || exit $?
     compiler_example_source=$(cygpath -m "$example_source") || exit $?
     compiler_world_example_source=$(cygpath -m "$world_example_source") || exit $?
     compiler_settlement_example_source=$(cygpath -m "$settlement_example_source") || exit $?
@@ -146,6 +156,8 @@ case "$host_system" in
     compiler_text_pass_example_source=$(cygpath -m "$text_pass_example_source") || exit $?
     compiler_text_pass_example_directory=$(cygpath -m "$text_pass_example_directory") || exit $?
     compiler_music_example_source=$(cygpath -m "$music_example_source") || exit $?
+    compiler_music_variation_example_source=$(cygpath -m "$music_variation_example_source") || exit $?
+    compiler_music_variation_example_directory=$(cygpath -m "$music_variation_example_directory") || exit $?
     compiler_spatial_example_source=$(cygpath -m "$spatial_example_source") || exit $?
     compiler_trace_example_source=$(cygpath -m "$trace_example_source") || exit $?
     compiler_trace_example_directory=$(cygpath -m "$trace_example_directory") || exit $?
@@ -474,7 +486,9 @@ for compiler_music_suite in \
   "$compiler_midi_test_source" \
   "$compiler_music_test_source" \
   "$compiler_music_graph_test_source" \
-  "$compiler_music_midi_test_source"
+  "$compiler_music_midi_test_source" \
+  "$compiler_music_passes_test_source" \
+  "$compiler_music_passes_text_test_source"
 do
   music_suite_name=$(basename -- "$compiler_music_suite" .lpr)
   printf "Building the music conformance suite '%s'.\n" "$music_suite_name"
@@ -739,6 +753,28 @@ esac
 
 printf "Smoke testing '%s' with seed 0.\n" "$music_example_executable"
 "$music_example_executable" 0 >/dev/null || exit $?
+
+printf "Building the negotiated music-variation example.\n"
+"$compiler" "$@" \
+  -B \
+  -Mdelphi \
+  -Sa \
+  -Cr \
+  -Co \
+  -Ci \
+  "-Fu$compiler_source_directory" \
+  "-Fu$compiler_music_variation_example_directory" \
+  "-FU$compiler_unit_output_directory" \
+  "-FE$compiler_binary_output_directory" \
+  "$compiler_music_variation_example_source" || exit $?
+
+music_variation_example_executable="$binary_output_directory/NegotiatedVariation"
+case "$host_system" in
+  CYGWIN*|MINGW*|MSYS*) music_variation_example_executable="${music_variation_example_executable}.exe" ;;
+esac
+
+printf "Smoke testing '%s' with seed 0.\n" "$music_variation_example_executable"
+"$music_variation_example_executable" 0 >/dev/null || exit $?
 
 printf "Building the dependency-free spatial-pass example.\n"
 "$compiler" "$@" \
