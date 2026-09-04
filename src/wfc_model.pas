@@ -308,15 +308,20 @@ end;
 function ModelDirectionToGraphDirection(
   const ADirection: TWfcModelDirection): TGraphDirection;
 begin
+  //A TGraph rule is stored on the already assigned neighbor and keyed by that
+  //neighbor's position relative to the candidate being validated. A learned
+  //relation is expressed from source toward target, which reverses the rule
+  //key. TGraph also historically names increasing row coordinates North while
+  //the row-major learner names them South, so those two reversals cancel on Y.
   case ADirection of
     wmdNorth:
       Result := gdNorth;
     wmdEast:
-      Result := gdEast;
+      Result := gdWest;
     wmdSouth:
       Result := gdSouth;
     wmdWest:
-      Result := gdWest;
+      Result := gdEast;
   else
     raise ERangeError.Create('unknown model direction');
   end;

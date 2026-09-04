@@ -771,6 +771,65 @@ begin
   end;
 end;
 
+procedure TestAsymmetricGraphAdapter;
+var
+  LGraph: TGraph;
+  LModel: TWfcModel;
+  LOptions: TGraphSolveOptions;
+  LReport: TGraphSolveReport;
+  LTokens: TWfcModelTokens;
+begin
+  LModel := LearnModel1D(Tokens('A', 'B', 'C'), wmbWrap);
+  LGraph := TGraph.Create;
+  try
+    LGraph.Seed := 0;
+    LGraph.Reshape(3, 1, 1);
+    LGraph.WrapNeighbors := True;
+    ApplyModelToGraph(LModel, LGraph);
+
+    Check(
+      ContainsGraphValue(LGraph.Rules['A'].Rule[gdWest].Value, 'B') and
+      ContainsGraphValue(LGraph.Rules['A'].Rule[gdEast].Value, 'C'),
+      'the adapter preserves asymmetric east and west orientation');
+
+    LGraph.Entry[0, 0, 0].Value := 'A';
+    LGraph.Entry[1, 0, 0].Value := 'B';
+    LGraph.Entry[2, 0, 0].Value := 'C';
+    LOptions := DefaultGraphSolveOptions;
+    Check(LGraph.TrySolve(LOptions, LReport) and
+      GraphMatchesModel(LGraph, LModel),
+      'the adapted asymmetric cycle validates in learned orientation');
+  finally
+    LGraph.Free;
+    LModel.Free;
+  end;
+
+  LTokens := Tokens('A', 'B', 'C');
+  LModel := LearnModel2D(LTokens, 1, 3, wmbWrap, wmsNone);
+  LGraph := TGraph.Create;
+  try
+    LGraph.Seed := 0;
+    LGraph.Reshape(1, 3, 1);
+    LGraph.WrapNeighbors := True;
+    ApplyModelToGraph(LModel, LGraph);
+
+    Check(
+      ContainsGraphValue(LGraph.Rules['A'].Rule[gdNorth].Value, 'C') and
+      ContainsGraphValue(LGraph.Rules['A'].Rule[gdSouth].Value, 'B'),
+      'the adapter bridges row-major and graph vertical orientation');
+
+    LGraph.Entry[0, 0, 0].Value := 'A';
+    LGraph.Entry[0, 1, 0].Value := 'B';
+    LGraph.Entry[0, 2, 0].Value := 'C';
+    LOptions := DefaultGraphSolveOptions;
+    Check(LGraph.TrySolve(LOptions, LReport),
+      'the adapted vertical cycle validates in row-major orientation');
+  finally
+    LGraph.Free;
+    LModel.Free;
+  end;
+end;
+
 procedure TestTextCodec;
 var
   LDecoded: TWfcModel;
@@ -875,6 +934,8 @@ begin
   RunTest('immutable model and constructor guards',
     @TestModelImmutabilityAndGuards);
   RunTest('graph adapter boundaries and solve', @TestGraphAdapter);
+  RunTest('asymmetric graph adapter orientation',
+    @TestAsymmetricGraphAdapter);
   RunTest('canonical model text codec', @TestTextCodec);
   WriteLn('====================================');
   WriteLn(Format('%d checks, %d failures',

@@ -124,6 +124,14 @@ weights, and converts every positive relation count into a Boolean directional
 rule. Relation counts remain in the model for inspection and future weighted
 relation work; the current graph solver treats adjacency as allowed or denied.
 
+Model directions describe the target from the source (`east` means the target
+is east of the source). The historical `TGraph.NewRule` key instead describes
+the rule owner's position relative to the entry being validated. In addition,
+the original graph API names increasing row coordinates north while the
+row-major learner names them south. The adapter bridges both conventions; this
+is observable for asymmetric data and is covered by horizontal and vertical
+directed-cycle conformance fixtures.
+
 Application requires an otherwise undefined target pass. It also preflights
 token conversion and every source value in every active direction. Native
 `TGraphValue` retains the core's historical host-string representation; if a
