@@ -5264,6 +5264,251 @@ begin
   end;
 end;
 
+procedure TestReferenceAssignmentExclusions;
+var
+  I: Integer;
+  LAssignment: TReferenceIntegerArray;
+  LBaselineAssignment: TReferenceIntegerArray;
+  LBaselineReport: TReferenceSolveReport;
+  LFoundExclusionTrace: Boolean;
+  LModel: TReferenceModel;
+  LProbe: TReferenceRandomProbe;
+  LReport: TReferenceSolveReport;
+  LRaised: Boolean;
+
+  procedure InitializeUnconstrainedModel(const ACellCount,
+    AValueCount: Integer; out AModel: TReferenceModel);
+  var
+    LCell: Integer;
+    LIndex: Integer;
+  begin
+    AModel := Default(TReferenceModel);
+    AModel.CellCount := ACellCount;
+    AModel.ValueCount := AValueCount;
+    SetLength(AModel.Neighbors,
+      ACellCount * WFC_REFERENCE_DIRECTION_COUNT);
+    for LIndex := 0 to High(AModel.Neighbors) do
+      AModel.Neighbors[LIndex] := -1;
+    SetLength(AModel.Compatibility,
+      WFC_REFERENCE_DIRECTION_COUNT * AValueCount * AValueCount);
+    SetLength(AModel.RequiredValues, AValueCount);
+    SetLength(AModel.RequiredSupport, Length(AModel.Compatibility));
+    SetLength(AModel.InitialAllowed, ACellCount * AValueCount);
+    for LIndex := 0 to High(AModel.InitialAllowed) do
+      AModel.InitialAllowed[LIndex] := 1;
+    SetLength(AModel.InitialFailureKinds, ACellCount);
+    SetLength(AModel.LockedValues, ACellCount);
+    SetLength(AModel.CellOrder, ACellCount);
+    for LCell := 0 to Pred(ACellCount) do
+    begin
+      AModel.InitialFailureKinds[LCell] := rckEmptyDomain;
+      AModel.LockedValues[LCell] := -1;
+      AModel.CellOrder[LCell] := LCell;
+    end;
+  end;
+
+  function SameTraceEvent(const A, B: TReferenceTraceEvent): Boolean;
+  begin
+    Result := (A.EventId = B.EventId)
+      and (A.CauseEventId = B.CauseEventId)
+      and (A.Kind = B.Kind)
+      and (A.CauseKind = B.CauseKind)
+      and (A.EntryIndex = B.EntryIndex)
+      and (A.ValueIndex = B.ValueIndex)
+      and (A.NeighborIndex = B.NeighborIndex)
+      and (A.Direction = B.Direction)
+      and (A.DecisionDepth = B.DecisionDepth)
+      and (A.DomainCountBefore = B.DomainCountBefore)
+      and (A.DomainCountAfter = B.DomainCountAfter);
+  end;
+
+  function SameReferenceRun(const AAssignment,
+    BAssignment: TReferenceIntegerArray; const AReport,
+    BReport: TReferenceSolveReport): Boolean;
+  var
+    LIndex: Integer;
+  begin
+    Result := (Length(AAssignment) = Length(BAssignment))
+      and (AReport.Status = BReport.Status)
+      and (AReport.Decisions = BReport.Decisions)
+      and (AReport.Propagations = BReport.Propagations)
+      and (AReport.Contradictions = BReport.Contradictions)
+      and (AReport.Backtracks = BReport.Backtracks)
+      and (AReport.ExcludedAssignments = BReport.ExcludedAssignments)
+      and (AReport.Contradiction.Kind = BReport.Contradiction.Kind)
+      and (AReport.Contradiction.EntryIndex =
+        BReport.Contradiction.EntryIndex)
+      and (AReport.Contradiction.NeighborIndex =
+        BReport.Contradiction.NeighborIndex)
+      and (AReport.Contradiction.Direction =
+        BReport.Contradiction.Direction)
+      and (Length(AReport.Trace) = Length(BReport.Trace));
+    if not Result then
+      Exit;
+    for LIndex := 0 to High(AAssignment) do
+      if AAssignment[LIndex] <> BAssignment[LIndex] then
+        Exit(False);
+    for LIndex := 0 to High(AReport.Trace) do
+      if not SameTraceEvent(AReport.Trace[LIndex],
+          BReport.Trace[LIndex]) then
+        Exit(False);
+  end;
+
+begin
+  LProbe := TReferenceRandomProbe.Create;
+  try
+    InitializeUnconstrainedModel(1, 3, LModel);
+    LProbe.Reset;
+    Check(SolveReferenceModel(LModel, 3, True, LProbe.RandomIndex,
+      LBaselineAssignment, LBaselineReport),
+      'an empty exact-exclusion set retains the ordinary kernel solve');
+    Check((Length(LBaselineAssignment) = 1)
+      and (LBaselineAssignment[0] = 2)
+      and (LBaselineReport.ExcludedAssignments = 0),
+      'the empty exclusion path retains its first assignment and report');
+    LProbe.Reset;
+    Check(SolveReferenceModel(LModel, 3, True, LProbe.RandomIndex,
+      LAssignment, LReport)
+      and SameReferenceRun(LBaselineAssignment, LAssignment,
+        LBaselineReport, LReport),
+      'the empty exclusion path replays assignment, counters, and trace');
+
+    SetLength(LModel.ExcludedAssignments, 1);
+    SetLength(LModel.ExcludedAssignments[0], 1);
+    LModel.ExcludedAssignments[0][0] := 2;
+    LProbe.Reset;
+    Check(SolveReferenceModel(LModel, 1, True, LProbe.RandomIndex,
+      LAssignment, LReport)
+      and (Length(LAssignment) = 1) and (LAssignment[0] = 0),
+      'excluding the first complete assignment resumes at its next alternative');
+    Check((LReport.ExcludedAssignments = 1)
+      and (LReport.Contradictions = 1)
+      and (LReport.Backtracks = 1)
+      and (LReport.Decisions = 2)
+      and (LProbe.CallCount = 1),
+      'exact exclusion recovery is counted and reuses the frozen candidate order');
+    LFoundExclusionTrace := False;
+    for I := 0 to High(LReport.Trace) do
+      if (LReport.Trace[I].Kind = rtekContradiction)
+        and (LReport.Trace[I].CauseKind = rtckExcludedAssignment)
+        and (LReport.Trace[I].EntryIndex = -1) then
+        LFoundExclusionTrace := True;
+    Check(LFoundExclusionTrace,
+      'trace capture distinguishes an entryless full-assignment exclusion');
+
+    InitializeUnconstrainedModel(2, 2, LModel);
+    SetLength(LModel.ExcludedAssignments, 1);
+    SetLength(LModel.ExcludedAssignments[0], 2);
+    LModel.ExcludedAssignments[0][0] := 1;
+    LModel.ExcludedAssignments[0][1] := 1;
+    LProbe.Reset;
+    Check(SolveReferenceModel(LModel, 1, LProbe.RandomIndex,
+      LAssignment, LReport)
+      and (Length(LAssignment) = 2)
+      and (LAssignment[0] = 1) and (LAssignment[1] = 0),
+      'a full-assignment exclusion rejects only the exact multi-cell tuple');
+    Check((LReport.ExcludedAssignments = 1)
+      and (LReport.Backtracks = 1)
+      and (LProbe.CallCount = 2),
+      'multi-cell exclusion resumes the deepest frozen decision first');
+
+    InitializeUnconstrainedModel(1, 3, LModel);
+    SetLength(LModel.ExcludedAssignments, 3);
+    SetLength(LModel.ExcludedAssignments[0], 1);
+    SetLength(LModel.ExcludedAssignments[1], 1);
+    SetLength(LModel.ExcludedAssignments[2], 1);
+    LModel.ExcludedAssignments[0][0] := 2;
+    LModel.ExcludedAssignments[1][0] := 0;
+    LModel.ExcludedAssignments[2][0] := 1;
+    LProbe.Reset;
+    Check(not SolveReferenceModel(LModel, 3, LProbe.RandomIndex,
+      LAssignment, LReport),
+      'excluding every complete assignment exhausts the choice frame');
+    Check((LReport.Status = rssContradiction)
+      and (LReport.Contradiction.Kind = rckExcludedAssignment)
+      and (LReport.Contradiction.EntryIndex = -1)
+      and (LReport.ExcludedAssignments = 3)
+      and (LReport.Contradictions = 3)
+      and (LReport.Backtracks = 3)
+      and (Length(LAssignment) = 0),
+      'exhaustion retains dedicated exact-exclusion evidence');
+
+    InitializeUnconstrainedModel(1, 2, LModel);
+    SetLength(LModel.ExcludedAssignments, 1);
+    SetLength(LModel.ExcludedAssignments[0], 0);
+    LProbe.Reset;
+    LRaised := False;
+    try
+      SolveReferenceModel(LModel, 1, LProbe.RandomIndex,
+        LAssignment, LReport);
+    except
+      on E: EInvalidOperation do
+        LRaised := True;
+    end;
+    Check(LRaised and (LProbe.CallCount = 0),
+      'an exclusion with the wrong cell count fails before observation');
+
+    SetLength(LModel.ExcludedAssignments[0], 1);
+    LModel.ExcludedAssignments[0][0] := 2;
+    LProbe.Reset;
+    LRaised := False;
+    try
+      SolveReferenceModel(LModel, 1, LProbe.RandomIndex,
+        LAssignment, LReport);
+    except
+      on E: ERangeError do
+        LRaised := True;
+    end;
+    Check(LRaised and (LProbe.CallCount = 0),
+      'an out-of-range excluded value fails before observation');
+
+    LModel.ExcludedAssignments[0][0] := -1;
+    LProbe.Reset;
+    LRaised := False;
+    try
+      SolveReferenceModel(LModel, 1, LProbe.RandomIndex,
+        LAssignment, LReport);
+    except
+      on E: ERangeError do
+        LRaised := True;
+    end;
+    Check(LRaised and (LProbe.CallCount = 0),
+      'a negative excluded value fails before observation');
+
+    SetLength(LModel.ExcludedAssignments, 2);
+    SetLength(LModel.ExcludedAssignments[0], 1);
+    SetLength(LModel.ExcludedAssignments[1], 1);
+    LModel.ExcludedAssignments[0][0] := 0;
+    LModel.ExcludedAssignments[1][0] := 0;
+    LProbe.Reset;
+    LRaised := False;
+    try
+      SolveReferenceModel(LModel, 1, LProbe.RandomIndex,
+        LAssignment, LReport);
+    except
+      on E: EInvalidOperation do
+        LRaised := True;
+    end;
+    Check(LRaised and (LProbe.CallCount = 0),
+      'duplicate exact exclusions are rejected before observation');
+
+    InitializeUnconstrainedModel(0, 0, LModel);
+    SetLength(LModel.ExcludedAssignments, 1);
+    SetLength(LModel.ExcludedAssignments[0], 0);
+    Check(not SolveReferenceModel(LModel, 0, True, nil,
+      LAssignment, LReport),
+      'the exact empty assignment can be excluded from a zero-cell model');
+    Check((LReport.Status = rssContradiction)
+      and (LReport.Contradiction.Kind = rckExcludedAssignment)
+      and (LReport.ExcludedAssignments = 1)
+      and (Length(LReport.Trace) = 1)
+      and (LReport.Trace[0].CauseKind = rtckExcludedAssignment),
+      'zero-cell exclusion evidence is bounded and entryless');
+  finally
+    LProbe.Free;
+  end;
+end;
+
 procedure TestReferencePropagation;
 var
   LGraph: TGraph;
@@ -6590,6 +6835,8 @@ begin
     @TestWeightedPassesAndAtomicity);
   RunTest('reference weighted-kernel contract',
     @TestReferenceWeightedKernel);
+  RunTest('reference exact-assignment exclusions',
+    @TestReferenceAssignmentExclusions);
   RunTest('reference fixed-point propagation', @TestReferencePropagation);
   RunTest('reference mode tie-breaking', @TestReferenceModeTieBreak);
   RunTest('reference MRV selection', @TestReferenceMrvSelection);

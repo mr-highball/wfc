@@ -6,6 +6,10 @@ domain filtering, observations, candidate removals, contradictions, abandoned
 branches, restoration, pass staging, selective reuse, and the final atomic
 commit or rollback.
 
+`TrySolveNegotiated` retains one such ordinary Trace-v1 report for every
+complete-pipeline round. It does not splice provider revisits from separate
+rounds into one event array.
+
 Trace capture is implemented in project-owned Pascal and has no dependency
 beyond repository units and the standard FPC or pas2js RTL.
 
@@ -69,7 +73,7 @@ Following cause IDs always terminates and cannot form a cycle.
 | `gtekInitialCandidateRemoved` | A lock, caller domain, or prior-pass requirement excluded a candidate before propagation. |
 | `gtekDecision` | The solver selected one branch alternative. The event itself does not change the domain. |
 | `gtekCandidateRemoved` | Decision pruning, adjacency propagation, or required-support propagation removed one candidate. |
-| `gtekContradiction` | A domain became impossible or final validation failed. |
+| `gtekContradiction` | A domain became impossible, final validation failed, or a complete assignment matched an exact negotiation exclusion. |
 | `gtekBacktrack` | The solver abandoned a failed decision frame. |
 | `gtekCandidateRestored` | Backtracking restored one candidate from the removal trail. |
 | `gtekPassStaged` | One pass produced a validated staged result; it is not yet committed. |
@@ -98,6 +102,7 @@ why the retained alternative was reached.
 | `gtckBacktrack` | Restoration was caused by abandoning a failed branch. |
 | `gtckFinalValidation` | Independent assignment validation found an invalid final relation. |
 | `gtckTransaction` | Pass or pipeline lifecycle bookkeeping caused the event. |
+| `gtckExactAssignmentExclusion` | A complete pass assignment exactly matched a versioned outer-negotiation exclusion. |
 
 Caller-domain and caller-lock events are external roots and are never
 attributed to `gtekPassBegin`. Source-derived definitionless failures link to
@@ -118,6 +123,13 @@ If several provider clauses reject one candidate, version 1 records the
 lowest stable provider-pass index. Finite any-of clauses are evaluated exactly,
 but the trace does not yet encode every failed term or a minimal failed clause.
 That richer evidence belongs in a later schema version.
+
+An exact assignment exclusion is checked after every cell in one pass is
+assigned. Its contradiction is therefore pass-scoped but entryless:
+`EntryIndex`, `ValueIndex`, `NeighborIndex`, and `DependencyPassIndex` are
+`-1`; the cause is `gtckExactAssignmentExclusion`. The pass report increments
+`ExcludedAssignments`. Escaping that complete vector uses the ordinary local
+backtrack/restoration trail.
 
 ## event fields
 
@@ -162,6 +174,28 @@ array through `TraceStart` and `TraceCount`. Pass events are emitted
 contiguously. The final pipeline event is intentionally outside every pass
 slice.
 
+## negotiated rounds
+
+`TGraphNegotiationReport` preserves this contiguity by owning reports rather
+than one aggregate trace. Each rejected `Attempts[I].SolveReport` is an
+ordinary failed transaction ending in `gtekPipelineRollback`. `FinalReport` is
+the sole terminal round and ends in commit on `gnsSolved`, or rollback on every
+other negotiation status. Every individual report can be passed to
+`ValidateGraphTrace` unchanged.
+
+The negotiation transcript records chronological round order, the pass chosen
+for each outer backtrack, its execution ordinal, and the complete excluded
+value-index assignment. Its `TranscriptHash` is separately governed by
+`WFC_PASS_NEGOTIATION_HASH_VERSION` and recomputed by
+`CalculateGraphNegotiationTranscriptHash`; it is not a Trace-v1 hash. This
+two-level shape avoids noncontiguous per-pass slices such as provider -> failed
+consumer -> revisited provider.
+
+When capture is disabled, every contained ordinary report keeps the normal
+capture-disabled invariants. The transcript still covers the ordinary reports,
+options, exact exclusions, and terminal outcome; their trace arrays and hashes
+are simply empty and zero.
+
 ## stable trace signatures
 
 `WFC_TRACE_VERSION = 1` identifies the event schema.
@@ -188,6 +222,10 @@ The hash identifies this numeric trace under its versioned solver metadata. It
 is not a cryptographic integrity primitive and is not a complete serialized
 model identity. Store the model or its own signature beside a trace artifact
 when traces from different models will be compared.
+
+Negotiation transcript signatures have the same diagnostic—not
+cryptographic—role. The exact assignment arrays in `Attempts` remain
+authoritative and are included directly in the transcript hash input.
 
 ## query and validation utilities
 
@@ -239,6 +277,11 @@ Enabled kernel and public traces grow geometrically and are trimmed to their
 exact event count before publication. Memory use is therefore proportional to
 the full attempted search, including candidates restored from abandoned
 branches.
+
+Negotiated capture multiplies that cost by the number of rounds because every
+rejected report is retained. Whole-assignment chronological enumeration can be
+exponential, so production callers should set both solver and pass budgets
+before enabling complete attempt traces.
 
 Version 1 intentionally has no event cap, streaming sink, compressed artifact,
 timing data, minimal-unsatisfiable-core extraction, or counterfactual repair.

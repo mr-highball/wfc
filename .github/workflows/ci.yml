@@ -227,6 +227,8 @@ jobs:
           text_test_bin='build/pas2js/text-test/bin'
           text_pass_test_units='build/pas2js/text-pass-test/units'
           text_pass_test_bin='build/pas2js/text-pass-test/bin'
+          negotiation_test_units='build/pas2js/negotiation-test/units'
+          negotiation_test_bin='build/pas2js/negotiation-test/bin'
           voxel_test_units='build/pas2js/voxel-test/units'
           voxel_test_bin='build/pas2js/voxel-test/bin'
           building_test_units='build/pas2js/building-test/units'
@@ -261,6 +263,8 @@ jobs:
           spatial_example_bin='build/pas2js/spatial-example/bin'
           trace_example_units='build/pas2js/trace-example/units'
           trace_example_bin='build/pas2js/trace-example/bin'
+          negotiation_example_units='build/pas2js/negotiation-example/units'
+          negotiation_example_bin='build/pas2js/negotiation-example/bin'
           building_example_units='build/pas2js/building-example/units'
           building_example_bin='build/pas2js/building-example/bin'
           mkdir -p \
@@ -272,6 +276,7 @@ jobs:
             "$sequence_test_units" "$sequence_test_bin" \
             "$text_test_units" "$text_test_bin" \
             "$text_pass_test_units" "$text_pass_test_bin" \
+            "$negotiation_test_units" "$negotiation_test_bin" \
             "$voxel_test_units" "$voxel_test_bin" \
             "$building_test_units" "$building_test_bin" \
             "$trace_test_units" "$trace_test_bin" \
@@ -289,6 +294,7 @@ jobs:
             "$music_example_units" "$music_example_bin" \
             "$spatial_example_units" "$spatial_example_bin" \
             "$trace_example_units" "$trace_example_bin" \
+            "$negotiation_example_units" "$negotiation_example_bin" \
             "$building_example_units" "$building_example_bin"
 
           "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
@@ -329,6 +335,11 @@ jobs:
             -FU"$text_pass_test_units" -FE"$text_pass_test_bin" \
             test/wfc_text_passes_test.lpr
           node "$text_pass_test_bin/wfc_text_passes_test.js"
+
+          "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
+            -FU"$negotiation_test_units" -FE"$negotiation_test_bin" \
+            test/wfc_negotiation_test.lpr
+          node "$negotiation_test_bin/wfc_negotiation_test.js"
 
           "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
             -FU"$voxel_test_units" -FE"$voxel_test_bin" \
@@ -441,6 +452,12 @@ jobs:
             -FU"$trace_example_units" -FE"$trace_example_bin" \
             examples/passes/02_TraceInspector/TraceInspectorNode.lpr
           node "$trace_example_bin/TraceInspectorNode.js" 0 >/dev/null
+
+          "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
+            -Fuexamples/passes/03_PassNegotiation \
+            -FU"$negotiation_example_units" -FE"$negotiation_example_bin" \
+            examples/passes/03_PassNegotiation/PassNegotiationNode.lpr
+          node "$negotiation_example_bin/PassNegotiationNode.js" >/dev/null
 
           "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
             -Fuexamples/3D/02_MultiPassBuilding \

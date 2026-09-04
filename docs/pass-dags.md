@@ -11,6 +11,10 @@ This document defines the version-2 dependency, spatial-read, and
 selective-regeneration model. The implementation remains part of `TGraph`;
 there is no external scheduler or runtime dependency.
 
+The separately versioned [bounded pass negotiation](pass-negotiation.md)
+algorithm reuses this same acyclic plan for repeated complete-pipeline rounds.
+It does not change the meaning or version of dependency edges.
+
 ## formal model
 
 Let `P` be the finite set of passes. Every pass has:
@@ -206,12 +210,18 @@ current atomic transaction; legacy `Run` reads output produced earlier in its
 nontransactional execution. These are hard candidate filters, not soft scores,
 late callbacks, or reads from a partially solved peer.
 
-The transaction does not flatten the DAG into one global CSP. Reference-solver
-backtracking is bounded independently inside each pass. A consumer can reject
-or fail against a staged provider, causing all-or-nothing rollback, but it
-cannot reopen that provider's decisions during the same call. Selective
-regeneration begins a new transaction over an explicit descendant closure;
-future cross-pass negotiation/repair will need its own versioned semantics.
+An ordinary `TrySolve` transaction does not flatten the DAG into one global
+CSP. Reference-solver backtracking is bounded independently inside each pass.
+A consumer can reject or fail against a staged provider, causing all-or-nothing
+rollback, but it cannot reopen that provider's decisions during the same call.
+Selective regeneration begins a new transaction over an explicit descendant
+closure.
+
+`TrySolveNegotiated` is a distinct full-pipeline algorithm that can reopen
+completed defined passes across atomic rounds. It chronologically excludes
+whole assignments and reruns the stable acyclic plan; it does not create a
+cycle or interleave partially solved peers. Local and pass backtracks have
+separate limits.
 
 ## selective descendant closure
 
@@ -251,6 +261,12 @@ unchanged. Executed streams rewind from their stable creation-index-derived
 seed, so unrelated branch insertion and unrelated regeneration do not perturb
 them.
 
+Version 1 deliberately has no negotiated selective-regeneration overload.
+Allowing a leaf request to reopen an immutable provider would change the dirty
+closure and skipped-stream contract above. Such an API needs an explicit
+upstream horizon and its own replay semantics rather than silently widening
+`TryRegenerateFrom`.
+
 ## reports and inspection
 
 `TGraphSolveReport.PipelineAlgorithmVersion` identifies the coordinator
@@ -266,6 +282,13 @@ add:
 Zero decisions do not prove that a pass was skipped: a propagation-only solve
 or definitionless copy can also have zero decisions. Consumers should use the
 explicit execution fields.
+
+Negotiated solving returns one ordinary report per round. Rejected reports are
+stored in `TGraphNegotiationReport.Attempts`, together with the chronologically
+selected pass and copied exact assignment; the sole terminal ordinary report
+is `FinalReport`. Each round therefore retains an ordinary topological
+`ExecutionOrder` rather than pretending that repeated rounds form one pass
+plan. See [negotiation statuses and reports](pass-negotiation.md#statuses-and-reports).
 
 Named constraint failures use `gckPassDependency` and report the stable source
 index through `DependencyPassIndex`. Historical `RequirePrevious` failures
@@ -301,6 +324,12 @@ Exact dependency-pipeline replay requires:
 - the pipeline seed and random/solver algorithm versions; and
 - for selective runs, the ordered requested root labels.
 
+Negotiated replay additionally requires both pass-negotiation versions, both
+budgets, trace-capture setting, chronological frame-selection and
+later-exclusion-clearing rules, every exact excluded assignment, and the
+ordered attempt reports. `TranscriptHash` is the portable summary; exact
+assignment arrays remain authoritative.
+
 Topological tie-breaking uses stable indices, while per-pass random streams are
 also derived from stable indices. Renaming a pass therefore changes a
 human-facing replay manifest but not an already-bound in-memory dependency or
@@ -308,10 +337,18 @@ random stream.
 
 ## current boundary
 
-The dependency graph is intentionally acyclic. Cyclic design problems require
-an explicit bounded negotiation, repair, or fixed-point protocol with its own
-termination and replay contract; treating a cycle as an arbitrary execution
-order would hide a materially different algorithm.
+The dependency graph is intentionally acyclic. Pass Negotiation v1 searches
+backward over assignments produced by that acyclic plan; it does not permit a
+back edge in the plan itself. Cyclic design problems still require a distinct
+fixed-point or repair protocol with its own termination and replay contract.
+Treating a cycle as an arbitrary execution order would hide a materially
+different algorithm.
+
+Negotiation v1 is global chronological rather than conflict-directed. At a
+failure it selects the latest completed negotiable pass, not necessarily the
+provider named by `DependencyPassIndex`. Independent later passes can therefore
+consume budget before the causally relevant provider, and exact vector
+enumeration can be exponential.
 
 Causal Trace v1 records the lowest stable failed provider when several
 cross-pass clauses reject one candidate. It does not retain every failed term,

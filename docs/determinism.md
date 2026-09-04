@@ -6,6 +6,10 @@ model and input on native FPC and pas2js.
 Random entry identifiers and the host runtime's global random source are not
 part of this stream.
 
+The full-pipeline `TrySolveNegotiated` path uses the same streams and adds a
+separately versioned chronological attempt transcript. Its replay contract is
+defined in [bounded pass negotiation](pass-negotiation.md).
+
 ```pascal
 var
   LGraph: TGraph;
@@ -50,6 +54,9 @@ A complete replay identity consists of:
 - `WFC_PIPELINE_ALGORITHM_VERSION`, pass modes, dependency edges, named
   requirements, signed offsets, ordered finite any-clauses, and requested
   roots when using dependency planning or selective regeneration;
+- `WFC_PASS_NEGOTIATION_ALGORITHM_VERSION`,
+  `WFC_PASS_NEGOTIATION_HASH_VERSION`, nested `SolveOptions`, and
+  `MaxPassBacktracks` when using `TrySolveNegotiated`;
 - `Seed`;
 - graph dimensions, wrapping, and run mode;
 - pass creation order;
@@ -60,7 +67,11 @@ A complete replay identity consists of:
 
 Pass labels are not part of random-stream identity. Renaming a pass preserves
 its stream because the stable zero-based pass index is used instead. Appending
-a later pass cannot perturb an earlier stream.
+a later pass cannot perturb an earlier stream in ordinary `Run`, `TrySolve`, or
+selective solving. Negotiation deliberately makes the full later pipeline part
+of an earlier pass's retained assignment: a later contradiction can cause that
+pass to take another alternative, while its random ticket and candidate order
+remain deterministic.
 
 Labels remain part of a human-readable dependency manifest and are used to
 select roots, but declared dependency and requirement references bind to stable
@@ -189,6 +200,10 @@ An incompatible change to dependency planning, spatial clause/boundary
 semantics, pass-mode staging, dirty-closure selection, or topological
 tie-breaking must increment
 `WFC_PIPELINE_ALGORITHM_VERSION` independently.
+An incompatible change to negotiation frame selection, exact-assignment
+scoping, later-exclusion clearing, stopping rules, or attempt ordering must
+increment `WFC_PASS_NEGOTIATION_ALGORITHM_VERSION`. A change to the portable
+transcript encoding must increment `WFC_PASS_NEGOTIATION_HASH_VERSION`.
 
 The weighted entropy and ticket contract is
 `WFC_SOLVER_ALGORITHM_VERSION = 2`. It does not change seed expansion, jumping,
@@ -233,6 +248,26 @@ unchanged. Dirty pass streams restart from their stable seed/index derivation;
 failure restores every entry, ownership flag, selected pass, and pre-call
 stream state. `ExecutionOrder` records the actual stable topological plan.
 
+`TrySolveNegotiated` always executes complete-pipeline rounds. Each round
+rewinds pass streams from the same seed. A failed round commits nothing and
+restores the pre-call streams before the next round; the final success leaves
+the streams exactly where that winning ordinary round leaves them. Frozen
+local candidate order means rejecting an exact assignment does not draw a new
+first ticket, although restoring past that exclusion consumes a local solver
+backtrack.
+
+Negotiated replay identity includes the complete model and Pipeline v2 plan,
+both negotiation and transcript versions, both budgets, trace-capture setting,
+stable chronological choice-frame order, exact exclusions in their earlier
+prefix contexts, every rejected ordinary report, and `FinalReport`.
+`CalculateGraphNegotiationTranscriptHash` summarizes those numeric fields, but
+the copied assignment arrays—not the hash—are the exact nogood identity.
+
+Every rejected and terminal round can retain a separate ordinary Trace-v1
+hash. This preserves contiguous per-pass slices instead of interleaving a
+provider revisit into one synthetic trace. See [causal solve
+traces](traces.md#negotiated-rounds).
+
 ## callbacks and extension hooks
 
 Custom `SelectionCallback`, `InvalidStateCallback`, `DoGetStartCoord`, and
@@ -246,12 +281,14 @@ calling `AGraph.RandomIndex` always consumes the stream for the pass being
 solved, even if the callback switches `CurrentPass` first. Calling
 `AGraph.PassGraph[J].RandomIndex` explicitly consumes pass `J` instead.
 
-Changing `Seed` during pass initialization, `Run`, or `TrySolve` raises
-`EInvalidOperation` and leaves the old seed intact. Set it before execution.
+Changing `Seed` during pass initialization, `Run`, `TrySolve`, or a negotiated
+round raises `EInvalidOperation` and leaves the old seed intact. Set it before
+execution.
 
-`TrySolve` does not invoke selection or invalid-state callbacks, or the legacy
-`DoGetStartCoord`, `DoGetSelection`, and `DoValidate` hooks. Their mutable state
-therefore cannot influence its decision stream. Conversely, assigning
+`TrySolve` and `TrySolveNegotiated` do not invoke selection or invalid-state
+callbacks, or the legacy `DoGetStartCoord`, `DoGetSelection`, and `DoValidate`
+hooks. Their mutable state therefore cannot influence the reference decision
+stream. Conversely, assigning
 `Rules[Value].Weight` does not reinterpret legacy `Run`; callers that need a
 weighted compatibility traversal must implement that policy in their selection
 callback.

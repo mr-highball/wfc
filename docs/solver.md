@@ -13,6 +13,11 @@ executed assignments have been validated. A selective solve stages only the
 requested roots and their transitive dependents while reusing skipped layers
 as immutable inputs.
 
+`TGraph.TrySolveNegotiated` is a separate opt-in coordinator around complete
+ordinary pipeline attempts. It can chronologically reopen completed pass
+assignments after a downstream contradiction without changing `TrySolve` or
+`TryRegenerateFrom`. See [bounded pass negotiation](pass-negotiation.md).
+
 ## basic use
 
 ```pascal
@@ -47,6 +52,10 @@ end;
 of zero permits propagation and first choices but stops at the first required
 branch restoration. A negative value raises `ERangeError`.
 
+`DefaultGraphNegotiationOptions` embeds those solver defaults and permits 64
+outer pass backtracks. Its local and pass budgets have different units and
+must both be initialized and persisted for replay.
+
 Always initialize a local `TGraphSolveOptions` with
 `DefaultGraphSolveOptions` before overriding fields. Local Pascal records are
 not guaranteed to be zeroed; assigning only one field can leave another field
@@ -80,13 +89,17 @@ and pre-call random-stream states are unchanged. A later-pass contradiction
 therefore cannot leave an earlier pass half committed. A successful call marks
 new solver output as generated while preserving caller locks.
 
-Atomicity here is a commit/rollback guarantee, not a flattened global search
-across every pass. `MaxBacktracks` is applied independently while solving each
-pass. Once a provider has been staged and the coordinator moves to a consumer,
-a consumer contradiction can backtrack within that consumer and can roll the
-pipeline transaction back, but it does not reopen the provider's choices.
-Bounded backward negotiation or repair across the DAG requires a separately
-versioned algorithm.
+For ordinary `TrySolve`, atomicity is a commit/rollback guarantee, not a
+flattened global search across every pass. `MaxBacktracks` is applied
+independently while solving each pass. Once a provider has been staged and the
+coordinator moves to a consumer, a consumer contradiction can backtrack within
+that consumer and can roll the pipeline transaction back, but it does not
+reopen the provider's choices.
+
+`TrySolveNegotiated` supplies that reopening through separately versioned,
+whole-assignment chronological search. Every rejected round remains atomic and
+only the final successful round commits. It does not add cyclic edges or
+reinterpret an ordinary solve; see [the negotiation contract](pass-negotiation.md).
 
 Entry setters are still used during commit so derived entry behavior remains
 available. Each hook observes the pass currently being committed. If a setter
@@ -218,6 +231,15 @@ without another draw. Thus weights bias the first branch while chronological
 backtracking remains complete and reproducible. Unit weights draw with the old
 domain-count bound and preserve the exact previous candidate order.
 
+Negotiated rounds can pass exact complete-assignment exclusions into this
+kernel. An exclusion is tested only after every cell has a value. Matching it
+records an entryless `gckExcludedAssignment` contradiction, increments
+`ExcludedAssignments`, and uses ordinary chronological restoration to reach
+the next assignment. Replaying accumulated exclusions therefore consumes
+local `MaxBacktracks`; the outer `MaxPassBacktracks` budget does not replace or
+subsidize those restorations. Ordinary `TrySolve` supplies no exclusions and
+retains its prior assignments, counters, and traces.
+
 `WFC_SOLVER_ALGORITHM_VERSION = 2` identifies these propagation, observation,
 candidate-ordering, and backtracking rules.
 `WFC_GRAPH_MODEL_VERSION = 1` identifies the additive deny-all and caller-domain
@@ -258,8 +280,11 @@ reused, cleared, copied, solved, or failed.
 Terminal contradiction kinds are
 `gckInvalidLock`, `gckEntryDomain`, `gckEmptyDomain`, `gckAdjacency`,
 `gckPreviousPass`, `gckPassDependency`, `gckRequiredSupport`, and
-`gckFinalValidation`; `gckNone` is used on success. Named dependency failures
-also identify the stable source index through `DependencyPassIndex`.
+`gckFinalValidation`. A negotiated pass attempt can additionally report
+`gckExcludedAssignment` when every locally reachable complete assignment is
+among its exact outer exclusions. `gckNone` is used on success. Named
+dependency failures also identify the stable source index through
+`DependencyPassIndex`.
 Entry and neighbor indices are zero-based. Inspect `HasDirection` before using
 the direction field. `FailedPassIndex` and unavailable contradiction pass,
 entry, or neighbor indices are `-1`. Report contents are unspecified when
@@ -271,8 +296,10 @@ Per-pass counters have deliberately narrow definitions:
 - `Propagations` counts candidate removals caused by adjacency or
   required-support propagation;
 - `Contradictions` counts invalid-lock failures, zero-domain discoveries, and
-  final-validation failures; and
-- `Backtracks` counts completed failed-branch restorations.
+  final-validation or exact-assignment-exclusion failures;
+- `Backtracks` counts completed failed-branch restorations; and
+- `ExcludedAssignments` counts complete local assignments rejected by exact
+  negotiation exclusions.
 
 Counters saturate at `High(Integer)` so exceptionally large searches retain
 the same report behavior under checked native builds and pas2js.
@@ -281,6 +308,14 @@ Initial domain construction for locks and `RequirePrevious`, and the direct
 restriction to a chosen branch value, are not propagations. A solved pass may
 have nonzero contradiction and backtrack counters if it recovered from failed
 alternatives; the report's terminal contradiction is cleared on success.
+
+Negotiation has its own `TGraphNegotiationStatus` because the two limits must
+not be conflated. `gnsSolverBacktrackLimit` identifies an exhausted local pass
+search; `gnsPassBacktrackLimit` identifies an exhausted outer assignment
+budget. `gnsContradiction` means no completed negotiable choice frame remains,
+and `gnsSolved` means the final complete round committed. Rejected rounds live
+in `Attempts`; the sole terminal round lives in `FinalReport`. See
+[statuses and reports](pass-negotiation.md#statuses-and-reports).
 
 ## causal traces
 
@@ -299,6 +334,11 @@ Cross-pass candidate removals identify both consumer and provider and link to a
 provider-pass event, so a downstream rejection can be followed back across the
 pass DAG. Abandoned branches remain in the trace even when a later alternative
 solves.
+
+An exact whole-assignment exclusion is an entryless contradiction with cause
+`gtckExactAssignmentExclusion`. During negotiated solving, each round retains
+one ordinary Trace-v1 report; the coordinator never interleaves revisited pass
+events into a single trace.
 
 Each `TGraphPassSolveReport` exposes its contiguous half-open trace slice using
 `TraceStart` and `TraceCount`; the final pipeline event is outside every pass
@@ -350,8 +390,10 @@ and caller-owned entry domains; pipeline version 2 adds acyclic dependency
 planning, named same-coordinate and signed-offset requirements, explicit
 finite any-of-neighborhood clauses, pass modes, and selective regeneration.
 Causal Trace v1 adds stable native/pas2js hashes and public inspection and
-validation helpers. Restart policy, timing data, interactive stepping, bounded
-or streaming trace capture, soft constraints, implicit radius/count/distance
-expressions, cyclic repair, richer failed-clause evidence, and
-minimal-unsatisfiable-core analysis remain roadmap work rather than hidden or
-partially specified behavior.
+validation helpers. Pass Negotiation v1 adds bounded full-pipeline
+chronological search over exact completed pass assignments with a separately
+versioned transcript. Selective negotiation, conflict-directed repair, restart
+policy, timing data, interactive stepping, bounded or streaming trace capture,
+soft constraints, implicit radius/count/distance expressions, cyclic repair,
+richer failed-clause evidence, and minimal-unsatisfiable-core analysis remain
+roadmap work rather than hidden or partially specified behavior.

@@ -53,6 +53,9 @@ type
   TGraphSeed = Cardinal;
   TGraphPassLabels = array of String;
   TGraphPassIndices = array of Integer;
+  //Stable value-definition indices used to report exact pass assignments.
+  //Negotiation compares the complete arrays; hashes are diagnostics only.
+  TGraphValueIndices = array of Integer;
 
 const
   WFC_DEFAULT_VALUE_WEIGHT = TGraphWeight(1);
@@ -75,6 +78,10 @@ const
   WFC_TRACE_VERSION = 1;
   //Identifies the portable integer encoding used by trace signatures.
   WFC_TRACE_HASH_VERSION = 1;
+  //Identifies the opt-in chronological pass-assignment negotiation protocol.
+  //The ordinary one-way pipeline remains independently versioned above.
+  WFC_PASS_NEGOTIATION_ALGORITHM_VERSION = 1;
+  WFC_PASS_NEGOTIATION_HASH_VERSION = 1;
 
 type
 
@@ -352,7 +359,8 @@ type
     gckRequiredSupport,
     gckFinalValidation,
     gckPassDependency,
-    gckEntryDomain
+    gckEntryDomain,
+    gckExcludedAssignment
   );
 
   TGraphSolveOptions = record
@@ -401,7 +409,8 @@ type
     gtckRequiredSupport,
     gtckBacktrack,
     gtckFinalValidation,
-    gtckTransaction
+    gtckTransaction,
+    gtckExactAssignmentExclusion
   );
 
   TGraphTraceSignature = Cardinal;
@@ -435,6 +444,7 @@ type
     Propagations: Integer;
     Contradictions: Integer;
     Backtracks: Integer;
+    ExcludedAssignments: Integer;
     Executed: Boolean;
     ExecutionOrdinal: Integer;
     Disposition: TGraphPassDisposition;
@@ -460,6 +470,49 @@ type
     TraceCaptured: Boolean;
     TraceHash: TGraphTraceSignature;
     Trace: TGraphTraceEvents;
+  end;
+
+  //Pass negotiation is deliberately separate from ordinary solve status.
+  //A solver limit belongs to one pass attempt; a pass limit bounds the
+  //number of exact provider assignments the coordinator may exclude.
+  TGraphNegotiationStatus = (
+    gnsSolved,
+    gnsContradiction,
+    gnsSolverBacktrackLimit,
+    gnsPassBacktrackLimit
+  );
+
+  TGraphNegotiationOptions = record
+    SolveOptions: TGraphSolveOptions;
+    //Zero performs the ordinary one-way attempt without reopening a pass.
+    MaxPassBacktracks: Integer;
+  end;
+
+  TGraphNegotiationAttemptReport = record
+    //Every rejected round retains an ordinary, internally contiguous Trace-v1
+    //report. The sole terminal round is stored in FinalReport below.
+    SolveReport: TGraphSolveReport;
+    //The completed defined pass excluded after this failed round, or -1 when
+    //the round is terminal. The exclusion is scoped to its earlier prefix.
+    BacktrackedPassIndex: Integer;
+    BacktrackedExecutionOrdinal: Integer;
+    ExcludedAssignment: TGraphValueIndices;
+  end;
+  TGraphNegotiationAttemptReports =
+    array of TGraphNegotiationAttemptReport;
+
+  TGraphNegotiationReport = record
+    Status: TGraphNegotiationStatus;
+    Seed: TGraphSeed;
+    NegotiationAlgorithmVersion: Integer;
+    PassBacktracks: Integer;
+    //Rejected rounds in chronological order. Total rounds are therefore
+    //Length(Attempts) + 1 whenever the call returns normally.
+    Attempts: TGraphNegotiationAttemptReports;
+    FinalReport: TGraphSolveReport;
+    //Portable summary of the complete ordered attempt transcript. Exact
+    //assignments remain present above and are never identified by hash alone.
+    TranscriptHash: TGraphTraceSignature;
   end;
 
   TForEachPassCallback = procedure(const AGraph : TGraph;
@@ -557,6 +610,9 @@ type
       end;
       TPassDependencies = array of TPassDependency;
       TPassSelection = array of Byte;
+      TValueIndexMatrix = array of TGraphValueIndices;
+      TAssignmentExclusionSet = array of TGraphValueIndices;
+      TPassAssignmentExclusions = array of TAssignmentExclusionSet;
   strict private
     FDimension: TDimension;
     FInv: TInvalidStateCallback;
@@ -620,6 +676,12 @@ type
     procedure BuildPassExecutionOrder(out AOrder: TGraphPassIndices);
     function TrySolveInternal(const AOptions: TGraphSolveOptions;
       const ADirty: TPassSelection;
+      out AReport: TGraphSolveReport): Boolean;
+    function TrySolveAttempt(const AOptions: TGraphSolveOptions;
+      const ADirty: TPassSelection;
+      const AExclusions: TPassAssignmentExclusions;
+      out ACompletedChoices: TPassSelection;
+      out AAssignments: TValueIndexMatrix;
       out AReport: TGraphSolveReport): Boolean;
     procedure BuildStorage(const AWidth, AHeight, ADepth: TGraphCoordinate;
       out AEntries: TGraphEntries; out APlanes: TPlanes);
@@ -867,6 +929,15 @@ type
     function TrySolve(const AOptions: TGraphSolveOptions;
       out AReport: TGraphSolveReport): Boolean;
 
+    (*
+      solves the complete pipeline with bounded chronological backtracking
+      over exact completed pass assignments. This opt-in search can reopen an
+      earlier defined pass when a later pass proves its output incompatible.
+      Attempts are transactional and the first complete success commits once.
+    *)
+    function TrySolveNegotiated(const AOptions: TGraphNegotiationOptions;
+      out AReport: TGraphNegotiationReport): Boolean;
+
     function TryRegenerateFrom(const APass: String;
       const AOptions: TGraphSolveOptions;
       out AReport: TGraphSolveReport): Boolean; overload;
@@ -921,10 +992,14 @@ var
 
   //Returns the stable defaults for the opt-in reference solver.
   function DefaultGraphSolveOptions: TGraphSolveOptions;
+  function DefaultGraphNegotiationOptions: TGraphNegotiationOptions;
   //Recomputes the portable signature from report metadata and numeric trace
   //events. Returns zero when trace capture is disabled.
   function CalculateGraphTraceHash(
     const AReport: TGraphSolveReport): TGraphTraceSignature;
+  function CalculateGraphNegotiationTranscriptHash(
+    const AOptions: TGraphNegotiationOptions;
+    const AReport: TGraphNegotiationReport): TGraphTraceSignature;
 
 const
   AllDirections : TGraphDirections = [gdNorth, gdEast, gdSouth, gdWest, gdUp, gdDown];
@@ -1183,6 +1258,12 @@ begin
   Result.CaptureTrace := False;
 end;
 
+function DefaultGraphNegotiationOptions: TGraphNegotiationOptions;
+begin
+  Result.SolveOptions := DefaultGraphSolveOptions;
+  Result.MaxPassBacktracks := 64;
+end;
+
 procedure GraphTraceHashByte(var AHash: TGraphTraceSignature;
   const AValue: Byte);
 {$PUSH}
@@ -1281,6 +1362,106 @@ begin
   GraphTraceHashCardinal(Result, Cardinal(Length(AReport.Passes)));
   for I := 0 to High(AReport.Trace) do
     MixGraphTraceEvent(Result, AReport.Trace[I]);
+end;
+
+function CalculateGraphNegotiationTranscriptHash(
+  const AOptions: TGraphNegotiationOptions;
+  const AReport: TGraphNegotiationReport): TGraphTraceSignature;
+var
+  I, J: Integer;
+  LAttempt: TGraphNegotiationAttemptReport;
+  LPass: TGraphPassSolveReport;
+  LSolve: TGraphSolveReport;
+
+  procedure MixBoolean(const AValue: Boolean);
+  begin
+    if AValue then
+      GraphTraceHashByte(Result, 1)
+    else
+      GraphTraceHashByte(Result, 0);
+  end;
+
+  procedure MixSolveReport(const ASolve: TGraphSolveReport);
+  var
+    K: Integer;
+  begin
+    GraphTraceHashCardinal(Result, Cardinal(Ord(ASolve.Status)));
+    GraphTraceHashCardinal(Result, ASolve.Seed);
+    GraphTraceHashInteger(Result, ASolve.RandomAlgorithmVersion);
+    GraphTraceHashInteger(Result, ASolve.SolverAlgorithmVersion);
+    GraphTraceHashInteger(Result, ASolve.GraphModelVersion);
+    GraphTraceHashInteger(Result, ASolve.PipelineAlgorithmVersion);
+    GraphTraceHashInteger(Result, ASolve.FailedPassIndex);
+    GraphTraceHashCardinal(Result,
+      Cardinal(Ord(ASolve.Contradiction.Kind)));
+    GraphTraceHashInteger(Result, ASolve.Contradiction.PassIndex);
+    GraphTraceHashInteger(Result, ASolve.Contradiction.EntryIndex);
+    GraphTraceHashInteger(Result, ASolve.Contradiction.NeighborIndex);
+    MixBoolean(ASolve.Contradiction.HasDirection);
+    GraphTraceHashCardinal(Result,
+      Cardinal(Ord(ASolve.Contradiction.Direction)));
+    GraphTraceHashInteger(Result,
+      ASolve.Contradiction.DependencyPassIndex);
+    GraphTraceHashCardinal(Result, Cardinal(Length(ASolve.Passes)));
+    for K := 0 to High(ASolve.Passes) do
+    begin
+      LPass := ASolve.Passes[K];
+      GraphTraceHashInteger(Result, LPass.Decisions);
+      GraphTraceHashInteger(Result, LPass.Propagations);
+      GraphTraceHashInteger(Result, LPass.Contradictions);
+      GraphTraceHashInteger(Result, LPass.Backtracks);
+      GraphTraceHashInteger(Result, LPass.ExcludedAssignments);
+      MixBoolean(LPass.Executed);
+      GraphTraceHashInteger(Result, LPass.ExecutionOrdinal);
+      GraphTraceHashCardinal(Result,
+        Cardinal(Ord(LPass.Disposition)));
+      GraphTraceHashInteger(Result, LPass.TraceStart);
+      GraphTraceHashInteger(Result, LPass.TraceCount);
+    end;
+    GraphTraceHashCardinal(Result,
+      Cardinal(Length(ASolve.ExecutionOrder)));
+    for K := 0 to High(ASolve.ExecutionOrder) do
+      GraphTraceHashInteger(Result, ASolve.ExecutionOrder[K]);
+    MixBoolean(ASolve.TraceCaptured);
+    GraphTraceHashCardinal(Result, ASolve.TraceHash);
+    GraphTraceHashCardinal(Result, Cardinal(Length(ASolve.Trace)));
+    for K := 0 to High(ASolve.Trace) do
+      MixGraphTraceEvent(Result, ASolve.Trace[K]);
+  end;
+
+begin
+  Result := Cardinal(2166136261);
+  GraphTraceHashText(Result, 'wfc-pass-negotiation');
+  GraphTraceHashCardinal(Result,
+    WFC_PASS_NEGOTIATION_ALGORITHM_VERSION);
+  GraphTraceHashCardinal(Result, WFC_PASS_NEGOTIATION_HASH_VERSION);
+  GraphTraceHashInteger(Result, AOptions.SolveOptions.MaxBacktracks);
+  MixBoolean(AOptions.SolveOptions.CaptureTrace);
+  GraphTraceHashInteger(Result, AOptions.MaxPassBacktracks);
+  GraphTraceHashCardinal(Result, Cardinal(Ord(AReport.Status)));
+  GraphTraceHashCardinal(Result, AReport.Seed);
+  GraphTraceHashInteger(Result,
+    AReport.NegotiationAlgorithmVersion);
+  GraphTraceHashInteger(Result, AReport.PassBacktracks);
+  GraphTraceHashCardinal(Result, Cardinal(Length(AReport.Attempts)));
+  for I := 0 to High(AReport.Attempts) do
+  begin
+    LAttempt := AReport.Attempts[I];
+    GraphTraceHashInteger(Result, I);
+    MixSolveReport(LAttempt.SolveReport);
+    GraphTraceHashInteger(Result, LAttempt.BacktrackedPassIndex);
+    GraphTraceHashInteger(Result,
+      LAttempt.BacktrackedExecutionOrdinal);
+    GraphTraceHashCardinal(Result,
+      Cardinal(Length(LAttempt.ExcludedAssignment)));
+    for J := 0 to High(LAttempt.ExcludedAssignment) do
+      GraphTraceHashInteger(Result,
+        LAttempt.ExcludedAssignment[J]);
+  end;
+  //The terminal solve is included independently so callers can detect a
+  //malformed report whose FinalReport is not the final ordered attempt.
+  LSolve := AReport.FinalReport;
+  MixSolveReport(LSolve);
 end;
 
 { TGraphRule }
@@ -4410,6 +4591,169 @@ begin
   Result := TrySolveInternal(AOptions, LDirty, AReport);
 end;
 
+function TGraph.TrySolveNegotiated(
+  const AOptions: TGraphNegotiationOptions;
+  out AReport: TGraphNegotiationReport): Boolean;
+var
+  I, J: Integer;
+  LAssignments: TValueIndexMatrix;
+  LAttempt: TGraphNegotiationAttemptReport;
+  LCompletedChoices: TPassSelection;
+  LDirty: TPassSelection;
+  LDuplicate: Boolean;
+  LExclusions: TPassAssignmentExclusions;
+  LFullExecutionPlan: TGraphPassIndices;
+  LSolveReport: TGraphSolveReport;
+  LTargetExecutionOrdinal: Integer;
+  LTargetPassIndex: Integer;
+
+  function AssignmentsEqual(const ALeft,
+    ARight: TGraphValueIndices): Boolean;
+  var
+    K: Integer;
+  begin
+    if Length(ALeft) <> Length(ARight) then
+      Exit(False);
+    for K := 0 to High(ALeft) do
+      if ALeft[K] <> ARight[K] then
+        Exit(False);
+    Result := True;
+  end;
+
+  procedure AppendRejectedAttempt;
+  var
+    LCount: Integer;
+  begin
+    LAttempt := Default(TGraphNegotiationAttemptReport);
+    LAttempt.SolveReport := LSolveReport;
+    LAttempt.BacktrackedPassIndex := LTargetPassIndex;
+    LAttempt.BacktrackedExecutionOrdinal :=
+      LTargetExecutionOrdinal;
+    LAttempt.ExcludedAssignment := Copy(
+      LAssignments[LTargetPassIndex], 0,
+      Length(LAssignments[LTargetPassIndex]));
+    LCount := Length(AReport.Attempts);
+    if LCount = High(Integer) then
+      raise ERangeError.Create(
+        'TrySolveNegotiated::attempt history is too large');
+    SetLength(AReport.Attempts, Succ(LCount));
+    AReport.Attempts[LCount] := LAttempt;
+  end;
+
+begin
+  if Assigned(FPassRoot) then
+    Exit(FPassRoot.TrySolveNegotiated(AOptions, AReport));
+  if AOptions.SolveOptions.MaxBacktracks < 0 then
+    raise ERangeError.CreateFmt(
+      'TrySolveNegotiated::maximum solver backtracks cannot be negative [%d]',
+      [AOptions.SolveOptions.MaxBacktracks]);
+  if AOptions.MaxPassBacktracks < 0 then
+    raise ERangeError.CreateFmt(
+      'TrySolveNegotiated::maximum pass backtracks cannot be negative [%d]',
+      [AOptions.MaxPassBacktracks]);
+
+  EnsureInitialPass;
+  AReport := Default(TGraphNegotiationReport);
+  AReport.Status := gnsContradiction;
+  AReport.Seed := Seed;
+  AReport.NegotiationAlgorithmVersion :=
+    WFC_PASS_NEGOTIATION_ALGORITHM_VERSION;
+  AReport.PassBacktracks := 0;
+  AReport.Attempts := nil;
+
+  SetLength(LDirty, FPasses.Count);
+  SetLength(LExclusions, FPasses.Count);
+  for I := 0 to High(LDirty) do
+    LDirty[I] := 1;
+  BuildPassExecutionOrder(LFullExecutionPlan);
+
+  while True do
+  begin
+    Result := TrySolveAttempt(AOptions.SolveOptions, LDirty,
+      LExclusions, LCompletedChoices, LAssignments,
+      LSolveReport);
+    AReport.FinalReport := LSolveReport;
+    if Result then
+    begin
+      AReport.Status := gnsSolved;
+      Break;
+    end;
+
+    if LSolveReport.Status = gssBacktrackLimit then
+    begin
+      AReport.Status := gnsSolverBacktrackLimit;
+      Break;
+    end;
+
+    //The latest completed defined pass is the chronological choice frame.
+    //Definitionless and not-yet-run passes have no assignment to exclude.
+    LTargetPassIndex := -1;
+    LTargetExecutionOrdinal := -1;
+    for I := High(LSolveReport.ExecutionOrder) downto 0 do
+    begin
+      J := LSolveReport.ExecutionOrder[I];
+      if (J >= 0) and (J < Length(LCompletedChoices))
+        and (LCompletedChoices[J] <> 0) then
+      begin
+        LTargetPassIndex := J;
+        LTargetExecutionOrdinal :=
+          LSolveReport.Passes[J].ExecutionOrdinal;
+        Break;
+      end;
+    end;
+
+    if LTargetPassIndex < 0 then
+    begin
+      AReport.Status := gnsContradiction;
+      Break;
+    end;
+    if AReport.PassBacktracks >= AOptions.MaxPassBacktracks then
+    begin
+      AReport.Status := gnsPassBacktrackLimit;
+      Break;
+    end;
+
+    //A changed prefix invalidates every exclusion learned in a later pass
+    //context. Clearing by the stable full topological order also handles
+    //independent siblings feeding a later join.
+    for I := 0 to High(LFullExecutionPlan) do
+      if LFullExecutionPlan[I] = LTargetPassIndex then
+      begin
+        for J := Succ(I) to High(LFullExecutionPlan) do
+          LExclusions[LFullExecutionPlan[J]] := nil;
+        Break;
+      end;
+
+    LDuplicate := False;
+    for I := 0 to High(LExclusions[LTargetPassIndex]) do
+      if AssignmentsEqual(LExclusions[LTargetPassIndex][I],
+        LAssignments[LTargetPassIndex]) then
+      begin
+        LDuplicate := True;
+        Break;
+      end;
+    if LDuplicate then
+      raise EInvalidOperation.CreateFmt(
+        'TrySolveNegotiated::pass %d repeated an excluded assignment',
+        [LTargetPassIndex]);
+
+    AppendRejectedAttempt;
+    I := Length(LExclusions[LTargetPassIndex]);
+    if I = High(Integer) then
+      raise ERangeError.Create(
+        'TrySolveNegotiated::assignment exclusions are too large');
+    SetLength(LExclusions[LTargetPassIndex], Succ(I));
+    LExclusions[LTargetPassIndex][I] := Copy(
+      LAssignments[LTargetPassIndex], 0,
+      Length(LAssignments[LTargetPassIndex]));
+    Inc(AReport.PassBacktracks);
+  end;
+
+  AReport.TranscriptHash :=
+    CalculateGraphNegotiationTranscriptHash(AOptions, AReport);
+  Result := AReport.Status = gnsSolved;
+end;
+
 function TGraph.TryRegenerateFrom(const APass: String;
   const AOptions: TGraphSolveOptions;
   out AReport: TGraphSolveReport): Boolean;
@@ -4465,6 +4809,22 @@ end;
 function TGraph.TrySolveInternal(const AOptions: TGraphSolveOptions;
   const ADirty: TPassSelection;
   out AReport: TGraphSolveReport): Boolean;
+var
+  LAssignments: TValueIndexMatrix;
+  LCompletedChoices: TPassSelection;
+  LExclusions: TPassAssignmentExclusions;
+begin
+  LExclusions := nil;
+  Result := TrySolveAttempt(AOptions, ADirty, LExclusions,
+    LCompletedChoices, LAssignments, AReport);
+end;
+
+function TGraph.TrySolveAttempt(const AOptions: TGraphSolveOptions;
+  const ADirty: TPassSelection;
+  const AExclusions: TPassAssignmentExclusions;
+  out ACompletedChoices: TPassSelection;
+  out AAssignments: TValueIndexMatrix;
+  out AReport: TGraphSolveReport): Boolean;
 type
   TGraphValueMatrix = array of TGraphValues;
   TGraphTraceCauseArray = array of TGraphTraceCauseKind;
@@ -4486,6 +4846,7 @@ var
   LExecutionPlan: TGraphPassIndices;
   LFullExecutionPlan: TGraphPassIndices;
   LGraph: TGraph;
+  LHasNegotiableEntry: Boolean;
   LInitialTraceCauses: TGraphTraceCauseArray;
   LInitialTraceDependencyPasses: TReferenceIntegerArray;
   LInvalidLockEntry: Integer;
@@ -4644,6 +5005,7 @@ var
       AReport.Passes[I].Propagations := 0;
       AReport.Passes[I].Contradictions := 0;
       AReport.Passes[I].Backtracks := 0;
+      AReport.Passes[I].ExcludedAssignments := 0;
       AReport.Passes[I].Executed := False;
       AReport.Passes[I].ExecutionOrdinal := -1;
       AReport.Passes[I].Disposition := gpdNotRun;
@@ -5162,6 +5524,8 @@ var
         Result := gckRequiredSupport;
       rckFinalValidation:
         Result := gckFinalValidation;
+      rckExcludedAssignment:
+        Result := gckExcludedAssignment;
     else
       Result := gckNone;
     end;
@@ -5210,6 +5574,8 @@ var
         Result := gtckBacktrack;
       rtckFinalValidation:
         Result := gtckFinalValidation;
+      rtckExcludedAssignment:
+        Result := gtckExactAssignmentExclusion;
     else
       raise ERangeError.Create('TrySolve::invalid reference trace cause');
     end;
@@ -5351,6 +5717,8 @@ var
     AReport.Passes[APassIndex].Contradictions :=
       AReference.Contradictions;
     AReport.Passes[APassIndex].Backtracks := AReference.Backtracks;
+    AReport.Passes[APassIndex].ExcludedAssignments :=
+      AReference.ExcludedAssignments;
   end;
 
   procedure SetReferenceFailure(const APassIndex: Integer;
@@ -5598,6 +5966,21 @@ begin
   if Length(ADirty) <> FPasses.Count then
     raise EInvalidOperation.Create(
       'TrySolve::pass selection does not match the pipeline');
+  if (Length(AExclusions) <> 0)
+    and (Length(AExclusions) <> FPasses.Count) then
+    raise EInvalidOperation.Create(
+      'TrySolve::pass exclusions do not match the pipeline');
+
+  SetLength(ACompletedChoices, FPasses.Count);
+  SetLength(AAssignments, FPasses.Count);
+  //Dynamic-array resizing preserves existing elements when the length is
+  //unchanged. Every round must publish only choices completed in that round;
+  //otherwise an exhausted pass could masquerade as a stale choice frame.
+  for I := 0 to Pred(FPasses.Count) do
+  begin
+    ACompletedChoices[I] := 0;
+    AAssignments[I] := nil;
+  end;
 
   Result := False;
   LCommitted := False;
@@ -5738,6 +6121,16 @@ begin
         Exit(False);
       end;
 
+      if Length(AExclusions) <> 0 then
+      begin
+        SetLength(LModel.ExcludedAssignments,
+          Length(AExclusions[LPassIndex]));
+        for I := 0 to High(AExclusions[LPassIndex]) do
+          LModel.ExcludedAssignments[I] := Copy(
+            AExclusions[LPassIndex][I], 0,
+            Length(AExclusions[LPassIndex][I]));
+      end;
+
       if not SolveReferenceModel(LModel, AOptions.MaxBacktracks,
         AOptions.CaptureTrace, LGraph.RandomIndex,
         LAssignment, LReferenceReport) then
@@ -5758,6 +6151,30 @@ begin
         LInitialTraceDependencyPasses);
       CopyPassReport(LPassIndex, LReferenceReport);
       AReport.Passes[LPassIndex].Disposition := gpdSolved;
+
+      //Ordinary TrySolve passes no exclusion matrix and must not retain an
+      //extra O(passes * cells) assignment copy. Negotiated round one passes a
+      //full matrix whose rows are initially empty, enabling choice capture.
+      if Length(AExclusions) <> 0 then
+      begin
+        //A pass made entirely of caller-owned locks is not a choice frame: an
+        //exact exclusion could never change it and would only spend budget.
+        //Generated prior output remains negotiable on a fresh transaction.
+        LHasNegotiableEntry := False;
+        for LEntryIndex := 0 to Pred(LGraph.FEntries.Count) do
+          if LGraph.FEntries[LEntryIndex].Empty
+            or LGraph.FEntries[LEntryIndex].Generated then
+          begin
+            LHasNegotiableEntry := True;
+            Break;
+          end;
+        if LHasNegotiableEntry then
+        begin
+          ACompletedChoices[LPassIndex] := 1;
+          AAssignments[LPassIndex] := Copy(LAssignment, 0,
+            Length(LAssignment));
+        end;
+      end;
 
       SetLength(LStaged[LPassIndex], LGraph.FEntries.Count);
       for LEntryIndex := 0 to Pred(LGraph.FEntries.Count) do

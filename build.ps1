@@ -22,6 +22,8 @@ $sequenceTestSource = Join-Path $repositoryRoot 'test/wfc_sequence_test.lpr'
 $textTestSource = Join-Path $repositoryRoot 'test/wfc_text_test.lpr'
 $textPassTestSource = Join-Path $repositoryRoot `
   'test/wfc_text_passes_test.lpr'
+$negotiationTestSource = Join-Path $repositoryRoot `
+  'test/wfc_negotiation_test.lpr'
 $voxelTestSource = Join-Path $repositoryRoot 'test/wfc_voxel3d_test.lpr'
 $buildingTestSource = Join-Path $repositoryRoot 'test/wfc_building3d_test.lpr'
 $traceTestSources = @(
@@ -70,6 +72,10 @@ $traceExampleSource = Join-Path $repositoryRoot `
   'examples/passes/02_TraceInspector/TraceInspector.lpr'
 $traceExampleDirectory = Join-Path $repositoryRoot `
   'examples/passes/02_TraceInspector'
+$negotiationExampleSource = Join-Path $repositoryRoot `
+  'examples/passes/03_PassNegotiation/PassNegotiation.lpr'
+$negotiationExampleDirectory = Join-Path $repositoryRoot `
+  'examples/passes/03_PassNegotiation'
 $buildingExampleSource = Join-Path $repositoryRoot `
   'examples/3D/02_MultiPassBuilding/MultiPassBuilding.lpr'
 $buildingExampleDirectory = Join-Path $repositoryRoot `
@@ -369,6 +375,42 @@ Write-Host "Running '$textPassTestExecutable'."
 $textPassTestExitCode = $LASTEXITCODE
 if ($textPassTestExitCode -ne 0) {
   exit $textPassTestExitCode
+}
+
+$negotiationTestCompilerArguments = @(
+  $CompilerOptions
+  '-B'
+  '-Mdelphi'
+  '-Sa'
+  '-Cr'
+  '-Co'
+  '-Ci'
+  "-Fu$sourceDirectory"
+  "-FU$unitOutputDirectory"
+  "-FE$binaryOutputDirectory"
+  $negotiationTestSource
+)
+
+Write-Host 'Building the bounded pass-negotiation conformance suite.'
+& $Compiler @negotiationTestCompilerArguments
+$negotiationTestCompilerExitCode = $LASTEXITCODE
+if ($negotiationTestCompilerExitCode -ne 0) {
+  exit $negotiationTestCompilerExitCode
+}
+
+$negotiationTestExecutableName = if ($env:OS -eq 'Windows_NT') {
+  'wfc_negotiation_test.exe'
+} else {
+  'wfc_negotiation_test'
+}
+$negotiationTestExecutable = Join-Path $binaryOutputDirectory `
+  $negotiationTestExecutableName
+
+Write-Host "Running '$negotiationTestExecutable'."
+& $negotiationTestExecutable
+$negotiationTestExitCode = $LASTEXITCODE
+if ($negotiationTestExitCode -ne 0) {
+  exit $negotiationTestExitCode
 }
 
 $voxelTestCompilerArguments = @(
@@ -1009,6 +1051,43 @@ Write-Host "Smoke testing '$traceExampleExecutable' with seed 0."
 $traceExampleExitCode = $LASTEXITCODE
 if ($traceExampleExitCode -ne 0) {
   exit $traceExampleExitCode
+}
+
+$negotiationExampleCompilerArguments = @(
+  $CompilerOptions
+  '-B'
+  '-Mdelphi'
+  '-Sa'
+  '-Cr'
+  '-Co'
+  '-Ci'
+  "-Fu$sourceDirectory"
+  "-Fu$negotiationExampleDirectory"
+  "-FU$unitOutputDirectory"
+  "-FE$binaryOutputDirectory"
+  $negotiationExampleSource
+)
+
+Write-Host 'Building the dependency-free pass-negotiation example.'
+& $Compiler @negotiationExampleCompilerArguments
+$negotiationExampleCompilerExitCode = $LASTEXITCODE
+if ($negotiationExampleCompilerExitCode -ne 0) {
+  exit $negotiationExampleCompilerExitCode
+}
+
+$negotiationExampleExecutableName = if ($env:OS -eq 'Windows_NT') {
+  'PassNegotiation.exe'
+} else {
+  'PassNegotiation'
+}
+$negotiationExampleExecutable = Join-Path $binaryOutputDirectory `
+  $negotiationExampleExecutableName
+
+Write-Host "Smoke testing '$negotiationExampleExecutable'."
+& $negotiationExampleExecutable | Out-Null
+$negotiationExampleExitCode = $LASTEXITCODE
+if ($negotiationExampleExitCode -ne 0) {
+  exit $negotiationExampleExitCode
 }
 
 $buildingExampleCompilerArguments = @(

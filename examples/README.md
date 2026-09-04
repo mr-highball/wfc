@@ -8,6 +8,7 @@ the [roadmap](../ROADMAP.md).
 | --- | --- | --- | --- |
 | Spatial pass constraints | `passes/01_SpatialDependencies/SpatialDependencies.lpr` and `SpatialDependenciesNode.lpr` | Native FPC, pas2js/Node | Solves terrain before settlement and foliage, checks exact-offset AND clauses plus finite any-neighbor OR clauses, contrasts bounded and wrapped edges, rejects an out-of-bounds probe, and replays portable signatures using only repository units and the standard RTL. |
 | Causal trace inspector | `passes/02_TraceInspector/TraceInspector.lpr` and `TraceInspectorNode.lpr` | Native FPC, pas2js/Node | Captures and validates a deterministic terrain -> settlement -> foliage transaction, prints its portable trace hash, pass slices, and all 27 events, then follows a rejected foliage candidate back to its settlement provider event. Both hosts emit the same event stream using only repository units and the standard RTL. |
+| Bounded pass negotiation | `passes/03_PassNegotiation/PassNegotiation.lpr` and `PassNegotiationNode.lpr` | Native FPC, pas2js/Node | Proves ordinary one-way staging fails for `marsh`, then excludes that exact provider assignment and reopens terrain to commit `meadow|cottage` in two deterministic rounds. Both hosts enforce the same counters and transcript using only repository units and the standard RTL. |
 | Multi-pass 2D world | `2D/01_MultiPassWorld/MultiPassWorld.lpr` | Native FPC, pas2js/Node | Uses the reusable 2D units, solves terrain → biome → foliage atomically, independently validates every cell/relation, and prints matching portable signatures without external dependencies. |
 | Interactive browser world | `2D/02_BrowserWorld/BrowserWorld.lpr` | pas2js/browser | Runs the same model and validator in a responsive three-layer canvas UI with seeds, wrapping, cell locks, and an exact headless-browser fixture. |
 | Selective settlement | `2D/03_SelectiveSettlement/SelectiveSettlement.lpr` | Native FPC, pas2js/Node | Solves a six-layer dependency DAG, edits hydrology, regenerates only its dependent closure, independently validates the result, proves rollback and exact recovery, and uses no external dependency. |
@@ -120,6 +121,23 @@ Both produce the 27-event seed-zero trace hash `73C4B9A2`, validate the report,
 and print the same backward chain from foliage event `15` to settlement event
 `13`. See [causal solve traces](../docs/traces.md) for the event schema,
 signature contract, query helpers, and current limits.
+
+The bounded pass-negotiation example makes the one-way failure and repaired
+composition executable on both hosts:
+
+```text
+fpc -B -Mdelphi -Sa -Cr -Co -Ci -Fusrc -Fuexamples/passes/03_PassNegotiation -FUbuild/pass-negotiation/native/units -FEbuild/pass-negotiation/native/bin examples/passes/03_PassNegotiation/PassNegotiation.lpr
+build/pass-negotiation/native/bin/PassNegotiation
+```
+
+```text
+pas2js -B -Tnodejs -Mdelphi -Fusrc -Fuexamples/passes/03_PassNegotiation -FUbuild/pass-negotiation/pas2js/units -FEbuild/pass-negotiation/pas2js/bin examples/passes/03_PassNegotiation/PassNegotiationNode.lpr
+node build/pass-negotiation/pas2js/bin/PassNegotiationNode.js
+```
+
+See the [pass-negotiation guide](passes/03_PassNegotiation/README.md) for the
+exact excluded assignment, bounded chronological behavior, portable goldens,
+and fail-fast self-check.
 
 The standard Building 3D host uses a thin native or Node entry point over the
 same depth-three Pascal demonstration unit:

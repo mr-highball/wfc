@@ -185,6 +185,8 @@ begin
     gtckBacktrack: Result := 'backtrack';
     gtckFinalValidation: Result := 'final-validation';
     gtckTransaction: Result := 'transaction';
+    gtckExactAssignmentExclusion:
+      Result := 'exact-assignment-exclusion';
   else
     Result := 'unknown-cause-' + IntToStr(Ord(AKind));
   end;
@@ -704,7 +706,10 @@ begin
       Exit(InvalidTrace(AValidation, gtvikDomainCount, I,
         LEvent.PassIndex));
 
-    if EventRequiresEntry(LEvent.Kind) then
+    if EventRequiresEntry(LEvent.Kind)
+      and not ((LEvent.Kind = gtekContradiction)
+        and (LEvent.CauseKind =
+          gtckExactAssignmentExclusion)) then
     begin
       if LEvent.EntryIndex < 0 then
         Exit(InvalidTrace(AValidation, gtvikEventFields, I,
@@ -804,10 +809,21 @@ begin
               LEvent.PassIndex));
           if (LEvent.CauseKind = gtckRequiredSupport) and
               ((LEvent.NeighborIndex <> -1) or
-                LEvent.HasDirection) then
+              LEvent.HasDirection) then
             Exit(InvalidTrace(AValidation, gtvikCausalLink, I,
               LEvent.PassIndex));
         end;
+      gtekContradiction:
+        if (LEvent.CauseKind = gtckExactAssignmentExclusion)
+          and ((LEvent.EntryIndex <> -1)
+            or (LEvent.NeighborIndex <> -1)
+            or LEvent.HasDirection
+            or (LEvent.DependencyPassIndex <> -1)
+            or ((LEvent.CauseEventId >= 0)
+              and (AReport.Trace[LEvent.CauseEventId].PassIndex <>
+                LEvent.PassIndex))) then
+          Exit(InvalidTrace(AValidation, gtvikCausalLink, I,
+            LEvent.PassIndex));
       gtekBacktrack:
         if (LEvent.CauseKind <> gtckBacktrack) or
             (LEvent.CauseEventId < 0) or

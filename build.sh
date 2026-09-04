@@ -14,6 +14,7 @@ pattern_test_source="$repository_root/test/wfc_pattern2d_test.lpr"
 sequence_test_source="$repository_root/test/wfc_sequence_test.lpr"
 text_test_source="$repository_root/test/wfc_text_test.lpr"
 text_pass_test_source="$repository_root/test/wfc_text_passes_test.lpr"
+negotiation_test_source="$repository_root/test/wfc_negotiation_test.lpr"
 voxel_test_source="$repository_root/test/wfc_voxel3d_test.lpr"
 building_test_source="$repository_root/test/wfc_building3d_test.lpr"
 trace_reference_test_source="$repository_root/test/wfc_trace_reference_test.lpr"
@@ -41,6 +42,8 @@ music_example_source="$repository_root/examples/music/03_PassComposition/PassCom
 spatial_example_source="$repository_root/examples/passes/01_SpatialDependencies/SpatialDependencies.lpr"
 trace_example_source="$repository_root/examples/passes/02_TraceInspector/TraceInspector.lpr"
 trace_example_directory="$repository_root/examples/passes/02_TraceInspector"
+negotiation_example_source="$repository_root/examples/passes/03_PassNegotiation/PassNegotiation.lpr"
+negotiation_example_directory="$repository_root/examples/passes/03_PassNegotiation"
 building_example_source="$repository_root/examples/3D/02_MultiPassBuilding/MultiPassBuilding.lpr"
 building_example_directory="$repository_root/examples/3D/02_MultiPassBuilding"
 building_common_directory="$repository_root/examples/3D/common"
@@ -60,6 +63,7 @@ compiler_pattern_test_source=$pattern_test_source
 compiler_sequence_test_source=$sequence_test_source
 compiler_text_test_source=$text_test_source
 compiler_text_pass_test_source=$text_pass_test_source
+compiler_negotiation_test_source=$negotiation_test_source
 compiler_voxel_test_source=$voxel_test_source
 compiler_building_test_source=$building_test_source
 compiler_trace_reference_test_source=$trace_reference_test_source
@@ -87,6 +91,8 @@ compiler_music_example_source=$music_example_source
 compiler_spatial_example_source=$spatial_example_source
 compiler_trace_example_source=$trace_example_source
 compiler_trace_example_directory=$trace_example_directory
+compiler_negotiation_example_source=$negotiation_example_source
+compiler_negotiation_example_directory=$negotiation_example_directory
 compiler_building_example_source=$building_example_source
 compiler_building_example_directory=$building_example_directory
 compiler_building_common_directory=$building_common_directory
@@ -106,6 +112,7 @@ case "$host_system" in
     compiler_sequence_test_source=$(cygpath -m "$sequence_test_source") || exit $?
     compiler_text_test_source=$(cygpath -m "$text_test_source") || exit $?
     compiler_text_pass_test_source=$(cygpath -m "$text_pass_test_source") || exit $?
+    compiler_negotiation_test_source=$(cygpath -m "$negotiation_test_source") || exit $?
     compiler_voxel_test_source=$(cygpath -m "$voxel_test_source") || exit $?
     compiler_building_test_source=$(cygpath -m "$building_test_source") || exit $?
     compiler_trace_reference_test_source=$(cygpath -m "$trace_reference_test_source") || exit $?
@@ -133,6 +140,8 @@ case "$host_system" in
     compiler_spatial_example_source=$(cygpath -m "$spatial_example_source") || exit $?
     compiler_trace_example_source=$(cygpath -m "$trace_example_source") || exit $?
     compiler_trace_example_directory=$(cygpath -m "$trace_example_directory") || exit $?
+    compiler_negotiation_example_source=$(cygpath -m "$negotiation_example_source") || exit $?
+    compiler_negotiation_example_directory=$(cygpath -m "$negotiation_example_directory") || exit $?
     compiler_building_example_source=$(cygpath -m "$building_example_source") || exit $?
     compiler_building_example_directory=$(cygpath -m "$building_example_directory") || exit $?
     compiler_building_common_directory=$(cygpath -m "$building_common_directory") || exit $?
@@ -311,6 +320,27 @@ esac
 
 printf "Running '%s'.\n" "$text_pass_test_executable"
 "$text_pass_test_executable" || exit $?
+
+printf "Building the bounded pass-negotiation conformance suite.\n"
+"$compiler" "$@" \
+  -B \
+  -Mdelphi \
+  -Sa \
+  -Cr \
+  -Co \
+  -Ci \
+  "-Fu$compiler_source_directory" \
+  "-FU$compiler_unit_output_directory" \
+  "-FE$compiler_binary_output_directory" \
+  "$compiler_negotiation_test_source" || exit $?
+
+negotiation_test_executable="$binary_output_directory/wfc_negotiation_test"
+case "$host_system" in
+  CYGWIN*|MINGW*|MSYS*) negotiation_test_executable="${negotiation_test_executable}.exe" ;;
+esac
+
+printf "Running '%s'.\n" "$negotiation_test_executable"
+"$negotiation_test_executable" || exit $?
 
 printf "Building the voxel-3D foundation conformance suite.\n"
 "$compiler" "$@" \
@@ -700,6 +730,28 @@ esac
 
 printf "Smoke testing '%s' with seed 0.\n" "$trace_example_executable"
 "$trace_example_executable" 0 >/dev/null || exit $?
+
+printf "Building the dependency-free pass-negotiation example.\n"
+"$compiler" "$@" \
+  -B \
+  -Mdelphi \
+  -Sa \
+  -Cr \
+  -Co \
+  -Ci \
+  "-Fu$compiler_source_directory" \
+  "-Fu$compiler_negotiation_example_directory" \
+  "-FU$compiler_unit_output_directory" \
+  "-FE$compiler_binary_output_directory" \
+  "$compiler_negotiation_example_source" || exit $?
+
+negotiation_example_executable="$binary_output_directory/PassNegotiation"
+case "$host_system" in
+  CYGWIN*|MINGW*|MSYS*) negotiation_example_executable="${negotiation_example_executable}.exe" ;;
+esac
+
+printf "Smoke testing '%s'.\n" "$negotiation_example_executable"
+"$negotiation_example_executable" >/dev/null || exit $?
 
 printf "Building the dependency-free multi-pass Building 3D example.\n"
 "$compiler" "$@" \

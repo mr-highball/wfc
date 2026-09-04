@@ -39,6 +39,7 @@ const
 
 type
   TReferenceIntegerArray = array of Integer;
+  TReferenceAssignments = array of TReferenceIntegerArray;
   TReferenceByteArray = array of Byte;
 
   TReferenceContradictionKind = (
@@ -48,7 +49,11 @@ type
     rckPreviousPass,
     rckRequiredSupport,
     rckFinalValidation,
-    rckEntryDomain
+    rckEntryDomain,
+    //A complete otherwise-valid assignment matched one of the caller's
+    //exact full-assignment exclusions. Keep this distinct from model failure
+    //so a pass-level coordinator can distinguish exhausted choice frames.
+    rckExcludedAssignment
   );
 
   TReferenceContradictionKindArray =
@@ -88,7 +93,8 @@ type
     rtckAdjacency,
     rtckRequiredSupport,
     rtckBacktrack,
-    rtckFinalValidation
+    rtckFinalValidation,
+    rtckExcludedAssignment
   );
 
   TReferenceTraceEvent = record
@@ -113,6 +119,9 @@ type
     Propagations: Integer;
     Contradictions: Integer;
     Backtracks: Integer;
+    //Number of complete, independently valid assignments rejected by the
+    //exact exclusion set during this search.
+    ExcludedAssignments: Integer;
     Contradiction: TReferenceContradiction;
     Trace: TReferenceTraceEvents;
   end;
@@ -142,6 +151,9 @@ type
     InitialFailureKinds: TReferenceContradictionKindArray;
     LockedValues: TReferenceIntegerArray;
     CellOrder: TReferenceIntegerArray;
+    //Each row is indexed by cell and contains an exact value index. Rows are
+    //hard global exclusions, not partial masks or hash-based approximations.
+    ExcludedAssignments: TReferenceAssignments;
   end;
 
 function SolveReferenceModel(const AModel: TReferenceModel;
@@ -253,6 +265,8 @@ type
     procedure ExtractAssignment(out AAssignment: TReferenceIntegerArray);
     function ValidateAssignment(const AAssignment: TReferenceIntegerArray;
       out AContradiction: TReferenceContradiction): Boolean;
+    function IsExcludedAssignment(
+      const AAssignment: TReferenceIntegerArray): Boolean;
   public
     constructor Create(const AModel: TReferenceModel;
       const AMaxBacktracks: Integer;
@@ -288,7 +302,10 @@ end;
 procedure ValidateModel(const AModel: TReferenceModel);
 var
   I: Integer;
+  J: Integer;
+  K: Integer;
   LCellValueCount: Integer;
+  LDuplicate: Boolean;
   LRelationCount: Integer;
   LSeen: TReferenceByteArray;
 begin
@@ -324,6 +341,35 @@ begin
     'LockedValues');
   RequireLength(Length(AModel.CellOrder), AModel.CellCount,
     'CellOrder');
+
+  for I := 0 to High(AModel.ExcludedAssignments) do
+  begin
+    RequireLength(Length(AModel.ExcludedAssignments[I]),
+      AModel.CellCount, 'ExcludedAssignments[' + IntToStr(I) + ']');
+    for J := 0 to High(AModel.ExcludedAssignments[I]) do
+      if (AModel.ExcludedAssignments[I][J] < 0)
+        or (AModel.ExcludedAssignments[I][J] >= AModel.ValueCount) then
+        raise ERangeError.CreateFmt(
+          'reference excluded assignment value is out of bounds '
+          + '[%d at %d,%d]',
+          [AModel.ExcludedAssignments[I][J], I, J]);
+
+    for J := 0 to Pred(I) do
+    begin
+      LDuplicate := True;
+      for K := 0 to Pred(AModel.CellCount) do
+        if AModel.ExcludedAssignments[I][K] <>
+            AModel.ExcludedAssignments[J][K] then
+        begin
+          LDuplicate := False;
+          Break;
+        end;
+      if LDuplicate then
+        raise EInvalidOperation.CreateFmt(
+          'reference excluded assignment %d duplicates assignment %d',
+          [I, J]);
+    end;
+  end;
 
   if Length(AModel.ValueWeights) <> 0 then
   begin
@@ -618,10 +664,15 @@ begin
   FReport.Contradiction.EntryIndex := AEntryIndex;
   FReport.Contradiction.NeighborIndex := ANeighborIndex;
   FReport.Contradiction.Direction := ADirection;
-  FLastContradictionEventId := AppendTraceEvent(rtekContradiction,
-    ACauseKind, ACauseEventId, AEntryIndex, -1, ANeighborIndex,
-    ADirection, CurrentDecisionDepth,
-    FDomainCounts[AEntryIndex], FDomainCounts[AEntryIndex]);
+  if (AEntryIndex >= 0) and (AEntryIndex < Length(FDomainCounts)) then
+    FLastContradictionEventId := AppendTraceEvent(rtekContradiction,
+      ACauseKind, ACauseEventId, AEntryIndex, -1, ANeighborIndex,
+      ADirection, CurrentDecisionDepth,
+      FDomainCounts[AEntryIndex], FDomainCounts[AEntryIndex])
+  else
+    FLastContradictionEventId := AppendTraceEvent(rtekContradiction,
+      ACauseKind, ACauseEventId, -1, -1, ANeighborIndex,
+      ADirection, CurrentDecisionDepth, 0, 0);
 end;
 
 procedure TReferenceSolver.EnsureTrailCapacity;
@@ -1283,6 +1334,33 @@ begin
   Result := True;
 end;
 
+function TReferenceSolver.IsExcludedAssignment(
+  const AAssignment: TReferenceIntegerArray): Boolean;
+var
+  I: Integer;
+  J: Integer;
+  LMatches: Boolean;
+begin
+  Result := False;
+  //Keep the established solver path literally untouched when no exclusions
+  //were supplied. The coordinator-facing feature is opt-in model data.
+  if Length(FModel.ExcludedAssignments) = 0 then
+    Exit;
+
+  for I := 0 to High(FModel.ExcludedAssignments) do
+  begin
+    LMatches := True;
+    for J := 0 to Pred(FModel.CellCount) do
+      if FModel.ExcludedAssignments[I][J] <> AAssignment[J] then
+      begin
+        LMatches := False;
+        Break;
+      end;
+    if LMatches then
+      Exit(True);
+  end;
+end;
+
 function TReferenceSolver.Execute(out AAssignment: TReferenceIntegerArray;
   out AReport: TReferenceSolveReport): Boolean;
 var
@@ -1299,6 +1377,7 @@ begin
   FReport.Propagations := 0;
   FReport.Contradictions := 0;
   FReport.Backtracks := 0;
+  FReport.ExcludedAssignments := 0;
   FReport.Contradiction.Kind := rckNone;
   FReport.Contradiction.EntryIndex := -1;
   FReport.Contradiction.NeighborIndex := -1;
@@ -1369,6 +1448,32 @@ begin
       FReport.Status := rssContradiction;
       PublishReport(AReport);
       Exit(False);
+    end;
+
+    if (Length(FModel.ExcludedAssignments) <> 0)
+      and IsExcludedAssignment(AAssignment) then
+    begin
+      IncrementCounter(FReport.ExcludedAssignments);
+      RecordContradiction(rckExcludedAssignment,
+        rtckExcludedAssignment, -1, -1, -1, FLastChangeEventId);
+      AAssignment := nil;
+      LRecovery := Recover;
+      case LRecovery of
+        rrRetry:
+          Continue;
+        rrLimit:
+          begin
+            FReport.Status := rssBacktrackLimit;
+            PublishReport(AReport);
+            Exit(False);
+          end;
+        rrExhausted:
+          begin
+            FReport.Status := rssContradiction;
+            PublishReport(AReport);
+            Exit(False);
+          end;
+      end;
     end;
 
     FReport.Status := rssSolved;

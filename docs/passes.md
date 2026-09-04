@@ -14,6 +14,8 @@ The pass API is part of `TGraph`; a separate pipeline object is not required.
 This guide introduces pass identity and the compatibility behavior. The
 [pass-DAG contract](pass-dags.md) specifies modes, dependency roles, named
 cross-pass requirements, planning, selective regeneration, and reports.
+The separate [bounded negotiation contract](pass-negotiation.md) specifies how
+complete atomic pipeline rounds may chronologically reopen a prior assignment.
 
 ## labels and indices
 
@@ -293,6 +295,15 @@ callbacks and traversal hooks are not invoked by `TrySolve`; `Run` remains
 available when that extension model is required. Exact algorithm, constraint,
 counter, and error semantics are in the [reference solver documentation](solver.md).
 
+`TrySolveNegotiated` is the opt-in outer search for a different question: if a
+complete provider assignment is locally valid but makes a later pass fail, can
+another whole assignment work? It retains one ordinary report per atomic
+round, excludes exact completed assignments in chronological pass order, and
+commits only the first complete success. Its local solver budget and outer pass
+budget are distinct rather than interchangeable; replaying exact exclusions
+consumes local backtracks too. Version 1 always runs the full pipeline and has
+no selective overload.
+
 The reusable [2D world ecosystem](world2d.md) applies this transaction to a
 typed terrain → biome → foliage pipeline. Its separate validator and portable
 layer signatures provide a domain-level check that the generic core does not
@@ -429,11 +440,13 @@ stream. Extra random choices in one pass do not advance another pass's stream,
 although a changed weight vector can change that pass's output and therefore
 the valid domains seen later.
 
-Every `Run` and `TrySolve` rewinds all streams. Calls to `RandomIndex` outside
-generation cannot perturb the next result, and `Reset` keeps the same seed.
-During a legacy callback, `AGraph.RandomIndex` consumes the stream for the pass
-currently being solved even if that callback temporarily switches
-`CurrentPass`.
+Every `Run` and ordinary `TrySolve` rewinds all streams. Negotiated solving
+does the same for every complete round; rejected rounds restore their stream
+state, and final success exposes only the winning round's state. Calls to
+`RandomIndex` outside generation cannot perturb the next result, and `Reset`
+keeps the same seed. During a legacy callback, `AGraph.RandomIndex` consumes
+the stream for the pass currently being solved even if that callback
+temporarily switches `CurrentPass`.
 
 Set an explicit seed whenever a result must replay across processes or
 targets:
@@ -452,8 +465,8 @@ Version 2 dependency planning is deliberately acyclic. `RequirePrevious` and
 `RequireFromPass` preserve same-coordinate compatibility;
 `RequireFromPassAt` reads one signed offset, and `RequireAnyFromPass` reads an
 explicit finite any-of-neighborhood. These are exact hard value comparisons,
-not radius searches, counts, distance metrics, soft predicates, or bounded
-feedback/repair. Transform mode has one source. Sequence
+not radius searches, counts, distance metrics, soft predicates, or a
+conflict-directed repair language. Transform mode has one source. Sequence
 projection helpers now bridge exact public tokens and private latent states in
 both directions; exact N-source sequence token-map bundles are atomic, but
 general projection schemas and overlapping-pattern pass projection remain
@@ -461,13 +474,19 @@ future work. Generic pass rules can place projected values in finite offset
 clauses, but the adapters do not infer offset relations, arithmetic predicates,
 soft preferences, or many-cell semantic joins.
 
-The staged DAG is one-way within a solve. A downstream requirement filters its
-candidate domain against provider values already staged earlier in topological
-order. If that downstream pass fails, the transaction rolls back; the solver
-does not reopen provider decisions and negotiate a different upstream result
-inside the same call. Selective regeneration deliberately starts a new
-transaction over the chosen dependent closure. Bounded feedback and repair
-remain research work rather than an undocumented global-search claim.
+The staged DAG remains one-way within ordinary `TrySolve`. A downstream
+requirement filters its candidate domain against provider values already
+staged earlier in topological order. If that downstream pass fails, the
+transaction rolls back without reopening a provider. Selective regeneration
+deliberately starts a new transaction over the chosen dependent closure.
+
+Pass Negotiation v1 adds a separate bounded sequence of full one-way rounds.
+It is global chronological rather than conflict-directed: an unrelated later
+completed pass can consume budget before the provider named by the failure.
+It excludes exact whole assignments, can be exponential, does not permit DAG
+cycles, and does not offer negotiated selective regeneration. Soft objectives,
+partial nogoods, minimal-change repair, and cyclic fixed points remain research
+work rather than implied properties.
 
 A failed legacy `Run` restores pass selection but is not a transaction over
 generated cell values. `TrySolve` and `TryRegenerateFrom` are transactional.
@@ -480,11 +499,13 @@ failed-clause/minimal-core explanations, an event cap, or streaming capture.
 
 The pass implementation and public callback types are written for both native
 FPC and pas2js. The same `TGraph`, `SwitchToPass`, `PassGraph`, `ForEachPass`,
-`DependsOn`, `TransformFrom`, `Run`, `TrySolve`, `TryRegenerateFrom`,
+`DependsOn`, `TransformFrom`, `Run`, `TrySolve`, `TrySolveNegotiated`,
+`TryRegenerateFrom`,
 `RequirePrevious`, `RequireFromPass`, `RequireFromPassAt`, and
 `RequireAnyFromPass` calls are used on both targets. `CaptureTrace`, portable
-trace hashes, per-pass slices, and the `wfc_trace` query/validation helpers have
-matching native FPC and pas2js fixtures as well.
+trace hashes, negotiation transcript hashes, per-pass slices, and the
+`wfc_trace` query/validation helpers have matching native FPC and pas2js
+fixtures as well.
 
 The host program is responsible only for presentation: a console, Lazarus
 form, canvas, WebAudio player, or other UI can read the same pass results. For

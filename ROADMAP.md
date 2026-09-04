@@ -37,6 +37,10 @@ The repository already contains the beginnings of the ecosystem:
 - atomic reference-solver staging across full and selectively regenerated pass
   closures, including locks, named dependencies, definitionless-pass behavior,
   skipped-layer preservation, and rollback on any failed descendant;
+- an opt-in Pass Negotiation v1 coordinator that chronologically excludes exact
+  completed pass assignments across atomic full-pipeline rounds, separates
+  local and pass budgets, preserves ordinary Trace-v1 reports per attempt, and
+  publishes a versioned native/pas2js transcript;
 - an opt-in Causal Trace v1 contract covering initial filters, decisions,
   propagation, contradictions, backtracking/restoration, pass lifecycle, and
   atomic commit/rollback; per-pass slices, provider-pass cause links, stable
@@ -118,7 +122,7 @@ The repository already contains the beginnings of the ecosystem:
 - native/pas2js conformance runners covering the core, pass contracts, 2D and
   voxel-3D domain semantics, learning, sequence, music, atomic failure, and
   replay signatures, including the reference-kernel, public pipeline, and
-  trace-utility contracts.
+  trace-utility and pass-negotiation contracts.
 
 It is not yet the finished system described above:
 
@@ -130,9 +134,11 @@ It is not yet the finished system described above:
 - pass DAGs, named overlay layers, same-coordinate and exact signed-offset
   requirements, finite any-of-neighborhood reads, selective regeneration, and
   structured dependency diagnostics are now operational; sequence maps now
-  provide atomic N-source bridges between unlike public vocabularies, while
-  implicit radius/count/distance expressions, cyclic negotiation/repair, and
-  general cross-representation projection schemas remain to be designed;
+  provide atomic N-source bridges between unlike public vocabularies, and the
+  first bounded acyclic backward-negotiation baseline now exists; implicit
+  radius/count/distance expressions, negotiated selective regeneration,
+  conflict-directed or cyclic repair, and general cross-representation
+  projection schemas remain to be designed;
 - the examples index now records targets, dependencies, build commands, and
   honest completion status, but full per-example tutorials, invariants,
   expected output, and troubleshooting guides remain to be written;
@@ -288,8 +294,10 @@ does not corrupt earlier committed layers. Sequential dependencies remain the
 compatibility default. Version-2 acyclic dependency graphs, named
 same-coordinate and signed-offset constraints, finite any-of-neighborhood
 clauses, deterministic topological execution, and selective descendant
-regeneration are now implemented; bounded feedback requires a separate
-termination and replay contract.
+regeneration are now implemented. Pass Negotiation v1 supplies a separate
+termination and replay contract for bounded chronological reopening over the
+complete acyclic pipeline; it does not change ordinary one-way or selective
+semantics.
 
 The first packaged domain fixture proves the sequential subset with terrain →
 biome → foliage. The selective-settlement fixture expands that proof to
@@ -304,6 +312,11 @@ failed-clause evidence, minimal contradiction sets, and streaming remain open.
 A focused spatial fixture additionally proves bounded out-of-bounds rejection
 and wrapped edge sampling for terrain consumers without adding domain knowledge
 or a runtime dependency to the core.
+The focused pass-negotiation fixture adds one-cell, two-cell, provider-
+exhaustion, and independent-provider join cases. It records exact rejected
+assignments, distinguishes local and outer limits, proves atomic rollback and
+ordinary-solver isolation, and replays attempt transcripts across native FPC
+and pas2js/Node.
 
 ### Deliverables
 
@@ -319,6 +332,8 @@ or a runtime dependency to the core.
 - Preserve Causal Trace v1 evidence for caller filters, neighbors, passes,
   decisions, contradictions, and abandoned branches.
 - Support selective regeneration with locked unaffected cells.
+- Preserve ordinary one-way replay while offering separately versioned bounded
+  full-pipeline negotiation with exact chronological evidence.
 - Extend the checked console inspector with interactive stepping, live domain
   snapshots, richer clause evidence, and bounded/streaming capture.
 
@@ -520,9 +535,10 @@ playback requirements.
 - Generalize the completion and pass-composition demonstrations into
   arbitrary-corpus training/generation CLIs and an editor that exposes exact
   single-model domains plus causal reasons for token acceptance or rejection.
-- Research bounded backward negotiation/repair as a distinct algorithm. The
-  current owner is an honest one-way atomic cascade and does not claim global
-  search across already staged providers.
+- Evaluate exposing generic Pass Negotiation v1 through the text owner. The
+  current owner remains an honest one-way atomic cascade; integration must
+  preserve public-token trace projection, dirty-root semantics, and its own
+  replay version rather than silently changing `TryGenerate`.
 
 **Exit gate:** output contains no forbidden learned neighborhoods, boundary and
 lock behavior is covered by tests, seeded completions match across native and
@@ -534,7 +550,8 @@ completion rather than an LLM replacement.
 Novel mechanisms will live in reproducible experiments before becoming stable
 API. Promising research areas include:
 
-- bounded negotiation or repair across the now-established acyclic pass DAG;
+- conflict-directed, partial-nogood, minimal-change, and selectively scoped
+  successors to the exact chronological Pass Negotiation v1 baseline;
 - soft constraints and objective functions alongside hard constraints;
 - explanation graphs and minimal contradiction sets;
 - streaming and chunk-boundary reconciliation for large or infinite worlds;
@@ -547,6 +564,12 @@ and stopping rule. Multi-pass models should be compared with equivalent
 flattened single-pass models using rule/state count, validation success,
 propagations, contradictions, backtracks, runtime, memory, and edit locality.
 Raw results and negative findings belong in `docs/research/` beside the prose.
+
+The first [Pass Negotiation v1 record](docs/research/pass-negotiation-v1.md)
+publishes its algorithm, fixed fixtures, seed set, counters, portable goldens,
+stopping rules, and negative findings. It does **not** yet compare the
+multi-pass search against an equivalent flattened model; that measurement is a
+required next experiment, so no relative-efficiency claim is made.
 
 ### Exit gate
 
