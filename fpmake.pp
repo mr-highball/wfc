@@ -50,6 +50,9 @@ begin
     P.Targets.AddUnit('wfc_voxel3d.pas');
     P.Targets.AddUnit('wfc_voxel3d_validate.pas');
     P.Targets.AddUnit('wfc_voxel3d_mesh.pas');
+    P.Targets.AddUnit('wfc_voxel3d_passes.pas');
+    P.Targets.AddUnit('wfc_building3d.pas');
+    P.Targets.AddUnit('wfc_building3d_validate.pas');
     Run;
   end;
 end.

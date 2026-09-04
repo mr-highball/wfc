@@ -3,7 +3,8 @@
 The dependency-free build covers the core, specialized 2D and settlement,
 radius-one model-learning, overlapping-pattern, sequence, exact music-score,
 music projection, Standard MIDI File, score-export, and voxel-3D units and
-their conformance suites; it also runs seeded smoke checks of the portable
+their conformance suites, plus the checked voxel pass bridge and multi-pass
+Building 3D owner/validator; it also runs seeded smoke checks of the portable
 console demos. It does not initialize the optional legacy music submodule or
 build the unfinished Castle Game Engine viewer. The browser world has its own
 dependency-free pas2js entry point described below.
@@ -27,7 +28,9 @@ follow this boundary. The exact music score, fixed-quantum cell codecs,
 cross-model projection maps, strict `wfcmusic=1` score codec, raw SMF
 format-0/1 codec, and format-0 score exporter are also project-owned portable
 Pascal. The voxel kit, semantic validator, and integer surface mesh are
-likewise project-owned and expose no engine or renderer type. Playback systems,
+likewise project-owned and expose no engine or renderer type. The voxel pass
+bridge, typed Building 3D owner, cross-layer validator, and shared
+native/pas2js demonstration are project-owned as well. Playback systems,
 editors, and viewers remain optional edge integrations; none is required to
 learn, serialize, solve, validate, export, or mesh the portable foundations.
 The GPL-3.0 SoundShop submodule, Lazarus/LCL, and SDL2 occur only in two
@@ -48,11 +51,13 @@ From the repository root, use the entry point for your shell:
 Both scripts rebuild with assertions and range, overflow, and I/O checks, run
 `wfc_test`, `wfc_world2d_test`, `wfc_world2d_settlement_test`,
 `wfc_learn_test`, `wfc_pattern2d_test`, `wfc_sequence_test`,
-`wfc_voxel3d_test`, `wfc_midi_smf_test`, `wfc_music_test`,
+`wfc_voxel3d_test`, `wfc_building3d_test`, `wfc_midi_smf_test`,
+`wfc_music_test`,
 `wfc_music_graph_test`, and `wfc_music_midi_test`, then compile and smoke-test
 the portable console
 examples with seed `0`, including the bounded/wrapped spatial dependency
-self-check; the multi-pass and selective-settlement worlds also run
+self-check and depth-three Building 3D pipeline; the multi-pass and
+selective-settlement worlds also run
 with their default seeds.
 A compiler error, failed check,
 or example failure produces a nonzero exit code. Compiler units and binaries
@@ -166,6 +171,12 @@ pas2js -B -Tnodejs -Mdelphi -Fusrc \
   test/wfc_voxel3d_test.lpr
 node build/pas2js/voxel/wfc_voxel3d_test.js
 
+mkdir -p build/pas2js/building-units build/pas2js/building
+pas2js -B -Tnodejs -Mdelphi -Fusrc \
+  -FUbuild/pas2js/building-units -FEbuild/pas2js/building \
+  test/wfc_building3d_test.lpr
+node build/pas2js/building/wfc_building3d_test.js
+
 mkdir -p build/pas2js/music-units build/pas2js/music
 for music_test in wfc_midi_smf_test wfc_music_test \
   wfc_music_graph_test wfc_music_midi_test
@@ -273,6 +284,25 @@ It checks exact-offset and finite any-neighbor clauses, bounded rejection,
 wrapped sampling, independent validation, and same-seed replay without an
 external runtime library.
 
+The depth-three Building 3D host also uses one shared Pascal implementation
+behind thin native and Node entry points:
+
+```bash
+mkdir -p build/pas2js/building-example-units \
+  build/pas2js/building-example
+pas2js -B -Tnodejs -Mdelphi -Fusrc \
+  -Fuexamples/3D/02_MultiPassBuilding \
+  -FUbuild/pas2js/building-example-units \
+  -FEbuild/pas2js/building-example \
+  examples/3D/02_MultiPassBuilding/MultiPassBuildingNode.lpr
+node build/pas2js/building-example/MultiPassBuildingNode.js 0
+```
+
+It solves and independently validates footprint -> structure ->
+envelope/roof -> props, captures the structure mesh, and emits only public
+roles, prototype identities, rotations, and portable signatures. No viewer or
+engine package is needed.
+
 A standalone `pas2js` executable is not enough when its RTL unit paths are
 missing. Use the compiler and RTL from the same installation.
 
@@ -328,8 +358,9 @@ overloaded plain-procedure callback call.
 The hosted workflow runs the checked native gate with FPC 3.2.2 on Linux,
 macOS, and Windows. The Linux lane also builds the FPM and Lazarus packages,
 runs the core Lazarus project, and verifies that generation leaves the checkout
-clean. A separate Linux lane runs the complete core, 2D, voxel-3D, learning,
-sequence, music, and pass-composition pas2js/Node.js gate, plus the real browser
-self-test in headless Chrome, while a canary runs against the current official
+clean. A separate Linux lane runs the complete core, 2D, voxel-3D, Building
+3D, learning, sequence, music, and pass-composition pas2js/Node.js gate, plus
+the real browser self-test in headless Chrome, while a canary runs against the
+current official
 FPC development image and records the image digest and compiler revision in the
 job log. Submodules are deliberately disabled for every gate.

@@ -20,6 +20,7 @@ $learningTestSource = Join-Path $repositoryRoot 'test/wfc_learn_test.lpr'
 $patternTestSource = Join-Path $repositoryRoot 'test/wfc_pattern2d_test.lpr'
 $sequenceTestSource = Join-Path $repositoryRoot 'test/wfc_sequence_test.lpr'
 $voxelTestSource = Join-Path $repositoryRoot 'test/wfc_voxel3d_test.lpr'
+$buildingTestSource = Join-Path $repositoryRoot 'test/wfc_building3d_test.lpr'
 $musicTestSources = @(
   (Join-Path $repositoryRoot 'test/wfc_midi_smf_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_music_test.lpr')
@@ -44,6 +45,10 @@ $musicExampleSource = Join-Path $repositoryRoot `
   'examples/music/03_PassComposition/PassComposition.lpr'
 $spatialExampleSource = Join-Path $repositoryRoot `
   'examples/passes/01_SpatialDependencies/SpatialDependencies.lpr'
+$buildingExampleSource = Join-Path $repositoryRoot `
+  'examples/3D/02_MultiPassBuilding/MultiPassBuilding.lpr'
+$buildingExampleDirectory = Join-Path $repositoryRoot `
+  'examples/3D/02_MultiPassBuilding'
 $worldCommonDirectory = Join-Path $repositoryRoot 'examples/2D/common'
 $unitOutputDirectory = Join-Path $repositoryRoot 'build/native/units'
 $binaryOutputDirectory = Join-Path $repositoryRoot 'build/native/bin'
@@ -300,6 +305,42 @@ Write-Host "Running '$voxelTestExecutable'."
 $voxelTestExitCode = $LASTEXITCODE
 if ($voxelTestExitCode -ne 0) {
   exit $voxelTestExitCode
+}
+
+$buildingTestCompilerArguments = @(
+  $CompilerOptions
+  '-B'
+  '-Mdelphi'
+  '-Sa'
+  '-Cr'
+  '-Co'
+  '-Ci'
+  "-Fu$sourceDirectory"
+  "-FU$unitOutputDirectory"
+  "-FE$binaryOutputDirectory"
+  $buildingTestSource
+)
+
+Write-Host 'Building the multi-pass Building 3D conformance suite.'
+& $Compiler @buildingTestCompilerArguments
+$buildingTestCompilerExitCode = $LASTEXITCODE
+if ($buildingTestCompilerExitCode -ne 0) {
+  exit $buildingTestCompilerExitCode
+}
+
+$buildingTestExecutableName = if ($env:OS -eq 'Windows_NT') {
+  'wfc_building3d_test.exe'
+} else {
+  'wfc_building3d_test'
+}
+$buildingTestExecutable = Join-Path $binaryOutputDirectory `
+  $buildingTestExecutableName
+
+Write-Host "Running '$buildingTestExecutable'."
+& $buildingTestExecutable
+$buildingTestExitCode = $LASTEXITCODE
+if ($buildingTestExitCode -ne 0) {
+  exit $buildingTestExitCode
 }
 
 foreach ($musicTestSource in $musicTestSources) {
@@ -675,4 +716,41 @@ $spatialExampleExecutable = Join-Path $binaryOutputDirectory `
 
 Write-Host "Smoke testing '$spatialExampleExecutable' with seed 0."
 & $spatialExampleExecutable 0 | Out-Null
+$spatialExampleExitCode = $LASTEXITCODE
+if ($spatialExampleExitCode -ne 0) {
+  exit $spatialExampleExitCode
+}
+
+$buildingExampleCompilerArguments = @(
+  $CompilerOptions
+  '-B'
+  '-Mdelphi'
+  '-Sa'
+  '-Cr'
+  '-Co'
+  '-Ci'
+  "-Fu$sourceDirectory"
+  "-Fu$buildingExampleDirectory"
+  "-FU$unitOutputDirectory"
+  "-FE$binaryOutputDirectory"
+  $buildingExampleSource
+)
+
+Write-Host 'Building the dependency-free multi-pass Building 3D example.'
+& $Compiler @buildingExampleCompilerArguments
+$buildingExampleCompilerExitCode = $LASTEXITCODE
+if ($buildingExampleCompilerExitCode -ne 0) {
+  exit $buildingExampleCompilerExitCode
+}
+
+$buildingExampleExecutableName = if ($env:OS -eq 'Windows_NT') {
+  'MultiPassBuilding.exe'
+} else {
+  'MultiPassBuilding'
+}
+$buildingExampleExecutable = Join-Path $binaryOutputDirectory `
+  $buildingExampleExecutableName
+
+Write-Host "Smoke testing '$buildingExampleExecutable' with seed 0."
+& $buildingExampleExecutable 0 | Out-Null
 exit $LASTEXITCODE

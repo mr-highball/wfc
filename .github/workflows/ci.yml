@@ -225,6 +225,8 @@ jobs:
           sequence_test_bin='build/pas2js/sequence-test/bin'
           voxel_test_units='build/pas2js/voxel-test/units'
           voxel_test_bin='build/pas2js/voxel-test/bin'
+          building_test_units='build/pas2js/building-test/units'
+          building_test_bin='build/pas2js/building-test/bin'
           music_test_units='build/pas2js/music-test/units'
           music_test_bin='build/pas2js/music-test/bin'
           example_units='build/pas2js/example/units'
@@ -245,6 +247,8 @@ jobs:
           music_example_bin='build/pas2js/music-example/bin'
           spatial_example_units='build/pas2js/spatial-example/units'
           spatial_example_bin='build/pas2js/spatial-example/bin'
+          building_example_units='build/pas2js/building-example/units'
+          building_example_bin='build/pas2js/building-example/bin'
           mkdir -p \
             "$test_units" "$test_bin" \
             "$world_test_units" "$world_test_bin" \
@@ -253,6 +257,7 @@ jobs:
             "$pattern_test_units" "$pattern_test_bin" \
             "$sequence_test_units" "$sequence_test_bin" \
             "$voxel_test_units" "$voxel_test_bin" \
+            "$building_test_units" "$building_test_bin" \
             "$music_test_units" "$music_test_bin" \
             "$example_units" "$example_bin" \
             "$world_example_units" "$world_example_bin" \
@@ -262,7 +267,8 @@ jobs:
             "$pattern_example_units" "$pattern_example_bin" \
             "$sequence_example_units" "$sequence_example_bin" \
             "$music_example_units" "$music_example_bin" \
-            "$spatial_example_units" "$spatial_example_bin"
+            "$spatial_example_units" "$spatial_example_bin" \
+            "$building_example_units" "$building_example_bin"
 
           "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
             -FU"$test_units" -FE"$test_bin" test/wfc_test.lpr
@@ -297,6 +303,11 @@ jobs:
             -FU"$voxel_test_units" -FE"$voxel_test_bin" \
             test/wfc_voxel3d_test.lpr
           node "$voxel_test_bin/wfc_voxel3d_test.js"
+
+          "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
+            -FU"$building_test_units" -FE"$building_test_bin" \
+            test/wfc_building3d_test.lpr
+          node "$building_test_bin/wfc_building3d_test.js"
 
           for music_test in \
             wfc_midi_smf_test \
@@ -358,6 +369,12 @@ jobs:
             -FU"$spatial_example_units" -FE"$spatial_example_bin" \
             examples/passes/01_SpatialDependencies/SpatialDependenciesNode.lpr
           node "$spatial_example_bin/SpatialDependenciesNode.js" 0 >/dev/null
+
+          "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
+            -Fuexamples/3D/02_MultiPassBuilding \
+            -FU"$building_example_units" -FE"$building_example_bin" \
+            examples/3D/02_MultiPassBuilding/MultiPassBuildingNode.lpr
+          node "$building_example_bin/MultiPassBuildingNode.js" 0 >/dev/null
 
       - name: Build and self-test browser world
         shell: bash

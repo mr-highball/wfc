@@ -73,6 +73,11 @@ The repository already contains the beginnings of the ecosystem:
   compilation, immutable scenes with portable signatures, independent
   socket/support/entrance and reachability validation, and renderer-neutral
   integer surface meshes;
+- a project-owned Building 3D v1 with a full-depth typed massing blueprint,
+  checked complete prototype projections and target-yaw spatial clauses over
+  private voxel keys, a transactional footprint -> structure -> envelope/roof
+  -> props owner, independent cross-layer validation, and one shared native
+  FPC/pas2js depth-three console and mesh fixture;
 - stack-safe iterative traversal of large planes while preserving the legacy
   solver's north/east/south/west depth-first order;
 - checked one-command native build gates, an FPM package, a runtime-only
@@ -101,9 +106,10 @@ It is not yet the finished system described above:
 - the examples index now records targets, dependencies, build commands, and
   honest completion status, but full per-example tutorials, invariants,
   expected output, and troubleshooting guides remain to be written;
-- the reusable voxel substrate is now independent of the legacy depth-one
-  building kit, but the footprint -> structure -> envelope/roof wrapper and
-  native/pas2js viewers are not yet complete; the Castle shell still does not
+- the reusable voxel substrate and footprint -> structure -> envelope/roof ->
+  props wrapper are now independent of the legacy depth-one building kit and
+  have matching native/pas2js textual and mesh output, but graphical native
+  and browser viewers are not yet complete; the Castle shell still does not
   render generated geometry;
 - the first interactive pas2js demo and browser test host now exist, but there
   is no complete pass/domain inspector or stable native/pas2js decision-trace
@@ -369,10 +375,17 @@ cross-pass invariants; the same model and seed match between native and web.
   exact six-direction graph compilation, immutable captured scenes, portable
   signatures, independent local/global validation, and renderer-neutral
   integer quad extraction on native FPC and pas2js.
+- Building 3D v1 now provides the depth-aware four-pass owner, typed massing
+  blueprints, complete private-key-safe prototype projections, target-yaw
+  spatial clauses, selective regeneration, independent cross-layer and voxel
+  validation, and a shared native/pas2js depth-three fixture with public layer
+  output and renderer-neutral mesh extraction.
 - Voxel and modular-building topologies with complete vertical constraints.
 - Rotation-aware sockets, support/load rules, empty space, entrances,
   connectivity, roofs, and multi-floor relationships.
-- Passes for footprint -> structure -> facade/roof -> props.
+- Extend the implemented footprint -> structure -> facade/roof -> props
+  pipeline with multi-floor circulation, attachment offsets, and richer load
+  states.
 - A completed Castle Game Engine native viewer and a lightweight pas2js voxel
   viewer using the same generated model and output data.
 

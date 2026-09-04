@@ -38,8 +38,11 @@ modular 3D structures, music, text, and other discrete design problems.
 > across staged provider passes. Voxel Foundation v1 adds immutable
 > rotation-aware prototypes, explicit six-face socket compatibility, vertical
 > support, captured scenes, independent validation, and renderer-neutral
-> integer surface meshes. Building passes and viewers remain tracked in the
-> [roadmap](ROADMAP.md).
+> integer surface meshes. Building 3D v1 now composes a full depth-aware
+> footprint -> structure -> envelope/roof -> props DAG through checked public
+> prototype maps, validates the result independently, and runs the same
+> textual/mesh demonstration on native FPC and pas2js/Node. Graphical viewers
+> remain tracked in the [roadmap](ROADMAP.md).
 
 ## Features
 
@@ -93,6 +96,10 @@ modular 3D structures, music, text, and other discrete design problems.
   explicit socket relations, support-aware six-direction graph compilation,
   portable scene signatures, independent connectivity validation, and integer
   quad meshes
+- [multi-pass Building 3D](docs/building3d.md) with typed 3D massing
+  blueprints, private-key-safe voxel projection maps, target-yaw spatial
+  clauses, supported structure, facade/roof and prop overlays, independent
+  validation, selective regeneration, and matching native/pas2js output
 - iterative traversal without a graph-sized call stack
 - extension hooks for custom graph and entry behavior
 - one Pascal core for native FPC and pas2js
@@ -150,6 +157,9 @@ generation, pass projection, and canonical `wfcs=1` text, see
 For the exact score model, fixed-quantum cells, music pass projection,
 `wfcmusic=1`, Standard MIDI Files, and the optional playback boundary, see the
 [music foundation](docs/music.md).
+For the reusable footprint-to-props building owner, voxel pass bridge,
+validation, capture, signatures, and depth-three demonstration, see
+[Building 3D](docs/building3d.md).
 
 ## Build and test
 
@@ -165,9 +175,10 @@ Run the checked native build and conformance suite from the repository root:
 
 Both entry points compile with checked FPC options, keep all output under
 `build/`, run the core, 2D ecosystem, selective-settlement, radius-one
-learning, overlapping-pattern, sequence, score/cell, music-graph, SMF, and
-score-to-MIDI suites, smoke-test the portable console examples—including the
-bounded/wrapped spatial dependency proof—and preserve failure exit codes.
+learning, overlapping-pattern, sequence, score/cell, music-graph, SMF,
+score-to-MIDI, voxel, and Building 3D suites, smoke-test the portable console
+examples—including the bounded/wrapped spatial dependency and depth-three
+building proofs—and preserve failure exit codes.
 The repository also includes an FPM package, a runtime-only Lazarus package,
 and the same conformance sources for pas2js/Node. Separate `build-browser.ps1` and
 `build-browser.sh` entry points stage the interactive browser world without

@@ -13,6 +13,7 @@ learning_test_source="$repository_root/test/wfc_learn_test.lpr"
 pattern_test_source="$repository_root/test/wfc_pattern2d_test.lpr"
 sequence_test_source="$repository_root/test/wfc_sequence_test.lpr"
 voxel_test_source="$repository_root/test/wfc_voxel3d_test.lpr"
+building_test_source="$repository_root/test/wfc_building3d_test.lpr"
 midi_test_source="$repository_root/test/wfc_midi_smf_test.lpr"
 music_test_source="$repository_root/test/wfc_music_test.lpr"
 music_graph_test_source="$repository_root/test/wfc_music_graph_test.lpr"
@@ -26,6 +27,8 @@ pattern_example_source="$repository_root/examples/learning/03_LearnPatterns/Lear
 sequence_example_source="$repository_root/examples/sequence/01_LearnSequence/LearnSequence.lpr"
 music_example_source="$repository_root/examples/music/03_PassComposition/PassComposition.lpr"
 spatial_example_source="$repository_root/examples/passes/01_SpatialDependencies/SpatialDependencies.lpr"
+building_example_source="$repository_root/examples/3D/02_MultiPassBuilding/MultiPassBuilding.lpr"
+building_example_directory="$repository_root/examples/3D/02_MultiPassBuilding"
 world_common_directory="$repository_root/examples/2D/common"
 unit_output_directory="$repository_root/build/native/units"
 binary_output_directory="$repository_root/build/native/bin"
@@ -40,6 +43,7 @@ compiler_learning_test_source=$learning_test_source
 compiler_pattern_test_source=$pattern_test_source
 compiler_sequence_test_source=$sequence_test_source
 compiler_voxel_test_source=$voxel_test_source
+compiler_building_test_source=$building_test_source
 compiler_midi_test_source=$midi_test_source
 compiler_music_test_source=$music_test_source
 compiler_music_graph_test_source=$music_graph_test_source
@@ -53,6 +57,8 @@ compiler_pattern_example_source=$pattern_example_source
 compiler_sequence_example_source=$sequence_example_source
 compiler_music_example_source=$music_example_source
 compiler_spatial_example_source=$spatial_example_source
+compiler_building_example_source=$building_example_source
+compiler_building_example_directory=$building_example_directory
 compiler_world_common_directory=$world_common_directory
 compiler_unit_output_directory=$unit_output_directory
 compiler_binary_output_directory=$binary_output_directory
@@ -67,6 +73,7 @@ case "$host_system" in
     compiler_pattern_test_source=$(cygpath -m "$pattern_test_source") || exit $?
     compiler_sequence_test_source=$(cygpath -m "$sequence_test_source") || exit $?
     compiler_voxel_test_source=$(cygpath -m "$voxel_test_source") || exit $?
+    compiler_building_test_source=$(cygpath -m "$building_test_source") || exit $?
     compiler_midi_test_source=$(cygpath -m "$midi_test_source") || exit $?
     compiler_music_test_source=$(cygpath -m "$music_test_source") || exit $?
     compiler_music_graph_test_source=$(cygpath -m "$music_graph_test_source") || exit $?
@@ -80,6 +87,8 @@ case "$host_system" in
     compiler_sequence_example_source=$(cygpath -m "$sequence_example_source") || exit $?
     compiler_music_example_source=$(cygpath -m "$music_example_source") || exit $?
     compiler_spatial_example_source=$(cygpath -m "$spatial_example_source") || exit $?
+    compiler_building_example_source=$(cygpath -m "$building_example_source") || exit $?
+    compiler_building_example_directory=$(cygpath -m "$building_example_directory") || exit $?
     compiler_world_common_directory=$(cygpath -m "$world_common_directory") || exit $?
     compiler_unit_output_directory=$(cygpath -m "$unit_output_directory") || exit $?
     compiler_binary_output_directory=$(cygpath -m "$binary_output_directory") || exit $?
@@ -233,6 +242,27 @@ esac
 
 printf "Running '%s'.\n" "$voxel_test_executable"
 "$voxel_test_executable" || exit $?
+
+printf "Building the multi-pass Building 3D conformance suite.\n"
+"$compiler" "$@" \
+  -B \
+  -Mdelphi \
+  -Sa \
+  -Cr \
+  -Co \
+  -Ci \
+  "-Fu$compiler_source_directory" \
+  "-FU$compiler_unit_output_directory" \
+  "-FE$compiler_binary_output_directory" \
+  "$compiler_building_test_source" || exit $?
+
+building_test_executable="$binary_output_directory/wfc_building3d_test"
+case "$host_system" in
+  CYGWIN*|MINGW*|MSYS*) building_test_executable="${building_test_executable}.exe" ;;
+esac
+
+printf "Running '%s'.\n" "$building_test_executable"
+"$building_test_executable" || exit $?
 
 for compiler_music_suite in \
   "$compiler_midi_test_source" \
@@ -458,3 +488,25 @@ esac
 
 printf "Smoke testing '%s' with seed 0.\n" "$spatial_example_executable"
 "$spatial_example_executable" 0 >/dev/null || exit $?
+
+printf "Building the dependency-free multi-pass Building 3D example.\n"
+"$compiler" "$@" \
+  -B \
+  -Mdelphi \
+  -Sa \
+  -Cr \
+  -Co \
+  -Ci \
+  "-Fu$compiler_source_directory" \
+  "-Fu$compiler_building_example_directory" \
+  "-FU$compiler_unit_output_directory" \
+  "-FE$compiler_binary_output_directory" \
+  "$compiler_building_example_source" || exit $?
+
+building_example_executable="$binary_output_directory/MultiPassBuilding"
+case "$host_system" in
+  CYGWIN*|MINGW*|MSYS*) building_example_executable="${building_example_executable}.exe" ;;
+esac
+
+printf "Smoke testing '%s' with seed 0.\n" "$building_example_executable"
+"$building_example_executable" 0 >/dev/null || exit $?

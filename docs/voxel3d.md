@@ -110,7 +110,7 @@ point, camera, shader, canvas, engine, or file-format type.
 
 ## pass composition
 
-The intended building pipeline is:
+Building 3D v1 implements the pipeline:
 
 ```text
 footprint -> structure -> envelope/roof -> props
@@ -123,8 +123,12 @@ same-cell or signed-offset reads from committed structure. Props consume the
 validated result without making a renderer part of generation.
 
 This separation is deliberate: the general voxel kit knows nothing about
-houses, while the building library can use architectural semantics without
-placing them in `TGraph`.
+houses, while `wfc_building3d` composes architectural semantics without
+placing them in `TGraph`. `wfc_voxel3d_passes` validates complete
+public-prototype maps and target-yaw-relative spatial clauses before
+translating them to private adapter keys. Callers see stable roles, module
+identities, and rotations rather than internal graph values. See the
+[Building 3D contract](building3d.md).
 
 ## version-one scope
 

@@ -138,7 +138,6 @@ type
     procedure Initialize(const AId: String;
       const APrototypes: TVoxel3DPrototypes;
       const ASocketPairs: TVoxel3DSocketPairs);
-    function MatchesAdapter(const AAdapter: TVoxel3DGraphAdapter): Boolean;
   public
     constructor Create(const AId: String;
       const APrototypes: TVoxel3DPrototypes;
@@ -155,6 +154,10 @@ type
     function VariantsCompatible(const ASourceIndex: Integer;
       const ADirection: TGraphDirection;
       const ANeighborIndex: Integer): Boolean;
+
+    //Collision-hard semantic comparison for reusable graph bridges. This
+    //checks the complete copied model and graph-key map, not just signatures.
+    function MatchesAdapter(const AAdapter: TVoxel3DGraphAdapter): Boolean;
 
     //Performs collision-hard semantic comparison. CRC-32 remains a compact
     //portable signature, never the sole authorization for a scene.
@@ -196,7 +199,6 @@ type
     FWrapNeighbors: Boolean;
 
     function Capture: TVoxel3DScene;
-    function DefinitionMatchesGraph: Boolean;
     function GetVariantCount: Integer;
     function VariantsCompatible(const ASourceIndex: Integer;
       const ADirection: TGraphDirection;
@@ -211,6 +213,12 @@ type
     function VariantGraphKeyAt(const AIndex: Integer): TGraphValue;
     function FindVariantGraphKey(const AValue: TGraphValue;
       out AVariantIndex: Integer): Boolean;
+
+    //Proves that the bound pass still contains the exact voxel registry,
+    //weights, adjacency rows, and explicit denials captured at application.
+    //Named cross-pass requirements are additive and do not change this local
+    //voxel definition identity.
+    function DefinitionMatchesGraph: Boolean;
 
     property ApplicationIdentity: String read FApplicationIdentity;
     property AppliedGraph: TGraph read FAppliedGraph;
