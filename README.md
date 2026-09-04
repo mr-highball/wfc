@@ -15,9 +15,10 @@ modular 3D structures, music, text, and other discrete design problems.
 > deterministic minimum-domain observation, bounded backtracking, structured
 > contradiction reports, and an atomic sequential pass pipeline on native FPC
 > and pas2js. The first specialized ecosystem now adds a reusable, independently
-> validated terrain → biome → foliage world with portable layer signatures.
+> validated terrain → biome → foliage world with portable layer signatures and
+> an interactive browser presentation compiled from the same Pascal model.
 > Weights, richer cross-layer constraints, additional domain libraries, and
-> complete browser demos remain tracked in the
+> broader browser inspection tools remain tracked in the
 > [roadmap](ROADMAP.md).
 
 ## Features
@@ -34,6 +35,8 @@ modular 3D structures, music, text, and other discrete design problems.
 - a typed 2D terrain/biome/foliage library with an independent semantic checker
 - versioned, fixed-token 2D layer signatures shared by native FPC and pas2js
 - matching seeded golden fixtures on native FPC and pas2js/Node
+- an interactive browser world with synchronized layers, locks, and a seeded
+  headless-browser conformance fixture
 - iterative traversal without a graph-sized call stack
 - extension hooks for custom graph and entry behavior
 - one Pascal core for native FPC and pas2js
@@ -74,8 +77,8 @@ For the reference algorithm, atomicity contract, reports, and exact constraint
 semantics, see the [reference solver](docs/solver.md).
 For exact replay behavior, callback requirements, and algorithm versioning,
 see [deterministic generation](docs/determinism.md).
-For the reusable world model, typed locks, validator, signatures, and complete
-multi-pass demo, see the [2D ecosystem](docs/world2d.md).
+For the reusable world model, typed locks, validator, signatures, and console
+and browser demonstrations, see the [2D ecosystem](docs/world2d.md).
 
 ## Build and test
 
@@ -93,8 +96,10 @@ Both entry points compile with checked FPC options, keep all output under
 `build/`, run the core and 2D ecosystem suites, smoke-test both portable
 examples, and preserve failure exit codes. The repository also includes an FPM
 package, a runtime-only Lazarus package, and the same conformance sources for
-pas2js/Node. See [building and testing](docs/building.md) for compiler
-overrides, package commands, output paths, and pas2js setup.
+pas2js/Node. Separate `build-browser.ps1` and `build-browser.sh` entry points
+stage the interactive browser world without committing generated JavaScript.
+See [building and testing](docs/building.md) for compiler overrides, package
+commands, output paths, pas2js setup, and browser self-test details.
 
 The core, specialized 2D units, conformance suites, portable 2D examples, and
 building-kit console need no submodule. The two legacy music experiments

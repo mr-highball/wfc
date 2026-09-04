@@ -10,6 +10,7 @@ test_source="$repository_root/test/wfc_test.lpr"
 world_test_source="$repository_root/test/wfc_world2d_test.lpr"
 example_source="$repository_root/examples/text/01_SimpleTiledWorld/SimpleTiledWorld.lpr"
 world_example_source="$repository_root/examples/2D/01_MultiPassWorld/MultiPassWorld.lpr"
+world_common_directory="$repository_root/examples/2D/common"
 unit_output_directory="$repository_root/build/native/units"
 binary_output_directory="$repository_root/build/native/bin"
 
@@ -20,6 +21,7 @@ compiler_test_source=$test_source
 compiler_world_test_source=$world_test_source
 compiler_example_source=$example_source
 compiler_world_example_source=$world_example_source
+compiler_world_common_directory=$world_common_directory
 compiler_unit_output_directory=$unit_output_directory
 compiler_binary_output_directory=$binary_output_directory
 host_system=$(uname -s)
@@ -30,6 +32,7 @@ case "$host_system" in
     compiler_world_test_source=$(cygpath -m "$world_test_source") || exit $?
     compiler_example_source=$(cygpath -m "$example_source") || exit $?
     compiler_world_example_source=$(cygpath -m "$world_example_source") || exit $?
+    compiler_world_common_directory=$(cygpath -m "$world_common_directory") || exit $?
     compiler_unit_output_directory=$(cygpath -m "$unit_output_directory") || exit $?
     compiler_binary_output_directory=$(cygpath -m "$binary_output_directory") || exit $?
     export MSYS2_ARG_CONV_EXCL='*'
@@ -108,6 +111,7 @@ printf "Building the portable multi-pass 2D example.\n"
   -Co \
   -Ci \
   "-Fu$compiler_source_directory" \
+  "-Fu$compiler_world_common_directory" \
   "-FU$compiler_unit_output_directory" \
   "-FE$compiler_binary_output_directory" \
   "$compiler_world_example_source" || exit $?

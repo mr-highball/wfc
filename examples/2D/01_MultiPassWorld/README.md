@@ -48,14 +48,14 @@ or solver decision traces.
 From the repository root, create output directories and compile natively:
 
 ```text
-fpc -B -Mdelphi -Sa -Cr -Co -Ci -Fusrc -FUbuild/examples/2d/native/units -FEbuild/examples/2d/native/bin examples/2D/01_MultiPassWorld/MultiPassWorld.lpr
+fpc -B -Mdelphi -Sa -Cr -Co -Ci -Fusrc -Fuexamples/2D/common -FUbuild/examples/2d/native/units -FEbuild/examples/2d/native/bin examples/2D/01_MultiPassWorld/MultiPassWorld.lpr
 build/examples/2d/native/bin/MultiPassWorld 0
 ```
 
 With a configured pas2js compiler and matching RTL:
 
 ```text
-pas2js -B -Tnodejs -Mdelphi -Fusrc -FUbuild/examples/2d/pas2js/units -FEbuild/examples/2d/pas2js/bin examples/2D/01_MultiPassWorld/MultiPassWorld.lpr
+pas2js -B -Tnodejs -Mdelphi -Fusrc -Fuexamples/2D/common -FUbuild/examples/2d/pas2js/units -FEbuild/examples/2d/pas2js/bin examples/2D/01_MultiPassWorld/MultiPassWorld.lpr
 node build/examples/2d/pas2js/bin/MultiPassWorld.js 0
 ```
 

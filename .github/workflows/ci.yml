@@ -123,7 +123,7 @@ jobs:
           test -z "$(git status --short)"
 
   pas2js:
-    name: pas2js 3.3.1 (Node.js 22)
+    name: pas2js 3.3.1 (Node.js 22 and Chrome)
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
@@ -240,10 +240,118 @@ jobs:
           node "$example_bin/SimpleTiledWorld.js" 0 >/dev/null
 
           "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
+            -Fuexamples/2D/common \
             -FU"$world_example_units" -FE"$world_example_bin" \
             examples/2D/01_MultiPassWorld/MultiPassWorld.lpr
           node "$world_example_bin/MultiPassWorld.js" 0 >/dev/null
           node "$world_example_bin/MultiPassWorld.js" >/dev/null
+
+      - name: Build and self-test browser world
+        shell: bash
+        run: |
+          pas2js="$PAS2JS_ROOT/bin/x86_64-linux/pas2js"
+          PAS2JS="$pas2js" bash ./build-browser.sh
+
+          chrome=''
+          for candidate in google-chrome google-chrome-stable chromium chromium-browser; do
+            if command -v "$candidate" >/dev/null 2>&1; then
+              chrome=$(command -v "$candidate")
+              break
+            fi
+          done
+          if [ -z "$chrome" ]; then
+            echo 'No supported Chrome or Chromium executable was found.' >&2
+            exit 1
+          fi
+
+          server_log=$(mktemp)
+          chrome_log=$(mktemp)
+          dom_file=$(mktemp)
+          profile_directory=$(mktemp -d)
+          server_pid=''
+          cleanup() {
+            if [ -n "$server_pid" ]; then
+              kill "$server_pid" 2>/dev/null || true
+              wait "$server_pid" 2>/dev/null || true
+            fi
+            rm -f -- "$server_log" "$chrome_log" "$dom_file"
+            if [ -n "$profile_directory" ] && [ -d "$profile_directory" ]; then
+              rm -rf -- "$profile_directory"
+            fi
+          }
+          trap cleanup EXIT
+
+          python3 -m http.server 4173 \
+            --bind 127.0.0.1 \
+            --directory build/browser/world2d/www \
+            >"$server_log" 2>&1 &
+          server_pid=$!
+
+          server_ready=false
+          for _ in $(seq 1 50); do
+            if curl --fail --silent \
+                http://127.0.0.1:4173/index.html >/dev/null 2>&1; then
+              server_ready=true
+              break
+            fi
+            if ! kill -0 "$server_pid" 2>/dev/null; then
+              cat "$server_log" >&2
+              exit 1
+            fi
+            sleep 0.2
+          done
+          if [ "$server_ready" != true ]; then
+            cat "$server_log" >&2
+            echo 'Timed out waiting for the browser demo HTTP server.' >&2
+            exit 1
+          fi
+
+          if ! timeout 30s "$chrome" \
+              --headless \
+              --disable-gpu \
+              --disable-dev-shm-usage \
+              --no-default-browser-check \
+              --no-first-run \
+              --user-data-dir="$profile_directory" \
+              --virtual-time-budget=15000 \
+              --dump-dom \
+              'http://127.0.0.1:4173/index.html?selftest=1' \
+              >"$dom_file" 2>"$chrome_log"; then
+            cat "$chrome_log" >&2
+            cat "$server_log" >&2
+            exit 1
+          fi
+
+          python3 - "$dom_file" <<'PY'
+          import sys
+          from html.parser import HTMLParser
+
+          class BodyParser(HTMLParser):
+              def __init__(self):
+                  super().__init__()
+                  self.attributes = None
+
+              def handle_starttag(self, tag, attributes):
+                  if tag.lower() == 'body' and self.attributes is None:
+                      self.attributes = dict(attributes)
+
+          with open(sys.argv[1], encoding='utf-8') as source:
+              parser = BodyParser()
+              parser.feed(source.read())
+
+          expected = {
+              'data-state': 'solved',
+              'data-self-test': 'passed',
+              'data-signature': '1:5B0DD75D:08022AF1:A40D0955',
+          }
+          if parser.attributes is None:
+              raise SystemExit('Rendered DOM has no body element.')
+          for name, value in expected.items():
+              actual = parser.attributes.get(name)
+              if actual != value:
+                  raise SystemExit(
+                      f'Expected body {name}={value!r}, found {actual!r}.')
+          PY
 
   development:
     name: Development FPC (official trunk image)

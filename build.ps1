@@ -18,6 +18,7 @@ $exampleSource = Join-Path $repositoryRoot `
   'examples/text/01_SimpleTiledWorld/SimpleTiledWorld.lpr'
 $worldExampleSource = Join-Path $repositoryRoot `
   'examples/2D/01_MultiPassWorld/MultiPassWorld.lpr'
+$worldCommonDirectory = Join-Path $repositoryRoot 'examples/2D/common'
 $unitOutputDirectory = Join-Path $repositoryRoot 'build/native/units'
 $binaryOutputDirectory = Join-Path $repositoryRoot 'build/native/bin'
 
@@ -139,6 +140,7 @@ $worldExampleCompilerArguments = @(
   '-Co'
   '-Ci'
   "-Fu$sourceDirectory"
+  "-Fu$worldCommonDirectory"
   "-FU$unitOutputDirectory"
   "-FE$binaryOutputDirectory"
   $worldExampleSource

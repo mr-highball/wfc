@@ -13,9 +13,9 @@ same-coordinate layer relationship, and cardinal adjacency in the generated
 world. A model-configuration defect therefore cannot validate itself merely
 because solving used the same defective table.
 
-Both units use the same source on FPC 3.2.2 and pas2js. The current web-target
-gate runs under Node.js; an interactive browser viewer remains separate roadmap
-work.
+Both units use the same source on FPC 3.2.2 and pas2js. Conformance runs under
+Node.js, and `BrowserWorld` compiles the same model and validator to a real
+interactive browser host with a separate headless-browser fixture.
 
 ## standard model
 
@@ -147,6 +147,36 @@ The checksum identifies output, not the solver's future decision-trace hash,
 and it is not cryptographic. Persist the core random and solver algorithm
 versions, seed, options, world model version, and signature version alongside
 results intended for long-term replay.
+
+## browser presentation
+
+[`BrowserWorld`](../examples/2D/02_BrowserWorld/README.md) presents terrain,
+biome, and foliage as synchronized canvases. Its controls select the seed and
+edge policy, generate the next seed, inspect one coordinate across every
+layer, and add or clear caller-owned locks. Impossible locks surface as
+contradictions through the same atomic pipeline instead of silently replacing
+the last valid output.
+
+The browser and console hosts share `world2d_showcase`, including dimensions,
+anchors, default seed, and golden signatures. Pascal remains the source of
+truth for solving, validation, signatures, rendering behavior, and event
+handling; the static HTML and CSS only define the document and presentation.
+
+Run `build-browser.ps1` or `build-browser.sh` from the repository root to stage
+the site under `build/browser/world2d/www`. Appending `?selftest=1` runs the
+seed-zero browser fixture. A successful run exposes this exact state on the
+document body:
+
+```text
+data-state="solved"
+data-self-test="passed"
+data-signature="1:5B0DD75D:08022AF1:A40D0955"
+```
+
+The hosted browser gate checks those attributes after executing the generated
+program in headless Chrome. This is deliberately distinct from Node.js
+conformance: it covers the browser target, document binding, canvas host,
+validator, and portable signature together.
 
 ## demonstration and conformance
 

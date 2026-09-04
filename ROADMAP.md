@@ -37,6 +37,9 @@ The repository already contains the beginnings of the ecosystem:
 - a reusable `wfc_world2d` terrain/biome/foliage library, a separate semantic
   validator, fixed-token portable layer signatures, and a documented
   native/pas2js multi-pass demonstration;
+- an interactive pas2js browser world with synchronized layer canvases,
+  caller-owned locks, responsive controls, and a seeded headless-browser
+  conformance fixture;
 - stack-safe iterative traversal of large planes while preserving the legacy
   solver's north/east/south/west depth-first order;
 - checked one-command native build gates, an FPM package, a runtime-only
@@ -62,9 +65,9 @@ It is not yet the finished system described above:
   expected output, and troubleshooting guides remain to be written;
 - the Castle example does not yet render generated building geometry, and the
   building-kit demo currently runs with a depth of one;
-- there is no interactive pas2js demo, browser test host, or complete stable
-  native/pas2js decision-trace parity suite (canonical seeded value fixtures
-  do already match);
+- the first interactive pas2js demo and browser test host now exist, but there
+  is no complete pass/domain inspector or stable native/pas2js decision-trace
+  parity suite (canonical seeded value fixtures do already match);
 - the hosted CI definition is present, but its first remote run still needs to
   be observed before the Phase 0 exit gate is claimed complete;
 - music playback currently depends on the GPL-licensed SoundShop submodule,
@@ -251,14 +254,18 @@ tests, and an explanation is not a finished ecosystem.
 Model version 1 now provides a bounded/wrapped depth-one wrapper, typed
 terrain/biome/foliage layers, caller locks, an independent semantic validator,
 portable CRC signatures, a focused conformance suite, and a shared-source
-console demo. This is the first vertical slice, not the completed exit gate.
+console demo. An interactive browser field instrument now runs the same model,
+shows all three layers, supports cell locks, and exposes a deterministic
+headless self-test. This is the first vertical slice, not the completed exit
+gate.
 
 - Extend the current bounded/wrapped grid with masked and chunked topologies.
 - Extend the current terrain/biome/foliage model with coast/hydrology, roads,
   settlements, and richer decoration helpers.
 - Image/tile-set learning with rotation and reflection policies.
-- A console example, a native visual inspector, and an interactive browser
-  playground showing the complete multi-pass world pipeline.
+- Extend the console example and current browser field instrument into native
+  and browser inspectors that expose domains, propagation, and contradiction
+  traces across the complete multi-pass pipeline.
 
 **Exit gate:** every displayed map passes terrain, connectivity, occupancy, and
 cross-pass invariants; the same model and seed match between native and web.

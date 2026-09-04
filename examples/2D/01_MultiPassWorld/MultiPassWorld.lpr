@@ -9,46 +9,8 @@ uses
   {$ENDIF}
   wfc,
   wfc_world2d,
-  wfc_world2d_validate;
-
-const
-  WORLD_WIDTH = 32;
-  WORLD_HEIGHT = 14;
-  DEFAULT_SEED = TGraphSeed($4D505731);
-  EXPECTED_DEFAULT_SIGNATURE = '1:81F03F86:9069C5F9:41619106';
-  EXPECTED_SEED_ZERO_SIGNATURE = '1:5B0DD75D:08022AF1:A40D0955';
-
-procedure ApplyShowcaseAnchors(const AWorld: TWorld2D);
-var
-  LCenterX: TGraphCoordinate;
-  LCenterY: TGraphCoordinate;
-begin
-  LCenterX := AWorld.Width div 2;
-  LCenterY := AWorld.Height div 2;
-  AWorld
-    .Lock(w2lTerrain, 0, 0, WFC_WORLD2D_TERRAIN_WATER)
-    .Lock(w2lTerrain, 1, 0, WFC_WORLD2D_TERRAIN_LAND)
-    .Lock(w2lTerrain, LCenterX, LCenterY, WFC_WORLD2D_TERRAIN_LAND)
-    .Lock(w2lTerrain, LCenterX - 1, LCenterY,
-      WFC_WORLD2D_TERRAIN_LAND)
-    .Lock(w2lTerrain, LCenterX + 1, LCenterY,
-      WFC_WORLD2D_TERRAIN_LAND)
-    .Lock(w2lTerrain, LCenterX, LCenterY - 1,
-      WFC_WORLD2D_TERRAIN_LAND)
-    .Lock(w2lTerrain, LCenterX, LCenterY + 1,
-      WFC_WORLD2D_TERRAIN_LAND)
-    .Lock(w2lTerrain, AWorld.Width - 1, AWorld.Height - 1,
-      WFC_WORLD2D_TERRAIN_MOUNTAIN)
-    .Lock(w2lBiome, 0, 0, WFC_WORLD2D_BIOME_OCEAN)
-    .Lock(w2lBiome, 1, 0, WFC_WORLD2D_BIOME_SHORE)
-    .Lock(w2lBiome, LCenterX, LCenterY, WFC_WORLD2D_BIOME_WOODLAND)
-    .Lock(w2lBiome, AWorld.Width - 1, AWorld.Height - 1,
-      WFC_WORLD2D_BIOME_ALPINE)
-    .Lock(w2lFoliage, 1, 0, WFC_WORLD2D_FOLIAGE_REEDS)
-    .Lock(w2lFoliage, LCenterX, LCenterY, WFC_WORLD2D_FOLIAGE_TREE)
-    .Lock(w2lFoliage, AWorld.Width - 1, AWorld.Height - 1,
-      WFC_WORLD2D_FOLIAGE_PINE);
-end;
+  wfc_world2d_validate,
+  world2d_showcase;
 
 function GlyphFor(const ALayer: TWorld2DLayer;
   const AValue: TGraphValue): Char;
@@ -119,22 +81,6 @@ begin
       ' backtracks=', AReport.Passes[I].Backtracks);
 end;
 
-procedure VerifyShowcaseSignature(const ASeed: TGraphSeed;
-  const ASignature: String);
-var
-  LExpected: String;
-begin
-  LExpected := '';
-  if ASeed = DEFAULT_SEED then
-    LExpected := EXPECTED_DEFAULT_SIGNATURE
-  else if ASeed = 0 then
-    LExpected := EXPECTED_SEED_ZERO_SIGNATURE;
-  if (LExpected <> '') and (ASignature <> LExpected) then
-    raise EWorld2D.CreateFmt(
-      'showcase signature mismatch for seed %s: expected %s, got %s',
-      [UIntToStr(ASeed), LExpected, ASignature]);
-end;
-
 var
   LConfig: TWorld2DConfig;
   LOptions: TGraphSolveOptions;
@@ -144,13 +90,14 @@ var
   LWorld: TWorld2D;
 begin
   LConfig := DefaultWorld2DConfig;
-  LConfig.Seed := DEFAULT_SEED;
+  LConfig.Seed := WFC_WORLD2D_SHOWCASE_DEFAULT_SEED;
   if ParamCount > 0 then
     LConfig.Seed := TGraphSeed(StrToQWord(ParamStr(1)));
 
-  LWorld := TWorld2D.Create(WORLD_WIDTH, WORLD_HEIGHT, LConfig);
+  LWorld := TWorld2D.Create(WFC_WORLD2D_SHOWCASE_WIDTH,
+    WFC_WORLD2D_SHOWCASE_HEIGHT, LConfig);
   try
-    ApplyShowcaseAnchors(LWorld);
+    ApplyWorld2DShowcaseAnchors(LWorld);
     LOptions := DefaultGraphSolveOptions;
     LOptions.MaxBacktracks := 8192;
     if not LWorld.TryGenerate(LOptions, LReport) then
@@ -162,7 +109,7 @@ begin
       raise EWorld2D.Create(
         DescribeWorld2DValidationIssue(LValidation.Issue));
     LSignature := LWorld.PipelineSignature;
-    VerifyShowcaseSignature(LWorld.Seed, LSignature);
+    VerifyWorld2DShowcaseSignature(LWorld.Seed, LSignature);
 
     WriteLn('Seed: ', LWorld.Seed);
     WriteLn('Model version: ', WFC_WORLD2D_MODEL_VERSION);
