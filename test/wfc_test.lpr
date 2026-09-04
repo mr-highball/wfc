@@ -9,6 +9,7 @@ uses
   Classes,
   SysUtils,
   Generics.Collections,
+  wfc_solver_reference,
   wfc;
 
 type
@@ -53,6 +54,36 @@ type
     procedure DoGetStartCoord(out X, Y: TGraphCoordinate); override;
   end;
 
+  TCommitFailEntry = class(TGraphEntry)
+  strict protected
+    procedure DoBeforeSetValue(const AValue: TGraphValue); override;
+  end;
+
+  TCommitFailGraph = class(TGraph)
+  strict protected
+    function DoCreateEntry: TGraphEntry; override;
+  end;
+
+  TCommitMutateEntry = class(TGraphEntry)
+  strict protected
+    procedure DoAfterSetValue(const AValue: TGraphValue); override;
+  end;
+
+  TCommitMutateGraph = class(TGraph)
+  strict protected
+    function DoCreateEntry: TGraphEntry; override;
+  end;
+
+  TCommitIdentityEntry = class(TGraphEntry)
+  strict protected
+    procedure DoAfterSetValue(const AValue: TGraphValue); override;
+  end;
+
+  TCommitIdentityGraph = class(TGraph)
+  strict protected
+    function DoCreateEntry: TGraphEntry; override;
+  end;
+
 const
   MAX_CAPTURED_PASSES = 16;
 
@@ -78,6 +109,14 @@ var
   GFailEntryCreateAt: Integer = 0;
   GTraversalCount: Integer = 0;
   GTraversalIndices: array[0..Pred(MAX_CAPTURED_PASSES)] of Integer;
+  GCommitSetCount: Integer = 0;
+  GFailCommitSetAt: Integer = 0;
+  GCommitMutationSourceIndex: Integer = -1;
+  GCommitMutationTarget: TGraphEntry = nil;
+  GCommitIdentityGraph: TGraph = nil;
+  GCommitIdentityCount: Integer = 0;
+  GCommitIdentitySwitchSelection: Boolean = False;
+  GCommitIdentityPasses: array[0..Pred(MAX_CAPTURED_PASSES)] of Integer;
 
 function TTestGraph.DoCreateEntry: TGraphEntry;
 begin
@@ -151,6 +190,56 @@ procedure TFixedStartGraph.DoGetStartCoord(out X, Y: TGraphCoordinate);
 begin
   X := 0;
   Y := 0;
+end;
+
+procedure TCommitFailEntry.DoBeforeSetValue(const AValue: TGraphValue);
+begin
+  inherited DoBeforeSetValue(AValue);
+  Inc(GCommitSetCount);
+  if (GFailCommitSetAt > 0)
+    and (GCommitSetCount = GFailCommitSetAt) then
+    raise Exception.Create('intentional reference commit failure');
+end;
+
+function TCommitFailGraph.DoCreateEntry: TGraphEntry;
+begin
+  Result := TCommitFailEntry.Create;
+end;
+
+procedure TCommitMutateEntry.DoAfterSetValue(const AValue: TGraphValue);
+begin
+  inherited DoAfterSetValue(AValue);
+  if (Index = GCommitMutationSourceIndex)
+    and Assigned(GCommitMutationTarget) then
+    GCommitMutationTarget.Value := 'outside';
+end;
+
+function TCommitMutateGraph.DoCreateEntry: TGraphEntry;
+begin
+  Result := TCommitMutateEntry.Create;
+end;
+
+procedure TCommitIdentityEntry.DoAfterSetValue(const AValue: TGraphValue);
+begin
+  inherited DoAfterSetValue(AValue);
+  if Assigned(GCommitIdentityGraph)
+    and (GCommitIdentityCount < MAX_CAPTURED_PASSES) then
+  begin
+    GCommitIdentityPasses[GCommitIdentityCount] :=
+      GCommitIdentityGraph.CurrentPassIndex;
+    Inc(GCommitIdentityCount);
+    if GCommitIdentitySwitchSelection
+      and (GCommitIdentityGraph.TotalPassCount > 1) then
+      if GCommitIdentityGraph.CurrentPassIndex = 0 then
+        GCommitIdentityGraph.SwitchToPass(1)
+      else
+        GCommitIdentityGraph.SwitchToPass(0);
+  end;
+end;
+
+function TCommitIdentityGraph.DoCreateEntry: TGraphEntry;
+begin
+  Result := TCommitIdentityEntry.Create;
 end;
 
 procedure Check(const ACondition: Boolean; const AMessage: String);
@@ -395,6 +484,42 @@ begin
   Result.SwitchToPass('second');
   Result.AddValue('X');
   Result.AddValue('Y');
+end;
+
+function NewReferenceEqualityFixture: TGraph;
+begin
+  Result := TGraph.Create;
+  Result.Seed := 0;
+  Result.Reshape(3, 1, 1);
+  Result.WrapNeighbors := False;
+  Result.AddValue('A').NewRule([gdEast, gdWest], 'A');
+  Result.AddValue('B').NewRule([gdEast, gdWest], 'B');
+  Result.Entry[0, 0, 0].Value := 'A';
+end;
+
+function NewReferenceEscapeRing: TGraph;
+begin
+  Result := TGraph.Create;
+  Result.Seed := 0;
+  Result.Reshape(3, 1, 1);
+  Result.AddValue('A').NewRule([gdEast, gdWest], 'B');
+  Result.AddValue('C').NewRule([gdEast, gdWest], 'C');
+end;
+
+function NewReferenceOddRing: TGraph;
+begin
+  Result := TGraph.Create;
+  Result.Seed := 0;
+  Result.Reshape(3, 1, 1);
+  Result.AddValue('A').NewRule([gdEast, gdWest], 'B');
+end;
+
+function SamePassSolveReport(const A, B: TGraphPassSolveReport): Boolean;
+begin
+  Result := (A.Decisions = B.Decisions)
+    and (A.Propagations = B.Propagations)
+    and (A.Contradictions = B.Contradictions)
+    and (A.Backtracks = B.Backtracks);
 end;
 
 procedure CapturePass(const AGraph: TGraph; const APass: String;
@@ -684,6 +809,7 @@ begin
   finally
     LGraph.Free;
   end;
+
 end;
 
 procedure TestSeededWrappedTopDownReplay;
@@ -706,6 +832,7 @@ begin
   finally
     LGraph.Free;
   end;
+
 end;
 
 procedure TestRandomCallbackPassIdentity;
@@ -1774,6 +1901,857 @@ begin
   end;
 end;
 
+procedure TestReferencePropagation;
+var
+  LGraph: TGraph;
+  LOptions: TGraphSolveOptions;
+  LReport: TGraphSolveReport;
+  LRaised: Boolean;
+begin
+  Check(WFC_SOLVER_ALGORITHM_VERSION = 1,
+    'the reference solver has an explicit replay version');
+  LOptions := DefaultGraphSolveOptions;
+  Check(LOptions.MaxBacktracks = 256,
+    'the reference solver exposes a stable default backtrack limit');
+
+  LGraph := NewReferenceEqualityFixture;
+  try
+    Check(LGraph.TrySolve(LOptions, LReport),
+      'fixed-point propagation solves a locked equality chain');
+    Check(SnapshotPass(LGraph, 0) = 'AAA/|',
+      'propagation reaches the end of the chain before observation');
+    Check((LReport.Status = gssSolved)
+      and (LReport.FailedPassIndex = -1)
+      and (LReport.Contradiction.Kind = gckNone),
+      'a solved report has no terminal contradiction');
+    Check((LReport.Passes[0].Decisions = 0)
+      and (LReport.Passes[0].Propagations = 2)
+      and (LReport.Passes[0].Contradictions = 0)
+      and (LReport.Passes[0].Backtracks = 0),
+      'the equality-chain report freezes propagation counters');
+    Check((not LGraph.Entry[0, 0, 0].Generated)
+      and LGraph.Entry[1, 0, 0].Generated
+      and LGraph.Entry[2, 0, 0].Generated,
+      'reference solving preserves locks and owns generated cells');
+
+    LOptions.MaxBacktracks := -1;
+    LRaised := False;
+    try
+      LGraph.TrySolve(LOptions, LReport);
+    except
+      on E: ERangeError do
+        LRaised := True;
+    end;
+    Check(LRaised, 'a negative reference backtrack limit is rejected');
+    Check(SnapshotPass(LGraph, 0) = 'AAA/|',
+      'an invalid option cannot mutate solved output');
+  finally
+    LGraph.Free;
+  end;
+
+  LOptions := DefaultGraphSolveOptions;
+  LGraph := TGraph.Create;
+  try
+    LGraph.Reshape(0, 1, High(TGraphCoordinate));
+    LGraph.AddValue('A');
+    Check(LGraph.TrySolve(LOptions, LReport),
+      'a defined zero-cell graph solves without traversing empty dimensions');
+    Check((LReport.Status = gssSolved)
+      and (Length(LReport.Passes) = 1),
+      'zero-cell reference solving returns a complete report');
+  finally
+    LGraph.Free;
+  end;
+
+  LGraph := TGraph.Create;
+  try
+    LGraph.Reshape(1, 1, 1);
+    LGraph.AddValue('A');
+    Check(LGraph.PassGraph[0].TrySolve(LOptions, LReport),
+      'calling TrySolve through a pass graph coordinates the root pipeline');
+    Check((LGraph.Entry[0, 0, 0].Value = 'A')
+      and LGraph.Entry[0, 0, 0].Generated,
+      'pass-graph reference solving commits root-owned output');
+  finally
+    LGraph.Free;
+  end;
+end;
+
+procedure TestReferenceModeTieBreak;
+var
+  LBottom: TGraph;
+  LFailure: TGraph;
+  LOptions: TGraphSolveOptions;
+  LReport: TGraphSolveReport;
+  LTop: TGraph;
+begin
+  LOptions := DefaultGraphSolveOptions;
+  LBottom := TGraph.Create;
+  LTop := TGraph.Create;
+  try
+    LBottom.Seed := 0;
+    LBottom.Reshape(1, 1, 2);
+    LBottom.WrapNeighbors := False;
+    LBottom.AddValue('A');
+    LBottom.AddValue('B');
+    Check(LBottom.TrySolve(LOptions, LReport),
+      'bottom-up reference tie fixture solves');
+    Check(SnapshotPass(LBottom, 0) = 'A/|B/|',
+      'bottom-up MRV ties visit lower Z first');
+    Check((LReport.Passes[0].Decisions = 2)
+      and (LReport.Passes[0].Propagations = 0),
+      'unconstrained tie decisions do not count as propagation');
+
+    LTop.Seed := 0;
+    LTop.Reshape(1, 1, 2);
+    LTop.WrapNeighbors := False;
+    LTop.Mode := rmTopDown;
+    LTop.AddValue('A');
+    LTop.AddValue('B');
+    Check(LTop.TrySolve(LOptions, LReport),
+      'top-down reference tie fixture solves');
+    Check(SnapshotPass(LTop, 0) = 'B/|A/|',
+      'top-down MRV ties visit upper Z first');
+  finally
+    LTop.Free;
+    LBottom.Free;
+  end;
+
+  LFailure := TGraph.Create;
+  try
+    LFailure.Reshape(1, 1, 2);
+    LFailure.WrapNeighbors := False;
+    LFailure.Mode := rmTopDown;
+    LFailure.AddValue('R').NewRule([gdNorth], 'R', True);
+    Check(not LFailure.TrySolve(LOptions, LReport),
+      'top-down required propagation reports an unsatisfied domain');
+    Check((LReport.Contradiction.Kind = gckRequiredSupport)
+      and (LReport.Contradiction.EntryIndex = 1),
+      'initial contradiction evidence follows the documented cell order');
+  finally
+    LFailure.Free;
+  end;
+end;
+
+procedure TestReferenceMrvSelection;
+var
+  LGraph: TGraph;
+  LOptions: TGraphSolveOptions;
+  LReport: TGraphSolveReport;
+begin
+  LOptions := DefaultGraphSolveOptions;
+  LGraph := TGraph.Create;
+  try
+    LGraph.Seed := 0;
+    LGraph.Reshape(2, 1, 1);
+    LGraph.WrapNeighbors := False;
+    //A definitionless input pass supplies domains of size three at entry 0
+    //and size two at entry 1 in the choices pass.
+    LGraph.Entry[0, 0, 0].Value := '3';
+    LGraph.Entry[1, 0, 0].Value := '2';
+    LGraph.SwitchToPass('choices');
+    LGraph.AddValue('A').RequirePrevious(['3', '2']);
+    LGraph.AddValue('B').RequirePrevious(['3', '2']);
+    LGraph.AddValue('C').RequirePrevious('3');
+
+    Check(LGraph.TrySolve(LOptions, LReport),
+      'the unequal-domain MRV fixture solves');
+    Check(SnapshotPass(LGraph, 1) = 'AB/|',
+      'MRV observes the size-two entry before the lower-index size-three entry');
+    Check((LReport.Passes[1].Decisions = 2)
+      and (LReport.Passes[1].Contradictions = 0),
+      'the MRV fixture records two stable observations');
+  finally
+    LGraph.Free;
+  end;
+end;
+
+procedure TestReferenceWrappedArcs;
+var
+  LGraph: TGraph;
+  LOptions: TGraphSolveOptions;
+  LReport: TGraphSolveReport;
+begin
+  LOptions := DefaultGraphSolveOptions;
+  LGraph := TGraph.Create;
+  try
+    LGraph.Seed := 0;
+    LGraph.Reshape(1, 1, 1);
+    LGraph.AddValue('A').NewRule([gdEast, gdWest], 'B');
+    Check(not LGraph.TrySolve(LOptions, LReport),
+      'an alternating wrapped self-arc is contradictory');
+    Check((LReport.Status = gssContradiction)
+      and (LReport.Contradiction.Kind = gckAdjacency),
+      'a wrapped self failure reports adjacency evidence');
+    Check(LGraph.Entry[0, 0, 0].Empty,
+      'a wrapped self contradiction commits no output');
+  finally
+    LGraph.Free;
+  end;
+
+  LGraph := TGraph.Create;
+  try
+    LGraph.Reshape(1, 1, 1);
+    LGraph.AddValue('A').NewRule(AllDirections, 'A');
+    Check(LGraph.TrySolve(LOptions, LReport),
+      'a compatible wrapped self-arc solves');
+    Check(LGraph.Entry[0, 0, 0].Value = 'A',
+      'the compatible wrapped singleton commits its value');
+  finally
+    LGraph.Free;
+  end;
+
+  LGraph := TGraph.Create;
+  try
+    LGraph.Reshape(2, 1, 1);
+    LGraph.AddValue('K')
+      .NewRule([gdWest], 'A')
+      .NewRule([gdEast], 'B');
+    LGraph.Entry[0, 0, 0].Value := 'K';
+    Check(not LGraph.TrySolve(LOptions, LReport),
+      'duplicate directions to one wrapped neighbor stay conjunctive');
+    Check((LReport.Contradiction.Kind = gckAdjacency)
+      and (LReport.Contradiction.NeighborIndex >= 0),
+      'duplicate-arc failure identifies the conflicting neighbor');
+    Check(LGraph.Entry[1, 0, 0].Empty,
+      'duplicate-arc contradiction leaves the unlocked cell empty');
+  finally
+    LGraph.Free;
+  end;
+end;
+
+procedure TestReferenceBacktracking;
+var
+  LGraph: TGraph;
+  LOptions: TGraphSolveOptions;
+  LReport: TGraphSolveReport;
+  LTwin: TGraph;
+begin
+  LOptions := DefaultGraphSolveOptions;
+  LOptions.MaxBacktracks := 0;
+  LGraph := NewReferenceEscapeRing;
+  LTwin := NewReferenceEscapeRing;
+  try
+    Check(not LGraph.TrySolve(LOptions, LReport),
+      'zero backtracks stops after the first failed branch');
+    Check((LReport.Status = gssBacktrackLimit)
+      and (LReport.Passes[0].Backtracks = 0)
+      and (LReport.Passes[0].Contradictions = 1),
+      'the zero-limit report distinguishes exhaustion from contradiction');
+    Check(SnapshotPass(LGraph, 0) = '/|',
+      'backtrack-limit exhaustion is atomic');
+    Check(LGraph.RandomIndex(1000) = LTwin.RandomIndex(1000),
+      'failed reference solving restores the pre-call random stream');
+  finally
+    LTwin.Free;
+    LGraph.Free;
+  end;
+
+  LOptions.MaxBacktracks := 1;
+  LGraph := NewReferenceEscapeRing;
+  try
+    Check(LGraph.TrySolve(LOptions, LReport),
+      'one backtrack escapes an initially failing odd-ring branch');
+    Check(SnapshotPass(LGraph, 0) = 'CCC/|',
+      'bounded recovery commits the self-compatible ring state');
+    Check((LReport.Passes[0].Decisions = 2)
+      and (LReport.Passes[0].Contradictions = 1)
+      and (LReport.Passes[0].Backtracks = 1),
+      'successful recovery freezes decision and backtrack counters');
+  finally
+    LGraph.Free;
+  end;
+
+  LOptions.MaxBacktracks := 16;
+  LGraph := NewReferenceOddRing;
+  try
+    Check(not LGraph.TrySolve(LOptions, LReport),
+      'a two-value alternating odd ring is proven unsatisfiable');
+    Check((LReport.Status = gssContradiction)
+      and (LReport.Passes[0].Decisions = 2)
+      and (LReport.Passes[0].Contradictions = 2)
+      and (LReport.Passes[0].Backtracks = 2),
+      'exhausting every odd-ring branch reports a contradiction');
+    Check(SnapshotPass(LGraph, 0) = '/|',
+      'an exhausted unsatisfiable search commits nothing');
+  finally
+    LGraph.Free;
+  end;
+end;
+
+procedure TestReferenceRequiredSupport;
+var
+  LGraph: TGraph;
+  LOptions: TGraphSolveOptions;
+  LReport: TGraphSolveReport;
+begin
+  LOptions := DefaultGraphSolveOptions;
+  LGraph := TGraph.Create;
+  try
+    LGraph.Reshape(2, 1, 1);
+    LGraph.WrapNeighbors := False;
+    LGraph.AddValue('A').NewRule([gdWest], 'R', True);
+    LGraph.AddValue('.');
+    LGraph.Entry[0, 0, 0].Value := 'A';
+    Check(LGraph.TrySolve(LOptions, LReport),
+      'a locked required source forces a supported neighbor');
+    Check(SnapshotPass(LGraph, 0) = 'AR/|',
+      'required support commits the forced neighbor value');
+  finally
+    LGraph.Free;
+  end;
+
+  LGraph := TGraph.Create;
+  try
+    LGraph.Reshape(1, 1, 1);
+    LGraph.WrapNeighbors := False;
+    LGraph.AddValue('A').NewRule([gdWest], 'R', True);
+    LGraph.AddValue('.');
+    Check(LGraph.TrySolve(LOptions, LReport),
+      'orphan required-only values are removed without contradiction');
+    Check(LGraph.Entry[0, 0, 0].Value = '.',
+      'the nonrequired fallback survives orphan pruning');
+    Check(LReport.Passes[0].Propagations = 2,
+      'orphan required candidates are reported as propagations');
+  finally
+    LGraph.Free;
+  end;
+
+  LGraph := TGraph.Create;
+  try
+    LGraph.Reshape(1, 1, 1);
+    LGraph.WrapNeighbors := False;
+    LGraph.AddValue('A').NewRule([gdWest], 'R', True);
+    LGraph.Entry[0, 0, 0].Value := 'R';
+    Check(LGraph.TrySolve(LOptions, LReport),
+      'a caller lock retains the legacy required-support exemption');
+    Check((LGraph.Entry[0, 0, 0].Value = 'R')
+      and (not LGraph.Entry[0, 0, 0].Generated),
+      'a required-only lock remains caller-owned');
+  finally
+    LGraph.Free;
+  end;
+end;
+
+procedure TestReferenceKernelContract;
+var
+  I: Integer;
+  LAssignment: TReferenceIntegerArray;
+  LModel: TReferenceModel;
+  LReport: TReferenceSolveReport;
+
+  function KernelRelationIndex(const ADirection, ACurrentValue,
+    ANeighborValue: Integer): Integer;
+  begin
+    Result := ((ADirection * LModel.ValueCount + ACurrentValue)
+      * LModel.ValueCount) + ANeighborValue;
+  end;
+begin
+  LModel := Default(TReferenceModel);
+  LModel.CellCount := 1;
+  LModel.ValueCount := 2;
+  SetLength(LModel.Neighbors, WFC_REFERENCE_DIRECTION_COUNT);
+  for I := 0 to High(LModel.Neighbors) do
+    LModel.Neighbors[I] := -1;
+  SetLength(LModel.Compatibility,
+    WFC_REFERENCE_DIRECTION_COUNT * 2 * 2);
+  SetLength(LModel.RequiredValues, 2);
+  SetLength(LModel.RequiredSupport, Length(LModel.Compatibility));
+  SetLength(LModel.InitialAllowed, 2);
+  SetLength(LModel.InitialFailureKinds, 1);
+  SetLength(LModel.LockedValues, 1);
+  SetLength(LModel.CellOrder, 1);
+  LModel.InitialAllowed[0] := 1;
+  LModel.InitialAllowed[1] := 1;
+  LModel.RequiredValues[1] := 1;
+  LModel.InitialFailureKinds[0] := rckEmptyDomain;
+  LModel.LockedValues[0] := 1;
+  LModel.CellOrder[0] := 0;
+
+  Check(SolveReferenceModel(LModel, 0, nil, LAssignment, LReport),
+    'a flat-kernel lock is enforced and exempt from required support');
+  Check((Length(LAssignment) = 1) and (LAssignment[0] = 1)
+    and (LReport.Decisions = 0),
+    'kernel lock filtering is deterministic and does not count as propagation');
+
+  LModel := Default(TReferenceModel);
+  LModel.CellCount := 2;
+  LModel.ValueCount := 4;
+  SetLength(LModel.Neighbors,
+    LModel.CellCount * WFC_REFERENCE_DIRECTION_COUNT);
+  for I := 0 to High(LModel.Neighbors) do
+    LModel.Neighbors[I] := -1;
+  LModel.Neighbors[Ord(gdEast)] := 1;
+  SetLength(LModel.Compatibility,
+    WFC_REFERENCE_DIRECTION_COUNT * LModel.ValueCount * LModel.ValueCount);
+  SetLength(LModel.RequiredValues, LModel.ValueCount);
+  SetLength(LModel.RequiredSupport, Length(LModel.Compatibility));
+  SetLength(LModel.InitialAllowed,
+    LModel.CellCount * LModel.ValueCount);
+  SetLength(LModel.InitialFailureKinds, LModel.CellCount);
+  SetLength(LModel.LockedValues, LModel.CellCount);
+  SetLength(LModel.CellOrder, LModel.CellCount);
+  for I := 0 to Pred(LModel.CellCount) do
+  begin
+    LModel.InitialFailureKinds[I] := rckEmptyDomain;
+    LModel.LockedValues[I] := -1;
+    LModel.CellOrder[I] := I;
+  end;
+
+  //Cell zero can be required C=0 or fallback F=1. Cell one can be Good=2
+  //or Bad=3. C is adjacent only to Good, while an intentionally malformed
+  //support matrix marks only the incompatible Bad pair as required support.
+  LModel.InitialAllowed[0] := 1;
+  LModel.InitialAllowed[1] := 1;
+  LModel.InitialAllowed[6] := 1;
+  LModel.InitialAllowed[7] := 1;
+  LModel.RequiredValues[0] := 1;
+  LModel.Compatibility[KernelRelationIndex(Ord(gdEast), 0, 2)] := 1;
+  LModel.Compatibility[KernelRelationIndex(Ord(gdEast), 1, 2)] := 1;
+  LModel.Compatibility[KernelRelationIndex(Ord(gdEast), 1, 3)] := 1;
+  LModel.RequiredSupport[KernelRelationIndex(Ord(gdEast), 0, 3)] := 1;
+
+  Check(SolveReferenceModel(LModel, 0, nil, LAssignment, LReport),
+    'required support is intersected with compatibility inside the kernel');
+  Check((Length(LAssignment) = 2) and (LAssignment[0] = 1)
+    and (LAssignment[1] = 2),
+    'incompatible required support cannot preserve a required candidate');
+end;
+
+procedure TestReferenceLocksAndAtomicPasses;
+var
+  LGraph: TGraph;
+  LOptions: TGraphSolveOptions;
+  LReport: TGraphSolveReport;
+  LTwin: TGraph;
+begin
+  LOptions := DefaultGraphSolveOptions;
+  LGraph := TGraph.Create;
+  try
+    LGraph.Reshape(1, 1, 1);
+    LGraph.AddValue('A');
+    LGraph.Entry[0, 0, 0].Value := 'outside';
+    Check(not LGraph.TrySolve(LOptions, LReport),
+      'an unknown lock is rejected by the reference solver');
+    Check((LReport.Contradiction.Kind = gckInvalidLock)
+      and (LReport.Contradiction.EntryIndex = 0),
+      'an unknown lock receives structured contradiction evidence');
+    Check((LGraph.Entry[0, 0, 0].Value = 'outside')
+      and (not LGraph.Entry[0, 0, 0].Generated),
+      'invalid-lock rejection preserves caller state');
+  finally
+    LGraph.Free;
+  end;
+
+  LGraph := TGraph.Create;
+  try
+    LGraph.Reshape(2, 1, 1);
+    LGraph.WrapNeighbors := False;
+    LGraph.AddValue('A').NewRule([gdEast, gdWest], 'A');
+    LGraph.AddValue('B').NewRule([gdEast, gdWest], 'B');
+    LGraph.Entry[0, 0, 0].Value := 'A';
+    LGraph.Entry[1, 0, 0].Value := 'B';
+    Check(not LGraph.TrySolve(LOptions, LReport),
+      'incompatible registered locks report a contradiction');
+    Check((LReport.Contradiction.Kind = gckAdjacency)
+      and (LGraph.Entry[0, 0, 0].Value = 'A')
+      and (LGraph.Entry[1, 0, 0].Value = 'B'),
+      'adjacency failure preserves both caller locks');
+  finally
+    LGraph.Free;
+  end;
+
+  LGraph := TGraph.Create;
+  try
+    LGraph.Reshape(2, 1, 1);
+    LGraph.AddValue('A');
+    LGraph.SwitchToPass('copy');
+    LGraph.Entry[1, 0, 0].Value := 'locked';
+    Check(LGraph.TrySolve(LOptions, LReport),
+      'a later definitionless pass copies staged reference output');
+    Check((LGraph.PassGraph[0].Entry[0, 0, 0].Value = 'A')
+      and (LGraph.PassGraph[1].Entry[0, 0, 0].Value = 'A')
+      and LGraph.PassGraph[1].Entry[0, 0, 0].Generated,
+      'reference copy output remains solver-owned');
+    Check((LGraph.PassGraph[1].Entry[1, 0, 0].Value = 'locked')
+      and (not LGraph.PassGraph[1].Entry[1, 0, 0].Generated),
+      'a definitionless reference pass preserves its caller lock');
+  finally
+    LGraph.Free;
+  end;
+
+  LGraph := TGraph.Create;
+  try
+    LGraph.Seed := $12345678;
+    LGraph.Reshape(1, 1, 1);
+    LGraph.CurrentPass := 'terrain';
+    LGraph.AddValue('A');
+    Check(LGraph.TrySolve(LOptions, LReport),
+      'the initial pass establishes generated output');
+    LGraph.SwitchToPass('dependent');
+    LGraph.AddValue('X').RequirePrevious('B');
+    LGraph.Entry[0, 0, 0].Value := 'X';
+
+    Check(not LGraph.TrySolve(LOptions, LReport),
+      'a later previous-pass contradiction fails the whole pipeline');
+    Check((LReport.FailedPassIndex = 1)
+      and (LReport.Contradiction.Kind = gckPreviousPass),
+      'the report identifies the failed dependent pass');
+    Check((LGraph.PassGraph[0].Entry[0, 0, 0].Value = 'A')
+      and LGraph.PassGraph[0].Entry[0, 0, 0].Generated,
+      'later-pass failure preserves earlier generated output');
+    Check((LGraph.PassGraph[1].Entry[0, 0, 0].Value = 'X')
+      and (not LGraph.PassGraph[1].Entry[0, 0, 0].Generated),
+      'later-pass failure preserves its caller lock');
+    Check(LGraph.CurrentPassIndex = 1,
+      'failed reference solving restores pass selection');
+  finally
+    LGraph.Free;
+  end;
+
+  GCommitSetCount := 0;
+  GFailCommitSetAt := 0;
+  LGraph := TCommitFailGraph.Create;
+  try
+    LGraph.Reshape(1, 1, 1);
+    LGraph.CurrentPass := 'terrain';
+    LGraph.AddValue('A');
+    LGraph.SwitchToPass('dependent');
+    LGraph.AddValue('X').RequirePrevious('B');
+    Check(not LGraph.TrySolve(LOptions, LReport),
+      'a later contradiction aborts a subclassed pipeline');
+    Check(GCommitSetCount = 0,
+      'no entry setter runs before the complete pipeline succeeds');
+  finally
+    LGraph.Free;
+  end;
+
+  LGraph := TGraph.Create;
+  LTwin := TGraph.Create;
+  try
+    LGraph.Seed := $A5A5A5A5;
+    LGraph.Reshape(1, 1, 1);
+    LGraph.CurrentPass := 'terrain';
+    LGraph.AddValue('A');
+    LGraph.SwitchToPass('dependent');
+    LGraph.AddValue('X').RequirePrevious('B');
+    LGraph.Entry[0, 0, 0].Value := 'X';
+
+    LTwin.Seed := $A5A5A5A5;
+    LTwin.Reshape(1, 1, 1);
+    LTwin.CurrentPass := 'terrain';
+    LTwin.AddValue('A');
+    LTwin.SwitchToPass('dependent');
+    LTwin.AddValue('X').RequirePrevious('B');
+    LTwin.Entry[0, 0, 0].Value := 'X';
+
+    Check(LGraph.PassGraph[0].RandomIndex(1000)
+      = LTwin.PassGraph[0].RandomIndex(1000),
+      'the first pass random streams start in the same advanced state');
+    Check(LGraph.PassGraph[1].RandomIndex(1000)
+      = LTwin.PassGraph[1].RandomIndex(1000),
+      'the dependent pass random streams start in the same advanced state');
+    Check(not LGraph.TrySolve(LOptions, LReport),
+      'the random-state fixture fails in its later pass');
+    Check(LGraph.PassGraph[0].RandomIndex(1000)
+      = LTwin.PassGraph[0].RandomIndex(1000),
+      'later failure restores the first pass random stream');
+    Check(LGraph.PassGraph[1].RandomIndex(1000)
+      = LTwin.PassGraph[1].RandomIndex(1000),
+      'later failure restores the dependent pass random stream');
+  finally
+    LTwin.Free;
+    LGraph.Free;
+  end;
+end;
+
+procedure TestReferenceCommitRollbackAndTopology;
+var
+  LEntry: TGraphEntry;
+  LExternal: TGraphEntry;
+  LGraph: TGraph;
+  LOptions: TGraphSolveOptions;
+  LReport: TGraphSolveReport;
+  LRaised: Boolean;
+  LRules: TGraphRules;
+  LTwin: TGraph;
+begin
+  LOptions := DefaultGraphSolveOptions;
+  GCommitSetCount := 0;
+  GFailCommitSetAt := 2;
+  LGraph := TCommitFailGraph.Create;
+  LTwin := TGraph.Create;
+  try
+    LGraph.Seed := $13579BDF;
+    LGraph.Reshape(2, 1, 1);
+    LGraph.WrapNeighbors := False;
+    LGraph.AddValue('A');
+    LGraph.AddValue('B');
+
+    LTwin.Seed := $13579BDF;
+    LTwin.Reshape(2, 1, 1);
+    LTwin.WrapNeighbors := False;
+    LTwin.AddValue('A');
+    LTwin.AddValue('B');
+    Check(LGraph.PassGraph[0].RandomIndex(1000)
+      = LTwin.PassGraph[0].RandomIndex(1000),
+      'the commit-failure random streams start in the same advanced state');
+
+    LRaised := False;
+    try
+      LGraph.TrySolve(LOptions, LReport);
+    except
+      on E: Exception do
+        LRaised := True;
+    end;
+    Check(LRaised, 'a commit hook failure is re-raised');
+    Check(LGraph.Entry[0, 0, 0].Empty
+      and LGraph.Entry[1, 0, 0].Empty
+      and (not LGraph.Entry[0, 0, 0].Generated)
+      and (not LGraph.Entry[1, 0, 0].Generated),
+      'a commit hook failure rolls every entry back atomically');
+    Check(LGraph.PassGraph[0].RandomIndex(1000)
+      = LTwin.PassGraph[0].RandomIndex(1000),
+      'a commit hook failure restores the pre-call random stream');
+  finally
+    GFailCommitSetAt := 0;
+    LTwin.Free;
+    LGraph.Free;
+  end;
+
+  LGraph := TCommitMutateGraph.Create;
+  try
+    LGraph.Reshape(2, 1, 1);
+    LGraph.WrapNeighbors := False;
+    LGraph.AddValue('A');
+    GCommitMutationSourceIndex := 0;
+    GCommitMutationTarget := LGraph.Entry[1, 0, 0];
+    Check(LGraph.TrySolve(LOptions, LReport),
+      'a hook-created live value cannot become a new commit-time lock');
+    Check((LGraph.Entry[0, 0, 0].Value = 'A')
+      and LGraph.Entry[0, 0, 0].Generated
+      and (LGraph.Entry[1, 0, 0].Value = 'A')
+      and LGraph.Entry[1, 0, 0].Generated,
+      'frozen ownership overwrites a hook-created later value');
+  finally
+    GCommitMutationSourceIndex := -1;
+    GCommitMutationTarget := nil;
+    LGraph.Free;
+  end;
+
+  LGraph := TCommitMutateGraph.Create;
+  try
+    LGraph.Reshape(2, 1, 1);
+    LGraph.WrapNeighbors := False;
+    LGraph.AddValue('A');
+    LEntry := LGraph.Entry[1, 0, 0];
+    LEntry.Value := 'A';
+    GCommitMutationSourceIndex := 0;
+    GCommitMutationTarget := LEntry;
+    LRaised := False;
+    try
+      LGraph.TrySolve(LOptions, LReport);
+    except
+      on E: EInvalidOperation do
+        LRaised := True;
+    end;
+    Check(LRaised,
+      'a commit hook cannot rewrite a later caller lock');
+    Check(LGraph.Entry[0, 0, 0].Empty
+      and (LGraph.Entry[1, 0, 0].Value = 'A')
+      and (not LGraph.Entry[1, 0, 0].Generated),
+      'later-lock hook corruption rolls the complete commit back');
+  finally
+    GCommitMutationSourceIndex := -1;
+    GCommitMutationTarget := nil;
+    LGraph.Free;
+  end;
+
+  LGraph := TCommitMutateGraph.Create;
+  try
+    LGraph.Reshape(2, 1, 1);
+    LGraph.WrapNeighbors := False;
+    LGraph.AddValue('A');
+    GCommitMutationSourceIndex := 1;
+    GCommitMutationTarget := LGraph.Entry[0, 0, 0];
+    LRaised := False;
+    try
+      LGraph.TrySolve(LOptions, LReport);
+    except
+      on E: EInvalidOperation do
+        LRaised := True;
+    end;
+    Check(LRaised,
+      'a commit hook cannot rewrite an already committed entry');
+    Check(LGraph.Entry[0, 0, 0].Empty
+      and LGraph.Entry[1, 0, 0].Empty,
+      'earlier-entry hook corruption rolls the complete commit back');
+  finally
+    GCommitMutationSourceIndex := -1;
+    GCommitMutationTarget := nil;
+    LGraph.Free;
+  end;
+
+  LGraph := TCommitIdentityGraph.Create;
+  try
+    LGraph.Reshape(2, 1, 1);
+    LGraph.WrapNeighbors := False;
+    LGraph.AddValue('A');
+    LGraph.SwitchToPass('second');
+    LGraph.AddValue('A');
+    GCommitIdentityGraph := LGraph;
+    GCommitIdentityCount := 0;
+    GCommitIdentitySwitchSelection := True;
+    Check(LGraph.TrySolve(LOptions, LReport),
+      'entry hooks may inspect and switch pass selection during commit');
+    Check((GCommitIdentityCount = 4)
+      and (GCommitIdentityPasses[0] = 0)
+      and (GCommitIdentityPasses[1] = 0)
+      and (GCommitIdentityPasses[2] = 1)
+      and (GCommitIdentityPasses[3] = 1),
+      'every commit hook observes the pass that owns its entry');
+    Check(LGraph.CurrentPassIndex = 1,
+      'commit-hook pass switches cannot change caller selection');
+  finally
+    GCommitIdentitySwitchSelection := False;
+    GCommitIdentityCount := 0;
+    GCommitIdentityGraph := nil;
+    LGraph.Free;
+  end;
+
+  LExternal := TGraphEntry.Create;
+  LGraph := TGraph.Create;
+  try
+    LGraph.Reshape(1, 1, 1);
+    LGraph.WrapNeighbors := False;
+    LGraph.AddValue('A');
+    LEntry := LGraph.Entry[0, 0, 0];
+    LEntry[gdEast] := LExternal;
+    LRaised := False;
+    try
+      LGraph.TrySolve(LOptions, LReport);
+    except
+      on E: EInvalidOperation do
+        LRaised := True;
+    end;
+    Check(LRaised,
+      'the reference solver rejects topology outside graph storage');
+    Check(LGraph.Entry[0, 0, 0].Empty,
+      'malformed external topology cannot commit output');
+    LEntry[gdEast] := nil;
+  finally
+    LGraph.Free;
+    LExternal.Free;
+  end;
+
+  LGraph := TGraph.Create;
+  try
+    LGraph.Reshape(1, 1, 1);
+    LGraph.AddValue('A');
+    LGraph.RuleGroups['A'].Value := 'mismatch';
+    LRaised := False;
+    try
+      LGraph.TrySolve(LOptions, LReport);
+    except
+      on E: EInvalidOperation do
+        LRaised := True;
+    end;
+    Check(LRaised,
+      'the reference solver rejects a mismatched rule-group identity');
+    Check(LGraph.Entry[0, 0, 0].Empty,
+      'mismatched model identity cannot commit output');
+  finally
+    LGraph.Free;
+  end;
+
+  LGraph := TGraph.Create;
+  try
+    LGraph.Reshape(1, 1, 1);
+    LGraph.AddValue('A').NewRule([gdNorth], ['A']);
+    LRules := LGraph.Rules['A'].Rules;
+    SetLength(LRules, Succ(Length(LRules)));
+    LRules[High(LRules)] := LRules[0];
+    LGraph.Rules['A'].Rules := LRules;
+    LRaised := False;
+    try
+      LGraph.TrySolve(LOptions, LReport);
+    except
+      on E: EInvalidOperation do
+        LRaised := True;
+    end;
+    Check(LRaised,
+      'the reference solver rejects duplicate directional rules');
+    Check(LGraph.Entry[0, 0, 0].Empty,
+      'duplicate directional rules cannot commit output');
+  finally
+    LGraph.Free;
+  end;
+
+  LGraph := TGraph.Create;
+  try
+    LGraph.Reshape(1, 1, 1);
+    LGraph.AddValue('A');
+    LGraph.RuleGroups.Remove('A');
+    LGraph.RuleGroups.Add('A', nil);
+    LRaised := False;
+    try
+      LGraph.TrySolve(LOptions, LReport);
+    except
+      on E: EInvalidOperation do
+        LRaised := True;
+    end;
+    Check(LRaised, 'the reference solver rejects a nil rule group');
+    Check(LGraph.Entry[0, 0, 0].Empty,
+      'a nil rule group cannot commit output');
+  finally
+    LGraph.Free;
+  end;
+end;
+
+procedure TestReferenceReplayAndLegacyIsolation;
+var
+  LFresh: TGraph;
+  LGraph: TGraph;
+  LOptions: TGraphSolveOptions;
+  LReport1: TGraphSolveReport;
+  LReport2: TGraphSolveReport;
+  LSnapshot: String;
+begin
+  LOptions := DefaultGraphSolveOptions;
+  LOptions.MaxBacktracks := 1;
+  LGraph := NewReferenceEscapeRing;
+  LFresh := NewReferenceEscapeRing;
+  try
+    GTraversalCount := 0;
+    GInvalidRecoveryCount := 0;
+    LGraph.SelectionCallback := SelectAndCaptureTraversal;
+    LGraph.InvalidStateCallback := ReplaceInvalidWithNone;
+    Check(LGraph.TrySolve(LOptions, LReport1),
+      'reference replay fixture solves with legacy callbacks installed');
+    LSnapshot := SnapshotPipeline(LGraph);
+    Check((GTraversalCount = 0) and (GInvalidRecoveryCount = 0),
+      'reference solving does not invoke legacy callbacks');
+
+    Check(LGraph.TrySolve(LOptions, LReport2),
+      'reference solving replays on an existing graph');
+    Check((SnapshotPipeline(LGraph) = LSnapshot)
+      and SamePassSolveReport(LReport1.Passes[0], LReport2.Passes[0]),
+      'repeated reference solving reproduces output and counters');
+    Check((LReport2.Seed = 0)
+      and (LReport2.RandomAlgorithmVersion = WFC_RANDOM_ALGORITHM_VERSION)
+      and (LReport2.SolverAlgorithmVersion = WFC_SOLVER_ALGORITHM_VERSION),
+      'the replay report captures both algorithm identities');
+
+    Check(LFresh.TrySolve(LOptions, LReport2),
+      'a fresh graph reproduces the reference solution');
+    Check(SnapshotPipeline(LFresh) = LSnapshot,
+      'reference replay is stable across graph instances');
+  finally
+    LFresh.Free;
+    LGraph.Free;
+  end;
+end;
+
 procedure TestTransactionalReshape;
 var
   LGraph: TTestGraph;
@@ -2152,6 +3130,19 @@ begin
   RunTest('wrapped self constraints', @TestWrappedSelfConstraint);
   RunTest('self required-support isolation',
     @TestSelfRequiredSupportIsolation);
+  RunTest('reference fixed-point propagation', @TestReferencePropagation);
+  RunTest('reference mode tie-breaking', @TestReferenceModeTieBreak);
+  RunTest('reference MRV selection', @TestReferenceMrvSelection);
+  RunTest('reference wrapped arcs', @TestReferenceWrappedArcs);
+  RunTest('reference bounded backtracking', @TestReferenceBacktracking);
+  RunTest('reference required support', @TestReferenceRequiredSupport);
+  RunTest('reference flat-kernel contract', @TestReferenceKernelContract);
+  RunTest('reference locks and atomic passes',
+    @TestReferenceLocksAndAtomicPasses);
+  RunTest('reference commit rollback and topology',
+    @TestReferenceCommitRollbackAndTopology);
+  RunTest('reference replay and legacy isolation',
+    @TestReferenceReplayAndLegacyIsolation);
   RunTest('transactional reshape', @TestTransactionalReshape);
   RunTest('subclass pass factory', @TestSubclassPassFactory);
   RunTest('configured subclass lifecycle', @TestConfiguredSubclassLifecycle);

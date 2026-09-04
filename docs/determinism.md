@@ -1,7 +1,8 @@
 # deterministic generation
 
 WFC owns its generation randomness. Assigning an explicit `TGraph.Seed` makes
-the built-in solver replay the same model and input on native FPC and pas2js.
+both the legacy `Run` path and the reference `TrySolve` path replay the same
+model and input on native FPC and pas2js.
 Random entry identifiers and the host runtime's global random source are not
 part of this stream.
 
@@ -42,21 +43,25 @@ The automatic seed is deliberately not a cryptographic random value.
 A complete replay identity consists of:
 
 - `WFC_RANDOM_ALGORITHM_VERSION`;
+- `WFC_SOLVER_ALGORITHM_VERSION` and `TGraphSolveOptions` when using
+  `TrySolve`;
 - `Seed`;
 - graph dimensions, wrapping, and run mode;
 - pass creation order;
 - values and rules in their original construction order;
 - caller locks and other model input; and
-- deterministic custom callback configuration.
+- deterministic custom callback configuration for the legacy `Run` path.
 
 Pass labels are not part of random-stream identity. Renaming a pass preserves
 its stream because the stable zero-based pass index is used instead. Appending
 a later pass cannot perturb an earlier stream.
 
-Value construction order is part of the version-1 model. The built-in
-selection callback chooses an index from the valid values in that order. Code
-that builds equivalent rules through different value insertion orders has
-defined two different replay inputs, even when their sets are equal.
+Value construction order is part of the version-1 model. The legacy built-in
+selection chooses from valid values in that order. The reference solver keeps
+the same order, draws one starting offset per decision, and tries alternatives
+cyclically from that offset. Code that builds equivalent rules through
+different value insertion orders has defined two different replay inputs, even
+when their sets are equal.
 
 The replay contract assumes values and rules are registered through
 `AddValue`, `NewRule`, and `RequirePrevious`. Directly mutating the exposed
@@ -101,9 +106,12 @@ sampling, bottom-up and wrapped top-down 3D grids, and a three-pass
 terrain/foliage/copy pipeline. Those output fixtures are checked by both native
 FPC and pas2js/Node.
 
-Any incompatible change to seed expansion, stream derivation, bounded
-sampling, candidate ordering, traversal order, or the built-in generator must
-increment `WFC_RANDOM_ALGORITHM_VERSION`.
+Any incompatible change to seed expansion, stream derivation, or bounded
+sampling must increment `WFC_RANDOM_ALGORITHM_VERSION`. An incompatible change
+to reference-solver propagation, observation, candidate ordering, or
+backtracking must increment `WFC_SOLVER_ALGORITHM_VERSION`. Legacy traversal
+or built-in-selection changes must likewise receive an explicit compatibility
+version rather than silently reinterpreting existing replay inputs.
 
 ## run and reset behavior
 
@@ -123,6 +131,14 @@ A failed `Run` is not yet a transaction over generated cell values. A later
 run rewinds randomness and clears solver-owned output, but caller locks or
 external callback state changed during the failed attempt remain changed.
 
+Every `TrySolve` also rewinds every pass stream before solving. It stages the
+complete pass pipeline, so a contradiction or backtrack-limit result leaves
+all entry values and `Generated` flags unchanged and restores the random states
+that existed before the call. Successful reports record both algorithm
+versions. Reference observation ties use `Mode` Z order and then entry index;
+candidate order follows `AddValue` order from one random cyclic offset. See the
+[reference solver contract](solver.md) for the full algorithm identity.
+
 ## callbacks and extension hooks
 
 Custom `SelectionCallback`, `InvalidStateCallback`, `DoGetStartCoord`, and
@@ -136,16 +152,19 @@ calling `AGraph.RandomIndex` always consumes the stream for the pass being
 solved, even if the callback switches `CurrentPass` first. Calling
 `AGraph.PassGraph[J].RandomIndex` explicitly consumes pass `J` instead.
 
-Changing `Seed` during pass initialization or `Run` raises
+Changing `Seed` during pass initialization, `Run`, or `TrySolve` raises
 `EInvalidOperation` and leaves the old seed intact. Set it before execution.
+
+`TrySolve` does not invoke selection or invalid-state callbacks, or the legacy
+`DoGetStartCoord`, `DoGetSelection`, and `DoValidate` hooks. Their mutable state
+therefore cannot influence its decision stream.
 
 ## what the seed does not promise
 
-The seed makes the current greedy solver reproducible; it does not make an
-impossible model satisfiable, validate output independently, or provide
-cryptographic randomness. It also cannot make nondeterministic user callbacks
-deterministic on their own.
-
-Future reference solvers may have their own versioned decision algorithms.
-Their replay metadata must name both the random algorithm version and the
-solver/model version rather than silently reinterpreting version-1 seeds.
+The seed does not make an impossible model satisfiable or provide cryptographic
+randomness. It also cannot make nondeterministic legacy callbacks deterministic
+on their own. `Run` remains a reproducible greedy compatibility path and does
+not gain independent validation merely because it is seeded. `TrySolve` does
+validate its staged assignments and names both algorithm versions in its
+report; persist those versions, the solve options, and the model identity with
+any result intended for long-term replay.

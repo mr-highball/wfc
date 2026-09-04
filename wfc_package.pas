@@ -8,7 +8,7 @@ unit wfc_package;
 interface
 
 uses
-  wfc;
+  wfc_solver_reference, wfc;
 
 implementation
 

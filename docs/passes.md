@@ -1,9 +1,9 @@
 # passes
 
 A pass is a named stage of one graph. Each pass has the same shape, but keeps
-its own values, rules, entries, planes, and callbacks. Calling `Run` processes
-the passes in order, so a later pass can constrain its values from the result
-immediately before it.
+its own values, rules, entries, planes, and callbacks. Both `Run` and
+`TrySolve` process passes in order, so a later pass can constrain its values
+from the result immediately before it.
 
 This is useful when one rule set should not have to describe an entire result
 at once. A first pass can lay terrain, a second can place foliage, and another
@@ -218,6 +218,33 @@ and leaves the entry unassigned instead of inventing a value. Writing directly
 to the callback's mutable `AEntry` argument does not bypass this check; that
 write is cleared before the proposal is validated.
 
+## atomic reference solving
+
+`TrySolve` is the opt-in alternative to the legacy traversal described above.
+It maintains domains, propagates to a fixed point, observes by minimum
+remaining values, and can backtrack. More importantly for pass composition, it
+stages the complete pipeline before changing any entry.
+
+```pascal
+LOptions := DefaultGraphSolveOptions;
+if not LGraph.TrySolve(LOptions, LReport) then
+  WriteLn('Failed pass: ', LReport.FailedPassIndex);
+```
+
+Defined passes solve against the staged output immediately before them. A
+later definitionless pass stages a copy of the preceding result, with its own
+caller locks taking precedence. Definitionless pass zero remains unchanged
+because it has no input. Only after every pass validates does `TrySolve` commit
+new generated values.
+
+A contradiction or exhausted backtrack limit returns `False` with structured
+evidence and leaves all passes, the caller's selected pass, and pre-call random
+states unchanged. Malformed model or topology data raises an exception before
+entry commit. Legacy selection/invalid-state callbacks and traversal hooks are
+not invoked by `TrySolve`; `Run` remains available when that extension model is
+required. Exact algorithm, constraint, counter, and error semantics are in the
+[reference solver documentation](solver.md).
+
 ## constraints from the previous pass
 
 `RequirePrevious` filters a value using the entry at the same coordinate in
@@ -237,6 +264,10 @@ The supplied values are alternatives: matching any one is sufficient. If the
 previous entry is empty, a value with `RequirePrevious` is rejected. Normal
 directional rules are applied as well, so this is an additional filter rather
 than a replacement for `NewRule`.
+
+During `TrySolve`, the previous value comes from the current transaction's
+staged output. A failed later pass therefore neither reads stale data nor
+partially commits an earlier pass.
 
 Calling `RequirePrevious` in pass zero raises `EInvalidOperation`, because
 there is no earlier pass that could satisfy the constraint.
@@ -325,10 +356,11 @@ a pass or appending a later pass therefore does not change an existing pass's
 stream. Extra random choices in one pass do not advance another pass's stream,
 although changed output can still change the valid domains seen later.
 
-Every `Run` rewinds all streams. Calls to `RandomIndex` outside a run cannot
-perturb the next generated result, and `Reset` keeps the same seed. During a
-callback, `AGraph.RandomIndex` consumes the stream for the pass currently being
-solved even if that callback temporarily switches `CurrentPass`.
+Every `Run` and `TrySolve` rewinds all streams. Calls to `RandomIndex` outside
+generation cannot perturb the next result, and `Reset` keeps the same seed.
+During a legacy callback, `AGraph.RandomIndex` consumes the stream for the pass
+currently being solved even if that callback temporarily switches
+`CurrentPass`.
 
 Set an explicit seed whenever a result must replay across processes or
 targets:
@@ -354,20 +386,21 @@ The implemented pass behavior is intentionally small and sequential:
 - a failed `Run` restores pass selection but is not yet a transaction over
   generated cell values; changes completed before the failure can remain and
   the next run will clear and regenerate solver-owned output;
-- the solver used inside each pass is the legacy greedy traversal solver. It
-  assigns values as it walks the graph; it is not yet the future reference
-  solver with maintained domains, entropy selection, propagation to a fixed
-  point, contradiction reports, and backtracking.
+- `TrySolve` is transactional across the current linear pipeline, but there are
+  no named overlays, dependency DAGs, selective regeneration, or bounded
+  feedback between passes yet;
+- the version-1 reference solver is unweighted and has no restart policy,
+  timing data, or stable trace hash.
 
 These limits keep the current contract clear. More expressive cross-pass
-queries and the reference propagating solver belong to later milestones, and
-can be added without changing the meaning of the pass API documented here.
+queries and specialized pass layers belong to later milestones and can be
+added without changing the meaning of the pass API documented here.
 
 ## native FPC and pas2js
 
 The pass implementation and public callback types are written for both native
 FPC and pas2js. The same `TGraph`, `SwitchToPass`, `PassGraph`, `ForEachPass`,
-`Run`, and `RequirePrevious` calls are used on both targets.
+`Run`, `TrySolve`, and `RequirePrevious` calls are used on both targets.
 
 The host program is responsible only for presentation: a console, Lazarus
 form, canvas, WebAudio player, or other UI can read the same pass results. For

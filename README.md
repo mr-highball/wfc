@@ -10,11 +10,12 @@ roads, housing, or any other layer while constraining each stage from the
 result before it. The same approach can be specialized for world generation,
 modular 3D structures, music, text, and other discrete design problems.
 
-> **Project status:** the original API and its greedy traversal solver remain
-> available, and the first operational multi-pass contract now works on native
-> FPC and pas2js with portable seeded replay. A reference propagating WFC
-> solver, richer cross-layer constraints, polished domain libraries, and
-> complete native/browser demos are planned and tracked in the
+> **Project status:** the original API and greedy traversal solver remain
+> available. The opt-in reference solver now provides fixed-point propagation,
+> deterministic minimum-domain observation, bounded backtracking, structured
+> contradiction reports, and an atomic sequential pass pipeline on native FPC
+> and pas2js. Weights, richer cross-layer constraints, polished domain
+> libraries, and complete native/browser demos remain tracked in the
 > [roadmap](ROADMAP.md).
 
 ## Features
@@ -26,6 +27,8 @@ modular 3D structures, music, text, and other discrete design problems.
 - sequential pipeline execution with selected-pass restoration
 - empty-pass copying and same-coordinate constraints on the previous pass
 - explicit pipeline seeds with stable, independent per-pass random streams
+- an opt-in propagating solver with deterministic MRV and bounded backtracking
+- atomic all-pass staging, independent validation, and structured run reports
 - matching seeded golden fixtures on native FPC and pas2js/Node
 - iterative traversal without a graph-sized call stack
 - extension hooks for custom graph and entry behavior
@@ -35,10 +38,13 @@ modular 3D structures, music, text, and other discrete design problems.
 
 ```pascal
 uses
+  SysUtils,
   wfc;
 
 var
   Graph: TGraph;
+  Options: TGraphSolveOptions;
+  Report: TGraphSolveReport;
 begin
   Graph := TGraph.Create.Reshape(5, 5, 1);
   try
@@ -48,7 +54,10 @@ begin
     Graph.AddValue('C')
       .NewRule([gdNorth, gdSouth], ['A', 'B']);
 
-    Graph.Run;
+    Options := DefaultGraphSolveOptions;
+    if not Graph.TrySolve(Options, Report) then
+      raise Exception.CreateFmt('WFC failed in pass %d',
+        [Report.FailedPassIndex]);
   finally
     Graph.Free;
   end;
@@ -57,6 +66,8 @@ end;
 
 For a complete terrain-to-foliage pipeline, including `SwitchToPass`,
 `PassGraph`, and `RequirePrevious`, see [pass-system semantics](docs/passes.md).
+For the reference algorithm, atomicity contract, reports, and exact constraint
+semantics, see the [reference solver](docs/solver.md).
 For exact replay behavior, callback requirements, and algorithm versioning,
 see [deterministic generation](docs/determinism.md).
 
@@ -86,10 +97,11 @@ submodule; they are not part of the dependency-free MIT build path. See the
 
 ## Direction
 
-The [roadmap](ROADMAP.md) covers the reference solver, transactional pass
-pipeline, model learning and validation tools, 2D/3D/music/text ecosystems,
-pas2js playgrounds, reproducible research, documentation, and release
-provenance. Current examples are indexed under [examples](examples/README.md).
+The [roadmap](ROADMAP.md) covers the remaining reference-solver work, richer
+pass composition, model learning and validation tools, 2D/3D/music/text
+ecosystems, pas2js playgrounds, reproducible research, documentation, and
+release provenance. Current examples are indexed under
+[examples](examples/README.md).
 
 ## License
 

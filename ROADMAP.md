@@ -28,6 +28,12 @@ The repository already contains the beginnings of the ecosystem:
 - a versioned portable random source with an explicit pipeline seed,
   independent index-derived pass streams, run-to-run rewind, and matching
   native/pas2js golden fixtures;
+- an opt-in reference solver with maintained domains, queue-based fixed-point
+  propagation, deterministic minimum-domain observation, bounded chronological
+  backtracking, independent final validation, and structured per-pass reports;
+- atomic reference-solver staging across the complete sequential pass pipeline,
+  including locks, previous-pass constraints, definitionless-pass copying, and
+  rollback on a failed later pass;
 - stack-safe iterative traversal of large planes while preserving the legacy
   solver's north/east/south/west depth-first order;
 - checked one-command native build gates, an FPM package, a runtime-only
@@ -41,13 +47,13 @@ The repository already contains the beginnings of the ecosystem:
 
 It is not yet the finished system described above:
 
-- the current solver assigns one value during graph traversal; it does not yet
-  maintain domains, select by entropy, propagate to a fixed point, or recover
-  from contradictions like a reference WFC solver;
-- the initial sequential pass contract works, but transactional
-  prepare/validate/commit behavior, named overlay layers, dependency graphs,
-  rollback, selective regeneration, and cross-layer diagnostics remain to be
-  built;
+- the reference solver is an unweighted version-1 foundation; weights,
+  deterministic restarts, timing, a stable trace hash, richer explanations,
+  and more scalable domain representations remain to be built;
+- atomic prepare/solve/validate/commit now covers the sequential `TrySolve`
+  path, but named overlay layers, dependency graphs, selective regeneration,
+  and general cross-layer diagnostics remain to be built; the legacy `Run`
+  path intentionally retains its nontransactional callback behavior;
 - the examples index now records targets, dependencies, build commands, and
   honest completion status, but full per-example tutorials, invariants,
   expected output, and troubleshooting guides remain to be written;
@@ -120,6 +126,12 @@ validated result across two consecutive native runs.
 Keep the existing traversal behavior available for compatibility, but build a
 solver whose operation can be described, measured, and compared with other WFC
 implementations.
+
+The version-1 MVP now covers domains, fixed-point propagation, deterministic
+minimum-remaining-values selection, locks, bounded backtracking, structured
+contradictions, independent validation, and atomic pass staging. Phase 1 stays
+open until weights, deterministic restarts, timing, and native/pas2js stable
+trace-hash parity satisfy the exit gate below.
 
 ### Deliverables
 

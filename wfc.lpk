@@ -15,16 +15,20 @@
     <Description Value="Wave Function Collapse and multi-pass constraint generation library"/>
     <License Value="MIT"/>
     <Version Minor="1"/>
-    <Files Count="2">
+    <Files Count="3">
       <Item1>
         <Filename Value="wfc_package.pas"/>
         <Type Value="Main Unit"/>
         <UnitName Value="wfc_package"/>
       </Item1>
       <Item2>
+        <Filename Value="src/wfc_solver_reference.pas"/>
+        <UnitName Value="wfc_solver_reference"/>
+      </Item2>
+      <Item3>
         <Filename Value="src/wfc.pas"/>
         <UnitName Value="wfc"/>
-      </Item2>
+      </Item3>
     </Files>
     <UsageOptions>
       <UnitPath Value="$(PkgOutDir)"/>
