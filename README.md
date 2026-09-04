@@ -25,7 +25,11 @@ modular 3D structures, music, text, and other discrete design problems.
 > through a strict canonical text format. A second learner extracts weighted
 > overlapping 2D footprints, compiles exact structural overlap, captures
 > latent assignments, and independently validates projected token grids
-> through canonical `wfcp=1` artifacts.
+> through canonical `wfcp=1` artifacts. The sequence foundation learns bounded
+> order-N models from pretokenized UTF-8 corpora, derives structural
+> suffix/prefix recombination, applies open or derived wrapped graph domains,
+> composes latent and public-token passes in either direction, and round-trips
+> strict canonical `wfcs=1` artifacts.
 > Offset/neighborhood cross-layer constraints, additional domain libraries, restart
 > policies, and broader inspection and training tools remain tracked in the
 > [roadmap](ROADMAP.md).
@@ -67,6 +71,9 @@ modular 3D structures, music, text, and other discrete design problems.
   open/wrapped sources, square-footprint D4 augmentation, structural
   compatibility, explicit latent-to-token projection, and strict `.wfcp`
   replay artifacts
+- deterministic bounded sequence learning with typed BOS history, raw counts,
+  order-N latent states, structural suffix/prefix recombination, explicit
+  public-token projection, and strict canonical `wfcs=1` artifacts
 - iterative traversal without a graph-sized call stack
 - extension hooks for custom graph and entry behavior
 - one Pascal core for native FPC and pas2js
@@ -117,6 +124,9 @@ the `.wfcm` format, and exact replay inputs, see
 For multi-cell extraction, structural overlap, latent assignment, projection,
 independent validation, and the `.wfcp` format, see
 [overlapping 2D patterns](docs/patterns.md).
+For bounded order-N learning, typed BOS boundaries, open and derived wrapped
+generation, pass projection, and canonical `wfcs=1` text, see
+[sequence models](docs/sequences.md).
 
 ## Build and test
 
@@ -132,8 +142,8 @@ Run the checked native build and conformance suite from the repository root:
 
 Both entry points compile with checked FPC options, keep all output under
 `build/`, run the core, 2D ecosystem, selective-settlement, radius-one
-learning, and overlapping-pattern suites, smoke-test the six portable console
-examples, and preserve
+learning, overlapping-pattern, and sequence suites, smoke-test the portable
+console examples, and preserve
 failure exit codes. The repository
 also includes an FPM package, a runtime-only Lazarus package, and the same
 conformance sources for pas2js/Node. Separate `build-browser.ps1` and

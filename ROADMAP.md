@@ -53,6 +53,10 @@ The repository already contains the beginnings of the ecosystem:
   exact structural compatibility, latent assignment capture, independently
   checked projection, strict canonical `.wfcp` text I/O, and a portable seeded
   demonstration;
+- an immutable bounded sequence model with typed BOS history, deterministic
+  order-N learning from pretokenized UTF-8 corpora, raw counts, structural
+  suffix/prefix recombination, open and derived wrapped graph adaptation,
+  latent/public pass projection, and strict canonical `wfcs=1` text I/O;
 - stack-safe iterative traversal of large planes while preserving the legacy
   solver's north/east/south/west depth-first order;
 - checked one-command native build gates, an FPM package, a runtime-only
@@ -82,10 +86,11 @@ It is not yet the finished system described above:
 - the first interactive pas2js demo and browser test host now exist, but there
   is no complete pass/domain inspector or stable native/pas2js decision-trace
   parity suite (canonical seeded value fixtures do already match);
-- model learning now covers pretokenized cardinal radius-one corpora and
-  structurally compatible overlapping 2D footprints with explicit projection;
-  3D neighborhoods, learned pass dependencies, provenance metadata, and the
-  planned validation/run/inspection tools remain;
+- model learning now covers pretokenized cardinal radius-one corpora,
+  structurally compatible overlapping 2D footprints, and bounded order-N
+  sequences with explicit projection; tokenizers, wrapped sequence training,
+  3D neighborhoods, provenance metadata, and the planned
+  validation/run/inspection tools remain;
 - the hosted CI definition is present, but its first remote run still needs to
   be observed before the Phase 0 exit gate is claimed complete;
 - music playback currently depends on the GPL-licensed SoundShop submodule,
@@ -264,9 +269,16 @@ overlapping-pattern version-1 layer additionally extracts deterministic
 rectangular 2D payloads, supports open/wrapped heterogeneous sources and
 square-footprint D4 augmentation, compiles exact structural overlap, keeps
 latent assignments separate from projected tokens, independently validates
-both, and round-trips strict standalone `wfcp=1` artifacts. The broader tools,
-provenance metadata, higher-dimensional extraction, projection-aware pass
-composition, and complete exit gate remain open.
+both, and round-trips strict standalone `wfcp=1` artifacts.
+The sequence version-1 layer learns bounded order-N latent states from ordered
+pretokenized UTF-8 corpora, resets typed BOS history at every sample boundary,
+retains raw observation/start/end counts, derives exact suffix/prefix
+compatibility, adapts open endpoints or BOS-free wrapped cycles, composes
+latent and public-token passes in either direction, and round-trips strict
+standalone `wfcs=1` artifacts. Corpus seams are absent, while compatible
+states may intentionally recombine. The broader tools, tokenizers, wrapped
+sequence training, provenance metadata, higher-dimensional extraction, and
+complete exit gate remain open.
 
 ### Deliverables
 
@@ -349,8 +361,13 @@ GPL dependency.
 
 ### Text and sequences
 
-- A Unicode-aware 1D token topology with explicit start/end boundaries,
-  prefixes, suffixes, masks, and locked spans.
+- Version 1 now provides pretokenized UTF-8 bounded learning, typed BOS,
+  explicit observed start/end domains, raw counts, order-N latent states,
+  structural recombination, derived BOS-free wrapped cycles, projection-aware
+  pass helpers, independent path validation, and canonical `wfcs=1` text on
+  native FPC and pas2js.
+- Extend the Unicode-aware 1D token topology with dedicated prefix, suffix,
+  mask, and locked-span helpers and caller-selectable tokenizers.
 - Character, word, and caller-defined token models with learned n-gram and
   offset constraints.
 - Passes for structure/template -> lexical fill -> punctuation or other

@@ -282,6 +282,13 @@ typed terrain → biome → foliage pipeline. Its separate validator and portabl
 layer signatures provide a domain-level check that the generic core does not
 need to know about.
 
+The [sequence adapter](sequences.md) composes context-bearing latent states
+without exposing their private graph keys. A sequence pass can require its
+projected public token from a named token pass, and an ordinary downstream
+value can require one or more public tokens projected from a named latent
+sequence pass. Both are exact same-coordinate `RequireFromPass` alternatives
+and participate in the normal atomic dependency plan.
+
 ## constraints from the previous pass
 
 `RequirePrevious` filters a value using the entry at the same coordinate in
@@ -416,9 +423,10 @@ documented in [deterministic generation](determinism.md).
 Version 1 dependency planning is deliberately acyclic. `RequirePrevious` and
 `RequireFromPass` read the same coordinate and compare exact values; coordinate
 offsets, source-neighborhood queries, soft predicates, and bounded feedback or
-repair are not implicit features. Transform mode has one source. Projected
-latent pattern layers require a future projection-aware transaction before a
-dependent pass may consume them.
+repair are not implicit features. Transform mode has one source. Sequence
+projection helpers now bridge exact public tokens and private latent states in
+both directions; general projection schemas and overlapping-pattern pass
+projection remain future work.
 
 A failed legacy `Run` restores pass selection but is not a transaction over
 generated cell values. `TrySolve` and `TryRegenerateFrom` are transactional.

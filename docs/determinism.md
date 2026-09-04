@@ -101,6 +101,16 @@ set, but not the original corpus. Output replay also includes latent graph
 shape and wrapping, locks, and projection version. See
 [overlapping 2D patterns](patterns.md).
 
+Sequence models additionally depend on the exact ordered pretokenized UTF-8
+corpus, order, and `WFC_SEQUENCE_LEARN_ALGORITHM_VERSION`. Canonical `wfcs=1`
+captures ordered sample lengths, public tokens, typed BOS/token histories,
+emissions, and raw observation/start/end counts. Graph replay also includes
+`WFC_SEQUENCE_MODEL_VERSION`, `WFC_SEQUENCE_TEXT_VERSION`,
+`WFC_SEQUENCE_GRAPH_MODEL_VERSION`, `WFC_SEQUENCE_GRAPH_ADAPTER_VERSION`,
+output length and wrapping, public-token domain intersections, and any latent
+or projected cross-pass requirements. Wrapped output is a derived BOS-free
+cycle, not wrapped training evidence. See [sequence models](sequences.md).
+
 The replay contract assumes values and rules are registered through
 the public builders or a versioned project adapter such as
 `ApplyModelToGraph`. Arbitrary caller mutation of exposed rule arrays or

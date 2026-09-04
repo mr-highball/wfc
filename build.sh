@@ -11,12 +11,14 @@ world_test_source="$repository_root/test/wfc_world2d_test.lpr"
 settlement_test_source="$repository_root/test/wfc_world2d_settlement_test.lpr"
 learning_test_source="$repository_root/test/wfc_learn_test.lpr"
 pattern_test_source="$repository_root/test/wfc_pattern2d_test.lpr"
+sequence_test_source="$repository_root/test/wfc_sequence_test.lpr"
 example_source="$repository_root/examples/text/01_SimpleTiledWorld/SimpleTiledWorld.lpr"
 world_example_source="$repository_root/examples/2D/01_MultiPassWorld/MultiPassWorld.lpr"
 settlement_example_source="$repository_root/examples/2D/03_SelectiveSettlement/SelectiveSettlement.lpr"
 learning_example_source="$repository_root/examples/learning/01_LearnTiles/LearnTiles.lpr"
 corpus_example_source="$repository_root/examples/learning/02_LearnCorpus/LearnCorpus.lpr"
 pattern_example_source="$repository_root/examples/learning/03_LearnPatterns/LearnPatterns.lpr"
+sequence_example_source="$repository_root/examples/sequence/01_LearnSequence/LearnSequence.lpr"
 world_common_directory="$repository_root/examples/2D/common"
 unit_output_directory="$repository_root/build/native/units"
 binary_output_directory="$repository_root/build/native/bin"
@@ -29,12 +31,14 @@ compiler_world_test_source=$world_test_source
 compiler_settlement_test_source=$settlement_test_source
 compiler_learning_test_source=$learning_test_source
 compiler_pattern_test_source=$pattern_test_source
+compiler_sequence_test_source=$sequence_test_source
 compiler_example_source=$example_source
 compiler_world_example_source=$world_example_source
 compiler_settlement_example_source=$settlement_example_source
 compiler_learning_example_source=$learning_example_source
 compiler_corpus_example_source=$corpus_example_source
 compiler_pattern_example_source=$pattern_example_source
+compiler_sequence_example_source=$sequence_example_source
 compiler_world_common_directory=$world_common_directory
 compiler_unit_output_directory=$unit_output_directory
 compiler_binary_output_directory=$binary_output_directory
@@ -47,12 +51,14 @@ case "$host_system" in
     compiler_settlement_test_source=$(cygpath -m "$settlement_test_source") || exit $?
     compiler_learning_test_source=$(cygpath -m "$learning_test_source") || exit $?
     compiler_pattern_test_source=$(cygpath -m "$pattern_test_source") || exit $?
+    compiler_sequence_test_source=$(cygpath -m "$sequence_test_source") || exit $?
     compiler_example_source=$(cygpath -m "$example_source") || exit $?
     compiler_world_example_source=$(cygpath -m "$world_example_source") || exit $?
     compiler_settlement_example_source=$(cygpath -m "$settlement_example_source") || exit $?
     compiler_learning_example_source=$(cygpath -m "$learning_example_source") || exit $?
     compiler_corpus_example_source=$(cygpath -m "$corpus_example_source") || exit $?
     compiler_pattern_example_source=$(cygpath -m "$pattern_example_source") || exit $?
+    compiler_sequence_example_source=$(cygpath -m "$sequence_example_source") || exit $?
     compiler_world_common_directory=$(cygpath -m "$world_common_directory") || exit $?
     compiler_unit_output_directory=$(cygpath -m "$unit_output_directory") || exit $?
     compiler_binary_output_directory=$(cygpath -m "$binary_output_directory") || exit $?
@@ -164,6 +170,27 @@ esac
 
 printf "Running '%s'.\n" "$pattern_test_executable"
 "$pattern_test_executable" || exit $?
+
+printf "Building the sequence-foundation conformance suite.\n"
+"$compiler" "$@" \
+  -B \
+  -Mdelphi \
+  -Sa \
+  -Cr \
+  -Co \
+  -Ci \
+  "-Fu$compiler_source_directory" \
+  "-FU$compiler_unit_output_directory" \
+  "-FE$compiler_binary_output_directory" \
+  "$compiler_sequence_test_source" || exit $?
+
+sequence_test_executable="$binary_output_directory/wfc_sequence_test"
+case "$host_system" in
+  CYGWIN*|MINGW*|MSYS*) sequence_test_executable="${sequence_test_executable}.exe" ;;
+esac
+
+printf "Running '%s'.\n" "$sequence_test_executable"
+"$sequence_test_executable" || exit $?
 
 printf "Building the dependency-free tiled-world example.\n"
 "$compiler" "$@" \
@@ -298,3 +325,24 @@ esac
 
 printf "Smoke testing '%s' with seed 0.\n" "$pattern_example_executable"
 "$pattern_example_executable" 0 >/dev/null || exit $?
+
+printf "Building the portable learned-sequence example.\n"
+"$compiler" "$@" \
+  -B \
+  -Mdelphi \
+  -Sa \
+  -Cr \
+  -Co \
+  -Ci \
+  "-Fu$compiler_source_directory" \
+  "-FU$compiler_unit_output_directory" \
+  "-FE$compiler_binary_output_directory" \
+  "$compiler_sequence_example_source" || exit $?
+
+sequence_example_executable="$binary_output_directory/LearnSequence"
+case "$host_system" in
+  CYGWIN*|MINGW*|MSYS*) sequence_example_executable="${sequence_example_executable}.exe" ;;
+esac
+
+printf "Smoke testing '%s' with seed 0.\n" "$sequence_example_executable"
+"$sequence_example_executable" 0 >/dev/null || exit $?

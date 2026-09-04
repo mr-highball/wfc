@@ -18,6 +18,7 @@ $settlementTestSource = Join-Path $repositoryRoot `
   'test/wfc_world2d_settlement_test.lpr'
 $learningTestSource = Join-Path $repositoryRoot 'test/wfc_learn_test.lpr'
 $patternTestSource = Join-Path $repositoryRoot 'test/wfc_pattern2d_test.lpr'
+$sequenceTestSource = Join-Path $repositoryRoot 'test/wfc_sequence_test.lpr'
 $exampleSource = Join-Path $repositoryRoot `
   'examples/text/01_SimpleTiledWorld/SimpleTiledWorld.lpr'
 $worldExampleSource = Join-Path $repositoryRoot `
@@ -30,6 +31,8 @@ $corpusExampleSource = Join-Path $repositoryRoot `
   'examples/learning/02_LearnCorpus/LearnCorpus.lpr'
 $patternExampleSource = Join-Path $repositoryRoot `
   'examples/learning/03_LearnPatterns/LearnPatterns.lpr'
+$sequenceExampleSource = Join-Path $repositoryRoot `
+  'examples/sequence/01_LearnSequence/LearnSequence.lpr'
 $worldCommonDirectory = Join-Path $repositoryRoot 'examples/2D/common'
 $unitOutputDirectory = Join-Path $repositoryRoot 'build/native/units'
 $binaryOutputDirectory = Join-Path $repositoryRoot 'build/native/bin'
@@ -214,6 +217,42 @@ Write-Host "Running '$patternTestExecutable'."
 $patternTestExitCode = $LASTEXITCODE
 if ($patternTestExitCode -ne 0) {
   exit $patternTestExitCode
+}
+
+$sequenceTestCompilerArguments = @(
+  $CompilerOptions
+  '-B'
+  '-Mdelphi'
+  '-Sa'
+  '-Cr'
+  '-Co'
+  '-Ci'
+  "-Fu$sourceDirectory"
+  "-FU$unitOutputDirectory"
+  "-FE$binaryOutputDirectory"
+  $sequenceTestSource
+)
+
+Write-Host 'Building the sequence-foundation conformance suite.'
+& $Compiler @sequenceTestCompilerArguments
+$sequenceTestCompilerExitCode = $LASTEXITCODE
+if ($sequenceTestCompilerExitCode -ne 0) {
+  exit $sequenceTestCompilerExitCode
+}
+
+$sequenceTestExecutableName = if ($env:OS -eq 'Windows_NT') {
+  'wfc_sequence_test.exe'
+} else {
+  'wfc_sequence_test'
+}
+$sequenceTestExecutable = Join-Path $binaryOutputDirectory `
+  $sequenceTestExecutableName
+
+Write-Host "Running '$sequenceTestExecutable'."
+& $sequenceTestExecutable
+$sequenceTestExitCode = $LASTEXITCODE
+if ($sequenceTestExitCode -ne 0) {
+  exit $sequenceTestExitCode
 }
 
 $exampleCompilerArguments = @(
@@ -442,4 +481,40 @@ $patternExampleExecutable = Join-Path $binaryOutputDirectory `
 
 Write-Host "Smoke testing '$patternExampleExecutable' with seed 0."
 & $patternExampleExecutable 0 | Out-Null
+$patternExampleExitCode = $LASTEXITCODE
+if ($patternExampleExitCode -ne 0) {
+  exit $patternExampleExitCode
+}
+
+$sequenceExampleCompilerArguments = @(
+  $CompilerOptions
+  '-B'
+  '-Mdelphi'
+  '-Sa'
+  '-Cr'
+  '-Co'
+  '-Ci'
+  "-Fu$sourceDirectory"
+  "-FU$unitOutputDirectory"
+  "-FE$binaryOutputDirectory"
+  $sequenceExampleSource
+)
+
+Write-Host 'Building the portable learned-sequence example.'
+& $Compiler @sequenceExampleCompilerArguments
+$sequenceExampleCompilerExitCode = $LASTEXITCODE
+if ($sequenceExampleCompilerExitCode -ne 0) {
+  exit $sequenceExampleCompilerExitCode
+}
+
+$sequenceExampleExecutableName = if ($env:OS -eq 'Windows_NT') {
+  'LearnSequence.exe'
+} else {
+  'LearnSequence'
+}
+$sequenceExampleExecutable = Join-Path $binaryOutputDirectory `
+  $sequenceExampleExecutableName
+
+Write-Host "Smoke testing '$sequenceExampleExecutable' with seed 0."
+& $sequenceExampleExecutable 0 | Out-Null
 exit $LASTEXITCODE

@@ -1,5 +1,10 @@
 # model learning and priming
 
+This guide covers radius-one cardinal models. The complementary
+[sequence-model guide](sequences.md) documents bounded order-N learning with
+typed BOS history, structural suffix/prefix recombination, public-token pass
+projection, and canonical `wfcs=1` text.
+
 The learning layer turns one or more tokenized examples into a portable WFC
 model. It is deliberately separate from presentation and file I/O: callers
 supply tokens, choose boundary and symmetry policies, then either apply the
@@ -277,8 +282,11 @@ topology, solve options, and solver/random algorithm versions.
 
 The current learner handles ordered heterogeneous pretokenized corpora of
 single-layer 1D or 2D samples with cardinal radius-one relations. The separate
-pattern layer now extracts overlapping multi-cell 2D footprints. Neither layer
-yet tokenizes raw files, learns 3D neighborhoods, smooths unseen relations,
-attaches provenance or semantic tags, or trains cross-pass predicates. Those
-are deliberate extension points built on stable explicit IR rather than
-hidden behavior.
+pattern layer extracts overlapping multi-cell 2D footprints, and the sequence
+layer learns bounded order-N latent states from pretokenized UTF-8 corpora.
+Sequence samples reset a typed BOS history and add no cross-sample seam, while
+exact suffix/prefix compatibility intentionally permits recombination. These
+layers do not yet tokenize raw files, learn 3D neighborhoods, smooth unseen
+relations, attach provenance or semantic tags, or implement a probabilistic
+language model. Those are deliberate extension points built on stable explicit
+IR rather than hidden behavior.

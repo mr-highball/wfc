@@ -1,10 +1,9 @@
 # Building and testing
 
 The dependency-free build covers the core, specialized 2D and settlement,
-radius-one model-learning, and overlapping-pattern units; all five conformance
-suites; and seeded smoke runs of the text-rendered tiled world, multi-pass 2D
-ecosystem, selective settlement, learned-tiles, learned-corpus, and
-overlapping-pattern demos. It does not
+radius-one model-learning, overlapping-pattern, and sequence units and their
+conformance suites; it also runs seeded smoke checks of the portable console
+demos. It does not
 initialize the optional music submodule or build the unfinished Castle Game
 Engine viewer. The browser world has its own
 dependency-free pas2js entry point described below.
@@ -22,6 +21,12 @@ project artifacts, but tool-specific units and types must not enter core/runtime
 `uses` clauses or public APIs. Canonical artifacts, validation, generation, and
 replay remain usable without those tools.
 
+The sequence learner, graph adapter, validator, and canonical `wfcs=1` codec
+follow this boundary. Tokenizers, MIDI readers, playback systems, editors, and
+other domain adapters may be project-owned portable Pascal or optional edge
+integrations, but none is required to learn, serialize, solve, or validate a
+sequence model.
+
 ## One-command native gate
 
 From the repository root, use the entry point for your shell:
@@ -36,9 +41,9 @@ From the repository root, use the entry point for your shell:
 
 Both scripts rebuild with assertions and range, overflow, and I/O checks, run
 `wfc_test`, `wfc_world2d_test`, `wfc_world2d_settlement_test`,
-`wfc_learn_test`, and `wfc_pattern2d_test`, then compile and smoke-test all six
-portable console examples with seed `0`; the multi-pass and selective-settlement
-worlds also run with their default seeds.
+`wfc_learn_test`, `wfc_pattern2d_test`, and `wfc_sequence_test`, then compile
+and smoke-test the portable console examples with seed `0`; the multi-pass and
+selective-settlement worlds also run with their default seeds.
 A compiler error, failed check,
 or example failure produces a nonzero exit code. Compiler units and binaries
 are written beneath `build/native/`; running the gate does not modify tracked
@@ -138,6 +143,12 @@ pas2js -B -Tnodejs -Mdelphi -Fusrc \
   -FUbuild/pas2js/pattern-units -FEbuild/pas2js/pattern \
   test/wfc_pattern2d_test.lpr
 node build/pas2js/pattern/wfc_pattern2d_test.js
+
+mkdir -p build/pas2js/sequence-units build/pas2js/sequence
+pas2js -B -Tnodejs -Mdelphi -Fusrc \
+  -FUbuild/pas2js/sequence-units -FEbuild/pas2js/sequence \
+  test/wfc_sequence_test.lpr
+node build/pas2js/sequence/wfc_sequence_test.js
 ```
 
 The portable multi-pass host uses the same target:
@@ -192,6 +203,17 @@ pas2js -B -Tnodejs -Mdelphi -Fusrc \
   -FUbuild/pas2js/pattern-example-units -FEbuild/pas2js/pattern-example \
   examples/learning/03_LearnPatterns/LearnPatterns.lpr
 node build/pas2js/pattern-example/LearnPatterns.js 0
+```
+
+The sequence host exercises bounded order-N learning, canonical `wfcs=1`,
+latent solving, and independently checked public-token projection:
+
+```bash
+mkdir -p build/pas2js/sequence-example-units build/pas2js/sequence-example
+pas2js -B -Tnodejs -Mdelphi -Fusrc \
+  -FUbuild/pas2js/sequence-example-units -FEbuild/pas2js/sequence-example \
+  examples/sequence/01_LearnSequence/LearnSequence.lpr
+node build/pas2js/sequence-example/LearnSequence.js 0
 ```
 
 A standalone `pas2js` executable is not enough when its RTL unit paths are

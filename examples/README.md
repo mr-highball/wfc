@@ -12,6 +12,7 @@ the [roadmap](../ROADMAP.md).
 | Learned tiles | `learning/01_LearnTiles/LearnTiles.lpr` | Native FPC, pas2js/Node | Learns weighted cardinal constraints from a tokenized sample, serializes the immutable model canonically, generates a seeded grid, and independently validates every emitted adjacency without external dependencies. |
 | Learned corpus | `learning/02_LearnCorpus/LearnCorpus.lpr` | Native FPC, pas2js/Node | Learns one directed model from two differently sized samples, proves their local wraps and absent cross-sample seams, round-trips canonical `wfcm=2`, and independently validates generated orientation. |
 | Overlapping patterns | `learning/03_LearnPatterns/LearnPatterns.lpr` | Native FPC, pas2js/Node | Learns weighted `2x2` structure from heterogeneous grids with D4 augmentation, round-trips strict `wfcp=1`, solves private latent patterns, independently validates every overlap and projected token contribution, and prints a portable signature without external dependencies. |
+| Learned sequence | `sequence/01_LearnSequence/LearnSequence.lpr` | Native FPC, pas2js/Node | Learns bounded order-2 latent states from a pretokenized UTF-8 corpus, round-trips strict `wfcs=1`, constrains public projection, solves and independently validates the path, and exposes no private graph key or external dependency. |
 | Text-rendered 2D world | `text/01_SimpleTiledWorld/SimpleTiledWorld.lpr` | Native FPC, pas2js/Node | Builds and runs from the same Pascal source, prints and accepts an optional replay seed, and needs no external dependency. This is world generation rendered as text, not a text-prediction model. |
 | Building-kit console | `3D/01_SimpleBuildingKit/tester.lpr` | Native FPC | Builds without Castle Game Engine, but its current fixture reaches a no-valid-value failure before rendering. It does not yet prove vertical 3D constraints. |
 | Castle viewer shell | `3D/01_SimpleBuildingKit/castle-demo/` | Native Castle Game Engine | The project shell and assets exist, but its game state does not yet call WFC or render generated building geometry. |
@@ -122,6 +123,25 @@ node build/examples/pattern/pas2js/bin/LearnPatterns.js 0
 See the [overlapping-pattern guide](learning/03_LearnPatterns/README.md) and
 the [model documentation](../docs/patterns.md) for extraction, compatibility,
 projection, replay identity, and the current pass-composition boundary.
+
+The learned-sequence example exercises typed BOS boundaries, raw counts,
+structural order-2 recombination, public-token domains, strict canonical text,
+and independent latent-path validation:
+
+```text
+fpc -B -Mdelphi -Sa -Cr -Co -Ci -Fusrc -FUbuild/examples/sequence/native/units -FEbuild/examples/sequence/native/bin examples/sequence/01_LearnSequence/LearnSequence.lpr
+build/examples/sequence/native/bin/LearnSequence 0
+```
+
+```text
+pas2js -B -Tnodejs -Mdelphi -Fusrc -FUbuild/examples/sequence/pas2js/units -FEbuild/examples/sequence/pas2js/bin examples/sequence/01_LearnSequence/LearnSequence.lpr
+node build/examples/sequence/pas2js/bin/LearnSequence.js 0
+```
+
+See the [sequence example guide](sequence/01_LearnSequence/README.md) and
+[sequence-model documentation](../docs/sequences.md) for the bounded/open
+learning contract, derived wrapped-cycle semantics, pass projection, and
+versioned replay identity.
 
 The browser host has dedicated entry points that compile its Pascal program
 and stage a complete static site beneath `build/browser/world2d/www`:

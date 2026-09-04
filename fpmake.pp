@@ -33,6 +33,10 @@ begin
     P.Targets.AddUnit('wfc_pattern2d.pas');
     P.Targets.AddUnit('wfc_pattern2d_learn.pas');
     P.Targets.AddUnit('wfc_pattern2d_text.pas');
+    P.Targets.AddUnit('wfc_sequence.pas');
+    P.Targets.AddUnit('wfc_sequence_learn.pas');
+    P.Targets.AddUnit('wfc_sequence_graph.pas');
+    P.Targets.AddUnit('wfc_sequence_text.pas');
     P.Targets.AddUnit('wfc_world2d.pas');
     P.Targets.AddUnit('wfc_world2d_validate.pas');
     P.Targets.AddUnit('wfc_world2d_settlement.pas');
