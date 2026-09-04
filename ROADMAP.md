@@ -68,6 +68,11 @@ The repository already contains the beginnings of the ecosystem:
 - strict canonical `wfcmusic=1` score text, a defensive project-owned SMF
   format-0/1 byte codec, deterministic format-0 score export, four focused
   conformance suites, and a native/pas2js three-pass composition example;
+- a project-owned Voxel Foundation v1 with immutable prototypes, deterministic
+  yaw variants, explicit socket pairs, support-aware six-face graph
+  compilation, immutable scenes with portable signatures, independent
+  socket/support/entrance and reachability validation, and renderer-neutral
+  integer surface meshes;
 - stack-safe iterative traversal of large planes while preserving the legacy
   solver's north/east/south/west depth-first order;
 - checked one-command native build gates, an FPM package, a runtime-only
@@ -77,8 +82,9 @@ The repository already contains the beginnings of the ecosystem:
   adjacency and optional SoundShop/SDL2 playback;
 - building-kit constraints, a console renderer, and a Castle Game Engine
   project skeleton;
-- native/pas2js conformance runners covering the core, pass contracts, 2D
-  domain semantics, atomic failure, and layer-signature parity.
+- native/pas2js conformance runners covering the core, pass contracts, 2D and
+  voxel-3D domain semantics, learning, sequence, music, atomic failure, and
+  replay signatures.
 
 It is not yet the finished system described above:
 
@@ -95,8 +101,10 @@ It is not yet the finished system described above:
 - the examples index now records targets, dependencies, build commands, and
   honest completion status, but full per-example tutorials, invariants,
   expected output, and troubleshooting guides remain to be written;
-- the Castle example does not yet render generated building geometry, and the
-  building-kit demo currently runs with a depth of one;
+- the reusable voxel substrate is now independent of the legacy depth-one
+  building kit, but the footprint -> structure -> envelope/roof wrapper and
+  native/pas2js viewers are not yet complete; the Castle shell still does not
+  render generated geometry;
 - the first interactive pas2js demo and browser test host now exist, but there
   is no complete pass/domain inspector or stable native/pas2js decision-trace
   parity suite (canonical seeded value fixtures do already match);
@@ -356,12 +364,22 @@ cross-pass invariants; the same model and seed match between native and web.
 
 ### 3D structures
 
+- Voxel Foundation v1 now provides immutable weighted prototypes, explicit
+  symmetric socket pairs, deterministic quarter-turn yaw, vertical support,
+  exact six-direction graph compilation, immutable captured scenes, portable
+  signatures, independent local/global validation, and renderer-neutral
+  integer quad extraction on native FPC and pas2js.
 - Voxel and modular-building topologies with complete vertical constraints.
 - Rotation-aware sockets, support/load rules, empty space, entrances,
   connectivity, roofs, and multi-floor relationships.
 - Passes for footprint -> structure -> facade/roof -> props.
 - A completed Castle Game Engine native viewer and a lightweight pas2js voxel
   viewer using the same generated model and output data.
+
+The foundation deliberately excludes the legacy binary FBX from the standard
+path because its source and license provenance are not established. The first
+standard building and viewers will use generated unit geometry and
+project-authored materials.
 
 **Exit gate:** the building kit uses depth greater than one, contains no
 unsupported structural pieces or disconnected required entrances, renders the

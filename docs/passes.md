@@ -63,6 +63,7 @@ pass-scoped:
 
 - values introduced by `AddValue`, including their positive relative weights;
 - `RuleGroups` and `Rules`;
+- `HasDefinition` and the canonical `CopyRegisteredValues` inspection snapshot;
 - `Entry[X, Y, Z]`, including the default indexed property;
 - `Planes`;
 - `SelectionCallback`;
@@ -71,6 +72,11 @@ pass-scoped:
 For example, adding `land` while `terrain` is selected does not add `land` to
 the `foliage` rule set. Assigning an entry in one pass does not assign the entry
 at the same coordinate in another pass.
+
+`HasDefinition` checks both the deterministic value registry and the legacy
+public `RuleGroups` dictionary. `CopyRegisteredValues` returns an independent
+array in exact `AddValue` order, allowing domain adapters to detect a caller
+that changed one view without the other before accepting or capturing a model.
 
 Weights are pass-scoped with their values. Use `AddValue(Value, Weight)` when
 registering a value or assign `Rules[Value].Weight` afterward. The complete

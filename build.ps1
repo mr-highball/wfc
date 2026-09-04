@@ -19,6 +19,7 @@ $settlementTestSource = Join-Path $repositoryRoot `
 $learningTestSource = Join-Path $repositoryRoot 'test/wfc_learn_test.lpr'
 $patternTestSource = Join-Path $repositoryRoot 'test/wfc_pattern2d_test.lpr'
 $sequenceTestSource = Join-Path $repositoryRoot 'test/wfc_sequence_test.lpr'
+$voxelTestSource = Join-Path $repositoryRoot 'test/wfc_voxel3d_test.lpr'
 $musicTestSources = @(
   (Join-Path $repositoryRoot 'test/wfc_midi_smf_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_music_test.lpr')
@@ -263,6 +264,42 @@ Write-Host "Running '$sequenceTestExecutable'."
 $sequenceTestExitCode = $LASTEXITCODE
 if ($sequenceTestExitCode -ne 0) {
   exit $sequenceTestExitCode
+}
+
+$voxelTestCompilerArguments = @(
+  $CompilerOptions
+  '-B'
+  '-Mdelphi'
+  '-Sa'
+  '-Cr'
+  '-Co'
+  '-Ci'
+  "-Fu$sourceDirectory"
+  "-FU$unitOutputDirectory"
+  "-FE$binaryOutputDirectory"
+  $voxelTestSource
+)
+
+Write-Host 'Building the voxel-3D foundation conformance suite.'
+& $Compiler @voxelTestCompilerArguments
+$voxelTestCompilerExitCode = $LASTEXITCODE
+if ($voxelTestCompilerExitCode -ne 0) {
+  exit $voxelTestCompilerExitCode
+}
+
+$voxelTestExecutableName = if ($env:OS -eq 'Windows_NT') {
+  'wfc_voxel3d_test.exe'
+} else {
+  'wfc_voxel3d_test'
+}
+$voxelTestExecutable = Join-Path $binaryOutputDirectory `
+  $voxelTestExecutableName
+
+Write-Host "Running '$voxelTestExecutable'."
+& $voxelTestExecutable
+$voxelTestExitCode = $LASTEXITCODE
+if ($voxelTestExitCode -ne 0) {
+  exit $voxelTestExitCode
 }
 
 foreach ($musicTestSource in $musicTestSources) {

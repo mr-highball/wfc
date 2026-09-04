@@ -579,7 +579,6 @@ type
     procedure SetSeed(const AValue: TGraphSeed);
     procedure SetWrapNeighbors(const AValue: Boolean);
     procedure CopyValuesFrom(const ASource: TGraph);
-    function HasDefinition: Boolean;
     procedure ValidateCurrentEntryDomains(const AOperation: String);
     procedure ValidateDeniedRuleState(const AOperation: String);
     procedure InitializeStorage;
@@ -720,6 +719,16 @@ type
     function AddValue(const AValue : TGraphValue) : TParentedGraphRuleGroup; overload;
     function AddValue(const AValue : TGraphValue;
       const AWeight: TGraphWeight) : TParentedGraphRuleGroup; overload;
+
+    //Reports either registered values or public rule groups on the active
+    //pass. Checking both detects legacy callers that mutated RuleGroups
+    //directly and left the canonical value registry inconsistent.
+    function HasDefinition: Boolean;
+
+    //Returns the active pass's canonical AddValue order. This read-only copy
+    //lets adapters prove that the public RuleGroups view has not been changed
+    //independently of the private deterministic value registry.
+    function CopyRegisteredValues: TGraphValues;
 
     //Caller-owned pass-local initial domains.  SetAllowedValues canonicalizes
     //the supplied set to AddValue order; an assigned empty set is an explicit
@@ -3088,8 +3097,26 @@ begin
 end;
 
 function TGraph.HasDefinition: Boolean;
+var
+  LGraph: TGraph;
 begin
+  LGraph := GetActivePassGraph;
+  if LGraph <> Self then
+    Exit(LGraph.HasDefinition);
   Result := (Length(FValues) > 0) or (FRuleGroups.Count > 0);
+end;
+
+function TGraph.CopyRegisteredValues: TGraphValues;
+var
+  I: Integer;
+  LGraph: TGraph;
+begin
+  LGraph := GetActivePassGraph;
+  if LGraph <> Self then
+    Exit(LGraph.CopyRegisteredValues);
+  SetLength(Result, Length(FValues));
+  for I := 0 to High(FValues) do
+    Result[I] := FValues[I];
 end;
 
 procedure TGraph.ValidateCurrentEntryDomains(const AOperation: String);

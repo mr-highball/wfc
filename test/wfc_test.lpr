@@ -4097,6 +4097,7 @@ end;
 procedure TestPassScopedState;
 var
   LGraph: TGraph;
+  LValues: TGraphValues;
 begin
   LGraph := TGraph.Create.Reshape(2, 1, 1);
   try
@@ -4105,7 +4106,18 @@ begin
     LGraph[0, 0, 0].Value := 'land';
 
     LGraph.SwitchToPass('foliage');
+    Check(not LGraph.HasDefinition,
+      'definition inspection follows the newly selected empty pass');
     LGraph.AddValue('tree');
+
+    Check(LGraph.HasDefinition,
+      'definition inspection sees active-pass registered values');
+    LValues := LGraph.CopyRegisteredValues;
+    Check((Length(LValues) = 1) and (LValues[0] = 'tree'),
+      'registered value copies preserve active-pass AddValue order');
+    LValues[0] := 'changed';
+    Check(LGraph.CopyRegisteredValues[0] = 'tree',
+      'registered value inspection returns an independent array');
 
     Check(LGraph.RuleGroups.ContainsKey('tree'),
       'RuleGroups reads from the active pass');
@@ -4117,6 +4129,8 @@ begin
 
     Check(LGraph.PassGraph[0].RuleGroups.ContainsKey('land'),
       'pass zero retains its own rule groups');
+    Check(LGraph.PassGraph[0].CopyRegisteredValues[0] = 'land',
+      'pass graph inspection addresses its own value registry');
     Check(not LGraph.PassGraph[0].RuleGroups.ContainsKey('tree'),
       'pass zero is isolated from pass one rules');
     Check(LGraph.PassGraph[1].RuleGroups.ContainsKey('tree'),

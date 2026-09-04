@@ -2,10 +2,10 @@
 
 The dependency-free build covers the core, specialized 2D and settlement,
 radius-one model-learning, overlapping-pattern, sequence, exact music-score,
-music projection, Standard MIDI File, and score-export units and their
-conformance suites; it also runs seeded smoke checks of the portable console
-demos. It does not initialize the optional legacy music submodule or build the
-unfinished Castle Game Engine viewer. The browser world has its own
+music projection, Standard MIDI File, score-export, and voxel-3D units and
+their conformance suites; it also runs seeded smoke checks of the portable
+console demos. It does not initialize the optional legacy music submodule or
+build the unfinished Castle Game Engine viewer. The browser world has its own
 dependency-free pas2js entry point described below.
 
 FPC 3.2.2 is the supported stable compiler. The current FPC development
@@ -26,10 +26,12 @@ The sequence learner, graph adapter, validator, and canonical `wfcs=1` codec
 follow this boundary. The exact music score, fixed-quantum cell codecs,
 cross-model projection maps, strict `wfcmusic=1` score codec, raw SMF
 format-0/1 codec, and format-0 score exporter are also project-owned portable
-Pascal. Playback systems and editors remain optional edge integrations; none
-is required to learn, serialize, solve, validate, or export the standard music
-fixture. The GPL-3.0 SoundShop submodule, Lazarus/LCL, and SDL2 occur only in
-two explicitly legacy examples.
+Pascal. The voxel kit, semantic validator, and integer surface mesh are
+likewise project-owned and expose no engine or renderer type. Playback systems,
+editors, and viewers remain optional edge integrations; none is required to
+learn, serialize, solve, validate, export, or mesh the portable foundations.
+The GPL-3.0 SoundShop submodule, Lazarus/LCL, and SDL2 occur only in two
+explicitly legacy examples.
 
 ## One-command native gate
 
@@ -46,8 +48,9 @@ From the repository root, use the entry point for your shell:
 Both scripts rebuild with assertions and range, overflow, and I/O checks, run
 `wfc_test`, `wfc_world2d_test`, `wfc_world2d_settlement_test`,
 `wfc_learn_test`, `wfc_pattern2d_test`, `wfc_sequence_test`,
-`wfc_midi_smf_test`, `wfc_music_test`, `wfc_music_graph_test`, and
-`wfc_music_midi_test`, then compile and smoke-test the portable console
+`wfc_voxel3d_test`, `wfc_midi_smf_test`, `wfc_music_test`,
+`wfc_music_graph_test`, and `wfc_music_midi_test`, then compile and smoke-test
+the portable console
 examples with seed `0`, including the bounded/wrapped spatial dependency
 self-check; the multi-pass and selective-settlement worlds also run
 with their default seeds.
@@ -156,6 +159,12 @@ pas2js -B -Tnodejs -Mdelphi -Fusrc \
   -FUbuild/pas2js/sequence-units -FEbuild/pas2js/sequence \
   test/wfc_sequence_test.lpr
 node build/pas2js/sequence/wfc_sequence_test.js
+
+mkdir -p build/pas2js/voxel-units build/pas2js/voxel
+pas2js -B -Tnodejs -Mdelphi -Fusrc \
+  -FUbuild/pas2js/voxel-units -FEbuild/pas2js/voxel \
+  test/wfc_voxel3d_test.lpr
+node build/pas2js/voxel/wfc_voxel3d_test.js
 
 mkdir -p build/pas2js/music-units build/pas2js/music
 for music_test in wfc_midi_smf_test wfc_music_test \
@@ -303,8 +312,8 @@ not commit them.
 
 The hosted pas2js gate uses exact official upstream pas2js and FPC-source
 revisions, verifies both source-archive SHA-256 digests, and caches the resulting
-3.3.1 toolchain. It runs every portable conformance source, including the four
-music suites; the tiled-world, learned-tiles, learned-corpus,
+3.3.1 toolchain. It runs every portable conformance source, including the voxel
+foundation and four music suites; the tiled-world, learned-tiles, learned-corpus,
 overlapping-pattern, sequence, pass-composed-music, and spatial-dependency
 seed-zero smoke tests;
 and the multi-pass and selective-settlement worlds with both seed zero and
@@ -319,8 +328,8 @@ overloaded plain-procedure callback call.
 The hosted workflow runs the checked native gate with FPC 3.2.2 on Linux,
 macOS, and Windows. The Linux lane also builds the FPM and Lazarus packages,
 runs the core Lazarus project, and verifies that generation leaves the checkout
-clean. A separate Linux lane runs the complete core, 2D, and learning
-pas2js/Node.js gate, plus the real browser self-test in headless Chrome, while
-a canary runs against the current official FPC development image and records
-the image digest and compiler revision in the job log. Submodules are
-deliberately disabled for every gate.
+clean. A separate Linux lane runs the complete core, 2D, voxel-3D, learning,
+sequence, music, and pass-composition pas2js/Node.js gate, plus the real browser
+self-test in headless Chrome, while a canary runs against the current official
+FPC development image and records the image digest and compiler revision in the
+job log. Submodules are deliberately disabled for every gate.

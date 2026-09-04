@@ -47,6 +47,9 @@ begin
     P.Targets.AddUnit('wfc_world2d_validate.pas');
     P.Targets.AddUnit('wfc_world2d_settlement.pas');
     P.Targets.AddUnit('wfc_world2d_settlement_validate.pas');
+    P.Targets.AddUnit('wfc_voxel3d.pas');
+    P.Targets.AddUnit('wfc_voxel3d_validate.pas');
+    P.Targets.AddUnit('wfc_voxel3d_mesh.pas');
     Run;
   end;
 end.

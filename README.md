@@ -35,8 +35,10 @@ modular 3D structures, music, text, and other discrete design problems.
 > format-0/1 codec, and a format-0 score exporter. Its portable three-pass
 > example runs on native FPC and pas2js/Node without a playback dependency.
 > Pipeline v2 adds exact signed-offset and finite any-of-neighborhood reads
-> across staged provider passes. Additional domain libraries, restart policies,
-> and broader inspection and training tools remain tracked in the
+> across staged provider passes. Voxel Foundation v1 adds immutable
+> rotation-aware prototypes, explicit six-face socket compatibility, vertical
+> support, captured scenes, independent validation, and renderer-neutral
+> integer surface meshes. Building passes and viewers remain tracked in the
 > [roadmap](ROADMAP.md).
 
 ## Features
@@ -87,6 +89,10 @@ modular 3D structures, music, text, and other discrete design problems.
   private latent sequence states
 - strict canonical `wfcmusic=1` score text, a project-owned SMF format-0/1
   byte codec, and deterministic format-0 score export
+- [immutable voxel kits](docs/voxel3d.md) with deterministic yaw variants,
+  explicit socket relations, support-aware six-direction graph compilation,
+  portable scene signatures, independent connectivity validation, and integer
+  quad meshes
 - iterative traversal without a graph-sized call stack
 - extension hooks for custom graph and entry behavior
 - one Pascal core for native FPC and pas2js

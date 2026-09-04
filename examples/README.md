@@ -16,14 +16,15 @@ the [roadmap](../ROADMAP.md).
 | Learned sequence | `sequence/01_LearnSequence/LearnSequence.lpr` | Native FPC, pas2js/Node | Learns bounded order-2 latent states from a pretokenized UTF-8 corpus, round-trips strict `wfcs=1`, constrains public projection, solves and independently validates the path, and exposes no private graph key or external dependency. |
 | Pass-composed music | `music/03_PassComposition/PassComposition.lpr` | Native FPC, pas2js/Node | Solves harmony and rhythm before a jointly constrained melody, rebuilds an exact score, round-trips strict `wfcmusic=1` and project-owned SMF bytes, and needs no playback or external dependency. |
 | Text-rendered 2D world | `text/01_SimpleTiledWorld/SimpleTiledWorld.lpr` | Native FPC, pas2js/Node | Builds and runs from the same Pascal source, prints and accepts an optional replay seed, and needs no external dependency. This is world generation rendered as text, not a text-prediction model. |
+| Voxel 3D foundation | `../test/wfc_voxel3d_test.lpr` (library conformance; standard demo next) | Native FPC, pas2js/Node | Proves deterministic yaw variants, exact six-face sockets, vertical support, captured scene signatures, independent entrance/connectivity validation, wrapped seams, and renderer-neutral integer meshes using only repository units and the standard RTL. |
 | Building-kit console | `3D/01_SimpleBuildingKit/tester.lpr` | Native FPC | Builds without Castle Game Engine, but its current fixture reaches a no-valid-value failure before rendering. It does not yet prove vertical 3D constraints. |
 | Castle viewer shell | `3D/01_SimpleBuildingKit/castle-demo/` | Native Castle Game Engine | The project shell and assets exist, but its game state does not yet call WFC or render generated building geometry. |
 | A-major music experiment | `music/01_simple_A_major/simple_a_major.lpi` | Native Lazarus/LCL | Legacy optional experiment using the SoundShop submodule and SDL2 playback. |
 | Learned-riff music experiment | `music/02_simple_song_riffs/simple_song_riffs.lpi` | Native Lazarus/LCL | Legacy optional experiment using manually inferred note adjacency, SoundShop, and SDL2 playback. |
 
 The first HTML/browser UI now exercises the real browser target and document
-host. A complete domain/trace inspector, text-prediction demo,
-depth-greater-than-one building demonstration, and connected Castle
+host. A complete domain/trace inspector, text-prediction demo, standard
+depth-greater-than-one voxel building demonstration, and connected Castle
 visualization remain roadmap work.
 
 ## dependency-free builds

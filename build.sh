@@ -12,6 +12,7 @@ settlement_test_source="$repository_root/test/wfc_world2d_settlement_test.lpr"
 learning_test_source="$repository_root/test/wfc_learn_test.lpr"
 pattern_test_source="$repository_root/test/wfc_pattern2d_test.lpr"
 sequence_test_source="$repository_root/test/wfc_sequence_test.lpr"
+voxel_test_source="$repository_root/test/wfc_voxel3d_test.lpr"
 midi_test_source="$repository_root/test/wfc_midi_smf_test.lpr"
 music_test_source="$repository_root/test/wfc_music_test.lpr"
 music_graph_test_source="$repository_root/test/wfc_music_graph_test.lpr"
@@ -38,6 +39,7 @@ compiler_settlement_test_source=$settlement_test_source
 compiler_learning_test_source=$learning_test_source
 compiler_pattern_test_source=$pattern_test_source
 compiler_sequence_test_source=$sequence_test_source
+compiler_voxel_test_source=$voxel_test_source
 compiler_midi_test_source=$midi_test_source
 compiler_music_test_source=$music_test_source
 compiler_music_graph_test_source=$music_graph_test_source
@@ -64,6 +66,7 @@ case "$host_system" in
     compiler_learning_test_source=$(cygpath -m "$learning_test_source") || exit $?
     compiler_pattern_test_source=$(cygpath -m "$pattern_test_source") || exit $?
     compiler_sequence_test_source=$(cygpath -m "$sequence_test_source") || exit $?
+    compiler_voxel_test_source=$(cygpath -m "$voxel_test_source") || exit $?
     compiler_midi_test_source=$(cygpath -m "$midi_test_source") || exit $?
     compiler_music_test_source=$(cygpath -m "$music_test_source") || exit $?
     compiler_music_graph_test_source=$(cygpath -m "$music_graph_test_source") || exit $?
@@ -209,6 +212,27 @@ esac
 
 printf "Running '%s'.\n" "$sequence_test_executable"
 "$sequence_test_executable" || exit $?
+
+printf "Building the voxel-3D foundation conformance suite.\n"
+"$compiler" "$@" \
+  -B \
+  -Mdelphi \
+  -Sa \
+  -Cr \
+  -Co \
+  -Ci \
+  "-Fu$compiler_source_directory" \
+  "-FU$compiler_unit_output_directory" \
+  "-FE$compiler_binary_output_directory" \
+  "$compiler_voxel_test_source" || exit $?
+
+voxel_test_executable="$binary_output_directory/wfc_voxel3d_test"
+case "$host_system" in
+  CYGWIN*|MINGW*|MSYS*) voxel_test_executable="${voxel_test_executable}.exe" ;;
+esac
+
+printf "Running '%s'.\n" "$voxel_test_executable"
+"$voxel_test_executable" || exit $?
 
 for compiler_music_suite in \
   "$compiler_midi_test_source" \
