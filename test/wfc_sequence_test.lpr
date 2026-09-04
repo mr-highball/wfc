@@ -416,6 +416,7 @@ end;
 procedure TestGraphOpenAndDomains;
 var
   LAllowed: TGraphValues;
+  LFalsePosition: Integer;
   LGenerated: TWfcGeneratedSequence;
   LGraph: TGraph;
   LModel: TWfcSequenceModel;
@@ -461,6 +462,19 @@ begin
     Check(LValidation.Valid and (LValidation.CheckedStates = 3) and
       (LValidation.CheckedTransitions = 2),
       'capture returns complete public validation evidence');
+    Check(SequenceStatesSatisfyEntryConstraints(LModel, LGraph,
+        LGenerated.StateIndices, LFalsePosition) and
+      (LFalsePosition = -1),
+      'bulk caller-domain validation accepts the solved state path');
+
+    LGraph.Entry[1, 0, 0].Value := LGraph.Entry[2, 0, 0].Value;
+    LGraph.ClearAllowedValues(1, 0, 0);
+    Check((not SequenceStateSatisfiesEntryConstraints(LModel, LGraph,
+        1, LGenerated.StateIndices[1])) and
+      (not SequenceStatesSatisfyEntryConstraints(LModel, LGraph,
+        LGenerated.StateIndices, LFalsePosition)) and
+      (LFalsePosition = 1),
+      'single and bulk validation reject a conflicting caller lock');
   finally
     LGraph.Free;
     LModel.Free;
@@ -799,6 +813,129 @@ begin
   end;
 end;
 
+procedure TestProjectionBundleAtomicity;
+var
+  LBindings: TWfcSequenceProjectionBindings;
+  LErrorMessage: String;
+  LGenerated: TWfcGeneratedSequence;
+  LGraph: TGraph;
+  LOptions: TGraphSolveOptions;
+  LReport: TGraphSolveReport;
+  LRulesOne: TWfcSequenceProjectionRules;
+  LRulesTwo: TWfcSequenceProjectionRules;
+  LSourceModelOne: TWfcSequenceModel;
+  LSourceModelTwo: TWfcSequenceModel;
+  LTargetModel: TWfcSequenceModel;
+  LValidation: TWfcSequenceGraphValidationReport;
+
+  function BundleRejected(
+    const ABindings: TWfcSequenceProjectionBindings): Boolean;
+  var
+    LDependencyCount: Integer;
+  begin
+    LDependencyCount := LGraph.DependencyCount;
+    LErrorMessage := '';
+    Result := False;
+    try
+      RequireSequenceProjectionMapsFromPasses(LTargetModel,
+        LGraph, ABindings);
+    except
+      on E: Exception do
+      begin
+        Result := True;
+        LErrorMessage := E.Message;
+      end;
+    end;
+    Result := Result and
+      (LGraph.DependencyCount = LDependencyCount) and
+      (Pos('@wfcs', LErrorMessage) = 0);
+  end;
+
+begin
+  LSourceModelOne := LearnSequenceModelCorpus(SamplesOf([
+    MakeWfcSequenceSample(TokensOf(['A'])),
+    MakeWfcSequenceSample(TokensOf(['B']))]), 1);
+  LSourceModelTwo := LearnSequenceModelCorpus(SamplesOf([
+    MakeWfcSequenceSample(TokensOf(['hot'])),
+    MakeWfcSequenceSample(TokensOf(['cold']))]), 1);
+  LTargetModel := LearnSequenceModelCorpus(SamplesOf([
+    MakeWfcSequenceSample(TokensOf(['X'])),
+    MakeWfcSequenceSample(TokensOf(['Y']))]), 1);
+  LGraph := TGraph.Create;
+  try
+    LGraph.Reshape(1, 1, 1);
+    LGraph.WrapNeighbors := False;
+    LGraph.CurrentPass := 'source-one';
+    ApplySequenceModelToGraph(LSourceModelOne, LGraph);
+    IntersectSequenceAllowedTokens(LSourceModelOne, LGraph, 0, 'B');
+    LGraph.SwitchToPass('source-two');
+    ApplySequenceModelToGraph(LSourceModelTwo, LGraph);
+    IntersectSequenceAllowedTokens(LSourceModelTwo, LGraph, 0, 'hot');
+    LGraph.SwitchToPass('target');
+    ApplySequenceModelToGraph(LTargetModel, LGraph);
+    IntersectSequenceAllowedTokens(LTargetModel, LGraph, 0, 'X');
+
+    SetLength(LRulesOne, 2);
+    LRulesOne[0] := MakeWfcSequenceProjectionRule('X', TokensOf(['A']));
+    LRulesOne[1] := MakeWfcSequenceProjectionRule('Y', TokensOf(['B']));
+    SetLength(LRulesTwo, 2);
+    LRulesTwo[0] := MakeWfcSequenceProjectionRule('X', TokensOf(['hot']));
+    LRulesTwo[1] := MakeWfcSequenceProjectionRule('Y', TokensOf(['missing']));
+    SetLength(LBindings, 2);
+    LBindings[0] := MakeWfcSequenceProjectionBinding(LSourceModelOne,
+      'source-one', LRulesOne);
+    LBindings[1] := MakeWfcSequenceProjectionBinding(LSourceModelTwo,
+      'source-two', LRulesTwo);
+    Check(BundleRejected(LBindings),
+      'a malformed second binding rejects the bundle before mutation');
+
+    LOptions := DefaultGraphSolveOptions;
+    Check(LGraph.TrySolve(LOptions, LReport) and
+      CaptureSolvedSequence(LTargetModel, LGraph.PassGraph[2],
+        LGenerated, LValidation) and TokensMatch(LGenerated.Tokens, ['X']),
+      'a rejected bundle leaves no first-binding semantic requirement');
+
+    LBindings[1] := MakeWfcSequenceProjectionBinding(LSourceModelOne,
+      'source-one', LRulesOne);
+    Check(BundleRejected(LBindings),
+      'a bundle rejects a repeated source pass instead of merging it as OR');
+
+    SetLength(LBindings, 0);
+    Check(BundleRejected(LBindings),
+      'an empty projection bundle is rejected without mutation');
+
+    LRulesOne[0] := MakeWfcSequenceProjectionRule('X', TokensOf(['B']));
+    LRulesOne[1] := MakeWfcSequenceProjectionRule('Y', TokensOf(['A']));
+    LRulesTwo[0] := MakeWfcSequenceProjectionRule('X', TokensOf(['hot']));
+    LRulesTwo[1] := MakeWfcSequenceProjectionRule('Y', TokensOf(['cold']));
+    SetLength(LBindings, 2);
+    LBindings[0] := MakeWfcSequenceProjectionBinding(LSourceModelOne,
+      'source-one', LRulesOne);
+    LBindings[1] := MakeWfcSequenceProjectionBinding(LSourceModelTwo,
+      'source-two', LRulesTwo);
+    ValidateSequenceProjectionMapsFromPasses(LTargetModel,
+      LGraph, LBindings);
+    Check((LGraph.DependencyCount = 1) and
+      (LGraph.DependencyIndex[0] = 1),
+      'bundle validation preserves the legacy predecessor dependency');
+    RequireSequenceProjectionMapsFromPasses(LTargetModel,
+      LGraph, LBindings);
+    Check((LGraph.DependencyCount = 2) and
+      (LGraph.DependencyIndex[0] = 0) and
+      (LGraph.DependencyIndex[1] = 1),
+      'a valid bundle declares both distinct providers');
+    Check(LGraph.TrySolve(LOptions, LReport) and
+      CaptureSolvedSequence(LTargetModel, LGraph.PassGraph[2],
+        LGenerated, LValidation) and TokensMatch(LGenerated.Tokens, ['X']),
+      'a target must satisfy both valid bundle bindings');
+  finally
+    LGraph.Free;
+    LTargetModel.Free;
+    LSourceModelTwo.Free;
+    LSourceModelOne.Free;
+  end;
+end;
+
 procedure TestDeterministicBranchingSeeds;
 var
   LGenerated: TWfcGeneratedSequence;
@@ -1112,6 +1249,8 @@ begin
   RunTest('pass projection helpers', @TestPassProjectionHelpers);
   RunTest('projection map composition and validation',
     @TestProjectionMapCompositionAndValidation);
+  RunTest('projection bundle atomicity',
+    @TestProjectionBundleAtomicity);
   RunTest('deterministic branching seeds',
     @TestDeterministicBranchingSeeds);
   RunTest('adapter identity and atomicity',

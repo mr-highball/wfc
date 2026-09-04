@@ -20,6 +20,8 @@ $learningTestSource = Join-Path $repositoryRoot 'test/wfc_learn_test.lpr'
 $patternTestSource = Join-Path $repositoryRoot 'test/wfc_pattern2d_test.lpr'
 $sequenceTestSource = Join-Path $repositoryRoot 'test/wfc_sequence_test.lpr'
 $textTestSource = Join-Path $repositoryRoot 'test/wfc_text_test.lpr'
+$textPassTestSource = Join-Path $repositoryRoot `
+  'test/wfc_text_passes_test.lpr'
 $voxelTestSource = Join-Path $repositoryRoot 'test/wfc_voxel3d_test.lpr'
 $buildingTestSource = Join-Path $repositoryRoot 'test/wfc_building3d_test.lpr'
 $traceTestSources = @(
@@ -56,6 +58,10 @@ $textCompletionExampleSource = Join-Path $repositoryRoot `
   'examples/text/02_ConstraintCompletion/ConstraintCompletion.lpr'
 $textCompletionExampleDirectory = Join-Path $repositoryRoot `
   'examples/text/02_ConstraintCompletion'
+$textPassExampleSource = Join-Path $repositoryRoot `
+  'examples/text/03_PassComposition/TextPassComposition.lpr'
+$textPassExampleDirectory = Join-Path $repositoryRoot `
+  'examples/text/03_PassComposition'
 $musicExampleSource = Join-Path $repositoryRoot `
   'examples/music/03_PassComposition/PassComposition.lpr'
 $spatialExampleSource = Join-Path $repositoryRoot `
@@ -327,6 +333,42 @@ Write-Host "Running '$textTestExecutable'."
 $textTestExitCode = $LASTEXITCODE
 if ($textTestExitCode -ne 0) {
   exit $textTestExitCode
+}
+
+$textPassTestCompilerArguments = @(
+  $CompilerOptions
+  '-B'
+  '-Mdelphi'
+  '-Sa'
+  '-Cr'
+  '-Co'
+  '-Ci'
+  "-Fu$sourceDirectory"
+  "-FU$unitOutputDirectory"
+  "-FE$binaryOutputDirectory"
+  $textPassTestSource
+)
+
+Write-Host 'Building the multi-pass text conformance suite.'
+& $Compiler @textPassTestCompilerArguments
+$textPassTestCompilerExitCode = $LASTEXITCODE
+if ($textPassTestCompilerExitCode -ne 0) {
+  exit $textPassTestCompilerExitCode
+}
+
+$textPassTestExecutableName = if ($env:OS -eq 'Windows_NT') {
+  'wfc_text_passes_test.exe'
+} else {
+  'wfc_text_passes_test'
+}
+$textPassTestExecutable = Join-Path $binaryOutputDirectory `
+  $textPassTestExecutableName
+
+Write-Host "Running '$textPassTestExecutable'."
+& $textPassTestExecutable
+$textPassTestExitCode = $LASTEXITCODE
+if ($textPassTestExitCode -ne 0) {
+  exit $textPassTestExitCode
 }
 
 $voxelTestCompilerArguments = @(
@@ -821,6 +863,43 @@ Write-Host "Smoke testing '$textCompletionExampleExecutable' with seed 0."
 $textCompletionExampleExitCode = $LASTEXITCODE
 if ($textCompletionExampleExitCode -ne 0) {
   exit $textCompletionExampleExitCode
+}
+
+$textPassExampleCompilerArguments = @(
+  $CompilerOptions
+  '-B'
+  '-Mdelphi'
+  '-Sa'
+  '-Cr'
+  '-Co'
+  '-Ci'
+  "-Fu$sourceDirectory"
+  "-Fu$textPassExampleDirectory"
+  "-FU$unitOutputDirectory"
+  "-FE$binaryOutputDirectory"
+  $textPassExampleSource
+)
+
+Write-Host 'Building the dependency-free multi-pass text example.'
+& $Compiler @textPassExampleCompilerArguments
+$textPassExampleCompilerExitCode = $LASTEXITCODE
+if ($textPassExampleCompilerExitCode -ne 0) {
+  exit $textPassExampleCompilerExitCode
+}
+
+$textPassExampleExecutableName = if ($env:OS -eq 'Windows_NT') {
+  'TextPassComposition.exe'
+} else {
+  'TextPassComposition'
+}
+$textPassExampleExecutable = Join-Path $binaryOutputDirectory `
+  $textPassExampleExecutableName
+
+Write-Host "Smoke testing '$textPassExampleExecutable' with seed 0."
+& $textPassExampleExecutable 0 | Out-Null
+$textPassExampleExitCode = $LASTEXITCODE
+if ($textPassExampleExitCode -ne 0) {
+  exit $textPassExampleExitCode
 }
 
 $musicExampleCompilerArguments = @(

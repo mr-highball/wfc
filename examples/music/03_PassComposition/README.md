@@ -87,9 +87,12 @@ this example with seed zero after running the four music conformance suites.
 
 ## what this proves—and does not
 
-This fixture proves an atomic, deterministic harmony + rhythm -> melody ->
-score -> MIDI route without LCL, SDL2, SoundShop, or another third-party unit.
-It proves hard pitch-class and action constraints over one quantized voice.
+This fixture proves a transactionally atomic, deterministic harmony + rhythm
+-> melody -> score -> MIDI route without LCL, SDL2, SoundShop, or another
+third-party unit. Atomic means all-or-nothing commit/rollback. The staged v1
+solver does not reopen harmony or rhythm decisions when melody fails. The
+fixture proves hard pitch-class and action constraints over one quantized
+voice.
 
 It does not yet prove polyphonic cell projection, key spelling, functional
 harmony, voice leading, MIDI-to-score learning, interactive editing, browser

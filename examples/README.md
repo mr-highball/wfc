@@ -16,6 +16,7 @@ the [roadmap](../ROADMAP.md).
 | Overlapping patterns | `learning/03_LearnPatterns/LearnPatterns.lpr` | Native FPC, pas2js/Node | Learns weighted `2x2` structure from heterogeneous grids with D4 augmentation, round-trips strict `wfcp=1`, solves private latent patterns, independently validates every overlap and projected token contribution, and prints a portable signature without external dependencies. |
 | Learned sequence | `sequence/01_LearnSequence/LearnSequence.lpr` | Native FPC, pas2js/Node | Learns bounded order-2 latent states from a pretokenized UTF-8 corpus, round-trips strict `wfcs=1`, constrains public projection, solves and independently validates the path, and exposes no private graph key or external dependency. |
 | Text constraint completion | `text/02_ConstraintCompletion/ConstraintCompletion.lpr` and `ConstraintCompletionNode.lpr` | Native FPC, pas2js/Node | Learns project-authored raw text with the project-owned Unicode-scalar tokenizer, exposes exact feasible domains, composes prefix/suffix/mask/interior locks, distinguishes prefix from whole-sample boundaries, independently validates anchored infill, and replays without an external dependency. |
+| Three-pass text composition | `text/03_PassComposition/TextPassComposition.lpr`, `TextPassCompositionNode.lpr`, and `BrowserTextPassComposition.lpr` | Native FPC, pas2js/Node, pas2js/browser | Gives structure, lexical choice, and punctuation separate latent owners; constrains the surface from both prior passes; independently validates and renders exact fragments; publishes a private-key-safe trace; and provides an interactive lock/contradiction workbench with an exact browser fixture. Repository units and the standard RTL are the complete runtime path. |
 | Pass-composed music | `music/03_PassComposition/PassComposition.lpr` | Native FPC, pas2js/Node | Solves harmony and rhythm before a jointly constrained melody, rebuilds an exact score, round-trips strict `wfcmusic=1` and project-owned SMF bytes, and needs no playback or external dependency. |
 | Text-rendered 2D world | `text/01_SimpleTiledWorld/SimpleTiledWorld.lpr` | Native FPC, pas2js/Node | Builds and runs from the same Pascal source, prints and accepts an optional replay seed, and needs no external dependency. This is world generation rendered as text, not a text-prediction model. |
 | Voxel 3D foundation | `../test/wfc_voxel3d_test.lpr` | Native FPC, pas2js/Node | Proves deterministic yaw variants, exact six-face sockets, vertical support, captured scene signatures, independent entrance/connectivity validation, wrapped seams, and renderer-neutral integer meshes using only repository units and the standard RTL. |
@@ -29,9 +30,11 @@ the [roadmap](../ROADMAP.md).
 The 2D field instrument and Building 3D workbench exercise the real browser
 target and document host. The causal-trace console inspector now proves
 portable event capture, validation, hashing, pass slices, and backward cause
-links. Interactive stepping, live domain views, richer failed-clause/minimal
-core explanations, streaming capture, and an interactive text-completion
-browser editor remain roadmap work. The Castle shell is retained only as an
+links. The text pass workbench adds public three-layer lineage, locks, and
+contradiction/recovery inspection. Interactive trace stepping, live global
+domain views, richer failed-clause/minimal-core explanations, streaming
+capture, and an arbitrary-corpus completion editor remain roadmap work. The
+Castle shell is retained only as an
 optional native-engine edge; the standard 3D graphical path no longer waits
 on it.
 
@@ -256,6 +259,26 @@ See the [constraint-completion guide](text/02_ConstraintCompletion/README.md)
 and [text foundation](../docs/text.md) for scalar offsets, extent semantics,
 domain analysis, independent validation, replay inputs, and the non-LLM scope.
 
+The text pass-composition example uses three aligned sequence owners, exact
+cross-vocabulary maps, a versioned fragment surface, and a sanitized causal
+trace:
+
+```text
+fpc -B -Mdelphi -Sa -Cr -Co -Ci -Fusrc -Fuexamples/text/03_PassComposition -FUbuild/examples/text-passes/native/units -FEbuild/examples/text-passes/native/bin examples/text/03_PassComposition/TextPassComposition.lpr
+build/examples/text-passes/native/bin/TextPassComposition 0
+```
+
+```text
+pas2js -B -Tnodejs -Mdelphi -Fusrc -Fuexamples/text/03_PassComposition -FUbuild/examples/text-passes/pas2js/units -FEbuild/examples/text-passes/pas2js/bin examples/text/03_PassComposition/TextPassCompositionNode.lpr
+node build/examples/text-passes/pas2js/bin/TextPassCompositionNode.js 0
+```
+
+Seed zero renders `A sun rises brightly!` with portable signature
+`1:69ABA6CE`. See the
+[text pass-composition guide](text/03_PassComposition/README.md) for the pass
+DAG, trace and validation contracts, browser commands, and the explicit
+one-way cascade boundary.
+
 The pass-composed music example exercises exact cross-vocabulary maps over
 three latent sequence models, score reconstruction, strict `wfcmusic=1`, and
 the project-owned format-0 MIDI exporter:
@@ -275,6 +298,21 @@ Create the named output directories first. See the
 [music foundation](../docs/music.md) for the exact cell, score, artifact, and
 MIDI contracts. This is a console/Node proof; it does not claim a browser UI or
 playback.
+
+The text pass workbench has dedicated staging entry points and writes its
+complete static site beneath `build/browser/text-passes/www`:
+
+```text
+bash ./build-browser-text.sh
+```
+
+```text
+.\build-browser-text.ps1
+```
+
+Serve that directory and append `?selftest=1` for the checked seed-zero text,
+three-pass signature, public trace hash, deliberate contradiction, and exact
+recovery contract.
 
 The browser host has dedicated entry points that compile its Pascal program
 and stage a complete static site beneath `build/browser/world2d/www`:

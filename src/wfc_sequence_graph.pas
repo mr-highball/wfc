@@ -84,9 +84,25 @@ type
   end;
   TWfcSequenceProjectionRules = array of TWfcSequenceProjectionRule;
 
+  { One named provider in an atomic multi-source projection bundle. Distinct
+    source passes are conjunctive. Duplicate labels are rejected so two maps
+    from one provider cannot accidentally masquerade as independent AND
+    constraints when the graph's same-source requirement contract is OR. }
+  TWfcSequenceProjectionBinding = record
+    SourceModel: TWfcSequenceModel;
+    SourcePass: String;
+    Rules: TWfcSequenceProjectionRules;
+  end;
+  TWfcSequenceProjectionBindings = array of TWfcSequenceProjectionBinding;
+
 function MakeWfcSequenceProjectionRule(
   const ATargetToken: TWfcModelToken;
   const ASourceTokens: TWfcModelTokens): TWfcSequenceProjectionRule;
+
+function MakeWfcSequenceProjectionBinding(
+  const ASourceModel: TWfcSequenceModel; const ASourcePass: String;
+  const ARules: TWfcSequenceProjectionRules):
+  TWfcSequenceProjectionBinding;
 
 { Applies the latent model to an already shaped, empty, one-dimensional graph
   pass. Open graphs receive observed start/end domains. Wrapped graphs receive
@@ -124,6 +140,22 @@ procedure IntersectSequenceSuffix(
   const AModel: TWfcSequenceModel; const AGraph: TGraph;
   const ATokens: TWfcModelTokens);
 
+{ Checks one state identity against the caller-owned domain and lock at one
+  graph position without exposing the model-qualified private graph key.
+  Generated values are results rather than constraints and are ignored. }
+function SequenceStateSatisfiesEntryConstraints(
+  const AModel: TWfcSequenceModel; const AGraph: TGraph;
+  const APosition, AStateIndex: Integer): Boolean;
+
+{ Checks a complete public state-index path against caller-owned entry locks
+  and allowed domains. Model/graph identity is validated once for the whole
+  path, so owner-level validation does not repeat the quadratic adapter proof
+  for every position. AFalsePosition is -1 on success. }
+function SequenceStatesSatisfyEntryConstraints(
+  const AModel: TWfcSequenceModel; const AGraph: TGraph;
+  const AStateIndices: TWfcSequenceStateIndices;
+  out AFalsePosition: Integer): Boolean;
+
 { Makes every latent state require its projected public token from a named
   pass at the same coordinate. The provider pass therefore exposes public
   tokens while this pass keeps its context-bearing keys private. }
@@ -153,6 +185,18 @@ procedure RequireSequenceProjectionMapFromPass(
   const ATargetModel, ASourceModel: TWfcSequenceModel;
   const ATargetGraph: TGraph; const ASourcePass: String;
   const ARules: TWfcSequenceProjectionRules);
+
+{ Preflights a complete group of distinct named source maps before the first
+  graph rule is changed. This is the reusable atomic boundary for consumers
+  such as punctuation, melody, or placement passes that require two or more
+  earlier semantic owners simultaneously. }
+procedure ValidateSequenceProjectionMapsFromPasses(
+  const ATargetModel: TWfcSequenceModel; const ATargetGraph: TGraph;
+  const ABindings: TWfcSequenceProjectionBindings);
+
+procedure RequireSequenceProjectionMapsFromPasses(
+  const ATargetModel: TWfcSequenceModel; const ATargetGraph: TGraph;
+  const ABindings: TWfcSequenceProjectionBindings);
 
 function ValidateSequenceStatePath(const AModel: TWfcSequenceModel;
   const AStateIndices: TWfcSequenceStateIndices;
@@ -185,6 +229,13 @@ type
   TSequenceGraphValueArrays = array of TGraphValues;
   TSequenceIntegerArray = array of Integer;
 
+  TPreparedSequenceProjectionBinding = record
+    SourcePass: String;
+    SourceValuesByTarget: TSequenceGraphValueArrays;
+  end;
+  TPreparedSequenceProjectionBindings =
+    array of TPreparedSequenceProjectionBinding;
+
 function CheckedGraphManagedLength(const ALength: SizeInt;
   const ALabel: String): Integer;
 begin
@@ -204,6 +255,21 @@ begin
   SetLength(Result.SourceTokens, Length(ASourceTokens));
   for I := 0 to Length(ASourceTokens) - 1 do
     Result.SourceTokens[I] := ASourceTokens[I];
+end;
+
+function MakeWfcSequenceProjectionBinding(
+  const ASourceModel: TWfcSequenceModel; const ASourcePass: String;
+  const ARules: TWfcSequenceProjectionRules):
+  TWfcSequenceProjectionBinding;
+var
+  I: Integer;
+begin
+  Result.SourceModel := ASourceModel;
+  Result.SourcePass := ASourcePass;
+  SetLength(Result.Rules, Length(ARules));
+  for I := 0 to Length(ARules) - 1 do
+    Result.Rules[I] := MakeWfcSequenceProjectionRule(
+      ARules[I].TargetToken, ARules[I].SourceTokens);
 end;
 
 function AsciiToModelToken(const AText: String): TWfcModelToken;
@@ -872,6 +938,93 @@ begin
   IntersectSequenceLockedSpan(AModel, AGraph, LStart, ATokens);
 end;
 
+function PreparedSequenceStateSatisfiesEntryConstraints(
+  const AGraph: TGraph; const APosition: Integer;
+  const AExpected: TGraphValue): Boolean;
+var
+  I: Integer;
+  LAllowed: TGraphValues;
+  LEntry: TGraphEntry;
+begin
+  LEntry := AGraph.Entry[APosition, 0, 0];
+  if (not LEntry.Empty) and (not LEntry.Generated) and
+      (LEntry.Value <> AExpected) then
+    Exit(False);
+
+  if not AGraph.HasAllowedValues(APosition, 0, 0) then
+    Exit(True);
+  LAllowed := AGraph.CopyAllowedValues(APosition, 0, 0);
+  for I := 0 to Length(LAllowed) - 1 do
+    if LAllowed[I] = AExpected then
+      Exit(True);
+  Result := False;
+end;
+
+function SequenceStateSatisfiesEntryConstraints(
+  const AModel: TWfcSequenceModel; const AGraph: TGraph;
+  const APosition, AStateIndex: Integer): Boolean;
+var
+  LExpected: TGraphValue;
+  LSalt: Integer;
+begin
+  RequireAssigned(AModel, AGraph);
+  ValidateGraphShape(AGraph, 'sequence entry constraint validation');
+  ValidateAppliedModel(AModel, AGraph,
+    'sequence entry constraint validation');
+  if (APosition < 0) or
+      (APosition >= Integer(AGraph.Dimension.Width)) then
+    raise ERangeError.CreateFmt(
+      'sequence position is out of bounds [%d]', [APosition]);
+  if (AStateIndex < 0) or (AStateIndex >= AModel.StateCount) then
+    raise ERangeError.CreateFmt(
+      'sequence state index is out of bounds [%d]', [AStateIndex]);
+
+  LSalt := SequenceKeySalt(AModel);
+  LExpected := SaltedStateGraphValue(LSalt, AStateIndex, AModel);
+  Result := PreparedSequenceStateSatisfiesEntryConstraints(AGraph,
+    APosition, LExpected);
+end;
+
+function SequenceStatesSatisfyEntryConstraints(
+  const AModel: TWfcSequenceModel; const AGraph: TGraph;
+  const AStateIndices: TWfcSequenceStateIndices;
+  out AFalsePosition: Integer): Boolean;
+var
+  I: Integer;
+  LExpected: TGraphValue;
+  LSalt: Integer;
+  LWidth: Integer;
+begin
+  AFalsePosition := -1;
+  RequireAssigned(AModel, AGraph);
+  ValidateGraphShape(AGraph, 'sequence path constraint validation');
+  ValidateAppliedModel(AModel, AGraph,
+    'sequence path constraint validation');
+  LWidth := Integer(AGraph.Dimension.Width);
+  if Length(AStateIndices) <> LWidth then
+    raise EArgumentException.CreateFmt(
+      'sequence path constraint length must equal graph width [%d, %d]',
+      [Length(AStateIndices), LWidth]);
+
+  LSalt := SequenceKeySalt(AModel);
+  for I := 0 to LWidth - 1 do
+  begin
+    if (AStateIndices[I] < 0) or
+        (AStateIndices[I] >= AModel.StateCount) then
+      raise ERangeError.CreateFmt(
+        'sequence state index is out of bounds at position %d [%d]',
+        [I, AStateIndices[I]]);
+    LExpected := SaltedStateGraphValue(LSalt, AStateIndices[I], AModel);
+    if not PreparedSequenceStateSatisfiesEntryConstraints(AGraph,
+        I, LExpected) then
+    begin
+      AFalsePosition := I;
+      Exit(False);
+    end;
+  end;
+  Result := True;
+end;
+
 procedure RequireSequenceProjectionFromTokenPass(
   const AModel: TWfcSequenceModel; const AGraph: TGraph;
   const ASourcePass: String);
@@ -1171,6 +1324,92 @@ begin
     LGroup.RequireFromPass(ASourcePass,
       LSourceValuesByTarget[LTargetTokenIndex]);
   end;
+end;
+
+procedure PrepareSequenceProjectionBindings(
+  const ATargetModel: TWfcSequenceModel; const ATargetGraph: TGraph;
+  const ABindings: TWfcSequenceProjectionBindings;
+  out ATargetSalt: Integer;
+  out APrepared: TPreparedSequenceProjectionBindings);
+var
+  I: Integer;
+  J: Integer;
+  LBindingCount: SizeInt;
+  LTargetSalt: Integer;
+begin
+  ATargetSalt := 0;
+  APrepared := nil;
+  LBindingCount := Length(ABindings);
+  if LBindingCount = 0 then
+    raise EArgumentException.Create(
+      'sequence projection bundle needs at least one source binding');
+  if (LBindingCount < 0) or
+      ((LBindingCount and (not SizeInt(High(Integer)))) <> 0) then
+    raise ERangeError.Create(
+      'sequence projection bundle has too many source bindings');
+
+  { Check source identity before any expensive map expansion. Pass labels are
+    unique in TGraph, so label equality is also provider-pass equality. }
+  for I := 0 to Integer(LBindingCount) - 1 do
+    for J := 0 to I - 1 do
+      if ABindings[I].SourcePass = ABindings[J].SourcePass then
+        raise EArgumentException.CreateFmt(
+          'sequence projection bundle repeats source pass "%s" [%d, %d]',
+          [ABindings[I].SourcePass, J, I]);
+
+  SetLength(APrepared, Integer(LBindingCount));
+  for I := 0 to Integer(LBindingCount) - 1 do
+  begin
+    APrepared[I].SourcePass := ABindings[I].SourcePass;
+    PrepareSequenceProjectionMap(ATargetModel,
+      ABindings[I].SourceModel, ATargetGraph,
+      ABindings[I].SourcePass, ABindings[I].Rules,
+      LTargetSalt, APrepared[I].SourceValuesByTarget);
+    if I = 0 then
+      ATargetSalt := LTargetSalt
+    else if LTargetSalt <> ATargetSalt then
+      raise EWfcSequenceGraph.Create(
+        'sequence projection bundle target identity changed during preflight');
+  end;
+end;
+
+procedure ValidateSequenceProjectionMapsFromPasses(
+  const ATargetModel: TWfcSequenceModel; const ATargetGraph: TGraph;
+  const ABindings: TWfcSequenceProjectionBindings);
+var
+  LPrepared: TPreparedSequenceProjectionBindings;
+  LTargetSalt: Integer;
+begin
+  PrepareSequenceProjectionBindings(ATargetModel, ATargetGraph,
+    ABindings, LTargetSalt, LPrepared);
+end;
+
+procedure RequireSequenceProjectionMapsFromPasses(
+  const ATargetModel: TWfcSequenceModel; const ATargetGraph: TGraph;
+  const ABindings: TWfcSequenceProjectionBindings);
+var
+  I: Integer;
+  J: Integer;
+  LGroup: TGraphRuleGroup;
+  LPrepared: TPreparedSequenceProjectionBindings;
+  LTargetSalt: Integer;
+  LTargetTokenIndex: Integer;
+begin
+  PrepareSequenceProjectionBindings(ATargetModel, ATargetGraph,
+    ABindings, LTargetSalt, LPrepared);
+
+  { All identities, maps, source labels, and dependency edges are valid before
+    the first semantic requirement is attached. }
+  for I := 0 to Length(LPrepared) - 1 do
+    for J := 0 to ATargetModel.StateCount - 1 do
+    begin
+      LTargetTokenIndex :=
+        ATargetModel.StateEmittedTokenIndexAt(J);
+      LGroup := ATargetGraph.Rules[
+        SaltedStateGraphValue(LTargetSalt, J, ATargetModel)];
+      LGroup.RequireFromPass(LPrepared[I].SourcePass,
+        LPrepared[I].SourceValuesByTarget[LTargetTokenIndex]);
+    end;
 end;
 
 procedure InitializeReport(

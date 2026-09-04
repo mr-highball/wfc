@@ -180,6 +180,7 @@ procedure RequireWfcMusicMelodyFromPasses(
   const ARhythmPass, AHarmonyPass: String;
   const AStepsPerOctave: Integer);
 var
+  LBindings: TWfcSequenceProjectionBindings;
   LHarmonyRules: TWfcSequenceProjectionRules;
   LRhythmRules: TWfcSequenceProjectionRules;
 begin
@@ -189,14 +190,13 @@ begin
     AMelodyModel, ARhythmModel);
   LHarmonyRules := BuildWfcMusicHarmonyProjectionRules(
     AMelodyModel, AHarmonyModel, AStepsPerOctave);
-  ValidateSequenceProjectionMapFromPass(AMelodyModel,
-    ARhythmModel, AMelodyGraph, ARhythmPass, LRhythmRules);
-  ValidateSequenceProjectionMapFromPass(AMelodyModel,
-    AHarmonyModel, AMelodyGraph, AHarmonyPass, LHarmonyRules);
-  RequireSequenceProjectionMapFromPass(AMelodyModel,
-    ARhythmModel, AMelodyGraph, ARhythmPass, LRhythmRules);
-  RequireSequenceProjectionMapFromPass(AMelodyModel,
-    AHarmonyModel, AMelodyGraph, AHarmonyPass, LHarmonyRules);
+  SetLength(LBindings, 2);
+  LBindings[0] := MakeWfcSequenceProjectionBinding(ARhythmModel,
+    ARhythmPass, LRhythmRules);
+  LBindings[1] := MakeWfcSequenceProjectionBinding(AHarmonyModel,
+    AHarmonyPass, LHarmonyRules);
+  RequireSequenceProjectionMapsFromPasses(AMelodyModel,
+    AMelodyGraph, LBindings);
 end;
 
 end.

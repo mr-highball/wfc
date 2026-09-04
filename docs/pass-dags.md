@@ -206,6 +206,13 @@ current atomic transaction; legacy `Run` reads output produced earlier in its
 nontransactional execution. These are hard candidate filters, not soft scores,
 late callbacks, or reads from a partially solved peer.
 
+The transaction does not flatten the DAG into one global CSP. Reference-solver
+backtracking is bounded independently inside each pass. A consumer can reject
+or fail against a staged provider, causing all-or-nothing rollback, but it
+cannot reopen that provider's decisions during the same call. Selective
+regeneration begins a new transaction over an explicit descendant closure;
+future cross-pass negotiation/repair will need its own versioned semantics.
+
 ## selective descendant closure
 
 `TryRegenerateFrom` accepts one or more root passes. The dirty set is the least

@@ -310,8 +310,12 @@ Projection maps can also relate different public vocabularies. The
 pass and a latent harmony pass: action must match rhythm, and every sounding
 pitch class must match harmony. Those named dependencies are two ANDed groups;
 each target-token map may contain multiple source-token alternatives. The
-adapter expands only at the private-state boundary and preflights the complete
-map before changing pass rules.
+adapter expands only at the private-state boundary. Its N-source bundle
+preflights every model, provider label, dependency edge, and complete map
+before changing any pass rule, so a malformed later provider cannot leave an
+earlier dependency partially installed. The standard
+[text pass composition](text.md#pass-composition) uses the same mechanism for
+structure -> lexical -> punctuation.
 
 ## constraints from the previous pass
 
@@ -451,11 +455,19 @@ explicit finite any-of-neighborhood. These are exact hard value comparisons,
 not radius searches, counts, distance metrics, soft predicates, or bounded
 feedback/repair. Transform mode has one source. Sequence
 projection helpers now bridge exact public tokens and private latent states in
-both directions; general projection schemas and overlapping-pattern pass
-projection remain future work. Exact sequence token maps now support multiple
-latent models. Generic pass rules can place those values in finite offset
-clauses, but the adapters do not infer offset relations, arithmetic
-predicates, soft preferences, or many-cell semantic joins.
+both directions; exact N-source sequence token-map bundles are atomic, but
+general projection schemas and overlapping-pattern pass projection remain
+future work. Generic pass rules can place projected values in finite offset
+clauses, but the adapters do not infer offset relations, arithmetic predicates,
+soft preferences, or many-cell semantic joins.
+
+The staged DAG is one-way within a solve. A downstream requirement filters its
+candidate domain against provider values already staged earlier in topological
+order. If that downstream pass fails, the transaction rolls back; the solver
+does not reopen provider decisions and negotiate a different upstream result
+inside the same call. Selective regeneration deliberately starts a new
+transaction over the chosen dependent closure. Bounded feedback and repair
+remain research work rather than an undocumented global-search claim.
 
 A failed legacy `Run` restores pass selection but is not a transaction over
 generated cell values. `TrySolve` and `TryRegenerateFrom` are transactional.

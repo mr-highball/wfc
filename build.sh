@@ -13,6 +13,7 @@ learning_test_source="$repository_root/test/wfc_learn_test.lpr"
 pattern_test_source="$repository_root/test/wfc_pattern2d_test.lpr"
 sequence_test_source="$repository_root/test/wfc_sequence_test.lpr"
 text_test_source="$repository_root/test/wfc_text_test.lpr"
+text_pass_test_source="$repository_root/test/wfc_text_passes_test.lpr"
 voxel_test_source="$repository_root/test/wfc_voxel3d_test.lpr"
 building_test_source="$repository_root/test/wfc_building3d_test.lpr"
 trace_reference_test_source="$repository_root/test/wfc_trace_reference_test.lpr"
@@ -34,6 +35,8 @@ pattern_example_source="$repository_root/examples/learning/03_LearnPatterns/Lear
 sequence_example_source="$repository_root/examples/sequence/01_LearnSequence/LearnSequence.lpr"
 text_completion_example_source="$repository_root/examples/text/02_ConstraintCompletion/ConstraintCompletion.lpr"
 text_completion_example_directory="$repository_root/examples/text/02_ConstraintCompletion"
+text_pass_example_source="$repository_root/examples/text/03_PassComposition/TextPassComposition.lpr"
+text_pass_example_directory="$repository_root/examples/text/03_PassComposition"
 music_example_source="$repository_root/examples/music/03_PassComposition/PassComposition.lpr"
 spatial_example_source="$repository_root/examples/passes/01_SpatialDependencies/SpatialDependencies.lpr"
 trace_example_source="$repository_root/examples/passes/02_TraceInspector/TraceInspector.lpr"
@@ -56,6 +59,7 @@ compiler_learning_test_source=$learning_test_source
 compiler_pattern_test_source=$pattern_test_source
 compiler_sequence_test_source=$sequence_test_source
 compiler_text_test_source=$text_test_source
+compiler_text_pass_test_source=$text_pass_test_source
 compiler_voxel_test_source=$voxel_test_source
 compiler_building_test_source=$building_test_source
 compiler_trace_reference_test_source=$trace_reference_test_source
@@ -77,6 +81,8 @@ compiler_pattern_example_source=$pattern_example_source
 compiler_sequence_example_source=$sequence_example_source
 compiler_text_completion_example_source=$text_completion_example_source
 compiler_text_completion_example_directory=$text_completion_example_directory
+compiler_text_pass_example_source=$text_pass_example_source
+compiler_text_pass_example_directory=$text_pass_example_directory
 compiler_music_example_source=$music_example_source
 compiler_spatial_example_source=$spatial_example_source
 compiler_trace_example_source=$trace_example_source
@@ -99,6 +105,7 @@ case "$host_system" in
     compiler_pattern_test_source=$(cygpath -m "$pattern_test_source") || exit $?
     compiler_sequence_test_source=$(cygpath -m "$sequence_test_source") || exit $?
     compiler_text_test_source=$(cygpath -m "$text_test_source") || exit $?
+    compiler_text_pass_test_source=$(cygpath -m "$text_pass_test_source") || exit $?
     compiler_voxel_test_source=$(cygpath -m "$voxel_test_source") || exit $?
     compiler_building_test_source=$(cygpath -m "$building_test_source") || exit $?
     compiler_trace_reference_test_source=$(cygpath -m "$trace_reference_test_source") || exit $?
@@ -120,6 +127,8 @@ case "$host_system" in
     compiler_sequence_example_source=$(cygpath -m "$sequence_example_source") || exit $?
     compiler_text_completion_example_source=$(cygpath -m "$text_completion_example_source") || exit $?
     compiler_text_completion_example_directory=$(cygpath -m "$text_completion_example_directory") || exit $?
+    compiler_text_pass_example_source=$(cygpath -m "$text_pass_example_source") || exit $?
+    compiler_text_pass_example_directory=$(cygpath -m "$text_pass_example_directory") || exit $?
     compiler_music_example_source=$(cygpath -m "$music_example_source") || exit $?
     compiler_spatial_example_source=$(cygpath -m "$spatial_example_source") || exit $?
     compiler_trace_example_source=$(cygpath -m "$trace_example_source") || exit $?
@@ -281,6 +290,27 @@ esac
 
 printf "Running '%s'.\n" "$text_test_executable"
 "$text_test_executable" || exit $?
+
+printf "Building the multi-pass text conformance suite.\n"
+"$compiler" "$@" \
+  -B \
+  -Mdelphi \
+  -Sa \
+  -Cr \
+  -Co \
+  -Ci \
+  "-Fu$compiler_source_directory" \
+  "-FU$compiler_unit_output_directory" \
+  "-FE$compiler_binary_output_directory" \
+  "$compiler_text_pass_test_source" || exit $?
+
+text_pass_test_executable="$binary_output_directory/wfc_text_passes_test"
+case "$host_system" in
+  CYGWIN*|MINGW*|MSYS*) text_pass_test_executable="${text_pass_test_executable}.exe" ;;
+esac
+
+printf "Running '%s'.\n" "$text_pass_test_executable"
+"$text_pass_test_executable" || exit $?
 
 printf "Building the voxel-3D foundation conformance suite.\n"
 "$compiler" "$@" \
@@ -585,6 +615,28 @@ esac
 printf "Smoke testing '%s' with seed 0.\n" "$text_completion_example_executable"
 "$text_completion_example_executable" 0 >/dev/null || exit $?
 
+printf "Building the dependency-free multi-pass text example.\n"
+"$compiler" "$@" \
+  -B \
+  -Mdelphi \
+  -Sa \
+  -Cr \
+  -Co \
+  -Ci \
+  "-Fu$compiler_source_directory" \
+  "-Fu$compiler_text_pass_example_directory" \
+  "-FU$compiler_unit_output_directory" \
+  "-FE$compiler_binary_output_directory" \
+  "$compiler_text_pass_example_source" || exit $?
+
+text_pass_example_executable="$binary_output_directory/TextPassComposition"
+case "$host_system" in
+  CYGWIN*|MINGW*|MSYS*) text_pass_example_executable="${text_pass_example_executable}.exe" ;;
+esac
+
+printf "Smoke testing '%s' with seed 0.\n" "$text_pass_example_executable"
+"$text_pass_example_executable" 0 >/dev/null || exit $?
+
 printf "Building the dependency-free pass-composed music example.\n"
 "$compiler" "$@" \
   -B \
@@ -691,5 +743,11 @@ case "$host_system" in
   CYGWIN*|MINGW*|MSYS*) building_svg_executable="${building_svg_executable}.exe" ;;
 esac
 building_svg_output="$binary_output_directory/building3d-seed-zero.svg"
+building_svg_runtime_output=$building_svg_output
+case "$host_system" in
+  CYGWIN*|MINGW*|MSYS*)
+    building_svg_runtime_output=$(cygpath -m "$building_svg_output") || exit $?
+    ;;
+esac
 printf "Smoke testing '%s' with seed 0.\n" "$building_svg_executable"
-"$building_svg_executable" 0 "$building_svg_output" >/dev/null || exit $?
+"$building_svg_executable" 0 "$building_svg_runtime_output" >/dev/null || exit $?

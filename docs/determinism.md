@@ -115,6 +115,15 @@ emissions, and raw observation/start/end counts. Graph replay also includes
   and independent validation contract. See [sequence models](sequences.md) and
   [text constraint completion](text.md).
 
+Text Pass Composition additionally includes
+`WFC_TEXT_PASS_PIPELINE_VERSION`, `WFC_TEXT_PASS_FRAGMENT_VERSION`, the three
+ordered structure/lexical/punctuation models, all complete projection rules
+and provider-binding order, token length and extent, every per-layer public
+domain or lock, solve options, and seed. Fragment tokens are canonical inputs,
+not host-formatted strings. The example signature `1:69ABA6CE` identifies the
+version-1 seed-zero showcase fixture; it is not a general serialized
+`TWfcTextPassPipeline` format.
+
 The replay contract assumes values and rules are registered through
 the public builders or a versioned project adapter such as
 `ApplyModelToGraph`. Arbitrary caller mutation of exposed rule arrays or

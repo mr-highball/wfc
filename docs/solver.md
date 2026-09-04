@@ -80,6 +80,14 @@ and pre-call random-stream states are unchanged. A later-pass contradiction
 therefore cannot leave an earlier pass half committed. A successful call marks
 new solver output as generated while preserving caller locks.
 
+Atomicity here is a commit/rollback guarantee, not a flattened global search
+across every pass. `MaxBacktracks` is applied independently while solving each
+pass. Once a provider has been staged and the coordinator moves to a consumer,
+a consumer contradiction can backtrack within that consumer and can roll the
+pipeline transaction back, but it does not reopen the provider's choices.
+Bounded backward negotiation or repair across the DAG requires a separately
+versioned algorithm.
+
 Entry setters are still used during commit so derived entry behavior remains
 available. Each hook observes the pass currently being committed. If a setter
 raises, or any entry differs from its exact staged `Value`, `Empty`, and

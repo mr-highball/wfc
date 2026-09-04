@@ -76,6 +76,11 @@ The repository already contains the beginnings of the ecosystem:
   caller-defined tokenizer learning, anchored infill, prefix continuation,
   structured semantic failure, independent text validation, and a shared
   native/pas2js demonstration;
+- a reusable three-pass text owner with separate structure, lexical, and
+  punctuation sequence models; atomic N-source public projection maps;
+  exact versioned surface fragments; independent cross-layer validation;
+  private-key-safe causal traces; matching native/pas2js fixtures; and an
+  interactive dependency-free browser workbench;
 - a project-owned Music Foundation v1 with an immutable exact score IR,
   reduced rational helpers, strict `wm1`/`wr1`/`wh1` fixed-quantum cells,
   lossless aligned monophonic projection/rebuild, and exact rhythm and
@@ -124,10 +129,10 @@ It is not yet the finished system described above:
   bounded or streaming trace capture remain to be built;
 - pass DAGs, named overlay layers, same-coordinate and exact signed-offset
   requirements, finite any-of-neighborhood reads, selective regeneration, and
-  structured dependency diagnostics are now operational; implicit
-  radius/count/distance expressions, cyclic negotiation/repair, and
-  projection-aware bridges between unlike representations remain to be
-  designed;
+  structured dependency diagnostics are now operational; sequence maps now
+  provide atomic N-source bridges between unlike public vocabularies, while
+  implicit radius/count/distance expressions, cyclic negotiation/repair, and
+  general cross-representation projection schemas remain to be designed;
 - the examples index now records targets, dependencies, build commands, and
   honest completion status, but full per-example tutorials, invariants,
   expected output, and troubleshooting guides remain to be written;
@@ -138,10 +143,11 @@ It is not yet the finished system described above:
   interactive native window, the legacy Castle shell remains unconnected, and
   arbitrary cameras or intersecting geometry need a later generalized
   visibility/depth renderer;
-- the interactive 2D and Building 3D pas2js demos and browser test hosts now
-  exist, and the first console pass/causal-trace inspector plus stable
-  native/pas2js trace parity are checked; live domain snapshots, interactive
-  stepping, search controls, and domain-specific browser inspection remain;
+- the interactive 2D, three-pass text, and Building 3D pas2js demos and browser
+  test hosts now exist, and the first console pass/causal-trace inspector plus
+  stable native/pas2js trace parity are checked; live global domain snapshots,
+  interactive trace stepping, search controls, and richer domain-specific
+  browser inspection remain;
 - model learning now covers pretokenized cardinal radius-one corpora,
   structurally compatible overlapping 2D footprints, and bounded order-N
   sequences with explicit projection; Unicode-scalar text tokenization and
@@ -498,14 +504,25 @@ playback requirements.
   unresolved position, completes `the quick fox rests.`, rejects a truncated
   whole sample while accepting its prefix extent, and replays identically with
   no external dependency.
+- Text Pass Composition v1 now owns a structure -> lexical -> punctuation DAG.
+  Lexical depends on structure; punctuation depends directly on both prior
+  passes through an atomic two-source projection bundle. Complete map
+  preflight, exact `@wfctf1:` fragments, public-token trace projection,
+  independent three-layer validation, transactional failure/recovery, and
+  selective descendant regeneration are checked on native FPC and pas2js.
+- The same project-owned showcase now has console, Node, and interactive
+  browser hosts. Its seed-zero `A sun rises brightly!` fixture and portable
+  signature are checked headlessly, including a deliberate contradiction and
+  exact recovery after clearing constraints.
 - Add a standard lossless word tokenizer only with project-owned, versioned
   Unicode word-boundary data, then extend learned models with useful offset
   constraints.
-- Passes for structure/template -> lexical fill -> punctuation or other
-  domain-specific refinement.
-- Generalize the native demonstration into an arbitrary-corpus completion CLI
-  and build an interactive pas2js editor that exposes domains and causal
-  reasons for token acceptance or rejection.
+- Generalize the completion and pass-composition demonstrations into
+  arbitrary-corpus training/generation CLIs and an editor that exposes exact
+  single-model domains plus causal reasons for token acceptance or rejection.
+- Research bounded backward negotiation/repair as a distinct algorithm. The
+  current owner is an honest one-way atomic cascade and does not claim global
+  search across already staged providers.
 
 **Exit gate:** output contains no forbidden learned neighborhoods, boundary and
 lock behavior is covered by tests, seeded completions match across native and

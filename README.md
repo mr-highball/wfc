@@ -33,7 +33,11 @@ modular 3D structures, music, text, and other discrete design problems.
 > foundation adds project-owned Unicode-scalar tokenization, atomic prefix,
 > suffix, mask, and locked-span constraints, exact globally feasible token
 > domains, anchored infill, prefix-only continuation, and independent text
-> validation on native FPC and pas2js/Node. Music Foundation v1 adds an exact
+> validation on native FPC and pas2js/Node. Text Pass Composition v1 adds a
+> persistent structure -> lexical -> punctuation owner, atomic multi-source
+> projection maps, exact surface fragments, independent cross-layer
+> validation, sanitized public traces, selective regeneration, and one shared
+> native/Node/browser fixture. Music Foundation v1 adds an exact
 > integer score IR, canonical melody/rhythm/harmony cells, two-source latent
 > pass projection, strict `wfcmusic=1` score text, a project-owned SMF
 > format-0/1 codec, and a format-0 score exporter. Its portable three-pass
@@ -104,6 +108,12 @@ modular 3D structures, music, text, and other discrete design problems.
 - project-owned Unicode-scalar tokenization across native UTF-8 and pas2js
   UTF-16, caller-defined tokenizer learning, anchored text infill, deterministic
   prefix continuation, and independent token/text validation
+- a reusable three-pass text owner with stable structure, lexical, and
+  punctuation layers; direct two-provider surface constraints; exact versioned
+  fragments; public-token causal traces; atomic failure/recovery; and an
+  interactive pas2js workbench
+- atomic N-source sequence projection bundles with complete preflight, OR
+  alternatives inside each provider map, and AND semantics across providers
 - immutable exact music scores with complete per-voice timelines and exact
   meter-boundary validation
 - strict `wm1` melody, `wr1` rhythm, and `wh1` harmony cells with lossless
@@ -186,8 +196,9 @@ For bounded order-N learning, typed BOS boundaries, open and derived wrapped
 generation, pass projection, and canonical `wfcs=1` text, see
 [sequence models](docs/sequences.md).
 For Unicode-scalar learning, exact token-domain analysis, prefix/suffix and
-interior locks, deterministic infill, validation, and current non-LLM scope,
-see [text constraint completion](docs/text.md).
+interior locks, deterministic infill, the three-pass text owner and browser
+workbench, validation, and current non-LLM scope, see
+[text constraint completion](docs/text.md).
 For the exact score model, fixed-quantum cells, music pass projection,
 `wfcmusic=1`, Standard MIDI Files, and the optional playback boundary, see the
 [music foundation](docs/music.md).
@@ -210,18 +221,21 @@ Run the checked native build and conformance suite from the repository root:
 
 Both entry points compile with checked FPC options, keep all output under
 `build/`, run the core, 2D ecosystem, selective-settlement, radius-one
-learning, overlapping-pattern, sequence, text-completion, score/cell,
-music-graph, SMF, score-to-MIDI, voxel, Building 3D, and causal-trace suites,
+learning, overlapping-pattern, sequence, text-completion, text-pass,
+score/cell, music-graph, SMF, score-to-MIDI, voxel, Building 3D, and
+causal-trace suites,
 smoke-test the portable console examples—including the bounded/wrapped spatial
-dependency, causal-trace inspector, anchored text infill, and depth-three
-building proofs—compile the
+dependency, causal-trace inspector, anchored text infill, three-pass text
+composition, and depth-three building proofs—compile the
 fixed-integer isometric, SVG, and Building-view suites, write a deterministic
 seed-zero Building SVG, and preserve failure exit codes.
 The repository also includes an FPM package, a runtime-only Lazarus package,
 and the same conformance sources for pas2js/Node. Separate `build-browser.ps1`
 and `build-browser.sh` entry points stage the interactive 2D world;
-`build-browser-building3d.ps1` and `build-browser-building3d.sh` stage the
-Building workbench. Neither commits generated JavaScript.
+`build-browser-text.ps1` and `build-browser-text.sh` stage the text pass
+workbench; and `build-browser-building3d.ps1` and
+`build-browser-building3d.sh` stage the Building workbench. None of the
+staging entry points commits generated JavaScript.
 See [building and testing](docs/building.md) for compiler overrides, package
 commands, output paths, and pas2js setup. The
 [Building graphical guide](examples/3D/03_BrowserBuilding/README.md) records
@@ -245,6 +259,8 @@ development tools may assist builds, tests, conversion, or inspection, but
 none may leak into
 core/runtime APIs or define canonical algorithms, models, artifacts,
 validation, or replay behavior.
+The complete admission rules and optional-adapter boundary are recorded in the
+[dependency policy](docs/dependencies.md).
 
 ## Direction
 

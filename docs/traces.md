@@ -134,6 +134,19 @@ stable `AddValue` order used by replay and hashing. `Value` is a human-facing
 inspection copy and is checked against the selected pass's current registered
 values by `ValidateGraphTrace`.
 
+That generic `Value` is graph-level data, not automatically a domain-safe
+public token. Sequence adapters deliberately register model-qualified private
+keys such as `@wfcs...`, so a raw graph trace over those passes may contain the
+same keys. `TWfcTextPassPipeline` handles this boundary explicitly: it validates
+the raw trace first, preserves the numeric core hash in
+`TWfcTextPassReport.TraceHash`, projects every candidate to a public token plus
+numeric `StateIndex`, and publishes those events through
+`TWfcTextPassReport.Trace`. It clears `Solve.Trace`, `Solve.TraceHash`, and the
+generic pass slices so the stripped `TGraphSolveReport` remains a valid
+capture-disabled report. Advanced callers using the exposed graph directly can
+still request the raw graph trace and are responsible for that lower-level
+representation.
+
 Inspect `HasDirection` before using `Direction`. When no direction applies,
 `HasDirection` is false and `Direction` retains the canonical `gdNorth`
 sentinel.

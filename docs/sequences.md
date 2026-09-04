@@ -68,6 +68,11 @@ public tokens without replacing an existing endpoint or caller domain.
 `IntersectSequencePrefix`, and `IntersectSequenceSuffix` apply checked bulk
 masks atomically. Repeated positions intersect.
 
+`SequenceStateSatisfiesEntryConstraints` lets a higher-level validator check a
+public state index against the current caller domain and lock without exposing
+or reconstructing its model-qualified private graph key. Generated entry
+values are outputs and are not mistaken for caller locks.
+
 On a wrapped graph, every position is restricted to states with no BOS history
 and the last state must structurally connect to the first. This is a cycle
 derived from the learned overlap relation. It is not evidence that the source
@@ -79,6 +84,11 @@ start/end semantics or the closing wrapped transition. Model-qualified graph
 keys are private adapter values. They are
 collision-safe with caller tokens and never belong in public output,
 validation diagnostics, or `wfcs=1` artifacts.
+
+`SequenceStatesSatisfyEntryConstraints` checks a complete captured state path
+against current caller locks and allowed domains while proving the applied
+model/graph identity once. Its single-position counterpart remains available
+for probes. Both surfaces keep private graph keys inside the adapter.
 
 `AnalyzeSequenceTokenDomains` provides solver-independent forward/backward
 reachability for the same five extents. Every reported latent state and public
@@ -112,10 +122,23 @@ the named pass dependency. Multiple named maps are independent requirement
 groups and therefore AND together; alternatives inside one map are OR choices.
 Preflight failure does not partially mutate the active pass.
 
+When one target must depend on several latent providers, use
+`TWfcSequenceProjectionBinding`, `MakeWfcSequenceProjectionBinding`, and
+`ValidateSequenceProjectionMapsFromPasses` /
+`RequireSequenceProjectionMapsFromPasses`. The bundle preflights every model
+identity, pass label, dependency edge, target coverage, and source alternative
+before adding the first requirement. It rejects repeated source labels: OR
+alternatives belong inside one map, while distinct bindings intentionally form
+AND groups. A malformed later binding therefore cannot leave an earlier map
+installed. Bundle order is stable and does not change those logical semantics.
+
 The [music foundation](music.md) uses this form to combine two latent source
 models. Melody action maps to a rhythm attack/hold/rest token, while a sounding
 melody pitch maps to a harmony pitch class. This demonstrates that projection
 need not mean identical token text and that source history remains latent.
+The [text pass owner](text.md#pass-composition) uses the same generic bundle to
+make its punctuation surface depend directly on both lexical and structural
+passes.
 
 ## canonical `wfcs=1` text
 
@@ -174,7 +197,10 @@ implement a probabilistic language model. It learns hard structural constraints
 and raw relative counts from caller-supplied tokens. Dedicated extent and bulk
 constraint helpers, exact public-domain analysis, and Unicode-scalar text
 completion are now available. A standard project-owned word-boundary tokenizer,
-variable-length editor, and interactive browser editor remain roadmap work.
+variable-length editor, arbitrary-corpus training interface, and browser editor
+with global cross-pass domains remain roadmap work. The fixed-length
+[three-pass text workbench](../examples/text/03_PassComposition/README.md) now
+provides interactive public locks, lineage, contradictions, and exact replay.
 
 The portable foundation remains project-owned Pascal. A tokenizer, event
 codec, exporter, or inspector that can reasonably be implemented for FPC and

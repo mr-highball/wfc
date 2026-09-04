@@ -120,13 +120,19 @@ Both groups must match at every coordinate. Alternatives within one projection
 rule remain an OR set. A melody rest accepts every harmony token by design, so
 a harmony sequence may continue across silence; rhythm still requires the
 rest action. Malformed or incomplete projection maps fail during preflight,
-before the graph commits any pass output.
+before the first dependency rule is installed or the graph commits any pass
+output.
 
 The lower-level generic API is `TWfcSequenceProjectionRules`,
-`MakeWfcSequenceProjectionRule`, and
-`ValidateSequenceProjectionMapFromPass` /
-`RequireSequenceProjectionMapFromPass`. It can preflight and express other
-music relations without adding domain knowledge to the graph core.
+`MakeWfcSequenceProjectionRule`, `TWfcSequenceProjectionBinding`, and
+`MakeWfcSequenceProjectionBinding`.
+`RequireWfcMusicMelodyFromPasses` builds one rhythm binding and one harmony
+binding, then calls `RequireSequenceProjectionMapsFromPasses`. The generic
+bundle checks both complete maps, model identities, provider labels, and
+dependency edges before changing the target pass. Its single-map counterparts
+remain `ValidateSequenceProjectionMapFromPass` and
+`RequireSequenceProjectionMapFromPass`. These APIs can express other music
+relations without adding domain knowledge to the graph core.
 
 ## canonical score text: strict `wfcmusic=1`
 

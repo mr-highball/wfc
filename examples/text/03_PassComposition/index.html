@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Dependency-free three-pass WFC text composition workbench compiled from Pascal with pas2js.">
+  <title>WFC Text Pass Workbench</title>
+  <link rel="stylesheet" href="browsertextpasses.css">
+</head>
+<body data-state="loading" data-signature="" data-output-signature=""
+  data-pass-count="0" data-trace-hash="" data-self-test="not-requested">
+  <header class="masthead">
+    <div>
+      <p class="eyebrow">WFC / TEXT LAB 03</p>
+      <h1>Pass Composition Workbench</h1>
+      <p class="lede">Structure lays the template. Lexical fills it. Punctuation owns the final surface.</p>
+    </div>
+    <div class="version-chip"><span>pipeline</span><strong>v1</strong></div>
+  </header>
+
+  <main>
+    <section class="control-panel" aria-labelledby="generation-heading">
+      <div class="section-title">
+        <span>01</span>
+        <div>
+          <h2 id="generation-heading">Deterministic generation</h2>
+          <p>Replay a seed or add public-token constraints to the aligned passes.</p>
+        </div>
+      </div>
+      <div class="controls">
+        <label>
+          <span>Seed</span>
+          <input id="seed-input" type="text" value="0" inputmode="text"
+            autocomplete="off" spellcheck="false">
+          <small>decimal, <code>$hex</code>, or <code>0xhex</code></small>
+        </label>
+        <div class="button-row">
+          <button id="generate-button" class="primary" type="button">Generate</button>
+          <button id="next-seed-button" type="button">Next seed</button>
+          <button id="reset-button" type="button">Reset</button>
+        </div>
+      </div>
+      <div class="run-state">
+        <div><span>Status</span><strong id="status" aria-live="polite">Loading Pascal runtime…</strong></div>
+        <div><span>Portable signature</span><code id="signature">—</code></div>
+      </div>
+    </section>
+
+    <section class="output-panel" aria-labelledby="output-heading">
+      <div class="section-title compact">
+        <span>02</span>
+        <div>
+          <h2 id="output-heading">Rendered text</h2>
+          <p>The final value is reconstructed only from validated, versioned surface fragments.</p>
+        </div>
+      </div>
+      <blockquote id="output-text">Waiting for the first solve.</blockquote>
+    </section>
+
+    <section class="passes" aria-labelledby="passes-heading">
+      <div class="section-title compact">
+        <span>03</span>
+        <div>
+          <h2 id="passes-heading">Same-position lineage</h2>
+          <p>Select a cell to inspect its public token and latent state across all three owners.</p>
+        </div>
+      </div>
+
+      <article class="pass-card structure">
+        <header><span>pass 00 · foundation</span><h3>Structure</h3></header>
+        <div class="token-row" role="list" aria-label="Structure tokens">
+          <button id="structure-0" class="token" type="button">—</button>
+          <button id="structure-1" class="token" type="button">—</button>
+          <button id="structure-2" class="token" type="button">—</button>
+          <button id="structure-3" class="token" type="button">—</button>
+          <button id="structure-4" class="token" type="button">—</button>
+        </div>
+      </article>
+
+      <div class="dependency" aria-hidden="true">requires ↓</div>
+
+      <article class="pass-card lexical">
+        <header><span>pass 01 · structure dependent</span><h3>Lexical</h3></header>
+        <div class="token-row" role="list" aria-label="Lexical tokens">
+          <button id="lexical-0" class="token" type="button">—</button>
+          <button id="lexical-1" class="token" type="button">—</button>
+          <button id="lexical-2" class="token" type="button">—</button>
+          <button id="lexical-3" class="token" type="button">—</button>
+          <button id="lexical-4" class="token" type="button">—</button>
+        </div>
+      </article>
+
+      <div class="dependency" aria-hidden="true">requires lexical + structure ↓</div>
+
+      <article class="pass-card punctuation">
+        <header><span>pass 02 · dual dependent</span><h3>Punctuation / surface</h3></header>
+        <div class="token-row" role="list" aria-label="Punctuation and surface fragments">
+          <button id="punctuation-0" class="token" type="button">—</button>
+          <button id="punctuation-1" class="token" type="button">—</button>
+          <button id="punctuation-2" class="token" type="button">—</button>
+          <button id="punctuation-3" class="token" type="button">—</button>
+          <button id="punctuation-4" class="token" type="button">—</button>
+        </div>
+      </article>
+    </section>
+
+    <aside class="inspector" aria-labelledby="constraint-heading">
+      <div class="section-title compact">
+        <span>04</span>
+        <div>
+          <h2 id="constraint-heading">Constraint inspector</h2>
+          <p>Lock a public token, deliberately create a conflict, or clear constraints and replay.</p>
+        </div>
+      </div>
+
+      <pre id="lineage-inspector">No solved lineage yet.</pre>
+
+      <div class="constraint-grid">
+        <label><span>Pass</span>
+          <select id="lock-layer">
+            <option value="structure">structure</option>
+            <option value="lexical">lexical</option>
+            <option value="punctuation">punctuation / surface</option>
+          </select>
+        </label>
+        <label><span>Position</span>
+          <input id="lock-position" type="number" min="0" max="4" value="0">
+        </label>
+        <label><span>Public token</span><select id="lock-token"></select></label>
+      </div>
+
+      <div class="button-row wrap">
+        <button id="lock-button" class="primary" type="button">Lock &amp; solve</button>
+        <button id="unlock-button" type="button">Unlock cell</button>
+        <button id="conflict-button" class="danger" type="button">Load conflict</button>
+        <button id="clear-all-button" type="button">Clear all</button>
+      </div>
+
+      <div class="diagnostics">
+        <div><h3>Independent validation</h3><p id="validation">Waiting for the first solve.</p></div>
+        <div><h3>Solver / public trace</h3><pre id="solver-report">No report yet.</pre></div>
+      </div>
+    </aside>
+  </main>
+
+  <footer>
+    <span>Pascal source → pas2js → browser DOM</span>
+    <span>Repository units + standard RTL only · no CDN · no runtime network calls</span>
+  </footer>
+
+  <script src="BrowserTextPassComposition.js"></script>
+  <script>
+    window.addEventListener('load', function () {
+      rtl.run();
+    });
+  </script>
+</body>
+</html>

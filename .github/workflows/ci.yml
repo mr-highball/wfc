@@ -225,6 +225,8 @@ jobs:
           sequence_test_bin='build/pas2js/sequence-test/bin'
           text_test_units='build/pas2js/text-test/units'
           text_test_bin='build/pas2js/text-test/bin'
+          text_pass_test_units='build/pas2js/text-pass-test/units'
+          text_pass_test_bin='build/pas2js/text-pass-test/bin'
           voxel_test_units='build/pas2js/voxel-test/units'
           voxel_test_bin='build/pas2js/voxel-test/bin'
           building_test_units='build/pas2js/building-test/units'
@@ -251,6 +253,8 @@ jobs:
           sequence_example_bin='build/pas2js/sequence-example/bin'
           text_example_units='build/pas2js/text-example/units'
           text_example_bin='build/pas2js/text-example/bin'
+          text_pass_example_units='build/pas2js/text-pass-example/units'
+          text_pass_example_bin='build/pas2js/text-pass-example/bin'
           music_example_units='build/pas2js/music-example/units'
           music_example_bin='build/pas2js/music-example/bin'
           spatial_example_units='build/pas2js/spatial-example/units'
@@ -267,6 +271,7 @@ jobs:
             "$pattern_test_units" "$pattern_test_bin" \
             "$sequence_test_units" "$sequence_test_bin" \
             "$text_test_units" "$text_test_bin" \
+            "$text_pass_test_units" "$text_pass_test_bin" \
             "$voxel_test_units" "$voxel_test_bin" \
             "$building_test_units" "$building_test_bin" \
             "$trace_test_units" "$trace_test_bin" \
@@ -280,6 +285,7 @@ jobs:
             "$pattern_example_units" "$pattern_example_bin" \
             "$sequence_example_units" "$sequence_example_bin" \
             "$text_example_units" "$text_example_bin" \
+            "$text_pass_example_units" "$text_pass_example_bin" \
             "$music_example_units" "$music_example_bin" \
             "$spatial_example_units" "$spatial_example_bin" \
             "$trace_example_units" "$trace_example_bin" \
@@ -318,6 +324,11 @@ jobs:
             -FU"$text_test_units" -FE"$text_test_bin" \
             test/wfc_text_test.lpr
           node "$text_test_bin/wfc_text_test.js"
+
+          "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
+            -FU"$text_pass_test_units" -FE"$text_pass_test_bin" \
+            test/wfc_text_passes_test.lpr
+          node "$text_pass_test_bin/wfc_text_passes_test.js"
 
           "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
             -FU"$voxel_test_units" -FE"$voxel_test_bin" \
@@ -410,6 +421,12 @@ jobs:
           node "$text_example_bin/ConstraintCompletionNode.js" 0 >/dev/null
 
           "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
+            -Fuexamples/text/03_PassComposition \
+            -FU"$text_pass_example_units" -FE"$text_pass_example_bin" \
+            examples/text/03_PassComposition/TextPassCompositionNode.lpr
+          node "$text_pass_example_bin/TextPassCompositionNode.js" 0 >/dev/null
+
+          "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
             -FU"$music_example_units" -FE"$music_example_bin" \
             examples/music/03_PassComposition/PassComposition.lpr
           node "$music_example_bin/PassComposition.js" 0 >/dev/null
@@ -431,6 +448,117 @@ jobs:
             -FU"$building_example_units" -FE"$building_example_bin" \
             examples/3D/02_MultiPassBuilding/MultiPassBuildingNode.lpr
           node "$building_example_bin/MultiPassBuildingNode.js" 0 >/dev/null
+
+      - name: Build and self-test browser text passes
+        shell: bash
+        run: |
+          pas2js="$PAS2JS_ROOT/bin/x86_64-linux/pas2js"
+          PAS2JS="$pas2js" bash ./build-browser-text.sh
+
+          chrome=''
+          for candidate in google-chrome google-chrome-stable chromium chromium-browser; do
+            if command -v "$candidate" >/dev/null 2>&1; then
+              chrome=$(command -v "$candidate")
+              break
+            fi
+          done
+          if [ -z "$chrome" ]; then
+            echo 'No supported Chrome or Chromium executable was found.' >&2
+            exit 1
+          fi
+
+          server_log=$(mktemp)
+          chrome_log=$(mktemp)
+          dom_file=$(mktemp)
+          profile_directory=$(mktemp -d)
+          server_pid=''
+          cleanup() {
+            if [ -n "$server_pid" ]; then
+              kill "$server_pid" 2>/dev/null || true
+              wait "$server_pid" 2>/dev/null || true
+            fi
+            rm -f -- "$server_log" "$chrome_log" "$dom_file"
+            if [ -n "$profile_directory" ] && [ -d "$profile_directory" ]; then
+              rm -rf -- "$profile_directory"
+            fi
+          }
+          trap cleanup EXIT
+
+          python3 -m http.server 4175 \
+            --bind 127.0.0.1 \
+            --directory build/browser/text-passes/www \
+            >"$server_log" 2>&1 &
+          server_pid=$!
+
+          server_ready=false
+          for _ in $(seq 1 50); do
+            if curl --fail --silent \
+                http://127.0.0.1:4175/index.html >/dev/null 2>&1; then
+              server_ready=true
+              break
+            fi
+            if ! kill -0 "$server_pid" 2>/dev/null; then
+              cat "$server_log" >&2
+              exit 1
+            fi
+            sleep 0.2
+          done
+          if [ "$server_ready" != true ]; then
+            cat "$server_log" >&2
+            echo 'Timed out waiting for the browser text HTTP server.' >&2
+            exit 1
+          fi
+
+          if ! timeout 30s "$chrome" \
+              --headless \
+              --disable-gpu \
+              --disable-dev-shm-usage \
+              --no-default-browser-check \
+              --no-first-run \
+              --user-data-dir="$profile_directory" \
+              --virtual-time-budget=15000 \
+              --dump-dom \
+              'http://127.0.0.1:4175/index.html?selftest=1' \
+              >"$dom_file" 2>"$chrome_log"; then
+            cat "$chrome_log" >&2
+            cat "$server_log" >&2
+            exit 1
+          fi
+
+          python3 - "$dom_file" <<'PY'
+          import sys
+          from html.parser import HTMLParser
+
+          class BodyParser(HTMLParser):
+              def __init__(self):
+                  super().__init__()
+                  self.attributes = None
+
+              def handle_starttag(self, tag, attributes):
+                  if tag.lower() == 'body' and self.attributes is None:
+                      self.attributes = dict(attributes)
+
+          with open(sys.argv[1], encoding='utf-8') as source:
+              parser = BodyParser()
+              parser.feed(source.read())
+
+          expected = {
+              'data-state': 'solved',
+              'data-self-test': 'passed',
+              'data-signature': '1:69ABA6CE',
+              'data-output-signature': '1:69ABA6CE',
+              'data-pass-count': '3',
+              'data-trace-hash': '2412171679',
+              'data-output': 'A sun rises brightly!',
+          }
+          if parser.attributes is None:
+              raise SystemExit('Rendered DOM has no body element.')
+          for name, value in expected.items():
+              actual = parser.attributes.get(name)
+              if actual != value:
+                  raise SystemExit(
+                      f'Expected body {name}={value!r}, found {actual!r}.')
+          PY
 
       - name: Build and self-test browser world
         shell: bash

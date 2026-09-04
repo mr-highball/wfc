@@ -21,9 +21,14 @@ open-ended semantic invention.
 - `wfc_text_complete` combines prefix, suffix, locked-span, and allowed-token
   domains; solves the latent sequence graph; reconstructs text; and validates
   the result independently.
+- `wfc_text_passes` owns the reusable structure -> lexical -> punctuation
+  dependency DAG, public constraint surface, exact fragment renderer,
+  public-token trace projection, selective regeneration, and independent
+  three-layer validation.
 - `wfc_sequence_graph` supplies the generic extent-aware adapter and atomic
-  bulk token constraints. Those APIs are reusable for music and other ordered
-  domains rather than being text-only conveniences.
+  bulk token constraints plus atomic N-source projection bundles. Those APIs
+  are reusable for music and other ordered domains rather than being text-only
+  conveniences.
 
 All maintained runtime code is shared Pascal. It depends on repository units
 and the applicable standard FPC or pas2js RTL only.
@@ -173,19 +178,83 @@ the quick fox rests.
 The same source and request run on native FPC and pas2js/Node in
 [`02_ConstraintCompletion`](../examples/text/02_ConstraintCompletion/README.md).
 
-## pass composition and scope
+## pass composition
 
-Text models remain ordinary latent sequence passes. Existing
+Text models remain ordinary latent sequence passes. The generic
 `RequireSequenceProjectionFromTokenPass`,
-`RequireProjectedSequenceFromPass`, and complete projection maps can connect a
-template, lexical class, punctuation class, or another ordered model through
-the dependency DAG. The current high-level completion call owns one latent
-pass; a reusable structure/template -> lexical fill -> punctuation owner and
-interactive browser editor remain roadmap work.
+`RequireProjectedSequenceFromPass`, and complete projection-map APIs can
+connect templates, lexical classes, punctuation classes, or other ordered
+models through the dependency DAG.
+
+`TWfcTextPassPipeline` supplies one standard three-owner composition:
+
+1. `structure` generates the abstract slot sequence;
+2. `lexical` requires a compatible structure token at every position; and
+3. `punctuation` requires both a compatible lexical token and a compatible
+   structure token at every position, then owns the visible surface.
+
+All three are overlay passes with stable indices `0`, `1`, and `2`. The three
+`TWfcSequenceModel` objects remain caller-owned and must outlive the pipeline.
+The pipeline deep-copies the caller's complete projection-rule arrays and owns
+the configured graph. `TryGenerate` solves all three atomically.
+`TryRegenerateFrom` reuses unaffected committed providers and regenerates the
+selected dependency closure. A failed solve returns structured evidence
+without partially committing an earlier pass.
+
+Every owner-level constraint edit marks its layer as dirty. If a caller then
+requests regeneration from a later layer, the owner automatically widens the
+root to the earliest edited provider. Failed attempts retain that dirty root;
+only a successful solve covering it permits later calls to reuse the pass.
+
+Public constraints can target any layer by position through
+`IntersectAllowedTokens`, `IntersectTokenConstraints`, and
+`IntersectLockedSpan`. `ClearAllowedTokens` removes caller narrowing while
+restoring the endpoint/domain restrictions installed by the sequence adapter;
+it does not widen a whole, prefix, suffix, fragment, or wrapped model beyond
+its configured extent.
+
+The surface layer emits versioned `@wfctf1:` tokens. Each token canonically
+encodes one exact UTF-8 fragment, including leading whitespace or an empty
+fragment. `RenderWfcTextPassFragments` validates and concatenates those
+fragments without host formatting rules. Construction rejects a punctuation
+model unless every public token is a canonical fragment, so rendering cannot
+discover an unversioned surface vocabulary only after a successful solve.
+
+After solving, the owner captures all three public-token/state-index paths and
+checks them independently against their immutable models, extents, current
+caller domains/locks, copied maps, and rendered text. Each layer validates its
+model/graph identity once, then checks the complete caller-domain path without
+repeating that adapter proof per token. When causal tracing is
+enabled, it first validates the core trace, then publishes text-domain events
+containing public tokens and numeric state identities. Private model-qualified
+`@wfcs` graph keys are
+removed from the returned solve report and never become text-domain output.
+
+The portable
+[`03_PassComposition`](../examples/text/03_PassComposition/README.md) fixture
+runs the same owner on native FPC, pas2js/Node, and an interactive pas2js
+browser workbench. The browser can replay seeds, inspect the three aligned
+public lineages, apply locks, display contradictions, and run an exact
+headless self-test without a JavaScript framework or runtime network service.
+
+## scope and next work
+
+This pipeline is deliberately an acyclic, one-way staged cascade. Downstream
+requirements filter a pass using already staged providers. If punctuation
+cannot solve, the transaction rolls back; v1 does not negotiate backward and
+reopen structure or lexical decisions inside that solve. Bounded inter-pass
+repair/negotiation remains an explicit research target.
+
+`AnalyzeSequenceTokenDomains` is exact for one constrained sequence model. It
+does not currently compute globally feasible alternatives across all three
+models, so the browser does not label its vocabulary list as a global
+cross-pass domain.
 
 The current dense state relation and exact domain analysis favor bounded,
 inspectable documents and constrained fields. Large corpora will need a
 project-owned sparse sequence index/adapter before they become a standard
-runtime path. Word-boundary data, smoothing/soft objectives, provenance-bearing
-text artifacts, variable-length editing, and live causal rejection explanations
-also remain open rather than being delegated to required third-party libraries.
+runtime path. Project-owned word-boundary data, arbitrary-corpus tools,
+smoothing/soft objectives, provenance-bearing text artifacts, variable-length
+editing, and live causal rejection explanations remain open. They will not be
+delegated to required third-party runtime libraries; see the
+[dependency policy](dependencies.md).
