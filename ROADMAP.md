@@ -41,9 +41,10 @@ The repository already contains the beginnings of the ecosystem:
 - an interactive pas2js browser world with synchronized layer canvases,
   caller-owned locks, responsive controls, and a seeded headless-browser
   conformance fixture;
-- an immutable one-layer model IR, deterministic 1D/2D token learner with
-  open/wrapped boundaries and explicit D4 augmentation, strict canonical
-  `.wfcm` text I/O, and a native/pas2js learned-tiles demonstration;
+- an immutable one-layer model IR, deterministic 1D/2D corpus learner with
+  heterogeneous ordered samples, open/wrapped boundaries, explicit D4
+  augmentation, checked model merging, strict canonical `.wfcm` text I/O, and
+  native/pas2js learning demonstrations;
 - stack-safe iterative traversal of large planes while preserving the legacy
   solver's north/east/south/west depth-first order;
 - checked one-command native build gates, an FPM package, a runtime-only
@@ -72,9 +73,9 @@ It is not yet the finished system described above:
 - the first interactive pas2js demo and browser test host now exist, but there
   is no complete pass/domain inspector or stable native/pas2js decision-trace
   parity suite (canonical seeded value fixtures do already match);
-- model learning currently covers one pretokenized cardinal radius-one sample;
-  corpus merging, overlapping patterns, 3D neighborhoods, pass dependencies,
-  provenance metadata, and the planned validation/run/inspection tools remain;
+- model learning currently covers pretokenized cardinal radius-one corpora;
+  overlapping patterns, 3D neighborhoods, pass dependencies, provenance
+  metadata, and the planned validation/run/inspection tools remain;
 - the hosted CI definition is present, but its first remote run still needs to
   be observed before the Phase 0 exit gate is claimed complete;
 - music playback currently depends on the GPL-licensed SoundShop submodule,
@@ -227,14 +228,16 @@ Rules should be easy to author by hand and possible to infer from examples.
 The learner is a deterministic constraint-model builder, not a hidden machine
 learning service.
 
-The version-1 primitive now preserves first-seen token order and raw frequency
-counts, observes cardinal radius-one relations in tokenized 1D/2D samples,
-supports open/wrapped boundaries and explicit D4 augmentation, stores the
-result in immutable model data, adapts representable models to `TGraph`, and
-round-trips a strict canonical `.wfcm` document on native FPC and pas2js. The
-portable learned-tiles fixture proves that vertical slice. The broader tools,
-metadata, multi-sample and higher-dimensional extraction, and complete exit
-gate remain open.
+The observation and corpus version-1 primitives now preserve first-seen token
+order and raw frequency counts, observe cardinal radius-one relations in
+ordered heterogeneous 1D/2D samples without inventing cross-sample seams,
+support open/wrapped boundaries and explicit D4 augmentation, checked-merge
+compatible models, store ordered source shapes in immutable model data, adapt
+representable models to `TGraph`, and round-trip strict canonical `.wfcm`
+documents using the `wfcm=1` and `wfcm=2` profiles on native FPC and pas2js.
+Portable single-sample and corpus fixtures prove those vertical slices. The
+broader tools, provenance metadata, pattern and higher-dimensional extraction,
+and complete exit gate remain open.
 
 ### Deliverables
 

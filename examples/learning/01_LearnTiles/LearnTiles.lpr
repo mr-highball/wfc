@@ -247,7 +247,7 @@ var
   I: Integer;
 begin
   WriteLn('Learning algorithm version: ', WFC_LEARN_ALGORITHM_VERSION);
-  WriteLn('Model text version: ', WFC_MODEL_TEXT_VERSION);
+  WriteLn('Latest model text version: ', WFC_MODEL_TEXT_VERSION);
   WriteLn('Training: ', TRAINING_WIDTH, 'x', TRAINING_HEIGHT,
     ', boundary=wrap, symmetry=d4');
   WriteLn('Values: ', AModel.ValueCount);

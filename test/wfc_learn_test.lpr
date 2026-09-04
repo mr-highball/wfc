@@ -33,6 +33,33 @@ const
     'r=W,1,0,1'#10 +
     'end'#10;
 
+  GOLDEN_WRAP_CORPUS =
+    'wfcm=2'#10 +
+    'rank=1'#10 +
+    'samples=2'#10 +
+    's=0,3,1'#10 +
+    's=1,2,1'#10 +
+    'boundary=wrap'#10 +
+    'symmetry=none'#10 +
+    'directions=E,W'#10 +
+    'values=4'#10 +
+    'v=0,2,A'#10 +
+    'v=1,1,B'#10 +
+    'v=2,1,C'#10 +
+    'v=3,1,D'#10 +
+    'relations=10'#10 +
+    'r=E,0,0,1'#10 +
+    'r=E,0,1,1'#10 +
+    'r=E,1,0,1'#10 +
+    'r=E,2,3,1'#10 +
+    'r=E,3,2,1'#10 +
+    'r=W,0,0,1'#10 +
+    'r=W,0,1,1'#10 +
+    'r=W,1,0,1'#10 +
+    'r=W,2,3,1'#10 +
+    'r=W,3,2,1'#10 +
+    'end'#10;
+
 var
   GCheckCount: Integer = 0;
   GFailureCount: Integer = 0;
@@ -190,21 +217,25 @@ end;
 procedure CheckDecodeRejected(const AText, AMessage: String);
 var
   LModel: TWfcModel;
-  LRaised: Boolean;
+  LRejectedCanonically: Boolean;
 begin
   LModel := nil;
-  LRaised := False;
+  LRejectedCanonically := False;
   try
     try
       LModel := DecodeWfcModelText(AText);
     except
+      on E: EConvertError do
+        LRejectedCanonically :=
+          Copy(E.Message, 1, Length('invalid WFC model text: ')) =
+            'invalid WFC model text: ';
       on E: Exception do
-        LRaised := True;
+        LRejectedCanonically := False;
     end;
   finally
     LModel.Free;
   end;
-  Check(LRaised, AMessage);
+  Check(LRejectedCanonically, AMessage);
 end;
 
 function ConstructorRejected(const ARank, AWidth, AHeight: Integer;
@@ -230,6 +261,69 @@ begin
   finally
     LModel.Free;
   end;
+end;
+
+function ShapeConstructorRejected(const ARank: Integer;
+  const ASampleShapes: TWfcModelSampleShapes): Boolean;
+var
+  LDirections: TWfcModelDirections;
+  LModel: TWfcModel;
+  LRelations: TWfcModelIntegerArray;
+  LWeights: TWfcModelIntegerArray;
+begin
+  Result := False;
+  LModel := nil;
+  SetLength(LWeights, 1);
+  LWeights[0] := 1;
+  SetLength(LRelations, 4);
+  if ARank = 1 then
+    LDirections := [wmdEast, wmdWest]
+  else
+    LDirections := [wmdNorth, wmdEast, wmdSouth, wmdWest];
+  try
+    try
+      LModel := TWfcModel.Create(ARank, ASampleShapes, wmbOpen,
+        wmsNone, LDirections, Tokens('X'), LWeights, LRelations);
+    except
+      on E: Exception do
+        Result := True;
+    end;
+  finally
+    LModel.Free;
+  end;
+end;
+
+function MergeRejected(const AModels: TWfcModels): Boolean;
+var
+  LMerged: TWfcModel;
+begin
+  Result := False;
+  LMerged := nil;
+  try
+    try
+      LMerged := MergeWfcModels(AModels);
+    except
+      on E: Exception do
+        Result := True;
+    end;
+  finally
+    LMerged.Free;
+  end;
+end;
+
+function MakeSingleTokenCountModel(const AWeight,
+  ARelationCount: Integer): TWfcModel;
+var
+  LRelations: TWfcModelIntegerArray;
+  LWeights: TWfcModelIntegerArray;
+begin
+  SetLength(LWeights, 1);
+  LWeights[0] := AWeight;
+  SetLength(LRelations, 4);
+  SetRelation(LRelations, wmdEast, 0, 0, 1, ARelationCount);
+  SetRelation(LRelations, wmdWest, 0, 0, 1, ARelationCount);
+  Result := TWfcModel.Create(1, 1, 1, wmbWrap, wmsNone,
+    [wmdEast, wmdWest], Tokens('X'), LWeights, LRelations);
 end;
 
 procedure TestLearn1DOpen;
@@ -452,6 +546,7 @@ procedure TestInvalidLearningInputs;
 var
   LModel: TWfcModel;
   LRaised: Boolean;
+  LSample: TWfcLearnSample;
   LTokens: TWfcModelTokens;
 begin
   LTokens := nil;
@@ -486,6 +581,15 @@ begin
   end;
   LModel.Free;
   Check(LRaised, '2D learning rejects zero dimensions');
+
+  LRaised := False;
+  try
+    LSample := MakeLearnSample2D(LTokens, High(Integer), 2);
+  except
+    on E: Exception do LRaised := True;
+  end;
+  Check(LRaised and (Length(LSample.Tokens) = 0),
+    'sample construction rejects overflowing dimensions before allocation');
 
   LModel := nil;
   LRaised := False;
@@ -830,6 +934,574 @@ begin
   end;
 end;
 
+procedure TestCorpusLearning;
+var
+  D: TWfcModelDirection;
+  I: Integer;
+  J: Integer;
+  LExact: Boolean;
+  LExpected: Integer;
+  LModel: TWfcModel;
+  LNoCrossSampleEdge: Boolean;
+  LOpenModel: TWfcModel;
+  LSamples: TWfcLearnSamples;
+begin
+  Check(WFC_LEARN_CORPUS_ALGORITHM_VERSION = 1,
+    'the corpus learner publishes replay version 1');
+  SetLength(LSamples, 2);
+  LSamples[0] := MakeLearnSample1D(Tokens('A', 'B', 'A'));
+  LSamples[1] := MakeLearnSample1D(Tokens('C', 'D'));
+
+  LModel := LearnModel1DCorpus(LSamples, wmbWrap);
+  try
+    Check((LModel.SampleCount = 2) and
+      (LModel.SampleShapeAt(0).Width = 3) and
+      (LModel.SampleShapeAt(0).Height = 1) and
+      (LModel.SampleShapeAt(1).Width = 2) and
+      (LModel.SampleShapeAt(1).Height = 1),
+      'a corpus retains heterogeneous sample shapes in observation order');
+    Check((LModel.ValueCount = 4) and
+      (LModel.TokenAt(0) = 'A') and (LModel.TokenAt(1) = 'B') and
+      (LModel.TokenAt(2) = 'C') and (LModel.TokenAt(3) = 'D') and
+      (LModel.WeightAt(0) = 2) and (LModel.WeightAt(1) = 1) and
+      (LModel.WeightAt(2) = 1) and (LModel.WeightAt(3) = 1),
+      'corpus learning preserves global first-seen order and raw counts');
+
+    LExact := True;
+    for D := Low(TWfcModelDirection) to High(TWfcModelDirection) do
+      for I := 0 to 3 do
+        for J := 0 to 3 do
+        begin
+          LExpected := 0;
+          if (D in [wmdEast, wmdWest]) and
+            (((I = 0) and (J = 0)) or
+             ((I = 0) and (J = 1)) or
+             ((I = 1) and (J = 0)) or
+             ((I = 2) and (J = 3)) or
+             ((I = 3) and (J = 2))) then
+            LExpected := 1;
+          if LModel.RelationCount(D, I, J) <> LExpected then
+            LExact := False;
+        end;
+    Check(LExact,
+      'wrapped corpus learning observes each sample independently and exactly');
+
+    LNoCrossSampleEdge := True;
+    for D := Low(TWfcModelDirection) to High(TWfcModelDirection) do
+      for I := 0 to 1 do
+        for J := 2 to 3 do
+          if (LModel.RelationCount(D, I, J) <> 0) or
+            (LModel.RelationCount(D, J, I) <> 0) then
+            LNoCrossSampleEdge := False;
+    Check(LNoCrossSampleEdge and
+      (LModel.RelationCount(wmdEast, 0, 0) = 1) and
+      (LModel.RelationCount(wmdEast, 3, 2) = 1),
+      'wrap closes each sample locally without a cross-sample seam');
+  finally
+    LModel.Free;
+  end;
+
+  LOpenModel := LearnModel1DCorpus(LSamples, wmbOpen);
+  try
+    Check((LOpenModel.RelationCount(wmdEast, 0, 0) = 0) and
+      (LOpenModel.RelationCount(wmdEast, 3, 2) = 0) and
+      (LOpenModel.RelationCount(wmdEast, 0, 2) = 0) and
+      (LOpenModel.RelationCount(wmdWest, 2, 0) = 0),
+      'open corpus learning adds neither local wraps nor corpus seams');
+  finally
+    LOpenModel.Free;
+  end;
+
+  SetLength(LSamples, 2);
+  LSamples[0] := MakeLearnSample2D(Tokens('A', 'B'), 2, 1);
+  LSamples[1] := MakeLearnSample2D(Tokens('C', 'D', 'E'), 1, 3);
+  LModel := LearnModel2DCorpus(LSamples, wmbWrap, wmsNone);
+  try
+    LNoCrossSampleEdge :=
+      (LModel.SampleShapeAt(0).Width = 2) and
+      (LModel.SampleShapeAt(0).Height = 1) and
+      (LModel.SampleShapeAt(1).Width = 1) and
+      (LModel.SampleShapeAt(1).Height = 3);
+    for D := Low(TWfcModelDirection) to High(TWfcModelDirection) do
+      for I := 0 to 1 do
+        for J := 2 to 4 do
+          if (LModel.RelationCount(D, I, J) <> 0) or
+            (LModel.RelationCount(D, J, I) <> 0) then
+            LNoCrossSampleEdge := False;
+    Check(LNoCrossSampleEdge,
+      'heterogeneous 2D samples remain isolated in every wrapped direction');
+  finally
+    LModel.Free;
+  end;
+end;
+
+procedure TestCorpusD4AndDuplicateSamples;
+var
+  D: TWfcModelDirection;
+  I: Integer;
+  J: Integer;
+  LCorpusModel: TWfcModel;
+  LExactCounts: Boolean;
+  LExactWeights: Boolean;
+  LFirst: TWfcModel;
+  LMerged: TWfcModel;
+  LModels: TWfcModels;
+  LNoCrossSampleEdge: Boolean;
+  LSamples: TWfcLearnSamples;
+  LSecond: TWfcModel;
+  LSingle: TWfcModel;
+begin
+  SetLength(LSamples, 2);
+  LSamples[0] := MakeLearnSample2D(Tokens('Z', 'A', 'B', 'Y'), 2, 2);
+  LSamples[1] := MakeLearnSample2D(Tokens('Q', 'R', 'P'), 3, 1);
+  LCorpusModel := nil;
+  LFirst := nil;
+  LSecond := nil;
+  LMerged := nil;
+  try
+    LCorpusModel := LearnModel2DCorpus(LSamples, wmbOpen, wmsD4);
+    LFirst := LearnModel2D(LSamples[0].Tokens, 2, 2,
+      wmbOpen, wmsD4);
+    LSecond := LearnModel2D(LSamples[1].Tokens, 3, 1,
+      wmbOpen, wmsD4);
+    SetLength(LModels, 2);
+    LModels[0] := LFirst;
+    LModels[1] := LSecond;
+    LMerged := MergeWfcModels(LModels);
+
+    Check((LCorpusModel.SampleCount = 2) and
+      (LCorpusModel.SampleShapeAt(0).Width = 2) and
+      (LCorpusModel.SampleShapeAt(0).Height = 2) and
+      (LCorpusModel.SampleShapeAt(1).Width = 3) and
+      (LCorpusModel.SampleShapeAt(1).Height = 1) and
+      (EncodeWfcModelText(LCorpusModel) = EncodeWfcModelText(LMerged)),
+      'heterogeneous D4 corpus learning equals ordered per-sample merging');
+
+    LExactWeights := LCorpusModel.ValueCount = 7;
+    for I := 0 to LCorpusModel.ValueCount - 1 do
+      if LCorpusModel.WeightAt(I) <> 8 then
+        LExactWeights := False;
+    Check(LExactWeights,
+      'D4 observes every token eight times independently in each sample');
+
+    LNoCrossSampleEdge := True;
+    for D := Low(TWfcModelDirection) to High(TWfcModelDirection) do
+      for I := 0 to 3 do
+        for J := 4 to 6 do
+          if (LCorpusModel.RelationCount(D, I, J) <> 0) or
+            (LCorpusModel.RelationCount(D, J, I) <> 0) then
+            LNoCrossSampleEdge := False;
+    Check(LNoCrossSampleEdge,
+      'D4 augmentation never creates a relation across sample domains');
+  finally
+    LMerged.Free;
+    LSecond.Free;
+    LFirst.Free;
+    LCorpusModel.Free;
+  end;
+
+  SetLength(LSamples, 2);
+  LSamples[0] := MakeLearnSample1D(Tokens('Z', 'A', 'Z'));
+  LSamples[1] := MakeLearnSample1D(Tokens('Z', 'A', 'Z'));
+  LCorpusModel := nil;
+  LSingle := nil;
+  try
+    LCorpusModel := LearnModel1DCorpus(LSamples, wmbOpen);
+    LSingle := LearnModel1D(LSamples[0].Tokens, wmbOpen);
+    LExactCounts :=
+      (LCorpusModel.ValueCount = LSingle.ValueCount) and
+      (LCorpusModel.SampleCount = 2);
+    for I := 0 to LSingle.ValueCount - 1 do
+      if LCorpusModel.WeightAt(I) <> 2 * LSingle.WeightAt(I) then
+        LExactCounts := False;
+    for D := Low(TWfcModelDirection) to High(TWfcModelDirection) do
+      for I := 0 to LSingle.ValueCount - 1 do
+        for J := 0 to LSingle.ValueCount - 1 do
+          if LCorpusModel.RelationCount(D, I, J) <>
+            2 * LSingle.RelationCount(D, I, J) then
+            LExactCounts := False;
+    Check(LExactCounts,
+      'duplicate samples retain two exact copies of every observed count');
+    Check((LCorpusModel.SampleShapeAt(0).Width = 3) and
+      (LCorpusModel.SampleShapeAt(1).Width = 3) and
+      (LCorpusModel.RelationCount(wmdEast, 0, 0) = 0) and
+      (LCorpusModel.RelationCount(wmdWest, 0, 0) = 0),
+      'duplicate open samples retain both shapes without an invented seam');
+  finally
+    LSingle.Free;
+    LCorpusModel.Free;
+  end;
+end;
+
+procedure TestModelSampleShapes;
+var
+  LCopy: TWfcModelSampleShapes;
+  LModel: TWfcModel;
+  LRaised: Boolean;
+  LSamples: TWfcLearnSamples;
+  LShapes: TWfcModelSampleShapes;
+begin
+  SetLength(LSamples, 2);
+  LSamples[0] := MakeLearnSample1D(Tokens('A', 'B', 'A'));
+  LSamples[1] := MakeLearnSample1D(Tokens('C', 'D'));
+  LModel := LearnModel1DCorpus(LSamples, wmbWrap);
+  try
+    LSamples[0].Width := 99;
+    LSamples[1].Height := 99;
+    Check((LModel.SampleShapeAt(0).Width = 3) and
+      (LModel.SampleShapeAt(1).Height = 1),
+      'model construction deep-copies corpus sample shapes');
+
+    LCopy := LModel.CopySampleShapes;
+    LCopy[0].Width := 77;
+    LCopy[1].Height := 77;
+    Check((LModel.SampleShapeAt(0).Width = 3) and
+      (LModel.SampleShapeAt(1).Height = 1),
+      'CopySampleShapes does not expose mutable model storage');
+    Check((LModel.SampleWidth = 3) and (LModel.SampleHeight = 1),
+      'legacy sample dimensions remain aliases for the first corpus shape');
+
+    LRaised := False;
+    try
+      LModel.SampleShapeAt(-1);
+    except
+      on E: Exception do LRaised := True;
+    end;
+    Check(LRaised, 'SampleShapeAt rejects a negative sample index');
+    LRaised := False;
+    try
+      LModel.SampleShapeAt(LModel.SampleCount);
+    except
+      on E: Exception do LRaised := True;
+    end;
+    Check(LRaised, 'SampleShapeAt rejects an index at SampleCount');
+  finally
+    LModel.Free;
+  end;
+
+  SetLength(LShapes, 0);
+  Check(ShapeConstructorRejected(1, LShapes),
+    'the model constructor rejects an empty sample-shape corpus');
+  SetLength(LShapes, 2);
+  LShapes[0] := MakeWfcModelSampleShape(3, 1);
+  LShapes[1] := MakeWfcModelSampleShape(0, 1);
+  Check(ShapeConstructorRejected(1, LShapes),
+    'the model constructor validates every corpus shape dimension');
+  LShapes[1] := MakeWfcModelSampleShape(2, 2);
+  Check(ShapeConstructorRejected(1, LShapes),
+    'the model constructor requires height one for every rank-1 shape');
+end;
+
+procedure TestModelMerging;
+var
+  LDirect: TWfcModel;
+  LFirst: TWfcModel;
+  LMerged: TWfcModel;
+  LModels: TWfcModels;
+  LSamples: TWfcLearnSamples;
+  LSecond: TWfcModel;
+begin
+  Check(WFC_MODEL_MERGE_ALGORITHM_VERSION = 1,
+    'the model merger publishes replay version 1');
+  SetLength(LSamples, 2);
+  LSamples[0] := MakeLearnSample1D(Tokens('A', 'B', 'A'));
+  LSamples[1] := MakeLearnSample1D(Tokens('C', 'D'));
+  LDirect := LearnModel1DCorpus(LSamples, wmbWrap);
+  LFirst := LearnModel1D(LSamples[0].Tokens, wmbWrap);
+  LSecond := LearnModel1D(LSamples[1].Tokens, wmbWrap);
+  LMerged := nil;
+  try
+    SetLength(LModels, 2);
+    LModels[0] := LFirst;
+    LModels[1] := LSecond;
+    LMerged := MergeWfcModels(LModels);
+    Check(EncodeWfcModelText(LMerged) = EncodeWfcModelText(LDirect),
+      'direct corpus learning and ordered model merging encode identically');
+
+    LFirst.Free;
+    LFirst := nil;
+    LSecond.Free;
+    LSecond := nil;
+    Check(EncodeWfcModelText(LMerged) = GOLDEN_WRAP_CORPUS,
+      'a merged model owns all data independently from its source models');
+  finally
+    LMerged.Free;
+    LSecond.Free;
+    LFirst.Free;
+    LDirect.Free;
+  end;
+
+  SetLength(LModels, 0);
+  Check(MergeRejected(LModels), 'model merging rejects an empty model list');
+
+  LFirst := LearnModel1D(Tokens('A'), wmbWrap);
+  try
+    SetLength(LModels, 2);
+    LModels[0] := LFirst;
+    LModels[1] := nil;
+    Check(MergeRejected(LModels),
+      'model merging rejects an unassigned model entry');
+  finally
+    LFirst.Free;
+  end;
+
+  LFirst := LearnModel1D(Tokens('A'), wmbOpen);
+  LSecond := LearnModel1D(Tokens('A'), wmbWrap);
+  try
+    LModels[0] := LFirst;
+    LModels[1] := LSecond;
+    Check(MergeRejected(LModels),
+      'model merging rejects incompatible boundary policies');
+  finally
+    LSecond.Free;
+    LFirst.Free;
+  end;
+
+  LFirst := LearnModel1D(Tokens('A'), wmbWrap);
+  LSecond := LearnModel2D(Tokens('A'), 1, 1, wmbWrap, wmsNone);
+  try
+    LModels[0] := LFirst;
+    LModels[1] := LSecond;
+    Check(MergeRejected(LModels),
+      'model merging rejects incompatible ranks and direction sets');
+  finally
+    LSecond.Free;
+    LFirst.Free;
+  end;
+
+  LFirst := LearnModel2D(Tokens('A'), 1, 1, wmbWrap, wmsNone);
+  LSecond := LearnModel2D(Tokens('A'), 1, 1, wmbWrap, wmsD4);
+  try
+    LModels[0] := LFirst;
+    LModels[1] := LSecond;
+    Check(MergeRejected(LModels),
+      'model merging rejects incompatible symmetry policies');
+  finally
+    LSecond.Free;
+    LFirst.Free;
+  end;
+
+  LFirst := MakeSingleTokenCountModel(High(Integer), 0);
+  LSecond := MakeSingleTokenCountModel(1, 0);
+  try
+    LModels[0] := LFirst;
+    LModels[1] := LSecond;
+    Check(MergeRejected(LModels),
+      'model merging rejects accumulated weight overflow');
+  finally
+    LSecond.Free;
+    LFirst.Free;
+  end;
+
+  LFirst := MakeSingleTokenCountModel(1, High(Integer));
+  LSecond := MakeSingleTokenCountModel(1, 1);
+  try
+    LModels[0] := LFirst;
+    LModels[1] := LSecond;
+    Check(MergeRejected(LModels),
+      'model merging rejects accumulated relation-count overflow');
+  finally
+    LSecond.Free;
+    LFirst.Free;
+  end;
+end;
+
+procedure TestModelMergeAlgebraAndOwnership;
+var
+  LA: TWfcModel;
+  LAB: TWfcModel;
+  LB: TWfcModel;
+  LBC: TWfcModel;
+  LC: TWfcModel;
+  LExpectedText: String;
+  LFlat: TWfcModel;
+  LFlatText: String;
+  LLeft: TWfcModel;
+  LModels: TWfcModels;
+  LReverse: TWfcModel;
+  LRight: TWfcModel;
+  LSingleMerged: TWfcModel;
+  LSource: TWfcModel;
+begin
+  LSource := nil;
+  LSingleMerged := nil;
+  try
+    LSource := LearnModel1D(Tokens('Z', 'A', 'Z'), wmbOpen);
+    LExpectedText := EncodeWfcModelText(LSource);
+    SetLength(LModels, 1);
+    LModels[0] := LSource;
+    LSingleMerged := MergeWfcModels(LModels);
+    Check((LSingleMerged <> LSource) and
+      (EncodeWfcModelText(LSingleMerged) = LExpectedText),
+      'a one-input merge returns an equivalent distinct model');
+
+    LSource.Free;
+    LSource := nil;
+    LModels[0] := nil;
+    Check(EncodeWfcModelText(LSingleMerged) = LExpectedText,
+      'a one-input merged model remains valid after its source is freed');
+  finally
+    LSingleMerged.Free;
+    LSource.Free;
+  end;
+
+  LA := nil;
+  LAB := nil;
+  LB := nil;
+  LBC := nil;
+  LC := nil;
+  LFlat := nil;
+  LLeft := nil;
+  LReverse := nil;
+  LRight := nil;
+  try
+    LA := LearnModel1D(Tokens('Z', 'A', 'Z', 'B'), wmbWrap);
+    LB := LearnModel1D(Tokens('M', 'Z'), wmbWrap);
+    LC := LearnModel1D(Tokens('A', 'Q', 'M'), wmbWrap);
+
+    SetLength(LModels, 3);
+    LModels[0] := LA;
+    LModels[1] := LB;
+    LModels[2] := LC;
+    LFlat := MergeWfcModels(LModels);
+
+    SetLength(LModels, 2);
+    LModels[0] := LA;
+    LModels[1] := LB;
+    LAB := MergeWfcModels(LModels);
+    LModels[0] := LAB;
+    LModels[1] := LC;
+    LLeft := MergeWfcModels(LModels);
+
+    LModels[0] := LB;
+    LModels[1] := LC;
+    LBC := MergeWfcModels(LModels);
+    LModels[0] := LA;
+    LModels[1] := LBC;
+    LRight := MergeWfcModels(LModels);
+
+    SetLength(LModels, 3);
+    LModels[0] := LC;
+    LModels[1] := LB;
+    LModels[2] := LA;
+    LReverse := MergeWfcModels(LModels);
+    LFlatText := EncodeWfcModelText(LFlat);
+
+    LA.Free;
+    LA := nil;
+    LAB.Free;
+    LAB := nil;
+    LB.Free;
+    LB := nil;
+    LBC.Free;
+    LBC := nil;
+    LC.Free;
+    LC := nil;
+    SetLength(LModels, 0);
+
+    Check((EncodeWfcModelText(LLeft) = LFlatText) and
+      (EncodeWfcModelText(LRight) = LFlatText),
+      'flat, left-grouped, and right-grouped merges encode identically');
+    Check((LFlat.TokenAt(0) = 'Z') and (LFlat.TokenAt(1) = 'A') and
+      (LFlat.TokenAt(2) = 'B') and (LFlat.TokenAt(3) = 'M') and
+      (LFlat.TokenAt(4) = 'Q') and
+      (LFlat.SampleShapeAt(0).Width = 4) and
+      (LFlat.SampleShapeAt(1).Width = 2) and
+      (LFlat.SampleShapeAt(2).Width = 3),
+      'merge grouping preserves flattened first-seen token and shape order');
+    Check((EncodeWfcModelText(LReverse) <> LFlatText) and
+      (LReverse.TokenAt(0) = 'A') and (LReverse.TokenAt(1) = 'Q') and
+      (LReverse.TokenAt(2) = 'M') and (LReverse.TokenAt(3) = 'Z') and
+      (LReverse.TokenAt(4) = 'B') and
+      (LReverse.SampleShapeAt(0).Width = 3) and
+      (LReverse.SampleShapeAt(1).Width = 2) and
+      (LReverse.SampleShapeAt(2).Width = 4),
+      'reversing merge input preserves its distinct token and shape order');
+  finally
+    LRight.Free;
+    LReverse.Free;
+    LLeft.Free;
+    LFlat.Free;
+    LC.Free;
+    LBC.Free;
+    LB.Free;
+    LAB.Free;
+    LA.Free;
+  end;
+end;
+
+procedure TestCorpusTextCodec;
+var
+  LDecoded: TWfcModel;
+  LEncoded: String;
+  LModel: TWfcModel;
+  LSamples: TWfcLearnSamples;
+begin
+  SetLength(LSamples, 2);
+  LSamples[0] := MakeLearnSample1D(Tokens('A', 'B', 'A'));
+  LSamples[1] := MakeLearnSample1D(Tokens('C', 'D'));
+  LModel := LearnModel1DCorpus(LSamples, wmbWrap);
+  try
+    LEncoded := EncodeWfcModelText(LModel);
+    Check(LEncoded = GOLDEN_WRAP_CORPUS,
+      'a two-sample corpus encodes to the exact canonical wfcm=2 document');
+    LDecoded := DecodeWfcModelText(LEncoded);
+    try
+      Check((EncodeWfcModelText(LDecoded) = LEncoded) and
+        (LDecoded.SampleCount = 2) and
+        (LDecoded.SampleShapeAt(0).Width = 3) and
+        (LDecoded.SampleShapeAt(1).Width = 2),
+        'wfcm=2 round-trips every ordered sample shape byte-for-byte');
+    finally
+      LDecoded.Free;
+    end;
+  finally
+    LModel.Free;
+  end;
+
+  CheckDecodeRejected(ReplaceOnce(GOLDEN_WRAP_CORPUS,
+    'samples=2', 'samples=1'),
+    'wfcm=2 rejects a singleton sample declaration');
+  CheckDecodeRejected(ReplaceOnce(GOLDEN_WRAP_CORPUS,
+    'samples=2', 'samples=3'),
+    'wfcm=2 rejects an incomplete sample-shape record set');
+  CheckDecodeRejected(ReplaceOnce(GOLDEN_WRAP_CORPUS,
+    's=0,3,1', 's=1,3,1'),
+    'wfcm=2 rejects a sample-shape index out of canonical order');
+  CheckDecodeRejected(ReplaceOnce(GOLDEN_WRAP_CORPUS,
+    's=0,3,1', 's=0,03,1'),
+    'wfcm=2 rejects a noncanonical sample dimension');
+  CheckDecodeRejected(ReplaceOnce(GOLDEN_WRAP_CORPUS,
+    's=0,3,1', 's=0,0,1'),
+    'wfcm=2 rejects a nonpositive sample dimension');
+  CheckDecodeRejected(ReplaceOnce(GOLDEN_WRAP_CORPUS,
+    's=0,3,1', 's=0,3'),
+    'wfcm=2 rejects a sample-shape record with a missing field');
+  CheckDecodeRejected(ReplaceOnce(GOLDEN_WRAP_CORPUS,
+    's=0,3,1', 's=0,3,1,9'),
+    'wfcm=2 rejects a sample-shape record with an extra field');
+  CheckDecodeRejected(ReplaceOnce(GOLDEN_WRAP_CORPUS,
+    's=0,3,1'#10's=1,2,1', 's=1,2,1'#10's=0,3,1'),
+    'wfcm=2 rejects reordered sample-shape records');
+  CheckDecodeRejected(ReplaceOnce(GOLDEN_WRAP_CORPUS,
+    'samples=2', 'samples=02'),
+    'wfcm=2 rejects a noncanonical sample count');
+  CheckDecodeRejected(ReplaceOnce(GOLDEN_WRAP_CORPUS,
+    'samples=2', 'samples=2147483648'),
+    'wfcm=2 rejects a sample count outside the Integer range');
+  CheckDecodeRejected(ReplaceOnce(GOLDEN_WRAP_CORPUS,
+    's=1,2,1'#10'boundary=wrap',
+    's=1,2,1'#10's=2,1,1'#10'boundary=wrap'),
+    'wfcm=2 rejects an undeclared extra sample-shape record');
+  CheckDecodeRejected(ReplaceOnce(GOLDEN_WRAP_CORPUS,
+    's=1,2,1', 's=1,2,2'),
+    'wfcm=2 enforces rank-1 height on every sample shape');
+  CheckDecodeRejected(ReplaceOnce(GOLDEN_WRAP_CORPUS,
+    'samples=2'#10's=0,3,1'#10's=1,2,1',
+    'width=3'#10'height=1'),
+    'wfcm=2 rejects legacy singular shape fields');
+end;
+
 procedure TestTextCodec;
 var
   LDecoded: TWfcModel;
@@ -838,8 +1510,8 @@ var
   LNoteModel: TWfcModel;
   LPunctuationModel: TWfcModel;
 begin
-  Check(WFC_MODEL_TEXT_VERSION = 1,
-    'the canonical model text format publishes version 1');
+  Check(WFC_MODEL_TEXT_VERSION = 2,
+    'the canonical model text format publishes version 2');
   LModel := LearnModel1D(Tokens('A', 'B', 'A'), wmbWrap);
   try
     LEncoded := EncodeWfcModelText(LModel);
@@ -936,6 +1608,15 @@ begin
   RunTest('graph adapter boundaries and solve', @TestGraphAdapter);
   RunTest('asymmetric graph adapter orientation',
     @TestAsymmetricGraphAdapter);
+  RunTest('multi-sample corpus observations', @TestCorpusLearning);
+  RunTest('corpus D4 and duplicate-sample invariants',
+    @TestCorpusD4AndDuplicateSamples);
+  RunTest('model sample-shape immutability and guards',
+    @TestModelSampleShapes);
+  RunTest('deterministic model merging and guards', @TestModelMerging);
+  RunTest('model merge algebra and ownership',
+    @TestModelMergeAlgebraAndOwnership);
+  RunTest('canonical corpus text codec', @TestCorpusTextCodec);
   RunTest('canonical model text codec', @TestTextCodec);
   WriteLn('====================================');
   WriteLn(Format('%d checks, %d failures',

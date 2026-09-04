@@ -43,6 +43,12 @@ type
   TWfcModelTokens = array of TWfcModelToken;
   TWfcModelIntegerArray = array of Integer;
 
+  TWfcModelSampleShape = record
+    Width: Integer;
+    Height: Integer;
+  end;
+  TWfcModelSampleShapes = array of TWfcModelSampleShape;
+
   TWfcModelDirection = (
     wmdNorth,
     wmdEast,
@@ -56,8 +62,9 @@ type
   { TWfcModel }
 
   (*
-    Immutable, one-layer learned-model data. Relation storage is dense and
-    direction-major:
+    Immutable, one-layer learned-model data. Source samples retain their
+    ordered shapes; SampleWidth and SampleHeight remain compatibility views of
+    shape zero. Relation storage is dense and direction-major:
 
       ((Ord(direction) * ValueCount) + source) * ValueCount + target
 
@@ -67,8 +74,7 @@ type
   TWfcModel = class
   strict private
     FRank: Integer;
-    FSampleWidth: Integer;
-    FSampleHeight: Integer;
+    FSampleShapes: TWfcModelSampleShapes;
     FBoundary: TWfcModelBoundary;
     FSymmetry: TWfcModelSymmetry;
     FDirections: TWfcModelDirections;
@@ -76,36 +82,68 @@ type
     FWeights: TWfcModelIntegerArray;
     FRelations: TWfcModelIntegerArray;
 
+    function GetSampleCount: Integer;
+    function GetSampleWidth: Integer;
+    function GetSampleHeight: Integer;
     function GetValueCount: Integer;
     function RelationIndex(const ADirection: TWfcModelDirection;
       const ASourceValue, ATargetValue: Integer): Integer;
     procedure ValidateValueIndex(const AValueIndex: Integer);
+    procedure ValidateSampleIndex(const ASampleIndex: Integer);
+    procedure Initialize(const ARank: Integer;
+      const ASampleShapes: TWfcModelSampleShapes;
+      const ABoundary: TWfcModelBoundary;
+      const ASymmetry: TWfcModelSymmetry;
+      const ADirections: TWfcModelDirections;
+      const ATokens: TWfcModelTokens;
+      const AWeights, ARelations: TWfcModelIntegerArray);
   public
     constructor Create(const ARank, ASampleWidth, ASampleHeight: Integer;
       const ABoundary: TWfcModelBoundary;
       const ASymmetry: TWfcModelSymmetry;
       const ADirections: TWfcModelDirections;
       const ATokens: TWfcModelTokens;
-      const AWeights, ARelations: TWfcModelIntegerArray);
+      const AWeights, ARelations: TWfcModelIntegerArray); overload;
+    constructor Create(const ARank: Integer;
+      const ASampleShapes: TWfcModelSampleShapes;
+      const ABoundary: TWfcModelBoundary;
+      const ASymmetry: TWfcModelSymmetry;
+      const ADirections: TWfcModelDirections;
+      const ATokens: TWfcModelTokens;
+      const AWeights, ARelations: TWfcModelIntegerArray); overload;
 
+    function SampleShapeAt(
+      const ASampleIndex: Integer): TWfcModelSampleShape;
     function TokenAt(const AValueIndex: Integer): TWfcModelToken;
     function WeightAt(const AValueIndex: Integer): Integer;
     function RelationCount(const ADirection: TWfcModelDirection;
       const ASourceValue, ATargetValue: Integer): Integer;
     function FindToken(const AToken: TWfcModelToken): Integer;
 
+    function CopySampleShapes: TWfcModelSampleShapes;
     function CopyTokens: TWfcModelTokens;
     function CopyWeights: TWfcModelIntegerArray;
     function CopyRelations: TWfcModelIntegerArray;
 
     property Rank: Integer read FRank;
-    property SampleWidth: Integer read FSampleWidth;
-    property SampleHeight: Integer read FSampleHeight;
+    property SampleCount: Integer read GetSampleCount;
+    property SampleWidth: Integer read GetSampleWidth;
+    property SampleHeight: Integer read GetSampleHeight;
     property Boundary: TWfcModelBoundary read FBoundary;
     property Symmetry: TWfcModelSymmetry read FSymmetry;
     property Directions: TWfcModelDirections read FDirections;
     property ValueCount: Integer read GetValueCount;
   end;
+
+  TWfcModels = array of TWfcModel;
+
+const
+  WFC_MODEL_MERGE_ALGORITHM_VERSION = 1;
+
+function MakeWfcModelSampleShape(const AWidth,
+  AHeight: Integer): TWfcModelSampleShape;
+
+function MergeWfcModels(const AModels: TWfcModels): TWfcModel;
 
 function OppositeModelDirection(
   const ADirection: TWfcModelDirection): TWfcModelDirection;
@@ -119,6 +157,13 @@ const
     [wmdNorth, wmdEast, wmdSouth, wmdWest];
   WFC_MODEL_HORIZONTAL_DIRECTIONS: TWfcModelDirections =
     [wmdEast, wmdWest];
+
+function MakeWfcModelSampleShape(const AWidth,
+  AHeight: Integer): TWfcModelSampleShape;
+begin
+  Result.Width := AWidth;
+  Result.Height := AHeight;
+end;
 
 function OppositeModelDirection(
   const ADirection: TWfcModelDirection): TWfcModelDirection;
@@ -149,6 +194,33 @@ begin
   if LSquare > High(Integer) div 4 then
     raise EWfcModel.Create('model relation dimensions overflow Integer');
   Result := 4 * LSquare;
+end;
+
+function CheckedSampleShapeCount(
+  const ASampleShapes: TWfcModelSampleShapes): Integer;
+var
+  LLength: SizeInt;
+begin
+  LLength := Length(ASampleShapes);
+  if LLength = 0 then
+    raise EWfcModel.Create('model must contain at least one sample shape');
+  if (LLength < 0) or
+    ((LLength and (not SizeInt(High(Integer)))) <> 0) then
+    raise EWfcModel.Create('model has too many sample shapes');
+  Result := Integer(LLength);
+end;
+
+function CheckedModelCount(const AModels: TWfcModels): Integer;
+var
+  LLength: SizeInt;
+begin
+  LLength := Length(AModels);
+  if LLength = 0 then
+    raise EWfcModel.Create('cannot merge an empty model list');
+  if (LLength < 0) or
+    ((LLength and (not SizeInt(High(Integer)))) <> 0) then
+    raise EWfcModel.Create('cannot merge too many models');
+  Result := Integer(LLength);
 end;
 
 {$IFNDEF PAS2JS}
@@ -329,6 +401,21 @@ end;
 
 { TWfcModel }
 
+function TWfcModel.GetSampleCount: Integer;
+begin
+  Result := Integer(Length(FSampleShapes));
+end;
+
+function TWfcModel.GetSampleWidth: Integer;
+begin
+  Result := FSampleShapes[0].Width;
+end;
+
+function TWfcModel.GetSampleHeight: Integer;
+begin
+  Result := FSampleShapes[0].Height;
+end;
+
 function TWfcModel.GetValueCount: Integer;
 begin
   Result := Length(FTokens);
@@ -339,6 +426,13 @@ begin
   if (AValueIndex < 0) or (AValueIndex >= ValueCount) then
     raise ERangeError.CreateFmt('model value index out of bounds [%d]',
       [AValueIndex]);
+end;
+
+procedure TWfcModel.ValidateSampleIndex(const ASampleIndex: Integer);
+begin
+  if (ASampleIndex < 0) or (ASampleIndex >= SampleCount) then
+    raise ERangeError.CreateFmt('model sample index out of bounds [%d]',
+      [ASampleIndex]);
 end;
 
 function TWfcModel.RelationIndex(const ADirection: TWfcModelDirection;
@@ -363,15 +457,44 @@ constructor TWfcModel.Create(const ARank, ASampleWidth,
   const ADirections: TWfcModelDirections; const ATokens: TWfcModelTokens;
   const AWeights, ARelations: TWfcModelIntegerArray);
 var
+  LSampleShapes: TWfcModelSampleShapes;
+begin
+  inherited Create;
+  SetLength(LSampleShapes, 1);
+  LSampleShapes[0] := MakeWfcModelSampleShape(ASampleWidth,
+    ASampleHeight);
+  Initialize(ARank, LSampleShapes, ABoundary, ASymmetry, ADirections,
+    ATokens, AWeights, ARelations);
+end;
+
+constructor TWfcModel.Create(const ARank: Integer;
+  const ASampleShapes: TWfcModelSampleShapes;
+  const ABoundary: TWfcModelBoundary;
+  const ASymmetry: TWfcModelSymmetry;
+  const ADirections: TWfcModelDirections; const ATokens: TWfcModelTokens;
+  const AWeights, ARelations: TWfcModelIntegerArray);
+begin
+  inherited Create;
+  Initialize(ARank, ASampleShapes, ABoundary, ASymmetry, ADirections,
+    ATokens, AWeights, ARelations);
+end;
+
+procedure TWfcModel.Initialize(const ARank: Integer;
+  const ASampleShapes: TWfcModelSampleShapes;
+  const ABoundary: TWfcModelBoundary;
+  const ASymmetry: TWfcModelSymmetry;
+  const ADirections: TWfcModelDirections; const ATokens: TWfcModelTokens;
+  const AWeights, ARelations: TWfcModelIntegerArray);
+var
   D: TWfcModelDirection;
   I: Integer;
   J: Integer;
+  LSampleCount: Integer;
+  LShapeIndex: Integer;
   LExpectedRelations: Integer;
   LOpposite: TWfcModelDirection;
   LValueCount: Integer;
 begin
-  inherited Create;
-
   case ABoundary of
     wmbOpen, wmbWrap:
       ;
@@ -388,16 +511,23 @@ begin
   end;
   if (ARank <> 1) and (ARank <> 2) then
     raise EWfcModel.CreateFmt('model rank must be 1 or 2 [%d]', [ARank]);
-  if (ASampleWidth < 1) or (ASampleHeight < 1) then
-    raise EWfcModel.CreateFmt(
-      'model sample dimensions must be positive [%d x %d]',
-      [ASampleWidth, ASampleHeight]);
+  LSampleCount := CheckedSampleShapeCount(ASampleShapes);
+  for LShapeIndex := 0 to LSampleCount - 1 do
+  begin
+    if (ASampleShapes[LShapeIndex].Width < 1) or
+        (ASampleShapes[LShapeIndex].Height < 1) then
+      raise EWfcModel.CreateFmt(
+        'model sample dimensions must be positive [%d: %d x %d]',
+        [LShapeIndex, ASampleShapes[LShapeIndex].Width,
+          ASampleShapes[LShapeIndex].Height]);
+    if (ARank = 1) and (ASampleShapes[LShapeIndex].Height <> 1) then
+      raise EWfcModel.CreateFmt(
+        'rank-1 model sample height must be 1 [%d: %d]',
+        [LShapeIndex, ASampleShapes[LShapeIndex].Height]);
+  end;
 
   if ARank = 1 then
   begin
-    if ASampleHeight <> 1 then
-      raise EWfcModel.CreateFmt(
-        'rank-1 model sample height must be 1 [%d]', [ASampleHeight]);
     if ADirections <> WFC_MODEL_HORIZONTAL_DIRECTIONS then
       raise EWfcModel.Create(
         'rank-1 model directions must be exactly east and west');
@@ -459,8 +589,9 @@ begin
       end;
 
   FRank := ARank;
-  FSampleWidth := ASampleWidth;
-  FSampleHeight := ASampleHeight;
+  SetLength(FSampleShapes, LSampleCount);
+  for I := 0 to LSampleCount - 1 do
+    FSampleShapes[I] := ASampleShapes[I];
   FBoundary := ABoundary;
   FSymmetry := ASymmetry;
   FDirections := ADirections;
@@ -476,6 +607,13 @@ begin
   SetLength(FRelations, LExpectedRelations);
   for I := 0 to Pred(LExpectedRelations) do
     FRelations[I] := ARelations[I];
+end;
+
+function TWfcModel.SampleShapeAt(
+  const ASampleIndex: Integer): TWfcModelSampleShape;
+begin
+  ValidateSampleIndex(ASampleIndex);
+  Result := FSampleShapes[ASampleIndex];
 end;
 
 function TWfcModel.TokenAt(const AValueIndex: Integer): TWfcModelToken;
@@ -502,6 +640,16 @@ begin
     if FTokens[Result] = AToken then
       Exit;
   Result := -1;
+end;
+
+function TWfcModel.CopySampleShapes: TWfcModelSampleShapes;
+var
+  I: Integer;
+begin
+  Result := nil;
+  SetLength(Result, SampleCount);
+  for I := 0 to Pred(SampleCount) do
+    Result[I] := FSampleShapes[I];
 end;
 
 function TWfcModel.CopyTokens: TWfcModelTokens;
@@ -532,6 +680,137 @@ begin
   SetLength(Result, Length(FRelations));
   for I := 0 to High(FRelations) do
     Result[I] := FRelations[I];
+end;
+
+function MergeWfcModels(const AModels: TWfcModels): TWfcModel;
+var
+  D: TWfcModelDirection;
+  I: Integer;
+  J: Integer;
+  LBase: TWfcModel;
+  LGlobalSource: Integer;
+  LGlobalTarget: Integer;
+  LLocalToGlobal: TWfcModelIntegerArray;
+  LModel: TWfcModel;
+  LModelCount: Integer;
+  LModelIndex: Integer;
+  LRelationIndex: Integer;
+  LRelations: TWfcModelIntegerArray;
+  LSampleIndex: Integer;
+  LSampleOffset: Integer;
+  LSampleShapes: TWfcModelSampleShapes;
+  LToken: TWfcModelToken;
+  LTokens: TWfcModelTokens;
+  LTotalSamples: Integer;
+  LValueIndex: Integer;
+  LWeights: TWfcModelIntegerArray;
+
+  function FindMergedToken(const AToken: TWfcModelToken): Integer;
+  var
+    LIndex: Integer;
+  begin
+    for LIndex := 0 to High(LTokens) do
+      if LTokens[LIndex] = AToken then
+        Exit(LIndex);
+    Result := -1;
+  end;
+
+  procedure CheckedAdd(var ATarget: Integer; const ADelta: Integer;
+    const ALabel: String);
+  begin
+    if ADelta < 0 then
+      raise EWfcModel.Create(ALabel + ' cannot be negative');
+    if ATarget > High(Integer) - ADelta then
+      raise EWfcModel.Create(ALabel + ' exceeds the supported Integer range');
+    Inc(ATarget, ADelta);
+  end;
+
+begin
+  Result := nil;
+  LModelCount := CheckedModelCount(AModels);
+  for LModelIndex := 0 to LModelCount - 1 do
+    if not Assigned(AModels[LModelIndex]) then
+      raise EWfcModel.CreateFmt('cannot merge an unassigned model [%d]',
+        [LModelIndex]);
+
+  LBase := AModels[0];
+  LTotalSamples := 0;
+  SetLength(LTokens, 0);
+  for LModelIndex := 0 to LModelCount - 1 do
+  begin
+    LModel := AModels[LModelIndex];
+    if LModel.Rank <> LBase.Rank then
+      raise EWfcModel.Create('cannot merge models with different ranks');
+    if LModel.Boundary <> LBase.Boundary then
+      raise EWfcModel.Create(
+        'cannot merge models with different boundary policies');
+    if LModel.Symmetry <> LBase.Symmetry then
+      raise EWfcModel.Create(
+        'cannot merge models with different symmetry policies');
+    if LModel.Directions <> LBase.Directions then
+      raise EWfcModel.Create(
+        'cannot merge models with different direction policies');
+    if LModel.SampleCount > High(Integer) - LTotalSamples then
+      raise EWfcModel.Create('merged model has too many sample shapes');
+    Inc(LTotalSamples, LModel.SampleCount);
+
+    for I := 0 to Pred(LModel.ValueCount) do
+    begin
+      LToken := LModel.TokenAt(I);
+      if FindMergedToken(LToken) < 0 then
+      begin
+        if Length(LTokens) = High(Integer) then
+          raise EWfcModel.Create('merged model has too many tokens');
+        SetLength(LTokens, Length(LTokens) + 1);
+        LTokens[High(LTokens)] := LToken;
+      end;
+    end;
+  end;
+
+  SetLength(LSampleShapes, LTotalSamples);
+  LSampleOffset := 0;
+  for LModelIndex := 0 to LModelCount - 1 do
+  begin
+    LModel := AModels[LModelIndex];
+    for LSampleIndex := 0 to Pred(LModel.SampleCount) do
+    begin
+      LSampleShapes[LSampleOffset] :=
+        LModel.SampleShapeAt(LSampleIndex);
+      Inc(LSampleOffset);
+    end;
+  end;
+
+  SetLength(LWeights, Length(LTokens));
+  SetLength(LRelations, CheckedRelationLength(Length(LTokens)));
+  for LModelIndex := 0 to LModelCount - 1 do
+  begin
+    LModel := AModels[LModelIndex];
+    SetLength(LLocalToGlobal, LModel.ValueCount);
+    for I := 0 to Pred(LModel.ValueCount) do
+    begin
+      LValueIndex := FindMergedToken(LModel.TokenAt(I));
+      if LValueIndex < 0 then
+        raise EWfcModel.Create('internal merged-token lookup failed');
+      LLocalToGlobal[I] := LValueIndex;
+      CheckedAdd(LWeights[LValueIndex], LModel.WeightAt(I),
+        'merged model weight');
+    end;
+
+    for D := Low(TWfcModelDirection) to High(TWfcModelDirection) do
+      for I := 0 to Pred(LModel.ValueCount) do
+        for J := 0 to Pred(LModel.ValueCount) do
+        begin
+          LGlobalSource := LLocalToGlobal[I];
+          LGlobalTarget := LLocalToGlobal[J];
+          LRelationIndex := ((Ord(D) * Length(LTokens) + LGlobalSource)
+            * Length(LTokens)) + LGlobalTarget;
+          CheckedAdd(LRelations[LRelationIndex],
+            LModel.RelationCount(D, I, J), 'merged model relation count');
+        end;
+  end;
+
+  Result := TWfcModel.Create(LBase.Rank, LSampleShapes, LBase.Boundary,
+    LBase.Symmetry, LBase.Directions, LTokens, LWeights, LRelations);
 end;
 
 procedure ApplyModelToGraph(const AModel: TWfcModel; const AGraph: TGraph);

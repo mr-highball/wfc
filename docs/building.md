@@ -2,10 +2,10 @@
 
 The dependency-free build covers the core, specialized 2D, and model-learning
 units; all three conformance suites; and seeded smoke runs of the
-text-rendered tiled world, multi-pass 2D ecosystem, and learned-tiles demos. It
-does not initialize the optional music submodule or build the unfinished
-Castle Game Engine viewer. The browser world has its own dependency-free
-pas2js entry point described below.
+text-rendered tiled world, multi-pass 2D ecosystem, learned-tiles, and
+learned-corpus demos. It does not initialize the optional music submodule or
+build the unfinished Castle Game Engine viewer. The browser world has its own
+dependency-free pas2js entry point described below.
 
 FPC 3.2.2 is the supported stable compiler. The current FPC development
 compiler is also exercised as a compatibility canary.
@@ -24,7 +24,7 @@ From the repository root, use the entry point for your shell:
 
 Both scripts rebuild with assertions and range, overflow, and I/O checks, run
 `wfc_test`, `wfc_world2d_test`, and `wfc_learn_test`, then compile and
-smoke-test all three portable console examples with seed `0` and the
+smoke-test all four portable console examples with seed `0` and the
 multi-pass world with its default seed as well. A compiler error, failed check,
 or example failure produces a nonzero exit code. Compiler units and binaries
 are written beneath `build/native/`; running the gate does not modify tracked
@@ -133,6 +133,16 @@ pas2js -B -Tnodejs -Mdelphi -Fusrc \
 node build/pas2js/learning-example/LearnTiles.js 0
 ```
 
+The heterogeneous corpus host exercises canonical `wfcm=2` on Node.js:
+
+```bash
+mkdir -p build/pas2js/corpus-example-units build/pas2js/corpus-example
+pas2js -B -Tnodejs -Mdelphi -Fusrc \
+  -FUbuild/pas2js/corpus-example-units -FEbuild/pas2js/corpus-example \
+  examples/learning/02_LearnCorpus/LearnCorpus.lpr
+node build/pas2js/corpus-example/LearnCorpus.js 0
+```
+
 A standalone `pas2js` executable is not enough when its RTL unit paths are
 missing. Use the compiler and RTL from the same installation.
 
@@ -172,13 +182,13 @@ not commit them.
 
 The hosted pas2js gate uses exact official upstream pas2js and FPC-source
 revisions, verifies both source-archive SHA-256 digests, and caches the resulting
-3.3.1 toolchain. It runs all three conformance suites, the tiled-world and
-learned-tiles seed-zero smoke tests, and the multi-pass world with both seed
-zero and its default seed under Node.js 22.23.2. It then builds the browser
-target, serves the staged site, and checks its exact body-state contract in
-headless Chrome. A pinned development compiler is used because the official
-3.2.0 binary release cannot resolve the suite's portable overloaded
-plain-procedure callback call.
+3.3.1 toolchain. It runs all three conformance suites, the tiled-world,
+learned-tiles, and learned-corpus seed-zero smoke tests, and the multi-pass
+world with both seed zero and its default seed under Node.js 22.23.2. It then
+builds the browser target, serves the staged site, and checks its exact
+body-state contract in headless Chrome. A pinned development compiler is used
+because the official 3.2.0 binary release cannot resolve the suite's portable
+overloaded plain-procedure callback call.
 
 ## Continuous integration
 

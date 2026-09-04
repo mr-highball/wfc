@@ -21,6 +21,8 @@ $worldExampleSource = Join-Path $repositoryRoot `
   'examples/2D/01_MultiPassWorld/MultiPassWorld.lpr'
 $learningExampleSource = Join-Path $repositoryRoot `
   'examples/learning/01_LearnTiles/LearnTiles.lpr'
+$corpusExampleSource = Join-Path $repositoryRoot `
+  'examples/learning/02_LearnCorpus/LearnCorpus.lpr'
 $worldCommonDirectory = Join-Path $repositoryRoot 'examples/2D/common'
 $unitOutputDirectory = Join-Path $repositoryRoot 'build/native/units'
 $binaryOutputDirectory = Join-Path $repositoryRoot 'build/native/bin'
@@ -245,4 +247,40 @@ $learningExampleExecutable = Join-Path $binaryOutputDirectory `
 
 Write-Host "Smoke testing '$learningExampleExecutable' with seed 0."
 & $learningExampleExecutable 0 | Out-Null
+$learningExampleExitCode = $LASTEXITCODE
+if ($learningExampleExitCode -ne 0) {
+  exit $learningExampleExitCode
+}
+
+$corpusExampleCompilerArguments = @(
+  $CompilerOptions
+  '-B'
+  '-Mdelphi'
+  '-Sa'
+  '-Cr'
+  '-Co'
+  '-Ci'
+  "-Fu$sourceDirectory"
+  "-FU$unitOutputDirectory"
+  "-FE$binaryOutputDirectory"
+  $corpusExampleSource
+)
+
+Write-Host 'Building the portable learned-corpus example.'
+& $Compiler @corpusExampleCompilerArguments
+$corpusExampleCompilerExitCode = $LASTEXITCODE
+if ($corpusExampleCompilerExitCode -ne 0) {
+  exit $corpusExampleCompilerExitCode
+}
+
+$corpusExampleExecutableName = if ($env:OS -eq 'Windows_NT') {
+  'LearnCorpus.exe'
+} else {
+  'LearnCorpus'
+}
+$corpusExampleExecutable = Join-Path $binaryOutputDirectory `
+  $corpusExampleExecutableName
+
+Write-Host "Smoke testing '$corpusExampleExecutable' with seed 0."
+& $corpusExampleExecutable 0 | Out-Null
 exit $LASTEXITCODE

@@ -75,8 +75,10 @@ broadening it. This demo deliberately uses a wrapped sample to remain exactly
 representable; callers training on open samples should inspect support or handle
 that rejection explicitly.
 
-This is a radius-one, cardinal, single-layer learner. Larger neighborhoods,
-overlapping patterns, multiple samples, corpus merging, smoothing, and learned
-cross-pass relations remain separate extensions rather than hidden behavior in
-this example. See [model learning and priming](../../../docs/learning.md) for
-the complete model, adapter, serialization, and replay contracts.
+This example uses the radius-one, cardinal, single-layer learner with one
+sample. Ordered heterogeneous corpora and deterministic model merging are
+available in the core and demonstrated by `02_LearnCorpus`; larger
+neighborhoods, overlapping patterns, smoothing, and learned cross-pass
+relations remain separate extensions rather than hidden behavior. See
+[model learning and priming](../../../docs/learning.md) for the complete model,
+adapter, serialization, and replay contracts.

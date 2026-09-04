@@ -1,9 +1,10 @@
 # model learning and priming
 
-The learning layer turns a tokenized example into a portable WFC model. It is
-deliberately separate from presentation and file I/O: callers supply tokens,
-choose boundary and symmetry policies, then either apply the immutable model
-to `TGraph` or serialize it in the canonical `.wfcm` text format.
+The learning layer turns one or more tokenized examples into a portable WFC
+model. It is deliberately separate from presentation and file I/O: callers
+supply tokens, choose boundary and symmetry policies, then either apply the
+immutable model to `TGraph` or serialize it in the canonical `.wfcm` text
+format.
 
 This is the first training primitive for the wider ecosystem. A tile, note,
 word, voxel label, or other discrete symbol uses the same frequency and
@@ -81,6 +82,38 @@ No floating-point probabilities or unordered dictionaries participate in
 training. The raw counts are preserved in `TWfcModel`; the solver later applies
 its own pass-wide GCD normalization to value weights.
 
+## ordered corpora and model merging
+
+`LearnModel1DCorpus` and `LearnModel2DCorpus` accept an ordered array of
+`TWfcLearnSample` records. `MakeLearnSample1D` and `MakeLearnSample2D` create
+validated records and detach their token arrays from caller-owned storage.
+Samples may have different positive dimensions.
+
+`WFC_LEARN_CORPUS_ALGORITHM_VERSION = 1` adds these rules to the observation
+kernel above:
+
+- token order is first occurrence by sample index, then original row-major
+  position;
+- every sample is an independent topology, so no relation crosses from the end
+  of one sample into the beginning of another;
+- open or wrapped boundaries and D4 augmentation are applied independently to
+  each sample; and
+- duplicate samples and symmetric transforms contribute their full raw counts.
+
+The model retains every source shape in corpus order. `SampleCount` and
+`SampleShapeAt` are the corpus-aware accessors; the older `SampleWidth` and
+`SampleHeight` properties continue to report shape zero for source
+compatibility.
+
+`MergeWfcModels` combines already learned compatible models without source
+data. Rank, boundary, symmetry, and active directions must match. Tokens keep
+their first appearance across the ordered input models, sample-shape lists are
+concatenated, and weights and relation counts are checked-added after
+reindexing. The merge is deterministic and associative for a fixed flattened
+input order, but deliberately not byte-commutative because value order is part
+of model identity. Its replay contract is identified by
+`WFC_MODEL_MERGE_ALGORITHM_VERSION`.
+
 ## D4 augmentation
 
 For a 2D model, `wmsD4` observes eight explicit orientations in this order:
@@ -103,7 +136,7 @@ all eight observations. Use `wmsNone` when orientation is meaningful.
 
 `TWfcModel` stores:
 
-- rank and original sample dimensions;
+- rank and ordered original sample shapes;
 - boundary and symmetry policies;
 - the active direction set;
 - UTF-8 tokens in deterministic value order;
@@ -156,6 +189,38 @@ positive relations are written in direction/source/target order. Tokens are
 UTF-8 percent encoded with uppercase hexadecimal; only ASCII letters, digits,
 `-`, `.`, `_`, and `~` remain unescaped.
 
+The latest reader/writer version is 2, but encoding deliberately selects the
+smallest canonical profile. A one-sample model keeps its byte-identical
+`wfcm=1` representation. A model with two or more samples uses `wfcm=2`, which
+replaces the singular width and height with ordered shape records:
+
+```text
+wfcm=2
+rank=1
+samples=2
+s=0,2,1
+s=1,3,1
+boundary=open
+symmetry=none
+directions=E,W
+values=3
+v=0,1,A
+v=1,3,B
+v=2,1,C
+relations=6
+r=E,0,1,1
+r=E,1,2,1
+r=E,2,1,1
+r=W,1,0,1
+r=W,1,2,1
+r=W,2,1,1
+end
+```
+
+Version 2 is noncanonical for a singleton corpus and is rejected. Shape
+indices must be complete and ordered, dimensions must be positive, and the
+declared sample count must match the records.
+
 ```text
 wfcm=1
 rank=1
@@ -190,9 +255,11 @@ A saved canonical model fully captures the learned value and relation data.
 Recreating that model from training input additionally requires:
 
 - `WFC_LEARN_ALGORITHM_VERSION`;
-- the exact ordered UTF-8 token sequence and original dimensions;
+- `WFC_LEARN_CORPUS_ALGORITHM_VERSION` for multiple samples;
+- the exact ordered UTF-8 token sequence and dimensions of every sample;
 - boundary and symmetry policies; and
-- the model-text version when comparing serialized bytes.
+- `WFC_MODEL_MERGE_ALGORITHM_VERSION` when models were merged; and
+- the selected model-text profile when comparing serialized bytes.
 
 Solving still uses the replay identity documented in
 [deterministic generation](determinism.md), including seed, pass index, graph
@@ -200,8 +267,9 @@ topology, solve options, and solver/random algorithm versions.
 
 ## current scope
 
-Version 1 learns one pretokenized, single-layer 1D or 2D sample with cardinal
-radius-one relations. It does not yet tokenize raw files, merge corpora,
-extract overlapping multi-cell patterns, learn 3D neighborhoods, smooth unseen
-relations, attach semantic tags, or train cross-pass predicates. Those are
-deliberate extension points built on the stable IR rather than hidden behavior.
+The current learner handles ordered heterogeneous pretokenized corpora of
+single-layer 1D or 2D samples with cardinal radius-one relations. It does not
+yet tokenize raw files, extract overlapping multi-cell patterns, learn 3D
+neighborhoods, smooth unseen relations, attach provenance or semantic tags, or
+train cross-pass predicates. Those are deliberate extension points built on
+the stable IR rather than hidden behavior.

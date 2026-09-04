@@ -9,8 +9,9 @@ the [roadmap](../ROADMAP.md).
 | Multi-pass 2D world | `2D/01_MultiPassWorld/MultiPassWorld.lpr` | Native FPC, pas2js/Node | Uses the reusable 2D units, solves terrain → biome → foliage atomically, independently validates every cell/relation, and prints matching portable signatures without external dependencies. |
 | Interactive browser world | `2D/02_BrowserWorld/BrowserWorld.lpr` | pas2js/browser | Runs the same model and validator in a responsive three-layer canvas UI with seeds, wrapping, cell locks, and an exact headless-browser fixture. |
 | Learned tiles | `learning/01_LearnTiles/LearnTiles.lpr` | Native FPC, pas2js/Node | Learns weighted cardinal constraints from a tokenized sample, serializes the immutable model canonically, generates a seeded grid, and independently validates every emitted adjacency without external dependencies. |
+| Learned corpus | `learning/02_LearnCorpus/LearnCorpus.lpr` | Native FPC, pas2js/Node | Learns one directed model from two differently sized samples, proves their local wraps and absent cross-sample seams, round-trips canonical `wfcm=2`, and independently validates generated orientation. |
 | Text-rendered 2D world | `text/01_SimpleTiledWorld/SimpleTiledWorld.lpr` | Native FPC, pas2js/Node | Builds and runs from the same Pascal source, prints and accepts an optional replay seed, and needs no external dependency. This is world generation rendered as text, not a text-prediction model. |
-| Building-kit console | `3D/01_SimpleBuildingKit/tester.lpr` | Native FPC | Builds without Castle Game Engine, but currently generates and renders a depth-one slice. It does not yet prove vertical 3D constraints. |
+| Building-kit console | `3D/01_SimpleBuildingKit/tester.lpr` | Native FPC | Builds without Castle Game Engine, but its current fixture reaches a no-valid-value failure before rendering. It does not yet prove vertical 3D constraints. |
 | Castle viewer shell | `3D/01_SimpleBuildingKit/castle-demo/` | Native Castle Game Engine | The project shell and assets exist, but its game state does not yet call WFC or render generated building geometry. |
 | A-major music experiment | `music/01_simple_A_major/simple_a_major.lpi` | Native Lazarus/LCL | Legacy optional experiment using the SoundShop submodule and SDL2 playback. |
 | Learned-riff music experiment | `music/02_simple_song_riffs/simple_song_riffs.lpi` | Native Lazarus/LCL | Legacy optional experiment using manually inferred note adjacency, SoundShop, and SDL2 playback. |
@@ -69,6 +70,22 @@ node build/examples/learning/pas2js/bin/LearnTiles.js 0
 Its optional first argument is the unsigned 32-bit replay seed. See the
 [learned-tiles guide](learning/01_LearnTiles/README.md) for the sample,
 invariants, output, and current radius-one limitation.
+
+The corpus example exercises ordered heterogeneous shapes and the version-2
+model profile from the same two targets:
+
+```text
+fpc -B -Mdelphi -Sa -Cr -Co -Ci -Fusrc -FUbuild/examples/learning-corpus/native/units -FEbuild/examples/learning-corpus/native/bin examples/learning/02_LearnCorpus/LearnCorpus.lpr
+build/examples/learning-corpus/native/bin/LearnCorpus 0
+```
+
+```text
+pas2js -B -Tnodejs -Mdelphi -Fusrc -FUbuild/examples/learning-corpus/pas2js/units -FEbuild/examples/learning-corpus/pas2js/bin examples/learning/02_LearnCorpus/LearnCorpus.lpr
+node build/examples/learning-corpus/pas2js/bin/LearnCorpus.js 0
+```
+
+See the [corpus-learning guide](learning/02_LearnCorpus/README.md) for the exact
+samples, deterministic ordering, no-seam invariant, and expected output.
 
 The browser host has dedicated entry points that compile its Pascal program
 and stage a complete static site beneath `build/browser/world2d/www`:

@@ -32,6 +32,26 @@ uses
 
 const
   WFC_LEARN_ALGORITHM_VERSION = 1;
+  WFC_LEARN_CORPUS_ALGORITHM_VERSION = 1;
+
+type
+  TWfcLearnSample = record
+    Tokens: TWfcModelTokens;
+    Width: Integer;
+    Height: Integer;
+  end;
+  TWfcLearnSamples = array of TWfcLearnSample;
+
+function MakeLearnSample1D(
+  const ATokens: TWfcModelTokens): TWfcLearnSample;
+function MakeLearnSample2D(const ATokens: TWfcModelTokens;
+  const AWidth, AHeight: Integer): TWfcLearnSample;
+
+function LearnModel1DCorpus(const ASamples: TWfcLearnSamples;
+  const ABoundary: TWfcModelBoundary): TWfcModel;
+function LearnModel2DCorpus(const ASamples: TWfcLearnSamples;
+  const ABoundary: TWfcModelBoundary;
+  const ASymmetry: TWfcModelSymmetry): TWfcModel;
 
 function LearnModel1D(const ATokens: TWfcModelTokens;
   const ABoundary: TWfcModelBoundary): TWfcModel;
@@ -51,6 +71,7 @@ const
 
 type
   TWfcLearnValueArray = array of Integer;
+  TWfcLearnValueArrays = array of TWfcLearnValueArray;
 
 procedure ValidateBoundary(const ABoundary: TWfcModelBoundary);
 begin
@@ -95,6 +116,19 @@ begin
   Result := Integer(LLength);
 end;
 
+function CheckedCorpusLength(const ASamples: TWfcLearnSamples): Integer;
+var
+  LLength: SizeInt;
+begin
+  LLength := Length(ASamples);
+  if LLength = 0 then
+    raise ERangeError.Create('a WFC learning corpus cannot be empty');
+  if (LLength < 0) or
+    ((LLength and (not SizeInt(High(Integer)))) <> 0) then
+    raise ERangeError.Create('WFC learning corpus has too many samples');
+  Result := Integer(LLength);
+end;
+
 function CheckedRelationCapacity(const AValueCount: Integer): Integer;
 var
   LValuePairs: Integer;
@@ -127,30 +161,27 @@ begin
   Result := -1;
 end;
 
-procedure AddObservedTokens(const ATokens: TWfcModelTokens;
-  out AUniqueTokens: TWfcModelTokens; out AValues: TWfcLearnValueArray);
+procedure MapObservedTokens(const ATokens: TWfcModelTokens;
+  const ASampleIndex: Integer; var AUniqueTokens: TWfcModelTokens;
+  out AValues: TWfcLearnValueArray);
 var
   I: Integer;
   LIndex: Integer;
   LUniqueCount: Integer;
 begin
-  if Length(ATokens) = 0 then
-    raise ERangeError.Create('a WFC learning sample cannot be empty');
-
-  SetLength(AUniqueTokens, 0);
   SetLength(AValues, Length(ATokens));
   for I := 0 to Length(ATokens) - 1 do
   begin
     if ATokens[I] = '' then
       raise EInvalidOperation.CreateFmt(
-        'WFC learning sample token %d is empty', [I]);
+        'WFC learning sample %d token %d is empty', [ASampleIndex, I]);
 
     LIndex := FindTokenIndex(AUniqueTokens, ATokens[I]);
     if LIndex < 0 then
     begin
-      LUniqueCount := Length(AUniqueTokens);
-      if LUniqueCount = High(Integer) then
-        raise ERangeError.Create('WFC learning sample has too many values');
+      if Length(AUniqueTokens) >= High(Integer) then
+        raise ERangeError.Create('WFC learning corpus has too many values');
+      LUniqueCount := Integer(Length(AUniqueTokens));
       SetLength(AUniqueTokens, LUniqueCount + 1);
       AUniqueTokens[LUniqueCount] := ATokens[I];
       LIndex := LUniqueCount;
@@ -319,30 +350,57 @@ begin
     end;
 end;
 
-function BuildModel(const ATokens: TWfcModelTokens;
-  const ARank, AWidth, AHeight: Integer;
+function BuildCorpusModel(const ASamples: TWfcLearnSamples;
+  const ARank: Integer;
   const ABoundary: TWfcModelBoundary;
   const ASymmetry: TWfcModelSymmetry;
   const ADirections: TWfcModelDirections): TWfcModel;
 var
   LExpectedSize: Integer;
+  LSampleCount: Integer;
+  LSampleIndex: Integer;
+  LTokenLength: Integer;
   LValueCount: Integer;
   LTransform: Integer;
   LTransformCount: Integer;
+  LSampleShapes: TWfcModelSampleShapes;
   LUniqueTokens: TWfcModelTokens;
-  LValues: TWfcLearnValueArray;
+  LValues: TWfcLearnValueArrays;
   LWeights: TWfcModelIntegerArray;
   LRelations: TWfcModelIntegerArray;
 begin
   ValidateBoundary(ABoundary);
   ValidateSymmetry(ASymmetry);
-  LExpectedSize := CheckedSampleSize(AWidth, AHeight);
-  if Length(ATokens) <> LExpectedSize then
-    raise EInvalidOperation.CreateFmt(
-      'WFC learning sample has %d tokens; expected %d',
-      [Length(ATokens), LExpectedSize]);
 
-  AddObservedTokens(ATokens, LUniqueTokens, LValues);
+  LSampleCount := CheckedCorpusLength(ASamples);
+
+  SetLength(LSampleShapes, LSampleCount);
+  SetLength(LValues, LSampleCount);
+  for LSampleIndex := 0 to LSampleCount - 1 do
+  begin
+    if (ARank = 1) and (ASamples[LSampleIndex].Height <> 1) then
+      raise EInvalidOperation.CreateFmt(
+        '1D WFC learning sample %d height must be 1; got %d',
+        [LSampleIndex, ASamples[LSampleIndex].Height]);
+
+    LExpectedSize := CheckedSampleSize(ASamples[LSampleIndex].Width,
+      ASamples[LSampleIndex].Height);
+    LTokenLength := CheckedTokenLength(ASamples[LSampleIndex].Tokens,
+      Format('WFC learning sample %d', [LSampleIndex]));
+    if LTokenLength <> LExpectedSize then
+      raise EInvalidOperation.CreateFmt(
+        'WFC learning sample %d has %d tokens; expected %d',
+        [LSampleIndex, LTokenLength, LExpectedSize]);
+
+    LSampleShapes[LSampleIndex].Width := ASamples[LSampleIndex].Width;
+    LSampleShapes[LSampleIndex].Height := ASamples[LSampleIndex].Height;
+  end;
+
+  SetLength(LUniqueTokens, 0);
+  for LSampleIndex := 0 to LSampleCount - 1 do
+    MapObservedTokens(ASamples[LSampleIndex].Tokens, LSampleIndex,
+      LUniqueTokens, LValues[LSampleIndex]);
+
   LValueCount := Length(LUniqueTokens);
   SetLength(LWeights, LValueCount);
   SetLength(LRelations, CheckedRelationCapacity(LValueCount));
@@ -351,32 +409,91 @@ begin
     LTransformCount := D4_TRANSFORM_COUNT
   else
     LTransformCount := 1;
-  for LTransform := 0 to LTransformCount - 1 do
-    ObserveTransform(LValues, AWidth, AHeight, LTransform, LValueCount,
-      ABoundary, ADirections, LWeights, LRelations);
+  for LSampleIndex := 0 to LSampleCount - 1 do
+    for LTransform := 0 to LTransformCount - 1 do
+      ObserveTransform(LValues[LSampleIndex],
+        LSampleShapes[LSampleIndex].Width,
+        LSampleShapes[LSampleIndex].Height, LTransform, LValueCount,
+        ABoundary, ADirections, LWeights, LRelations);
 
-  Result := TWfcModel.Create(ARank, AWidth, AHeight, ABoundary,
+  Result := TWfcModel.Create(ARank, LSampleShapes, ABoundary,
     ASymmetry, ADirections, LUniqueTokens, LWeights, LRelations);
 end;
 
-function LearnModel1D(const ATokens: TWfcModelTokens;
-  const ABoundary: TWfcModelBoundary): TWfcModel;
+procedure CopySampleTokens(const ASource: TWfcModelTokens;
+  out ADestination: TWfcModelTokens);
+var
+  I: Integer;
+begin
+  SetLength(ADestination, Length(ASource));
+  for I := 0 to Length(ASource) - 1 do
+    ADestination[I] := ASource[I];
+end;
+
+function MakeLearnSample1D(
+  const ATokens: TWfcModelTokens): TWfcLearnSample;
 var
   LLength: Integer;
 begin
   LLength := CheckedTokenLength(ATokens, '1D WFC learning sample');
   if LLength = 0 then
     raise ERangeError.Create('a 1D WFC learning sample cannot be empty');
-  Result := BuildModel(ATokens, 1, LLength, 1, ABoundary,
-    wmsNone, [wmdEast, wmdWest]);
+  CopySampleTokens(ATokens, Result.Tokens);
+  Result.Width := LLength;
+  Result.Height := 1;
+end;
+
+function MakeLearnSample2D(const ATokens: TWfcModelTokens;
+  const AWidth, AHeight: Integer): TWfcLearnSample;
+var
+  LExpectedSize: Integer;
+  LTokenLength: Integer;
+begin
+  LExpectedSize := CheckedSampleSize(AWidth, AHeight);
+  LTokenLength := CheckedTokenLength(ATokens, '2D WFC learning sample');
+  if LTokenLength <> LExpectedSize then
+    raise EInvalidOperation.CreateFmt(
+      '2D WFC learning sample has %d tokens; expected %d',
+      [LTokenLength, LExpectedSize]);
+  CopySampleTokens(ATokens, Result.Tokens);
+  Result.Width := AWidth;
+  Result.Height := AHeight;
+end;
+
+function LearnModel1DCorpus(const ASamples: TWfcLearnSamples;
+  const ABoundary: TWfcModelBoundary): TWfcModel;
+begin
+  Result := BuildCorpusModel(ASamples, 1, ABoundary, wmsNone,
+    [wmdEast, wmdWest]);
+end;
+
+function LearnModel2DCorpus(const ASamples: TWfcLearnSamples;
+  const ABoundary: TWfcModelBoundary;
+  const ASymmetry: TWfcModelSymmetry): TWfcModel;
+begin
+  Result := BuildCorpusModel(ASamples, 2, ABoundary, ASymmetry,
+    [wmdNorth, wmdEast, wmdSouth, wmdWest]);
+end;
+
+function LearnModel1D(const ATokens: TWfcModelTokens;
+  const ABoundary: TWfcModelBoundary): TWfcModel;
+var
+  LSamples: TWfcLearnSamples;
+begin
+  SetLength(LSamples, 1);
+  LSamples[0] := MakeLearnSample1D(ATokens);
+  Result := LearnModel1DCorpus(LSamples, ABoundary);
 end;
 
 function LearnModel2D(const ATokens: TWfcModelTokens;
   const AWidth, AHeight: Integer; const ABoundary: TWfcModelBoundary;
   const ASymmetry: TWfcModelSymmetry): TWfcModel;
+var
+  LSamples: TWfcLearnSamples;
 begin
-  Result := BuildModel(ATokens, 2, AWidth, AHeight, ABoundary,
-    ASymmetry, [wmdNorth, wmdEast, wmdSouth, wmdWest]);
+  SetLength(LSamples, 1);
+  LSamples[0] := MakeLearnSample2D(ATokens, AWidth, AHeight);
+  Result := LearnModel2DCorpus(LSamples, ABoundary, ASymmetry);
 end;
 
 end.

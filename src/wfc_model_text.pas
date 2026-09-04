@@ -31,7 +31,10 @@ uses
   wfc_model;
 
 const
-  WFC_MODEL_TEXT_VERSION = 1;
+  { Version 1 remains the canonical representation of a one-sample model.
+    Version 2 adds an ordered sample-shape corpus and is canonical only when
+    that corpus contains at least two samples. }
+  WFC_MODEL_TEXT_VERSION = 2;
 
 function EncodeWfcModelText(const AModel: TWfcModel): String;
 function DecodeWfcModelText(const AText: String): TWfcModel;
@@ -68,14 +71,43 @@ begin
   Result := LSquare * 4;
 end;
 
-function CheckedLineCount(const AValueCount,
-  ARelationCount: Integer): Integer;
+function CheckedLineCount(const AValueCount, ARelationCount,
+  ASampleCount, AFormatVersion: Integer): Integer;
+var
+  LFixedLineCount: Integer;
 begin
-  if (AValueCount < 0) or (ARelationCount < 0) then
+  if (AValueCount < 0) or (ARelationCount < 0) or
+    (ASampleCount < 1) then
     raise ERangeError.Create('WFC model text line count cannot be negative');
-  if AValueCount > (High(Integer) - 10) then
+
+  case AFormatVersion of
+    1:
+      begin
+        if ASampleCount <> 1 then
+          raise ERangeError.Create(
+            'WFC model text version 1 requires exactly one sample');
+        LFixedLineCount := 10;
+      end;
+    2:
+      begin
+        if ASampleCount < 2 then
+          raise ERangeError.Create(
+            'WFC model text version 2 requires multiple samples');
+        LFixedLineCount := 9;
+      end;
+  else
+    raise ERangeError.Create('unsupported WFC model text version');
+  end;
+
+  if (AFormatVersion = 2) then
+  begin
+    if ASampleCount > (High(Integer) - LFixedLineCount) then
+      raise ERangeError.Create('WFC model text has too many lines');
+    Inc(LFixedLineCount, ASampleCount);
+  end;
+  if AValueCount > (High(Integer) - LFixedLineCount) then
     raise ERangeError.Create('WFC model text has too many lines');
-  Result := AValueCount + 10;
+  Result := AValueCount + LFixedLineCount;
   if ARelationCount > (High(Integer) - Result) then
     raise ERangeError.Create('WFC model text has too many lines');
   Inc(Result, ARelationCount);
@@ -580,6 +612,36 @@ begin
     Length(ALine) - LSecondComma));
 end;
 
+procedure ParseSampleLine(const ALine: String;
+  const AExpectedIndex: Integer; out AShape: TWfcModelSampleShape);
+var
+  LComma1: Integer;
+  LComma2: Integer;
+  LIndex: Integer;
+begin
+  if Copy(ALine, 1, 2) <> 's=' then
+    TextError('expected sample-shape record');
+  LComma1 := FindCharacter(ALine, ',', 3);
+  if LComma1 = 0 then
+    TextError('sample-shape record is missing fields');
+  LComma2 := FindCharacter(ALine, ',', LComma1 + 1);
+  if LComma2 = 0 then
+    TextError('sample-shape record is missing fields');
+  if FindCharacter(ALine, ',', LComma2 + 1) <> 0 then
+    TextError('sample-shape record has extra fields');
+
+  LIndex := ParseCanonicalInteger(Copy(ALine, 3,
+    LComma1 - 3), 'sample index');
+  if LIndex <> AExpectedIndex then
+    TextError('sample indices must be complete and ordered');
+  AShape.Width := ParseCanonicalInteger(Copy(ALine, LComma1 + 1,
+    LComma2 - LComma1 - 1), 'sample width');
+  AShape.Height := ParseCanonicalInteger(Copy(ALine, LComma2 + 1,
+    Length(ALine) - LComma2), 'sample height');
+  if (AShape.Width <= 0) or (AShape.Height <= 0) then
+    TextError('sample dimensions must be positive');
+end;
+
 procedure ParseRelationLine(const ALine: String;
   const AValueCount, APreviousSlot: Integer;
   const ADirections: TWfcModelDirections;
@@ -638,15 +700,25 @@ function EncodeWfcModelText(const AModel: TWfcModel): String;
 var
   LLines: TWfcTextLines;
   LLineIndex: Integer;
+  LFormatVersion: Integer;
   LRelationCount: Integer;
   LCount: Integer;
+  LSample: Integer;
   LValue: Integer;
   LSource: Integer;
   LTarget: Integer;
+  LSampleShape: TWfcModelSampleShape;
   LDirection: TWfcModelDirection;
 begin
   if AModel = nil then
     raise EArgumentNilException.Create('WFC model cannot be nil');
+  if AModel.SampleCount < 1 then
+    raise ERangeError.Create('WFC model must contain at least one sample');
+
+  if AModel.SampleCount = 1 then
+    LFormatVersion := 1
+  else
+    LFormatVersion := WFC_MODEL_TEXT_VERSION;
 
   CheckedRelationSlotCount(AModel.ValueCount);
   LRelationCount := 0;
@@ -669,16 +741,35 @@ begin
       end;
 
   SetLength(LLines, CheckedLineCount(AModel.ValueCount,
-    LRelationCount));
+    LRelationCount, AModel.SampleCount, LFormatVersion));
   LLineIndex := 0;
-  LLines[LLineIndex] := 'wfcm=' + IntToStr(WFC_MODEL_TEXT_VERSION);
+  LLines[LLineIndex] := 'wfcm=' + IntToStr(LFormatVersion);
   Inc(LLineIndex);
   LLines[LLineIndex] := 'rank=' + IntToStr(AModel.Rank);
   Inc(LLineIndex);
-  LLines[LLineIndex] := 'width=' + IntToStr(AModel.SampleWidth);
-  Inc(LLineIndex);
-  LLines[LLineIndex] := 'height=' + IntToStr(AModel.SampleHeight);
-  Inc(LLineIndex);
+  if LFormatVersion = 1 then
+  begin
+    LSampleShape := AModel.SampleShapeAt(0);
+    LLines[LLineIndex] := 'width=' + IntToStr(LSampleShape.Width);
+    Inc(LLineIndex);
+    LLines[LLineIndex] := 'height=' + IntToStr(LSampleShape.Height);
+    Inc(LLineIndex);
+  end
+  else
+  begin
+    LLines[LLineIndex] := 'samples=' + IntToStr(AModel.SampleCount);
+    Inc(LLineIndex);
+    for LSample := 0 to AModel.SampleCount - 1 do
+    begin
+      LSampleShape := AModel.SampleShapeAt(LSample);
+      if (LSampleShape.Width <= 0) or (LSampleShape.Height <= 0) then
+        raise ERangeError.Create('WFC model sample dimensions must be positive');
+      LLines[LLineIndex] := 's=' + IntToStr(LSample) + ',' +
+        IntToStr(LSampleShape.Width) + ',' +
+        IntToStr(LSampleShape.Height);
+      Inc(LLineIndex);
+    end;
+  end;
   LLines[LLineIndex] := 'boundary=' + BoundaryName(AModel.Boundary);
   Inc(LLineIndex);
   LLines[LLineIndex] := 'symmetry=' + SymmetryName(AModel.Symmetry);
@@ -723,9 +814,12 @@ function DecodeWfcModelText(const AText: String): TWfcModel;
 var
   LLines: TWfcTextLines;
   LLineIndex: Integer;
+  LFormatVersion: Integer;
   LRank: Integer;
   LWidth: Integer;
   LHeight: Integer;
+  LSampleCount: Integer;
+  LSample: Integer;
   LValueCount: Integer;
   LRelationCount: Integer;
   LRelationSlots: Integer;
@@ -737,6 +831,7 @@ var
   LBoundary: TWfcModelBoundary;
   LSymmetry: TWfcModelSymmetry;
   LDirections: TWfcModelDirections;
+  LSampleShapes: TWfcModelSampleShapes;
   LTokens: TWfcModelTokens;
   LWeights: TWfcModelIntegerArray;
   LRelations: TWfcModelIntegerArray;
@@ -744,22 +839,56 @@ var
 begin
   Result := nil;
   SplitCanonicalLines(AText, LLines);
-  if Length(LLines) < 10 then
+  if Length(LLines) < 1 then
     TextError('document is incomplete');
 
   LLineIndex := 0;
-  if LLines[LLineIndex] <> 'wfcm=1' then
+  if LLines[LLineIndex] = 'wfcm=1' then
+    LFormatVersion := 1
+  else if LLines[LLineIndex] = 'wfcm=2' then
+    LFormatVersion := 2
+  else
     TextError('unsupported or noncanonical format version');
   Inc(LLineIndex);
+
+  if ((LFormatVersion = 1) and (Length(LLines) < 10)) or
+    ((LFormatVersion = 2) and (Length(LLines) < 3)) then
+    TextError('document is incomplete');
   LRank := ParseCanonicalInteger(ValueAfterPrefix(LLines[LLineIndex],
     'rank=', 'rank'), 'rank');
   Inc(LLineIndex);
-  LWidth := ParseCanonicalInteger(ValueAfterPrefix(LLines[LLineIndex],
-    'width=', 'width'), 'width');
-  Inc(LLineIndex);
-  LHeight := ParseCanonicalInteger(ValueAfterPrefix(LLines[LLineIndex],
-    'height=', 'height'), 'height');
-  Inc(LLineIndex);
+
+  if LFormatVersion = 1 then
+  begin
+    LWidth := ParseCanonicalInteger(ValueAfterPrefix(LLines[LLineIndex],
+      'width=', 'width'), 'width');
+    Inc(LLineIndex);
+    LHeight := ParseCanonicalInteger(ValueAfterPrefix(LLines[LLineIndex],
+      'height=', 'height'), 'height');
+    Inc(LLineIndex);
+    SetLength(LSampleShapes, 1);
+    LSampleShapes[0].Width := LWidth;
+    LSampleShapes[0].Height := LHeight;
+  end
+  else
+  begin
+    LSampleCount := ParseCanonicalInteger(ValueAfterPrefix(
+      LLines[LLineIndex], 'samples=', 'samples'), 'samples');
+    Inc(LLineIndex);
+    if LSampleCount < 2 then
+      TextError('version 2 requires at least two samples');
+    { Nine non-sample lines are required by version 2. Check the
+      declaration against the physical document before allocating. }
+    if LSampleCount > (Length(LLines) - 9) then
+      TextError('sample-shape records are incomplete');
+    SetLength(LSampleShapes, LSampleCount);
+    for LSample := 0 to LSampleCount - 1 do
+    begin
+      ParseSampleLine(LLines[LLineIndex], LSample,
+        LSampleShapes[LSample]);
+      Inc(LLineIndex);
+    end;
+  end;
 
   LTextValue := ValueAfterPrefix(LLines[LLineIndex], 'boundary=',
     'boundary');
@@ -831,7 +960,7 @@ begin
     TextError('trailing data is not permitted');
 
   try
-    Result := TWfcModel.Create(LRank, LWidth, LHeight, LBoundary,
+    Result := TWfcModel.Create(LRank, LSampleShapes, LBoundary,
       LSymmetry, LDirections, LTokens, LWeights, LRelations);
   except
     on E: EWfcModel do
