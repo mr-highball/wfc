@@ -99,11 +99,19 @@ node build/pas2js/wfc_test.js
 A standalone `pas2js` executable is not enough when its RTL unit paths are
 missing. Use the compiler and RTL from the same installation.
 
+The hosted pas2js gate uses exact official upstream pas2js and FPC-source
+revisions, verifies both source-archive SHA-256 digests, and caches the resulting
+3.3.1 toolchain. It runs the conformance suite and the seeded tiled-world smoke
+test with Node.js 22.23.2. A pinned development compiler is used because the
+official 3.2.0 binary release cannot resolve the suite's portable overloaded
+plain-procedure callback call.
+
 ## Continuous integration
 
 The hosted workflow runs the checked native gate with FPC 3.2.2 on Linux,
 macOS, and Windows. The Linux lane also builds the FPM and Lazarus packages,
 runs the Lazarus project, and verifies that generation leaves the checkout
-clean. A separate Linux canary runs against the current official FPC
-development image and records the image digest and compiler revision in the
-job log. Submodules are deliberately disabled for every gate.
+clean. A separate Linux lane runs the complete pas2js/Node.js gate, while a
+canary runs against the current official FPC development image and records the
+image digest and compiler revision in the job log. Submodules are deliberately
+disabled for every gate.

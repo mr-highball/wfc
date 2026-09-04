@@ -122,6 +122,112 @@ jobs:
           ./build/lazarus/test/bin/wfc_test
           test -z "$(git status --short)"
 
+  pas2js:
+    name: pas2js 3.3.1 (Node.js 22)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      PAS2JS_REVISION: fa10c59214cd226c60af465c831d66a7321f0214
+      PAS2JS_SOURCE_SHA256: 5a2ad292c8606b899ba384d81b97e789171a335759b67e338d4a37903dbe18f1
+      FPC_SOURCE_REVISION: a92f381365576b6b64be9eb9b8a2db5b4609d8a5
+      FPC_SOURCE_SHA256: 27b2588f5ddcfa1f3262728d525f7a5ef382cc8d15c717431cc42d2af5197301
+      PAS2JS_ROOT: ${{ runner.temp }}/wfc-pas2js
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: false
+
+      - name: Select Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: 22.23.2
+
+      - name: Restore pinned pas2js toolchain
+        id: pas2js-cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ${{ env.PAS2JS_ROOT }}
+          key: pas2js-${{ runner.os }}-${{ runner.arch }}-fpc-3.2.2-${{ env.PAS2JS_REVISION }}-${{ env.FPC_SOURCE_REVISION }}-v1
+
+      - name: Build pinned pas2js toolchain
+        if: steps.pas2js-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes \
+            fp-compiler-3.2.2 \
+            fp-units-fcl-3.2.2 \
+            fp-utils-3.2.2
+
+          build_root="$(mktemp -d)"
+          trap 'rm -rf "$build_root"' EXIT
+          pas2js_archive="$build_root/pas2js.tar.gz"
+          fpc_archive="$build_root/fpc-source.tar.gz"
+          pas2js_source="$build_root/pas2js"
+
+          curl --fail --location --retry 3 \
+            --output "$pas2js_archive" \
+            "https://gitlab.com/freepascal.org/fpc/pas2js/-/archive/$PAS2JS_REVISION/pas2js-$PAS2JS_REVISION.tar.gz"
+          curl --fail --location --retry 3 \
+            --output "$fpc_archive" \
+            "https://gitlab.com/freepascal.org/fpc/source/-/archive/$FPC_SOURCE_REVISION/source-$FPC_SOURCE_REVISION.tar.gz"
+          printf '%s  %s\n' "$PAS2JS_SOURCE_SHA256" "$pas2js_archive" |
+            sha256sum --check -
+          printf '%s  %s\n' "$FPC_SOURCE_SHA256" "$fpc_archive" |
+            sha256sum --check -
+
+          mkdir -p "$pas2js_source/compiler"
+          tar -xzf "$pas2js_archive" \
+            --strip-components=1 --directory "$pas2js_source"
+          tar -xzf "$fpc_archive" \
+            --strip-components=1 --directory "$pas2js_source/compiler"
+          make -C "$pas2js_source" clean all
+
+          test ! -e "$PAS2JS_ROOT"
+          mkdir -p \
+            "$PAS2JS_ROOT/bin/x86_64-linux" \
+            "$PAS2JS_ROOT/compiler/utils/pas2js"
+          cp \
+            "$pas2js_source/bin/x86_64-linux/pas2js" \
+            "$pas2js_source/bin/x86_64-linux/pas2js.cfg" \
+            "$PAS2JS_ROOT/bin/x86_64-linux/"
+          cp -a "$pas2js_source/packages" "$PAS2JS_ROOT/"
+          cp -a \
+            "$pas2js_source/compiler/utils/pas2js/dist" \
+            "$PAS2JS_ROOT/compiler/utils/pas2js/"
+
+      - name: Verify pinned toolchain
+        shell: bash
+        run: |
+          pas2js="$PAS2JS_ROOT/bin/x86_64-linux/pas2js"
+          test -x "$pas2js"
+          test "$("$pas2js" -iV)" = '3.3.1'
+          "$pas2js" -iW
+          node --version
+
+      - name: Build and run pas2js conformance
+        shell: bash
+        run: |
+          pas2js="$PAS2JS_ROOT/bin/x86_64-linux/pas2js"
+          test_units='build/pas2js/test/units'
+          test_bin='build/pas2js/test/bin'
+          example_units='build/pas2js/example/units'
+          example_bin='build/pas2js/example/bin'
+          mkdir -p \
+            "$test_units" "$test_bin" \
+            "$example_units" "$example_bin"
+
+          "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
+            -FU"$test_units" -FE"$test_bin" test/wfc_test.lpr
+          node "$test_bin/wfc_test.js"
+
+          "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
+            -FU"$example_units" -FE"$example_bin" \
+            examples/text/01_SimpleTiledWorld/SimpleTiledWorld.lpr
+          node "$example_bin/SimpleTiledWorld.js" 0 >/dev/null
+
   development:
     name: Development FPC (official trunk image)
     runs-on: ubuntu-24.04
