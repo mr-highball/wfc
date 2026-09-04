@@ -6,6 +6,7 @@ program wfc_test;
 {$ENDIF}
 
 uses
+  Classes,
   SysUtils,
   Generics.Collections,
   wfc;
@@ -291,6 +292,20 @@ begin
   AValue := 'allowed';
 end;
 
+procedure MutateInvalidEntryWithInvented(const {%H-}AGraph: TGraph;
+  const AEntry: TGraphEntry; var AValue: TGraphValue);
+begin
+  AEntry.Value := 'invented';
+  AValue := 'invented';
+end;
+
+procedure RepairEmptyDomainWithNone(const AGraph: TGraph;
+  const {%H-}AEntry: TGraphEntry; var AValue: TGraphValue);
+begin
+  AGraph.AddValue('none');
+  AValue := 'none';
+end;
+
 procedure ConfigureDeterministicSelection(const AGraph: TGraph);
 var
   I: Integer;
@@ -528,7 +543,7 @@ begin
     try
       LGraph.RandomIndex(0);
     except
-      on E: Exception do
+      on E: ERangeError do
         LRaised := True;
     end;
     Check(LRaised, 'RandomIndex rejects a zero bound');
@@ -536,7 +551,7 @@ begin
     try
       LGraph.RandomIndex(-1);
     except
-      on E: Exception do
+      on E: ERangeError do
         LRaised := True;
     end;
     Check(LRaised, 'RandomIndex rejects a negative bound');
@@ -1619,6 +1634,146 @@ begin
   end;
 end;
 
+procedure TestUnassignedContradiction;
+var
+  LGraph: TGraph;
+  LRaised: Boolean;
+begin
+  LGraph := TGraph.Create.Reshape(1, 1, 1);
+  try
+    LGraph.CurrentPass := 'terrain';
+    LGraph.AddValue('water');
+    LGraph.Entry[0, 0, 0].Value := 'water';
+
+    LGraph.SwitchToPass('foliage');
+    LGraph.AddValue('tree').RequirePrevious('land');
+
+    LRaised := False;
+    try
+      LGraph.Run;
+    except
+      on E: EInvalidOperation do
+        LRaised := True;
+    end;
+    Check(LRaised,
+      'an unassigned cell with no valid value reports a contradiction');
+    Check(LGraph.PassGraph[1].Entry[0, 0, 0].Empty,
+      'a contradiction cannot commit an empty or invented value');
+
+    GInvalidRecoveryCount := 0;
+    LGraph.InvalidStateCallback := ReplaceInvalidWithNone;
+    LRaised := False;
+    try
+      LGraph.Run;
+    except
+      on E: EInvalidOperation do
+        LRaised := True;
+    end;
+    Check((GInvalidRecoveryCount = 1) and LRaised,
+      'an invalid-state callback cannot invent a value outside the model');
+    Check(LGraph.PassGraph[1].Entry[0, 0, 0].Empty,
+      'failed contradiction recovery leaves the destination unassigned');
+
+    LGraph.InvalidStateCallback := MutateInvalidEntryWithInvented;
+    LRaised := False;
+    try
+      LGraph.Run;
+    except
+      on E: EInvalidOperation do
+        LRaised := True;
+    end;
+    Check(LRaised,
+      'direct callback mutation cannot bypass contradiction validation');
+    Check(LGraph.PassGraph[1].Entry[0, 0, 0].Empty,
+      'failed callback mutation is rolled back to an unassigned entry');
+
+    LGraph.InvalidStateCallback := RepairEmptyDomainWithNone;
+    LGraph.Run;
+    Check(LGraph.PassGraph[1].Entry[0, 0, 0].Value = 'none',
+      'the invalid-state callback may repair model state with a valid value');
+    Check(LGraph.PassGraph[1].Entry[0, 0, 0].Generated,
+      'successful empty-domain recovery commits solver-owned output');
+  finally
+    LGraph.Free;
+  end;
+end;
+
+procedure TestWrappedSelfConstraint;
+var
+  LGraph: TGraph;
+  LRaised: Boolean;
+begin
+  LGraph := TGraph.Create.Reshape(1, 1, 1);
+  try
+    LGraph.AddValue('A').NewRule([gdNorth], 'B');
+    LGraph.AddValue('B');
+    LGraph.SelectionCallback := SelectFirstValid;
+
+    LRaised := False;
+    try
+      LGraph.Run;
+    except
+      on E: EInvalidOperation do
+        LRaised := True;
+    end;
+    Check(LRaised,
+      'an incompatible wrapped self-arc reports a contradiction');
+    Check(LGraph.Entry[0, 0, 0].Empty,
+      'an incompatible wrapped self-arc cannot commit a value');
+  finally
+    LGraph.Free;
+  end;
+
+  LGraph := TGraph.Create.Reshape(1, 1, 1);
+  try
+    LGraph.AddValue('A').NewRule([gdNorth, gdSouth], 'A');
+    LGraph.SelectionCallback := SelectFirstValid;
+    LGraph.Run;
+    Check(LGraph.Entry[0, 0, 0].Value = 'A',
+      'a compatible wrapped self-arc remains solvable');
+  finally
+    LGraph.Free;
+  end;
+end;
+
+procedure TestSelfRequiredSupportIsolation;
+var
+  LGraph: TTestGraph;
+  LPass: TTestGraph;
+  LRunGraph: TFixedStartGraph;
+  LValues: TGraphValues;
+begin
+  GFailEntryCreateAt := 0;
+  LGraph := TTestGraph.Create;
+  try
+    LGraph.Reshape(2, 1, 1);
+    //B and its inverse X are required-only values whose possible supporter is
+    //an unassigned external neighbor. A alone supports itself on the wrapped
+    //north/south arcs.
+    LGraph.AddValue('B').NewRule([gdEast], 'X', True);
+    LGraph.AddValue('A').NewRule([gdNorth], 'A', True);
+    LPass := TTestGraph(LGraph.PassGraph[0]);
+    LPass.ValidateForTest(LPass.Entry[0, 0, 0], LValues);
+    Check((Length(LValues) = 1) and (LValues[0] = 'A'),
+      'required self-support is isolated to its own candidate');
+  finally
+    LGraph.Free;
+  end;
+
+  LRunGraph := TFixedStartGraph.Create;
+  try
+    LRunGraph.Reshape(2, 1, 1);
+    LRunGraph.AddValue('B').NewRule([gdEast], 'X', True);
+    LRunGraph.AddValue('A').NewRule([gdNorth], 'A', True);
+    LRunGraph.SelectionCallback := SelectFirstValid;
+    LRunGraph.Run;
+    Check(LRunGraph.Entry[0, 0, 0].Value = 'A',
+      'Run cannot borrow required self-support from another candidate');
+  finally
+    LRunGraph.Free;
+  end;
+end;
+
 procedure TestTransactionalReshape;
 var
   LGraph: TTestGraph;
@@ -1992,6 +2147,11 @@ begin
   RunTest('invalid locked pass recovery', @TestInvalidSeedRecovery);
   RunTest('selection callback domain validation',
     @TestSelectionMustUseValidDomain);
+  RunTest('unassigned contradiction handling',
+    @TestUnassignedContradiction);
+  RunTest('wrapped self constraints', @TestWrappedSelfConstraint);
+  RunTest('self required-support isolation',
+    @TestSelfRequiredSupportIsolation);
   RunTest('transactional reshape', @TestTransactionalReshape);
   RunTest('subclass pass factory', @TestSubclassPassFactory);
   RunTest('configured subclass lifecycle', @TestConfiguredSubclassLifecycle);

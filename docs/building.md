@@ -1,7 +1,8 @@
 # Building and testing
 
-The dependency-free build covers the core unit and conformance suite. It does
-not initialize the optional music submodule or build the unfinished graphical
+The dependency-free build covers the core unit, conformance suite, and a
+seeded smoke run of the text-rendered tiled-world example. It does not
+initialize the optional music submodule or build the unfinished graphical
 viewer.
 
 FPC 3.2.2 is the supported stable compiler. The current FPC development
@@ -20,9 +21,10 @@ From the repository root, use the entry point for your shell:
 ```
 
 Both scripts rebuild with assertions and range, overflow, and I/O checks,
-then run the conformance executable. A compiler error or failed check produces
-a nonzero exit code. Compiler units and binaries are written beneath
-`build/native/`; running the gate does not modify tracked source files.
+run the conformance executable, then compile and smoke-test the dependency-free
+tiled-world example with seed `0`. A compiler error, failed check, or example
+failure produces a nonzero exit code. Compiler units and binaries are written
+beneath `build/native/`; running the gate does not modify tracked source files.
 
 Set `FPC` to select another compiler. Additional compiler arguments may be
 passed explicitly:

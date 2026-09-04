@@ -13,6 +13,8 @@ if (Get-Variable -Name PSNativeCommandUseErrorActionPreference `
 $repositoryRoot = $PSScriptRoot
 $sourceDirectory = Join-Path $repositoryRoot 'src'
 $testSource = Join-Path $repositoryRoot 'test/wfc_test.lpr'
+$exampleSource = Join-Path $repositoryRoot `
+  'examples/text/01_SimpleTiledWorld/SimpleTiledWorld.lpr'
 $unitOutputDirectory = Join-Path $repositoryRoot 'build/native/units'
 $binaryOutputDirectory = Join-Path $repositoryRoot 'build/native/bin'
 
@@ -50,4 +52,38 @@ $testExecutable = Join-Path $binaryOutputDirectory $testExecutableName
 Write-Host "Running '$testExecutable'."
 & $testExecutable
 $testExitCode = $LASTEXITCODE
-exit $testExitCode
+if ($testExitCode -ne 0) {
+  exit $testExitCode
+}
+
+$exampleCompilerArguments = @(
+  $CompilerOptions
+  '-B'
+  '-Mdelphi'
+  '-Sa'
+  '-Cr'
+  '-Co'
+  '-Ci'
+  "-Fu$sourceDirectory"
+  "-FU$unitOutputDirectory"
+  "-FE$binaryOutputDirectory"
+  $exampleSource
+)
+
+Write-Host "Building the dependency-free tiled-world example."
+& $Compiler @exampleCompilerArguments
+$exampleCompilerExitCode = $LASTEXITCODE
+if ($exampleCompilerExitCode -ne 0) {
+  exit $exampleCompilerExitCode
+}
+
+$exampleExecutableName = if ($env:OS -eq 'Windows_NT') {
+  'SimpleTiledWorld.exe'
+} else {
+  'SimpleTiledWorld'
+}
+$exampleExecutable = Join-Path $binaryOutputDirectory $exampleExecutableName
+
+Write-Host "Smoke testing '$exampleExecutable' with seed 0."
+& $exampleExecutable 0 | Out-Null
+exit $LASTEXITCODE

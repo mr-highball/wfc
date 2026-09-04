@@ -1671,10 +1671,24 @@ begin
   //get the valid rules for this entry
   DoValidate(AEntry, Z, APrevZ, LValues);
 
-  //in the case that we started with values but removed all valid options
-  //invoke the invalid state handler
+  //An empty domain is a contradiction. Give the legacy invalid-state hook a
+  //chance to repair mutable model state, then validate its proposed value
+  //against the refreshed domain. Never commit an empty or invented value.
   if Length(LValues) < 1 then
-    Exit(DoHandleInvalidState(AEntry));
+  begin
+    Result := DoHandleInvalidState(AEntry);
+    //The callback receives the legacy mutable entry object. Its scalar result
+    //is the proposal; direct entry writes are not a side channel around domain
+    //validation and must not leak from a failed recovery.
+    if not AEntry.Empty then
+      AEntry.ClearValue;
+    DoValidate(AEntry, Z, APrevZ, LValues);
+    if not ContainsGraphValue(LValues, Result) then
+      raise EInvalidOperation.CreateFmt(
+        'DoGetSelection::no valid value in pass %d at entry %d',
+        [FPassIndex, AEntry.Index]);
+    Exit;
+  end;
 
   //pass the rules to the callback for determining the value of this entry
   if Assigned(FPassRoot) then
@@ -1711,6 +1725,7 @@ var
   I: Integer;
   LHasRequiredConstraint: Boolean;
   LInitialValues: TGraphValues;
+  LSelfRequiredValues: TGraphValues;
 
   (*
     for each neighbor provided, this method will whittle down
@@ -1731,9 +1746,55 @@ var
     if not Assigned(ANeighbor) then
       Exit;
 
-    //neighbor has no value to validate against
+    //A wrapped singleton dimension points an entry back to itself. Although
+    //the entry is still unassigned, each candidate must support itself across
+    //that arc; treating it like an unrelated empty neighbor can commit a
+    //locally impossible value.
     if ANeighbor.Empty then
+    begin
+      if ANeighbor = AEntry then
+      begin
+        for I := 0 to High(Values) do
+        begin
+          if not FRuleGroups.ContainsKey(Values[I]) then
+          begin
+            Insert(Values[I], LVals, Length(LVals));
+            Continue;
+          end;
+
+          LGroup := FRuleGroups[Values[I]];
+          if not LGroup.Exists[ADirection] then
+          begin
+            Insert(Values[I], LVals, Length(LVals));
+            Continue;
+          end;
+
+          LRule := LGroup.Rule[ADirection];
+          LRuleVals := LRule.Value;
+          if Length(LRuleVals) = 0 then
+          begin
+            Insert(Values[I], LVals, Length(LVals));
+            Continue;
+          end;
+
+          if ContainsGraphValue(LRuleVals, Values[I]) then
+          begin
+            Insert(Values[I], LVals, Length(LVals));
+            //Unlike an assigned external neighbor, a self-arc can only
+            //provide required support to the same candidate value. Keep that
+            //support candidate-specific so one alternative cannot authorize
+            //an unrelated required-only alternative.
+            if TRequireRule(LRule.Info)
+              and not ContainsGraphValue(LSelfRequiredValues,
+                Values[I]) then
+              Insert(Values[I], LSelfRequiredValues,
+                Length(LSelfRequiredValues));
+          end;
+        end;
+        Values := LVals;
+      end;
       Exit;
+    end;
 
     if not FRuleGroups.ContainsKey(ANeighbor.Value) then
       Exit;
@@ -1775,12 +1836,14 @@ var
     I: Integer;
     LVals: TGraphValues;
   begin
-    if (not AEntry.Empty) or LHasRequiredConstraint then
+    if not AEntry.Empty then
       Exit;
 
     LVals := Default(TGraphValues);
     for I := 0 to High(Values) do
-      if not FRuleGroups[Values[I]].HasRequired then
+      if LHasRequiredConstraint
+        or (not FRuleGroups[Values[I]].HasRequired)
+        or ContainsGraphValue(LSelfRequiredValues, Values[I]) then
         Insert(Values[I], LVals, Length(LVals));
     Values := LVals;
   end;
@@ -1826,6 +1889,7 @@ var
 begin
   Values := Default(TGraphValues);
   LHasRequiredConstraint := False;
+  LSelfRequiredValues := Default(TGraphValues);
 
   //a caller-assigned entry is a fixed candidate, but it still has to satisfy
   //directional and previous-pass constraints

@@ -105,6 +105,12 @@ the current dimensions.
 the root or through a `PassGraph` applies it to every pass. Changing wrapping
 relinks the neighbors in each pass.
 
+When a wrapped dimension has length one, its two directional links point back
+to the same entry. Those self-arcs still enforce directional rules: a candidate
+must be compatible with itself in each wrapped direction that returns to the
+entry. Required self-support is candidate-specific: one candidate's required
+self-rule cannot make another required-only candidate eligible.
+
 This shared shape is what makes a coordinate such as `(3, 4, 0)` refer to the
 same location throughout the pipeline, even though each pass has a different
 entry object there.
@@ -203,6 +209,14 @@ silently retains the invalid value.
 If it returns anything outside that domain, `InvalidStateCallback` gets one
 chance to repair the choice. A missing or still-invalid repair raises
 `EInvalidOperation` before the value is stored.
+
+If filtering leaves an unassigned entry with no valid value at all,
+`InvalidStateCallback` may repair mutable legacy model state and propose a
+value. The graph recalculates the domain after the callback; the proposal must
+belong to that refreshed domain. Otherwise `Run` raises `EInvalidOperation`
+and leaves the entry unassigned instead of inventing a value. Writing directly
+to the callback's mutable `AEntry` argument does not bypass this check; that
+write is cleared before the proposal is validated.
 
 ## constraints from the previous pass
 
