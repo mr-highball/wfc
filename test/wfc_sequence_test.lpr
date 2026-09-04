@@ -629,6 +629,170 @@ begin
   end;
 end;
 
+procedure TestProjectionMapCompositionAndValidation;
+var
+  LErrorMessage: String;
+  LGenerated: TWfcGeneratedSequence;
+  LGraph: TGraph;
+  LOptions: TGraphSolveOptions;
+  LReport: TGraphSolveReport;
+  LRules: TWfcSequenceProjectionRules;
+  LSourceModel: TWfcSequenceModel;
+  LSourceModelReordered: TWfcSequenceModel;
+  LSourceModelTwo: TWfcSequenceModel;
+  LTargetModel: TWfcSequenceModel;
+  LTargetModelReordered: TWfcSequenceModel;
+  LValidation: TWfcSequenceGraphValidationReport;
+
+  function ProjectionMapRejected(
+    const ATargetModel, ASourceModel: TWfcSequenceModel;
+    const ARules: TWfcSequenceProjectionRules): Boolean;
+  var
+    LDependencyCountBefore: Integer;
+  begin
+    Result := False;
+    LErrorMessage := '';
+    LDependencyCountBefore := LGraph.DependencyCount;
+    try
+      RequireSequenceProjectionMapFromPass(ATargetModel,
+        ASourceModel, LGraph, 'source-one', ARules);
+    except
+      on E: Exception do
+      begin
+        Result := True;
+        LErrorMessage := E.Message;
+      end;
+    end;
+    Result := Result and
+      (LGraph.DependencyCount = LDependencyCountBefore) and
+      (Pos('@wfcs', LErrorMessage) = 0);
+  end;
+
+begin
+  LSourceModel := LearnSequenceModelCorpus(SamplesOf([
+    MakeWfcSequenceSample(TokensOf(['A'])),
+    MakeWfcSequenceSample(TokensOf(['B'])),
+    MakeWfcSequenceSample(TokensOf(['C']))]), 1);
+  LSourceModelReordered := LearnSequenceModelCorpus(SamplesOf([
+    MakeWfcSequenceSample(TokensOf(['A'])),
+    MakeWfcSequenceSample(TokensOf(['C'])),
+    MakeWfcSequenceSample(TokensOf(['B']))]), 1);
+  LSourceModelTwo := LearnSequenceModelCorpus(SamplesOf([
+    MakeWfcSequenceSample(TokensOf(['hot'])),
+    MakeWfcSequenceSample(TokensOf(['cold']))]), 1);
+  LTargetModel := LearnSequenceModelCorpus(SamplesOf([
+    MakeWfcSequenceSample(TokensOf(['X'])),
+    MakeWfcSequenceSample(TokensOf(['Y']))]), 1);
+  LTargetModelReordered := LearnSequenceModelCorpus(SamplesOf([
+    MakeWfcSequenceSample(TokensOf(['Y'])),
+    MakeWfcSequenceSample(TokensOf(['X']))]), 1);
+  LGraph := TGraph.Create;
+  try
+    LGraph.Reshape(1, 1, 1);
+    LGraph.WrapNeighbors := False;
+    LGraph.CurrentPass := 'source-one';
+    ApplySequenceModelToGraph(LSourceModel, LGraph);
+    IntersectSequenceAllowedTokens(LSourceModel, LGraph, 0, 'B');
+    LGraph.SwitchToPass('source-two');
+    ApplySequenceModelToGraph(LSourceModelTwo, LGraph);
+    IntersectSequenceAllowedTokens(LSourceModelTwo, LGraph, 0, 'cold');
+    LGraph.SwitchToPass('target');
+    ApplySequenceModelToGraph(LTargetModel, LGraph);
+
+    SetLength(LRules, 1);
+    LRules[0] := MakeWfcSequenceProjectionRule('X', TokensOf(['A']));
+    Check(ProjectionMapRejected(LTargetModel, LSourceModel, LRules),
+      'a missing target projection is rejected atomically');
+
+    SetLength(LRules, 2);
+    LRules[0] := MakeWfcSequenceProjectionRule('X', TokensOf(['A']));
+    LRules[1] := MakeWfcSequenceProjectionRule('X', TokensOf(['B']));
+    Check(ProjectionMapRejected(LTargetModel, LSourceModel, LRules),
+      'a duplicate target projection is rejected atomically');
+
+    LRules[0] := MakeWfcSequenceProjectionRule('X', TokensOf(['A']));
+    LRules[1] := MakeWfcSequenceProjectionRule('missing',
+      TokensOf(['B']));
+    Check(ProjectionMapRejected(LTargetModel, LSourceModel, LRules),
+      'an unknown target projection is rejected atomically');
+
+    LRules[0] := MakeWfcSequenceProjectionRule('X', TokensOf([]));
+    LRules[1] := MakeWfcSequenceProjectionRule('Y', TokensOf(['C']));
+    Check(ProjectionMapRejected(LTargetModel, LSourceModel, LRules),
+      'an empty source-alternative list is rejected atomically');
+
+    LRules[0] := MakeWfcSequenceProjectionRule('X',
+      TokensOf(['A', 'missing']));
+    LRules[1] := MakeWfcSequenceProjectionRule('Y', TokensOf(['C']));
+    Check(ProjectionMapRejected(LTargetModel, LSourceModel, LRules),
+      'an unknown source projection is rejected atomically');
+
+    LRules[0] := MakeWfcSequenceProjectionRule('X',
+      TokensOf(['A', 'A']));
+    LRules[1] := MakeWfcSequenceProjectionRule('Y', TokensOf(['C']));
+    Check(ProjectionMapRejected(LTargetModel, LSourceModel, LRules),
+      'a duplicate source alternative is rejected atomically');
+
+    LRules[0] := MakeWfcSequenceProjectionRule('X',
+      TokensOf(['A', 'B']));
+    LRules[1] := MakeWfcSequenceProjectionRule('Y', TokensOf(['C']));
+    Check(ProjectionMapRejected(LTargetModel, LSourceModelReordered,
+      LRules),
+      'a projection map rejects the wrong applied source identity');
+    Check(ProjectionMapRejected(LTargetModelReordered, LSourceModel,
+      LRules),
+      'a projection map rejects the wrong applied target identity');
+
+    LGraph.SwitchToPass('target');
+    LGraph.PassMode := gpmOverlay;
+    LGraph.ClearDependencies;
+    LGraph.SwitchToPass('source-one');
+    LGraph.DependsOn('target');
+    LGraph.SwitchToPass('target');
+    Check(ProjectionMapRejected(LTargetModel, LSourceModel, LRules),
+      'a projection map rejects a dependency cycle before mutation');
+    LGraph.SwitchToPass('source-one');
+    LGraph.RemoveDependency('target');
+    LGraph.SwitchToPass('target');
+    LGraph.PassMode := gpmLegacy;
+
+    RequireSequenceProjectionMapFromPass(LTargetModel,
+      LSourceModel, LGraph, 'source-one', LRules);
+    Check(LGraph.DependencyCount = 2,
+      'a complete projection map declares its additional source dependency');
+
+    LRules[0] := MakeWfcSequenceProjectionRule('X', TokensOf(['hot']));
+    LRules[1] := MakeWfcSequenceProjectionRule('Y', TokensOf(['cold']));
+    RequireSequenceProjectionMapFromPass(LTargetModel,
+      LSourceModelTwo, LGraph, 'source-two', LRules);
+    Check(LGraph.DependencyCount = 2,
+      'projection maps from distinct passes compose conjunctively');
+
+    LOptions := DefaultGraphSolveOptions;
+    Check(not LGraph.TrySolve(LOptions, LReport),
+      'disagreeing source-pass projections create an exact contradiction');
+
+    LGraph.SwitchToPass('source-two');
+    LGraph.ClearAllowedValues(0, 0, 0);
+    IntersectSequenceAllowedTokens(LSourceModelTwo, LGraph, 0, 'hot');
+    LGraph.SwitchToPass('target');
+    Check(LGraph.TrySolve(LOptions, LReport),
+      'agreeing source-pass projections solve after the provider changes');
+    Check(CaptureSolvedSequence(LTargetModel, LGraph.PassGraph[2],
+      LGenerated, LValidation) and
+      TokensMatch(LGenerated.Tokens, ['X']) and
+      (Pos('@wfcs', String(LGenerated.Tokens[0])) = 0),
+      'two source alternatives select public output without private-key leakage');
+  finally
+    LGraph.Free;
+    LTargetModelReordered.Free;
+    LTargetModel.Free;
+    LSourceModelTwo.Free;
+    LSourceModelReordered.Free;
+    LSourceModel.Free;
+  end;
+end;
+
 procedure TestDeterministicBranchingSeeds;
 var
   LGenerated: TWfcGeneratedSequence;
@@ -939,6 +1103,8 @@ begin
     @TestWrappedGraphAndValidation);
   RunTest('capture failure evidence', @TestCaptureFailures);
   RunTest('pass projection helpers', @TestPassProjectionHelpers);
+  RunTest('projection map composition and validation',
+    @TestProjectionMapCompositionAndValidation);
   RunTest('deterministic branching seeds',
     @TestDeterministicBranchingSeeds);
   RunTest('adapter identity and atomicity',

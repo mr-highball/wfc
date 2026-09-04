@@ -1,11 +1,11 @@
 # Building and testing
 
 The dependency-free build covers the core, specialized 2D and settlement,
-radius-one model-learning, overlapping-pattern, and sequence units and their
+radius-one model-learning, overlapping-pattern, sequence, exact music-score,
+music projection, Standard MIDI File, and score-export units and their
 conformance suites; it also runs seeded smoke checks of the portable console
-demos. It does not
-initialize the optional music submodule or build the unfinished Castle Game
-Engine viewer. The browser world has its own
+demos. It does not initialize the optional legacy music submodule or build the
+unfinished Castle Game Engine viewer. The browser world has its own
 dependency-free pas2js entry point described below.
 
 FPC 3.2.2 is the supported stable compiler. The current FPC development
@@ -22,10 +22,13 @@ project artifacts, but tool-specific units and types must not enter core/runtime
 replay remain usable without those tools.
 
 The sequence learner, graph adapter, validator, and canonical `wfcs=1` codec
-follow this boundary. Tokenizers, MIDI readers, playback systems, editors, and
-other domain adapters may be project-owned portable Pascal or optional edge
-integrations, but none is required to learn, serialize, solve, or validate a
-sequence model.
+follow this boundary. The exact music score, fixed-quantum cell codecs,
+cross-model projection maps, strict `wfcmusic=1` score codec, raw SMF
+format-0/1 codec, and format-0 score exporter are also project-owned portable
+Pascal. Playback systems and editors remain optional edge integrations; none
+is required to learn, serialize, solve, validate, or export the standard music
+fixture. The GPL-3.0 SoundShop submodule, Lazarus/LCL, and SDL2 occur only in
+two explicitly legacy examples.
 
 ## One-command native gate
 
@@ -41,9 +44,11 @@ From the repository root, use the entry point for your shell:
 
 Both scripts rebuild with assertions and range, overflow, and I/O checks, run
 `wfc_test`, `wfc_world2d_test`, `wfc_world2d_settlement_test`,
-`wfc_learn_test`, `wfc_pattern2d_test`, and `wfc_sequence_test`, then compile
-and smoke-test the portable console examples with seed `0`; the multi-pass and
-selective-settlement worlds also run with their default seeds.
+`wfc_learn_test`, `wfc_pattern2d_test`, `wfc_sequence_test`,
+`wfc_midi_smf_test`, `wfc_music_test`, `wfc_music_graph_test`, and
+`wfc_music_midi_test`, then compile and smoke-test the portable console
+examples with seed `0`; the multi-pass and selective-settlement worlds also run
+with their default seeds.
 A compiler error, failed check,
 or example failure produces a nonzero exit code. Compiler units and binaries
 are written beneath `build/native/`; running the gate does not modify tracked
@@ -149,6 +154,16 @@ pas2js -B -Tnodejs -Mdelphi -Fusrc \
   -FUbuild/pas2js/sequence-units -FEbuild/pas2js/sequence \
   test/wfc_sequence_test.lpr
 node build/pas2js/sequence/wfc_sequence_test.js
+
+mkdir -p build/pas2js/music-units build/pas2js/music
+for music_test in wfc_midi_smf_test wfc_music_test \
+  wfc_music_graph_test wfc_music_midi_test
+do
+  pas2js -B -Tnodejs -Mdelphi -Fusrc \
+    -FUbuild/pas2js/music-units -FEbuild/pas2js/music \
+    "test/${music_test}.lpr"
+  node "build/pas2js/music/${music_test}.js"
+done
 ```
 
 The portable multi-pass host uses the same target:
@@ -216,6 +231,21 @@ pas2js -B -Tnodejs -Mdelphi -Fusrc \
 node build/pas2js/sequence-example/LearnSequence.js 0
 ```
 
+The music host exercises harmony + rhythm -> melody pass composition, exact
+score reconstruction, strict `wfcmusic=1`, and the project-owned format-0 MIDI
+exporter:
+
+```bash
+mkdir -p build/pas2js/music-example-units build/pas2js/music-example
+pas2js -B -Tnodejs -Mdelphi -Fusrc \
+  -FUbuild/pas2js/music-example-units -FEbuild/pas2js/music-example \
+  examples/music/03_PassComposition/PassComposition.lpr
+node build/pas2js/music-example/PassComposition.js 0
+```
+
+This host validates artifacts held in memory. It does not provide a browser UI
+or playback backend.
+
 A standalone `pas2js` executable is not enough when its RTL unit paths are
 missing. Use the compiler and RTL from the same installation.
 
@@ -255,8 +285,9 @@ not commit them.
 
 The hosted pas2js gate uses exact official upstream pas2js and FPC-source
 revisions, verifies both source-archive SHA-256 digests, and caches the resulting
-3.3.1 toolchain. It runs all five conformance suites; the tiled-world,
-learned-tiles, learned-corpus, and overlapping-pattern seed-zero smoke tests;
+3.3.1 toolchain. It runs every portable conformance source, including the four
+music suites; the tiled-world, learned-tiles, learned-corpus,
+overlapping-pattern, sequence, and pass-composed-music seed-zero smoke tests;
 and the multi-pass and selective-settlement worlds with both seed zero and
 their default seeds under Node.js 22.23.2. It then
 builds the browser target, serves the staged site, and checks its exact

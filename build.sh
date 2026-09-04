@@ -12,6 +12,10 @@ settlement_test_source="$repository_root/test/wfc_world2d_settlement_test.lpr"
 learning_test_source="$repository_root/test/wfc_learn_test.lpr"
 pattern_test_source="$repository_root/test/wfc_pattern2d_test.lpr"
 sequence_test_source="$repository_root/test/wfc_sequence_test.lpr"
+midi_test_source="$repository_root/test/wfc_midi_smf_test.lpr"
+music_test_source="$repository_root/test/wfc_music_test.lpr"
+music_graph_test_source="$repository_root/test/wfc_music_graph_test.lpr"
+music_midi_test_source="$repository_root/test/wfc_music_midi_test.lpr"
 example_source="$repository_root/examples/text/01_SimpleTiledWorld/SimpleTiledWorld.lpr"
 world_example_source="$repository_root/examples/2D/01_MultiPassWorld/MultiPassWorld.lpr"
 settlement_example_source="$repository_root/examples/2D/03_SelectiveSettlement/SelectiveSettlement.lpr"
@@ -19,6 +23,7 @@ learning_example_source="$repository_root/examples/learning/01_LearnTiles/LearnT
 corpus_example_source="$repository_root/examples/learning/02_LearnCorpus/LearnCorpus.lpr"
 pattern_example_source="$repository_root/examples/learning/03_LearnPatterns/LearnPatterns.lpr"
 sequence_example_source="$repository_root/examples/sequence/01_LearnSequence/LearnSequence.lpr"
+music_example_source="$repository_root/examples/music/03_PassComposition/PassComposition.lpr"
 world_common_directory="$repository_root/examples/2D/common"
 unit_output_directory="$repository_root/build/native/units"
 binary_output_directory="$repository_root/build/native/bin"
@@ -32,6 +37,10 @@ compiler_settlement_test_source=$settlement_test_source
 compiler_learning_test_source=$learning_test_source
 compiler_pattern_test_source=$pattern_test_source
 compiler_sequence_test_source=$sequence_test_source
+compiler_midi_test_source=$midi_test_source
+compiler_music_test_source=$music_test_source
+compiler_music_graph_test_source=$music_graph_test_source
+compiler_music_midi_test_source=$music_midi_test_source
 compiler_example_source=$example_source
 compiler_world_example_source=$world_example_source
 compiler_settlement_example_source=$settlement_example_source
@@ -39,6 +48,7 @@ compiler_learning_example_source=$learning_example_source
 compiler_corpus_example_source=$corpus_example_source
 compiler_pattern_example_source=$pattern_example_source
 compiler_sequence_example_source=$sequence_example_source
+compiler_music_example_source=$music_example_source
 compiler_world_common_directory=$world_common_directory
 compiler_unit_output_directory=$unit_output_directory
 compiler_binary_output_directory=$binary_output_directory
@@ -52,6 +62,10 @@ case "$host_system" in
     compiler_learning_test_source=$(cygpath -m "$learning_test_source") || exit $?
     compiler_pattern_test_source=$(cygpath -m "$pattern_test_source") || exit $?
     compiler_sequence_test_source=$(cygpath -m "$sequence_test_source") || exit $?
+    compiler_midi_test_source=$(cygpath -m "$midi_test_source") || exit $?
+    compiler_music_test_source=$(cygpath -m "$music_test_source") || exit $?
+    compiler_music_graph_test_source=$(cygpath -m "$music_graph_test_source") || exit $?
+    compiler_music_midi_test_source=$(cygpath -m "$music_midi_test_source") || exit $?
     compiler_example_source=$(cygpath -m "$example_source") || exit $?
     compiler_world_example_source=$(cygpath -m "$world_example_source") || exit $?
     compiler_settlement_example_source=$(cygpath -m "$settlement_example_source") || exit $?
@@ -59,6 +73,7 @@ case "$host_system" in
     compiler_corpus_example_source=$(cygpath -m "$corpus_example_source") || exit $?
     compiler_pattern_example_source=$(cygpath -m "$pattern_example_source") || exit $?
     compiler_sequence_example_source=$(cygpath -m "$sequence_example_source") || exit $?
+    compiler_music_example_source=$(cygpath -m "$music_example_source") || exit $?
     compiler_world_common_directory=$(cygpath -m "$world_common_directory") || exit $?
     compiler_unit_output_directory=$(cygpath -m "$unit_output_directory") || exit $?
     compiler_binary_output_directory=$(cygpath -m "$binary_output_directory") || exit $?
@@ -191,6 +206,34 @@ esac
 
 printf "Running '%s'.\n" "$sequence_test_executable"
 "$sequence_test_executable" || exit $?
+
+for compiler_music_suite in \
+  "$compiler_midi_test_source" \
+  "$compiler_music_test_source" \
+  "$compiler_music_graph_test_source" \
+  "$compiler_music_midi_test_source"
+do
+  music_suite_name=$(basename -- "$compiler_music_suite" .lpr)
+  printf "Building the music conformance suite '%s'.\n" "$music_suite_name"
+  "$compiler" "$@" \
+    -B \
+    -Mdelphi \
+    -Sa \
+    -Cr \
+    -Co \
+    -Ci \
+    "-Fu$compiler_source_directory" \
+    "-FU$compiler_unit_output_directory" \
+    "-FE$compiler_binary_output_directory" \
+    "$compiler_music_suite" || exit $?
+
+  music_suite_executable="$binary_output_directory/$music_suite_name"
+  case "$host_system" in
+    CYGWIN*|MINGW*|MSYS*) music_suite_executable="${music_suite_executable}.exe" ;;
+  esac
+  printf "Running '%s'.\n" "$music_suite_executable"
+  "$music_suite_executable" || exit $?
+done
 
 printf "Building the dependency-free tiled-world example.\n"
 "$compiler" "$@" \
@@ -346,3 +389,24 @@ esac
 
 printf "Smoke testing '%s' with seed 0.\n" "$sequence_example_executable"
 "$sequence_example_executable" 0 >/dev/null || exit $?
+
+printf "Building the dependency-free pass-composed music example.\n"
+"$compiler" "$@" \
+  -B \
+  -Mdelphi \
+  -Sa \
+  -Cr \
+  -Co \
+  -Ci \
+  "-Fu$compiler_source_directory" \
+  "-FU$compiler_unit_output_directory" \
+  "-FE$compiler_binary_output_directory" \
+  "$compiler_music_example_source" || exit $?
+
+music_example_executable="$binary_output_directory/PassComposition"
+case "$host_system" in
+  CYGWIN*|MINGW*|MSYS*) music_example_executable="${music_example_executable}.exe" ;;
+esac
+
+printf "Smoke testing '%s' with seed 0.\n" "$music_example_executable"
+"$music_example_executable" 0 >/dev/null || exit $?

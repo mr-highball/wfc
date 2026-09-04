@@ -29,7 +29,11 @@ modular 3D structures, music, text, and other discrete design problems.
 > order-N models from pretokenized UTF-8 corpora, derives structural
 > suffix/prefix recombination, applies open or derived wrapped graph domains,
 > composes latent and public-token passes in either direction, and round-trips
-> strict canonical `wfcs=1` artifacts.
+> strict canonical `wfcs=1` artifacts. Music Foundation v1 adds an exact
+> integer score IR, canonical melody/rhythm/harmony cells, two-source latent
+> pass projection, strict `wfcmusic=1` score text, a project-owned SMF
+> format-0/1 codec, and a format-0 score exporter. Its portable three-pass
+> example runs on native FPC and pas2js/Node without a playback dependency.
 > Offset/neighborhood cross-layer constraints, additional domain libraries, restart
 > policies, and broader inspection and training tools remain tracked in the
 > [roadmap](ROADMAP.md).
@@ -74,6 +78,14 @@ modular 3D structures, music, text, and other discrete design problems.
 - deterministic bounded sequence learning with typed BOS history, raw counts,
   order-N latent states, structural suffix/prefix recombination, explicit
   public-token projection, and strict canonical `wfcs=1` artifacts
+- immutable exact music scores with complete per-voice timelines and exact
+  meter-boundary validation
+- strict `wm1` melody, `wr1` rhythm, and `wh1` harmony cells with lossless
+  aligned monophonic projection and rebuild
+- rhythm + harmony -> melody pass composition through public-token maps over
+  private latent sequence states
+- strict canonical `wfcmusic=1` score text, a project-owned SMF format-0/1
+  byte codec, and deterministic format-0 score export
 - iterative traversal without a graph-sized call stack
 - extension hooks for custom graph and entry behavior
 - one Pascal core for native FPC and pas2js
@@ -127,6 +139,9 @@ independent validation, and the `.wfcp` format, see
 For bounded order-N learning, typed BOS boundaries, open and derived wrapped
 generation, pass projection, and canonical `wfcs=1` text, see
 [sequence models](docs/sequences.md).
+For the exact score model, fixed-quantum cells, music pass projection,
+`wfcmusic=1`, Standard MIDI Files, and the optional playback boundary, see the
+[music foundation](docs/music.md).
 
 ## Build and test
 
@@ -142,8 +157,8 @@ Run the checked native build and conformance suite from the repository root:
 
 Both entry points compile with checked FPC options, keep all output under
 `build/`, run the core, 2D ecosystem, selective-settlement, radius-one
-learning, overlapping-pattern, and sequence suites, smoke-test the portable
-console examples, and preserve
+learning, overlapping-pattern, sequence, score/cell, music-graph, SMF, and
+score-to-MIDI suites, smoke-test the portable console examples, and preserve
 failure exit codes. The repository
 also includes an FPM package, a runtime-only Lazarus package, and the same
 conformance sources for pas2js/Node. Separate `build-browser.ps1` and
@@ -152,11 +167,12 @@ committing generated JavaScript.
 See [building and testing](docs/building.md) for compiler overrides, package
 commands, output paths, pas2js setup, and browser self-test details.
 
-The core, specialized 2D units, conformance suites, portable 2D examples, and
-building-kit console need no submodule. The two legacy music experiments
-require Lazarus/LCL, SDL2, and the optional GPL-3.0 SoundShop
-submodule; they are not part of the dependency-free MIT build path. See the
-[examples index](examples/README.md) for exact status and commands.
+The core, specialized units, conformance suites, portable examples—including
+the pass-composed music example—and building-kit console need no submodule.
+Only the two legacy music playback experiments require Lazarus/LCL, SDL2, and
+the optional GPL-3.0 SoundShop submodule; they are isolated from the
+dependency-free MIT build path. See the [examples index](examples/README.md)
+for exact status and commands.
 
 The portable foundation is project-owned Pascal. Whenever a capability can
 reasonably be implemented here instead of adding a library, the project

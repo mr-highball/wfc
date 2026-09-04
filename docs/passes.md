@@ -289,6 +289,14 @@ value can require one or more public tokens projected from a named latent
 sequence pass. Both are exact same-coordinate `RequireFromPass` alternatives
 and participate in the normal atomic dependency plan.
 
+Projection maps can also relate different public vocabularies. The
+[music foundation](music.md) makes a melody pass depend on both a latent rhythm
+pass and a latent harmony pass: action must match rhythm, and every sounding
+pitch class must match harmony. Those named dependencies are two ANDed groups;
+each target-token map may contain multiple source-token alternatives. The
+adapter expands only at the private-state boundary and preflights the complete
+map before changing pass rules.
+
 ## constraints from the previous pass
 
 `RequirePrevious` filters a value using the entry at the same coordinate in
@@ -426,7 +434,10 @@ offsets, source-neighborhood queries, soft predicates, and bounded feedback or
 repair are not implicit features. Transform mode has one source. Sequence
 projection helpers now bridge exact public tokens and private latent states in
 both directions; general projection schemas and overlapping-pattern pass
-projection remain future work.
+projection remain future work. Exact sequence token maps now support multiple
+latent models, but they remain same-coordinate hard alternatives; they do not
+provide offset relations, arithmetic predicates, soft preferences, or
+many-cell semantic joins.
 
 A failed legacy `Run` restores pass selection but is not a transaction over
 generated cell values. `TrySolve` and `TryRegenerateFrom` are transactional.

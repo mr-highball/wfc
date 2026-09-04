@@ -73,6 +73,20 @@ type
     Tokens: TWfcModelTokens;
   end;
 
+  { A complete public-token mapping from one latent sequence pass to another.
+    TargetToken identifies one public token in the consumer model. Every
+    SourceTokens item is an OR alternative projected by the provider model.
+    Distinct source passes remain conjunctive under the graph pass contract. }
+  TWfcSequenceProjectionRule = record
+    TargetToken: TWfcModelToken;
+    SourceTokens: TWfcModelTokens;
+  end;
+  TWfcSequenceProjectionRules = array of TWfcSequenceProjectionRule;
+
+function MakeWfcSequenceProjectionRule(
+  const ATargetToken: TWfcModelToken;
+  const ASourceTokens: TWfcModelTokens): TWfcSequenceProjectionRule;
+
 { Applies the latent model to an already shaped, empty, one-dimensional graph
   pass. Open graphs receive observed start/end domains. Wrapped graphs receive
   BOS-free domains and a derived structural cycle; that is not wrapped
@@ -104,6 +118,21 @@ procedure RequireProjectedSequenceFromPass(
   const ATargetValue: TGraphValue; const ASourcePass: String;
   const AAllowedPublicTokens: TWfcModelTokens);
 
+{ Checks a complete projection-to-projection relation without adding it.
+  Rules must cover every target public token exactly once; alternatives must
+  be nonempty, known, and unique. Applied model identities and dependency
+  acyclicity are also validated. }
+procedure ValidateSequenceProjectionMapFromPass(
+  const ATargetModel, ASourceModel: TWfcSequenceModel;
+  const ATargetGraph: TGraph; const ASourcePass: String;
+  const ARules: TWfcSequenceProjectionRules);
+
+{ Validates, then adds the complete relation to the active target pass. }
+procedure RequireSequenceProjectionMapFromPass(
+  const ATargetModel, ASourceModel: TWfcSequenceModel;
+  const ATargetGraph: TGraph; const ASourcePass: String;
+  const ARules: TWfcSequenceProjectionRules);
+
 function ValidateSequenceStatePath(const AModel: TWfcSequenceModel;
   const AStateIndices: TWfcSequenceStateIndices;
   const ABoundary: TWfcModelBoundary;
@@ -120,6 +149,24 @@ implementation
 
 uses
   wfc_text_codec;
+
+type
+  TSequenceBooleanArray = array of Boolean;
+  TSequenceByteArray = array of Byte;
+  TSequenceGraphValueArrays = array of TGraphValues;
+  TSequenceIntegerArray = array of Integer;
+
+function MakeWfcSequenceProjectionRule(
+  const ATargetToken: TWfcModelToken;
+  const ASourceTokens: TWfcModelTokens): TWfcSequenceProjectionRule;
+var
+  I: Integer;
+begin
+  Result.TargetToken := ATargetToken;
+  SetLength(Result.SourceTokens, Length(ASourceTokens));
+  for I := 0 to Length(ASourceTokens) - 1 do
+    Result.SourceTokens[I] := ASourceTokens[I];
+end;
 
 function AsciiToModelToken(const AText: String): TWfcModelToken;
 begin
@@ -725,6 +772,207 @@ begin
         Break;
       end;
   LGroup.RequireFromPass(ASourcePass, LSourceValues);
+end;
+
+procedure ValidateProjectionDependencyEdge(const ATargetGraph,
+  ASourceGraph: TGraph; const ASourcePass: String);
+var
+  I: Integer;
+  LDependencyIndex: Integer;
+  LNodeGraph: TGraph;
+  LNodeIndex: Integer;
+  LPassCount: Integer;
+  LSeen: TSequenceByteArray;
+  LSourceIndex: Integer;
+  LStack: TSequenceIntegerArray;
+  LStackCount: Integer;
+  LTargetIndex: Integer;
+begin
+  LPassCount := ATargetGraph.TotalPassCount;
+  LTargetIndex := ATargetGraph.CurrentPassIndex;
+  LSourceIndex := ASourceGraph.CurrentPassIndex;
+  if (LTargetIndex < 0) or (LTargetIndex >= LPassCount) or
+      (LSourceIndex < 0) or (LSourceIndex >= LPassCount) then
+    raise EWfcSequenceGraph.Create(
+      'sequence projection map has an invalid pass index');
+  if LSourceIndex = LTargetIndex then
+    raise EWfcSequenceGraph.Create(
+      'sequence projection map cannot depend on its own pass');
+
+  SetLength(LSeen, LPassCount);
+  SetLength(LStack, LPassCount);
+  LStackCount := 1;
+  LStack[0] := LSourceIndex;
+  LSeen[LSourceIndex] := 1;
+  while LStackCount > 0 do
+  begin
+    Dec(LStackCount);
+    LNodeIndex := LStack[LStackCount];
+    if LNodeIndex = LTargetIndex then
+      raise EWfcSequenceGraph.CreateFmt(
+        'sequence projection dependency on pass "%s" would create a cycle',
+        [ASourcePass]);
+    LNodeGraph := ATargetGraph.PassGraph[LNodeIndex];
+    for I := 0 to LNodeGraph.DependencyCount - 1 do
+    begin
+      LDependencyIndex := LNodeGraph.DependencyIndex[I];
+      if (LDependencyIndex < 0) or
+          (LDependencyIndex >= LPassCount) then
+        raise EWfcSequenceGraph.Create(
+          'sequence projection map found a malformed dependency graph');
+      if LSeen[LDependencyIndex] = 0 then
+      begin
+        if LStackCount >= Length(LStack) then
+          raise EWfcSequenceGraph.Create(
+            'sequence projection map found a malformed dependency graph');
+        LStack[LStackCount] := LDependencyIndex;
+        Inc(LStackCount);
+        LSeen[LDependencyIndex] := 1;
+      end;
+    end;
+    LSeen[LNodeIndex] := 2;
+  end;
+end;
+
+procedure PrepareSequenceProjectionMap(
+  const ATargetModel, ASourceModel: TWfcSequenceModel;
+  const ATargetGraph: TGraph; const ASourcePass: String;
+  const ARules: TWfcSequenceProjectionRules;
+  out ATargetSalt: Integer;
+  out ASourceValuesByTarget: TSequenceGraphValueArrays);
+var
+  I: Integer;
+  J: Integer;
+  K: Integer;
+  LAllowedSourceIndices: TSequenceIntegerArray;
+  LSeenTargets: TSequenceBooleanArray;
+  LSourceGraph: TGraph;
+  LSourceSalt: Integer;
+  LSourceTokenIndex: Integer;
+  LTargetTokenIndex: Integer;
+begin
+  ATargetSalt := 0;
+  ASourceValuesByTarget := nil;
+  RequireAssigned(ATargetModel, ATargetGraph);
+  RequireAssigned(ASourceModel, ATargetGraph);
+  if ATargetGraph.Running then
+    raise EWfcSequenceGraph.Create(
+      'sequence projection maps cannot change while the pipeline is running');
+
+  ValidateGraphShape(ATargetGraph, 'sequence projection map');
+  ValidateAppliedModel(ATargetModel, ATargetGraph,
+    'sequence projection map target');
+  LSourceGraph := FindPassGraph(ATargetGraph, ASourcePass,
+    'sequence projection map');
+  ValidateGraphShape(LSourceGraph, 'sequence projection map source');
+  ValidateAppliedModel(ASourceModel, LSourceGraph,
+    'sequence projection map source');
+  ValidateProjectionDependencyEdge(ATargetGraph,
+    LSourceGraph, ASourcePass);
+
+  if Length(ARules) <> ATargetModel.PublicTokenCount then
+    raise EArgumentException.CreateFmt(
+      'sequence projection map must cover %d target public tokens',
+      [ATargetModel.PublicTokenCount]);
+
+  SetLength(LSeenTargets, ATargetModel.PublicTokenCount);
+  SetLength(ASourceValuesByTarget, ATargetModel.PublicTokenCount);
+  LSourceSalt := SequenceKeySalt(ASourceModel);
+  for I := 0 to Length(ARules) - 1 do
+  begin
+    LTargetTokenIndex :=
+      ATargetModel.FindPublicToken(ARules[I].TargetToken);
+    if LTargetTokenIndex < 0 then
+      raise EArgumentException.CreateFmt(
+        'unknown target sequence public token in projection rule %d', [I]);
+    if LSeenTargets[LTargetTokenIndex] then
+      raise EArgumentException.CreateFmt(
+        'duplicate target sequence public token in projection rule %d', [I]);
+    LSeenTargets[LTargetTokenIndex] := True;
+
+    if Length(ARules[I].SourceTokens) = 0 then
+      raise EArgumentException.CreateFmt(
+        'sequence projection rule %d needs a source alternative', [I]);
+    SetLength(LAllowedSourceIndices,
+      Length(ARules[I].SourceTokens));
+    for J := 0 to Length(ARules[I].SourceTokens) - 1 do
+    begin
+      LSourceTokenIndex :=
+        ASourceModel.FindPublicToken(ARules[I].SourceTokens[J]);
+      if LSourceTokenIndex < 0 then
+        raise EArgumentException.CreateFmt(
+          'unknown source sequence public token in projection rule %d alternative %d',
+          [I, J]);
+      for K := 0 to J - 1 do
+        if LAllowedSourceIndices[K] = LSourceTokenIndex then
+          raise EArgumentException.CreateFmt(
+            'duplicate source sequence public token in projection rule %d alternative %d',
+            [I, J]);
+      LAllowedSourceIndices[J] := LSourceTokenIndex;
+    end;
+
+    SetLength(ASourceValuesByTarget[LTargetTokenIndex], 0);
+    for J := 0 to ASourceModel.StateCount - 1 do
+      for K := 0 to Length(LAllowedSourceIndices) - 1 do
+        if ASourceModel.StateEmittedTokenIndexAt(J) =
+            LAllowedSourceIndices[K] then
+        begin
+          SetLength(ASourceValuesByTarget[LTargetTokenIndex],
+            Length(ASourceValuesByTarget[LTargetTokenIndex]) + 1);
+          ASourceValuesByTarget[LTargetTokenIndex][
+            High(ASourceValuesByTarget[LTargetTokenIndex])] :=
+              SaltedStateGraphValue(LSourceSalt, J, ASourceModel);
+          Break;
+        end;
+  end;
+
+  for I := 0 to ATargetModel.PublicTokenCount - 1 do
+    if not LSeenTargets[I] then
+      raise EArgumentException.CreateFmt(
+        'sequence projection map is missing target public token %d', [I]);
+
+  ATargetSalt := SequenceKeySalt(ATargetModel);
+end;
+
+procedure ValidateSequenceProjectionMapFromPass(
+  const ATargetModel, ASourceModel: TWfcSequenceModel;
+  const ATargetGraph: TGraph; const ASourcePass: String;
+  const ARules: TWfcSequenceProjectionRules);
+var
+  LSourceValuesByTarget: TSequenceGraphValueArrays;
+  LTargetSalt: Integer;
+begin
+  PrepareSequenceProjectionMap(ATargetModel, ASourceModel,
+    ATargetGraph, ASourcePass, ARules, LTargetSalt,
+    LSourceValuesByTarget);
+end;
+
+procedure RequireSequenceProjectionMapFromPass(
+  const ATargetModel, ASourceModel: TWfcSequenceModel;
+  const ATargetGraph: TGraph; const ASourcePass: String;
+  const ARules: TWfcSequenceProjectionRules);
+var
+  I: Integer;
+  LGroup: TGraphRuleGroup;
+  LSourceValuesByTarget: TSequenceGraphValueArrays;
+  LTargetSalt: Integer;
+  LTargetTokenIndex: Integer;
+begin
+  PrepareSequenceProjectionMap(ATargetModel, ASourceModel,
+    ATargetGraph, ASourcePass, ARules, LTargetSalt,
+    LSourceValuesByTarget);
+
+  { Preparation checks the dependency edge, applied identities, groups, and
+    values before the first requirement is added. }
+  for I := 0 to ATargetModel.StateCount - 1 do
+  begin
+    LTargetTokenIndex :=
+      ATargetModel.StateEmittedTokenIndexAt(I);
+    LGroup := ATargetGraph.Rules[
+      SaltedStateGraphValue(LTargetSalt, I, ATargetModel)];
+    LGroup.RequireFromPass(ASourcePass,
+      LSourceValuesByTarget[LTargetTokenIndex]);
+  end;
 end;
 
 procedure InitializeReport(

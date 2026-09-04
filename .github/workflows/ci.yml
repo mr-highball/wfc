@@ -223,6 +223,8 @@ jobs:
           pattern_test_bin='build/pas2js/pattern-test/bin'
           sequence_test_units='build/pas2js/sequence-test/units'
           sequence_test_bin='build/pas2js/sequence-test/bin'
+          music_test_units='build/pas2js/music-test/units'
+          music_test_bin='build/pas2js/music-test/bin'
           example_units='build/pas2js/example/units'
           example_bin='build/pas2js/example/bin'
           world_example_units='build/pas2js/world-example/units'
@@ -237,6 +239,8 @@ jobs:
           pattern_example_bin='build/pas2js/pattern-example/bin'
           sequence_example_units='build/pas2js/sequence-example/units'
           sequence_example_bin='build/pas2js/sequence-example/bin'
+          music_example_units='build/pas2js/music-example/units'
+          music_example_bin='build/pas2js/music-example/bin'
           mkdir -p \
             "$test_units" "$test_bin" \
             "$world_test_units" "$world_test_bin" \
@@ -244,13 +248,15 @@ jobs:
             "$learning_test_units" "$learning_test_bin" \
             "$pattern_test_units" "$pattern_test_bin" \
             "$sequence_test_units" "$sequence_test_bin" \
+            "$music_test_units" "$music_test_bin" \
             "$example_units" "$example_bin" \
             "$world_example_units" "$world_example_bin" \
             "$settlement_example_units" "$settlement_example_bin" \
             "$learning_example_units" "$learning_example_bin" \
             "$corpus_example_units" "$corpus_example_bin" \
             "$pattern_example_units" "$pattern_example_bin" \
-            "$sequence_example_units" "$sequence_example_bin"
+            "$sequence_example_units" "$sequence_example_bin" \
+            "$music_example_units" "$music_example_bin"
 
           "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
             -FU"$test_units" -FE"$test_bin" test/wfc_test.lpr
@@ -280,6 +286,18 @@ jobs:
             -FU"$sequence_test_units" -FE"$sequence_test_bin" \
             test/wfc_sequence_test.lpr
           node "$sequence_test_bin/wfc_sequence_test.js"
+
+          for music_test in \
+            wfc_midi_smf_test \
+            wfc_music_test \
+            wfc_music_graph_test \
+            wfc_music_midi_test
+          do
+            "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
+              -FU"$music_test_units" -FE"$music_test_bin" \
+              "test/$music_test.lpr"
+            node "$music_test_bin/$music_test.js"
+          done
 
           "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
             -FU"$example_units" -FE"$example_bin" \
@@ -319,6 +337,11 @@ jobs:
             -FU"$sequence_example_units" -FE"$sequence_example_bin" \
             examples/sequence/01_LearnSequence/LearnSequence.lpr
           node "$sequence_example_bin/LearnSequence.js" 0 >/dev/null
+
+          "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
+            -FU"$music_example_units" -FE"$music_example_bin" \
+            examples/music/03_PassComposition/PassComposition.lpr
+          node "$music_example_bin/PassComposition.js" 0 >/dev/null
 
       - name: Build and self-test browser world
         shell: bash

@@ -13,6 +13,7 @@ the [roadmap](../ROADMAP.md).
 | Learned corpus | `learning/02_LearnCorpus/LearnCorpus.lpr` | Native FPC, pas2js/Node | Learns one directed model from two differently sized samples, proves their local wraps and absent cross-sample seams, round-trips canonical `wfcm=2`, and independently validates generated orientation. |
 | Overlapping patterns | `learning/03_LearnPatterns/LearnPatterns.lpr` | Native FPC, pas2js/Node | Learns weighted `2x2` structure from heterogeneous grids with D4 augmentation, round-trips strict `wfcp=1`, solves private latent patterns, independently validates every overlap and projected token contribution, and prints a portable signature without external dependencies. |
 | Learned sequence | `sequence/01_LearnSequence/LearnSequence.lpr` | Native FPC, pas2js/Node | Learns bounded order-2 latent states from a pretokenized UTF-8 corpus, round-trips strict `wfcs=1`, constrains public projection, solves and independently validates the path, and exposes no private graph key or external dependency. |
+| Pass-composed music | `music/03_PassComposition/PassComposition.lpr` | Native FPC, pas2js/Node | Solves harmony and rhythm before a jointly constrained melody, rebuilds an exact score, round-trips strict `wfcmusic=1` and project-owned SMF bytes, and needs no playback or external dependency. |
 | Text-rendered 2D world | `text/01_SimpleTiledWorld/SimpleTiledWorld.lpr` | Native FPC, pas2js/Node | Builds and runs from the same Pascal source, prints and accepts an optional replay seed, and needs no external dependency. This is world generation rendered as text, not a text-prediction model. |
 | Building-kit console | `3D/01_SimpleBuildingKit/tester.lpr` | Native FPC | Builds without Castle Game Engine, but its current fixture reaches a no-valid-value failure before rendering. It does not yet prove vertical 3D constraints. |
 | Castle viewer shell | `3D/01_SimpleBuildingKit/castle-demo/` | Native Castle Game Engine | The project shell and assets exist, but its game state does not yet call WFC or render generated building geometry. |
@@ -143,6 +144,26 @@ See the [sequence example guide](sequence/01_LearnSequence/README.md) and
 learning contract, derived wrapped-cycle semantics, pass projection, and
 versioned replay identity.
 
+The pass-composed music example exercises exact cross-vocabulary maps over
+three latent sequence models, score reconstruction, strict `wfcmusic=1`, and
+the project-owned format-0 MIDI exporter:
+
+```text
+fpc -B -Mdelphi -Sa -Cr -Co -Ci -Fusrc -FUbuild/examples/music/native/units -FEbuild/examples/music/native/bin examples/music/03_PassComposition/PassComposition.lpr
+build/examples/music/native/bin/PassComposition 0
+```
+
+```text
+pas2js -B -Tnodejs -Mdelphi -Fusrc -FUbuild/examples/music/pas2js/units -FEbuild/examples/music/pas2js/bin examples/music/03_PassComposition/PassComposition.lpr
+node build/examples/music/pas2js/bin/PassComposition.js 0
+```
+
+Create the named output directories first. See the
+[pass-composition guide](music/03_PassComposition/README.md) and
+[music foundation](../docs/music.md) for the exact cell, score, artifact, and
+MIDI contracts. This is a console/Node proof; it does not claim a browser UI or
+playback.
+
 The browser host has dedicated entry points that compile its Pascal program
 and stage a complete static site beneath `build/browser/world2d/www`:
 
@@ -167,7 +188,7 @@ fpc -B -Mdelphi -Sa -Cr -Co -Ci -Fusrc -Fuexamples/3D/01_SimpleBuildingKit/castl
 
 These commands keep new compiler output under the ignored `build` tree.
 
-## optional legacy music experiments
+## isolated legacy music experiments
 
 Initialize their playback dependency only when working on these examples:
 

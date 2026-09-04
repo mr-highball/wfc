@@ -37,6 +37,12 @@ begin
     P.Targets.AddUnit('wfc_sequence_learn.pas');
     P.Targets.AddUnit('wfc_sequence_graph.pas');
     P.Targets.AddUnit('wfc_sequence_text.pas');
+    P.Targets.AddUnit('wfc_music.pas');
+    P.Targets.AddUnit('wfc_music_sequence.pas');
+    P.Targets.AddUnit('wfc_music_graph.pas');
+    P.Targets.AddUnit('wfc_music_text.pas');
+    P.Targets.AddUnit('wfc_midi_smf.pas');
+    P.Targets.AddUnit('wfc_music_midi.pas');
     P.Targets.AddUnit('wfc_world2d.pas');
     P.Targets.AddUnit('wfc_world2d_validate.pas');
     P.Targets.AddUnit('wfc_world2d_settlement.pas');

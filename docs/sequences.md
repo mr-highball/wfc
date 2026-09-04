@@ -84,6 +84,22 @@ These helpers keep private state keys out of application code while preserving
 the normal dependency-DAG transaction. They express exact token alternatives,
 not probabilistic or semantic similarity.
 
+For different public vocabularies, `TWfcSequenceProjectionRules`,
+`MakeWfcSequenceProjectionRule`, and
+`ValidateSequenceProjectionMapFromPass` /
+`RequireSequenceProjectionMapFromPass` define and preflight an exact
+target-token to source-token map. The adapter validates complete target
+coverage, applied model identity, and dependency acyclicity, then expands every
+allowed source token to all of that model's private latent states before adding
+the named pass dependency. Multiple named maps are independent requirement
+groups and therefore AND together; alternatives inside one map are OR choices.
+Preflight failure does not partially mutate the active pass.
+
+The [music foundation](music.md) uses this form to combine two latent source
+models. Melody action maps to a rhythm attack/hold/rest token, while a sounding
+melody pitch maps to a harmony pitch class. This demonstrates that projection
+need not mean identical token text and that source history remains latent.
+
 ## canonical `wfcs=1` text
 
 `EncodeWfcSequenceText` writes a strict ASCII, LF-only document with a final LF.

@@ -19,6 +19,12 @@ $settlementTestSource = Join-Path $repositoryRoot `
 $learningTestSource = Join-Path $repositoryRoot 'test/wfc_learn_test.lpr'
 $patternTestSource = Join-Path $repositoryRoot 'test/wfc_pattern2d_test.lpr'
 $sequenceTestSource = Join-Path $repositoryRoot 'test/wfc_sequence_test.lpr'
+$musicTestSources = @(
+  (Join-Path $repositoryRoot 'test/wfc_midi_smf_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_music_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_music_graph_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_music_midi_test.lpr')
+)
 $exampleSource = Join-Path $repositoryRoot `
   'examples/text/01_SimpleTiledWorld/SimpleTiledWorld.lpr'
 $worldExampleSource = Join-Path $repositoryRoot `
@@ -33,6 +39,8 @@ $patternExampleSource = Join-Path $repositoryRoot `
   'examples/learning/03_LearnPatterns/LearnPatterns.lpr'
 $sequenceExampleSource = Join-Path $repositoryRoot `
   'examples/sequence/01_LearnSequence/LearnSequence.lpr'
+$musicExampleSource = Join-Path $repositoryRoot `
+  'examples/music/03_PassComposition/PassComposition.lpr'
 $worldCommonDirectory = Join-Path $repositoryRoot 'examples/2D/common'
 $unitOutputDirectory = Join-Path $repositoryRoot 'build/native/units'
 $binaryOutputDirectory = Join-Path $repositoryRoot 'build/native/bin'
@@ -253,6 +261,45 @@ Write-Host "Running '$sequenceTestExecutable'."
 $sequenceTestExitCode = $LASTEXITCODE
 if ($sequenceTestExitCode -ne 0) {
   exit $sequenceTestExitCode
+}
+
+foreach ($musicTestSource in $musicTestSources) {
+  $musicTestName = [System.IO.Path]::GetFileNameWithoutExtension(
+    $musicTestSource)
+  $musicTestCompilerArguments = @(
+    $CompilerOptions
+    '-B'
+    '-Mdelphi'
+    '-Sa'
+    '-Cr'
+    '-Co'
+    '-Ci'
+    "-Fu$sourceDirectory"
+    "-FU$unitOutputDirectory"
+    "-FE$binaryOutputDirectory"
+    $musicTestSource
+  )
+
+  Write-Host "Building the music conformance suite '$musicTestName'."
+  & $Compiler @musicTestCompilerArguments
+  $musicTestCompilerExitCode = $LASTEXITCODE
+  if ($musicTestCompilerExitCode -ne 0) {
+    exit $musicTestCompilerExitCode
+  }
+
+  $musicTestExecutableName = if ($env:OS -eq 'Windows_NT') {
+    "$musicTestName.exe"
+  } else {
+    $musicTestName
+  }
+  $musicTestExecutable = Join-Path $binaryOutputDirectory `
+    $musicTestExecutableName
+  Write-Host "Running '$musicTestExecutable'."
+  & $musicTestExecutable
+  $musicTestExitCode = $LASTEXITCODE
+  if ($musicTestExitCode -ne 0) {
+    exit $musicTestExitCode
+  }
 }
 
 $exampleCompilerArguments = @(
@@ -517,4 +564,40 @@ $sequenceExampleExecutable = Join-Path $binaryOutputDirectory `
 
 Write-Host "Smoke testing '$sequenceExampleExecutable' with seed 0."
 & $sequenceExampleExecutable 0 | Out-Null
+$sequenceExampleExitCode = $LASTEXITCODE
+if ($sequenceExampleExitCode -ne 0) {
+  exit $sequenceExampleExitCode
+}
+
+$musicExampleCompilerArguments = @(
+  $CompilerOptions
+  '-B'
+  '-Mdelphi'
+  '-Sa'
+  '-Cr'
+  '-Co'
+  '-Ci'
+  "-Fu$sourceDirectory"
+  "-FU$unitOutputDirectory"
+  "-FE$binaryOutputDirectory"
+  $musicExampleSource
+)
+
+Write-Host 'Building the dependency-free pass-composed music example.'
+& $Compiler @musicExampleCompilerArguments
+$musicExampleCompilerExitCode = $LASTEXITCODE
+if ($musicExampleCompilerExitCode -ne 0) {
+  exit $musicExampleCompilerExitCode
+}
+
+$musicExampleExecutableName = if ($env:OS -eq 'Windows_NT') {
+  'PassComposition.exe'
+} else {
+  'PassComposition'
+}
+$musicExampleExecutable = Join-Path $binaryOutputDirectory `
+  $musicExampleExecutableName
+
+Write-Host "Smoke testing '$musicExampleExecutable' with seed 0."
+& $musicExampleExecutable 0 | Out-Null
 exit $LASTEXITCODE

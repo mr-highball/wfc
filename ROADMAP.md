@@ -57,12 +57,20 @@ The repository already contains the beginnings of the ecosystem:
   order-N learning from pretokenized UTF-8 corpora, raw counts, structural
   suffix/prefix recombination, open and derived wrapped graph adaptation,
   latent/public pass projection, and strict canonical `wfcs=1` text I/O;
+- a project-owned Music Foundation v1 with an immutable exact score IR,
+  reduced rational helpers, strict `wm1`/`wr1`/`wh1` fixed-quantum cells,
+  lossless aligned monophonic projection/rebuild, and exact rhythm and
+  pitch-class maps across private latent sequence passes;
+- strict canonical `wfcmusic=1` score text, a defensive project-owned SMF
+  format-0/1 byte codec, deterministic format-0 score export, four focused
+  conformance suites, and a native/pas2js three-pass composition example;
 - stack-safe iterative traversal of large planes while preserving the legacy
   solver's north/east/south/west depth-first order;
 - checked one-command native build gates, an FPM package, a runtime-only
   Lazarus package, and a hosted stable/development CI workflow;
 - single-pass and multi-pass console world examples;
-- two music experiments, including manually inferred note adjacency;
+- two isolated legacy music experiments, including manually inferred note
+  adjacency and optional SoundShop/SDL2 playback;
 - building-kit constraints, a console renderer, and a Castle Game Engine
   project skeleton;
 - native/pas2js conformance runners covering the core, pass contracts, 2D
@@ -77,7 +85,8 @@ It is not yet the finished system described above:
 - pass DAGs, named overlay layers, same-coordinate cross-layer requirements,
   selective regeneration, and structured dependency diagnostics are now
   operational; offset and neighborhood reads, cyclic negotiation/repair, and
-  projection-aware transactions remain to be designed;
+  projection maps beyond exact same-coordinate token relations remain to be
+  designed;
 - the examples index now records targets, dependencies, build commands, and
   honest completion status, but full per-example tutorials, invariants,
   expected output, and troubleshooting guides remain to be written;
@@ -93,9 +102,13 @@ It is not yet the finished system described above:
   validation/run/inspection tools remain;
 - the hosted CI definition is present, but its first remote run still needs to
   be observed before the Phase 0 exit gate is claimed complete;
-- music playback currently depends on the GPL-licensed SoundShop submodule,
-  which cannot be a required dependency of an MIT-only demo distribution
-  without resolving or replacing that dependency.
+- the portable music path has no playback or browser UI yet; SoundShop/SDL2
+  remains only in two legacy Lazarus experiments behind an optional GPL-3.0
+  submodule and is not part of the MIT runtime or standard demo;
+- Music Foundation v1 proves quantized single-voice pitch-class composition
+  and score-to-SMF export, but polyphonic cell projection, key and chord
+  semantics, MIDI-to-score import/learning, phrasing, voicing, ornamentation,
+  and the complete music exit gate remain open.
 
 These are starting points, not embarrassments. The first job of the roadmap is
 to preserve what is interesting while making the foundation trustworthy.
@@ -346,18 +359,34 @@ same validated structure in both viewers, and includes licensed source assets.
 
 ### Music
 
-- A musical event model covering time, duration, pitch, voice, velocity,
-  meter, key, rests, and boundaries.
-- Passes for meter/rhythm -> harmony -> melody -> ornamentation/voicing.
-- Manual rule authoring plus MIDI/event-stream learning, MIDI export, native
-  playback, and WebAudio playback from pas2js.
+- Music Foundation v1 now provides an immutable event model covering exact
+  time, duration, pitch, voice, velocity, meter, tempo, rests, chords, and
+  complete timeline boundaries. `wfcmusic=1` preserves it canonically.
+- Version-1 fixed-quantum cells model melody attacks/holds/rests, rhythm
+  actions, and harmony pitch classes. Exact projection/rebuild is available
+  for aligned monophonic voices; chords remain available in scores and export.
+- A portable three-pass fixture solves harmony and rhythm before melody,
+  composes both constraints through latent sequence projection maps,
+  independently validates the public relation, rebuilds a score, and checks
+  canonical text and MIDI bytes on native FPC and pas2js/Node.
+- The project-owned SMF layer reads and writes format 0 and 1 event streams;
+  the score exporter emits deterministic format 0. A semantic score importer
+  and event-stream learner remain to be designed.
+- Extend the pipeline through meter/phrase -> rhythm -> harmony -> melody ->
+  bass/voicing -> dynamics/ornamentation, including polyphonic representations,
+  key/scale spelling, voice leading, instrument ranges, and locked motifs.
+- Build optional project-owned native playback and a thin WebAudio host from
+  pas2js without making a media backend part of the exact runtime foundation.
 - Seeded variation and locked motifs so part of a composition can be preserved
   while another part is regenerated.
 
 **Exit gate:** generated measures have valid duration totals, pitches and
-harmonies meet the selected model's constraints, MIDI round-trips are tested,
-native and web agree on the event list, and the standard demo has no required
-GPL dependency.
+harmonies meet the selected model's constraints, semantic score/MIDI
+round-trips are tested, native and web agree on the event list, optional native
+and WebAudio presentations consume the same validated result, and the standard
+demo has no required GPL dependency. Foundation v1 satisfies important parts
+of this gate but not the importer, polyphonic/harmonic breadth, browser UI, or
+playback requirements.
 
 ### Text and sequences
 
