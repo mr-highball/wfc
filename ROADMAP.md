@@ -29,8 +29,9 @@ The repository already contains the beginnings of the ecosystem:
   independent index-derived pass streams, run-to-run rewind, and matching
   native/pas2js golden fixtures;
 - an opt-in reference solver with maintained domains, queue-based fixed-point
-  propagation, deterministic minimum-domain observation, bounded chronological
-  backtracking, independent final validation, and structured per-pass reports;
+  propagation, deterministic fixed-point weighted Shannon entropy, an exact
+  unit-weight minimum-domain path, bounded chronological backtracking,
+  independent final validation, and structured per-pass reports;
 - atomic reference-solver staging across the complete sequential pass pipeline,
   including locks, previous-pass constraints, definitionless-pass copying, and
   rollback on a failed later pass;
@@ -53,8 +54,8 @@ The repository already contains the beginnings of the ecosystem:
 
 It is not yet the finished system described above:
 
-- the reference solver is an unweighted version-1 foundation; weights,
-  deterministic restarts, timing, a stable trace hash, richer explanations,
+- the version-2 reference solver now supports scale-canonical integer weights,
+  but deterministic restarts, timing, a stable trace hash, richer explanations,
   and more scalable domain representations remain to be built;
 - atomic prepare/solve/validate/commit now covers the sequential `TrySolve`
   path, but named overlay layers, dependency graphs, selective regeneration,
@@ -133,11 +134,12 @@ Keep the existing traversal behavior available for compatibility, but build a
 solver whose operation can be described, measured, and compared with other WFC
 implementations.
 
-The version-1 MVP now covers domains, fixed-point propagation, deterministic
-minimum-remaining-values selection, locks, bounded backtracking, structured
-contradictions, independent validation, and atomic pass staging. Phase 1 stays
-open until weights, deterministic restarts, timing, and native/pas2js stable
-trace-hash parity satisfy the exit gate below.
+The version-2 solver now covers domains, fixed-point propagation, positive
+integer weights, deterministic Q16 Shannon observation with an exact
+unit-weight minimum-remaining-values path, locks, bounded backtracking,
+structured contradictions, independent validation, and atomic pass staging.
+Phase 1 stays open until deterministic restarts, timing, and native/pas2js
+stable trace-hash parity satisfy the exit gate below.
 
 ### Deliverables
 

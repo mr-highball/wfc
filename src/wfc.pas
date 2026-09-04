@@ -40,6 +40,9 @@ type
   //user defined value
   TGraphValue = String;
   TGraphValues = TArray<TGraphValue>;
+  //Positive relative frequency used by the reference solver. Integer weights
+  //keep model identity and native/pas2js replay independent of host floats.
+  TGraphWeight = Integer;
   //native builds retain the original UInt64 API; pas2js uses Cardinal because
   //its RTL does not implement UInt64. storage is bounded by Integer on both.
   {$IFDEF PAS2JS}
@@ -50,12 +53,13 @@ type
   TGraphSeed = Cardinal;
 
 const
+  WFC_DEFAULT_VALUE_WEIGHT = TGraphWeight(1);
   //Increment when seed expansion, pass-stream derivation, bounded sampling,
   //or the built-in generator changes in a replay-incompatible way.
   WFC_RANDOM_ALGORITHM_VERSION = 1;
   //Increment when propagation, observation, backtracking, or deterministic
   //tie-breaking changes reference-solver replay.
-  WFC_SOLVER_ALGORITHM_VERSION = 1;
+  WFC_SOLVER_ALGORITHM_VERSION = 2;
 
 type
 
@@ -152,9 +156,11 @@ type
     FRules: TGraphRules;
     FPreviousValues: TGraphValues;
     FVal: TGraphValue;
+    FWeight: TGraphWeight;
     function GetExists(const ADirection : TGraphDirection): Boolean;
     function GetHasRequired: Boolean;
     function GetRule(const ADirection : TGraphDirection): TGraphRule;
+    procedure SetWeight(const AValue: TGraphWeight);
   strict protected
     function IndexOfDirection(const ADirection : TGraphDirection) : Integer;
 
@@ -172,6 +178,9 @@ type
     property Rules : TGraphRules read FRules write FRules;
     property Exists[const ADirection : TGraphDirection] : Boolean read GetExists;
     property PreviousValues : TGraphValues read FPreviousValues;
+    //Positive pass-local relative frequency. The reference solver
+    //canonicalizes the complete pass vector by its GCD before use.
+    property Weight: TGraphWeight read FWeight write SetWeight;
 
     (*
       true if at least one rule for this value is required
@@ -528,7 +537,9 @@ type
         @AValue - a unique user defined value
         @Result - parented rule group to define adjacency rules
     *)
-    function AddValue(const AValue : TGraphValue) : TParentedGraphRuleGroup;
+    function AddValue(const AValue : TGraphValue) : TParentedGraphRuleGroup; overload;
+    function AddValue(const AValue : TGraphValue;
+      const AWeight: TGraphWeight) : TParentedGraphRuleGroup; overload;
 
     (*
       executes ACallback for each pass including the default first pass
@@ -869,6 +880,14 @@ begin
   UpsertRule(ADirections, AValue, ARequireRule);
 end;
 
+procedure TGraphRuleGroup.SetWeight(const AValue: TGraphWeight);
+begin
+  if AValue < 1 then
+    raise ERangeError.CreateFmt(
+      'SetWeight::weight must be positive [%d]', [AValue]);
+  FWeight := AValue;
+end;
+
 procedure TGraphRuleGroup.UpsertRule(const ADirections: TGraphDirections;
   const AValue: TGraphValue; const ARequireRule: Boolean);
 var
@@ -964,6 +983,7 @@ end;
 constructor TGraphRuleGroup.Create;
 begin
   FVal := '';
+  FWeight := WFC_DEFAULT_VALUE_WEIGHT;
   SetLength(FRules, 0);
   SetLength(FPreviousValues, 0);
 end;
@@ -2205,6 +2225,18 @@ begin
   end;
 end;
 
+function TGraph.AddValue(const AValue: TGraphValue;
+  const AWeight: TGraphWeight): TParentedGraphRuleGroup;
+begin
+  //Validate before AddValue so a rejected registration cannot create a rule
+  //group or change the pass's deterministic value order.
+  if AWeight < 1 then
+    raise ERangeError.CreateFmt(
+      'AddValue::weight must be positive [%d]', [AWeight]);
+  Result := AddValue(AValue);
+  Result.Weight := AWeight;
+end;
+
 function TGraph.ForEachPass(const ACallback: TForEachPassCallback): TGraph;
 var
   I: Integer;
@@ -2486,6 +2518,10 @@ var
         raise EInvalidOperation.CreateFmt(
           'TrySolve::pass %d rule-group identity "%s" does not match value "%s"',
           [AGraph.FPassIndex, LGroup.Value, AGraph.FValues[I]]);
+      if LGroup.Weight < 1 then
+        raise EInvalidOperation.CreateFmt(
+          'TrySolve::pass %d value "%s" has invalid weight %d',
+          [AGraph.FPassIndex, AGraph.FValues[I], LGroup.Weight]);
       LSeenDirections := [];
       for J := 0 to High(LGroup.Rules) do
       begin
@@ -2611,6 +2647,7 @@ var
     SetLength(AModel.Neighbors, CheckedProduct(AModel.CellCount,
       WFC_REFERENCE_DIRECTION_COUNT, 'TrySolve::neighbor matrix'));
     SetLength(AModel.Compatibility, LRelationCount);
+    SetLength(AModel.ValueWeights, AModel.ValueCount);
     SetLength(AModel.RequiredValues, AModel.ValueCount);
     SetLength(AModel.RequiredSupport, LRelationCount);
     SetLength(AModel.InitialAllowed, LCellValueCount);
@@ -2646,6 +2683,7 @@ var
     for LValue := 0 to Pred(AModel.ValueCount) do
     begin
       LGroup := AGraph.FRuleGroups[AGraph.FValues[LValue]];
+      AModel.ValueWeights[LValue] := LGroup.Weight;
       if LGroup.HasRequired then
         AModel.RequiredValues[LValue] := 1;
     end;

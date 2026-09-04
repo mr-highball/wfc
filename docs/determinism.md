@@ -48,7 +48,8 @@ A complete replay identity consists of:
 - `Seed`;
 - graph dimensions, wrapping, and run mode;
 - pass creation order;
-- values and rules in their original construction order;
+- values and rules in their original construction order, plus canonical
+  pass-local weights for `TrySolve`;
 - caller locks and other model input; and
 - deterministic custom callback configuration for the legacy `Run` path.
 
@@ -56,12 +57,20 @@ Pass labels are not part of random-stream identity. Renaming a pass preserves
 its stream because the stable zero-based pass index is used instead. Appending
 a later pass cannot perturb an earlier stream.
 
-Value construction order is part of the version-1 model. The legacy built-in
-selection chooses from valid values in that order. The reference solver keeps
-the same order, draws one starting offset per decision, and tries alternatives
-cyclically from that offset. Code that builds equivalent rules through
-different value insertion orders has defined two different replay inputs, even
-when their sets are equal.
+Value construction order is part of the model. The legacy built-in selection
+chooses uniformly from valid values in that order and deliberately ignores
+reference-solver weights. The reference solver keeps the same order, maps one
+random ticket through cumulative weights, and tries alternatives cyclically
+from the chosen value. Code that builds equivalent rules through different
+value insertion orders has defined two different replay inputs, even when their
+sets are equal.
+
+Raw weights are positive `Integer` relative frequencies. Each defined pass
+divides its complete vector by the greatest common divisor before entropy or
+random selection. Multiplying every weight in a pass by the same positive
+integer therefore preserves replay exactly, including bounded-sampling
+rejection behavior and the following stream state. The canonical normalized
+vector is the identity; zero is not a disabled value.
 
 The replay contract assumes values and rules are registered through
 `AddValue`, `NewRule`, and `RequirePrevious`. Directly mutating the exposed
@@ -120,6 +129,13 @@ backtracking must increment `WFC_SOLVER_ALGORITHM_VERSION`. Legacy traversal
 or built-in-selection changes must likewise receive an explicit compatibility
 version rather than silently reinterpreting existing replay inputs.
 
+The weighted entropy and ticket contract is
+`WFC_SOLVER_ALGORITHM_VERSION = 2`. It does not change seed expansion, jumping,
+or bounded sampling, so `WFC_RANDOM_ALGORITHM_VERSION` remains `1`. The Q16
+logarithm uses only shifts, exact integer-valued `Double` intermediates, and
+power-of-two divisions; it does not delegate replay decisions to a host
+transcendental math implementation.
+
 ## run and reset behavior
 
 Every `Run` rewinds every pass stream from the pipeline seed before solving.
@@ -143,8 +159,11 @@ complete pass pipeline, so a contradiction or backtrack-limit result leaves
 all entry values and `Generated` flags unchanged and restores the random states
 that existed before the call. Successful reports record both algorithm
 versions. Reference observation ties use `Mode` Z order and then entry index;
-candidate order follows `AddValue` order from one random cyclic offset. See the
-[reference solver contract](solver.md) for the full algorithm identity.
+non-unit models use deterministic Q16 Shannon entropy, while canonical
+unit-weight models retain the exact minimum-domain path. Candidate order follows
+`AddValue` order from one weighted first ticket and then a frozen cyclic retry
+order. See the [reference solver contract](solver.md) for the full algorithm
+identity.
 
 ## callbacks and extension hooks
 
@@ -164,7 +183,10 @@ Changing `Seed` during pass initialization, `Run`, or `TrySolve` raises
 
 `TrySolve` does not invoke selection or invalid-state callbacks, or the legacy
 `DoGetStartCoord`, `DoGetSelection`, and `DoValidate` hooks. Their mutable state
-therefore cannot influence its decision stream.
+therefore cannot influence its decision stream. Conversely, assigning
+`Rules[Value].Weight` does not reinterpret legacy `Run`; callers that need a
+weighted compatibility traversal must implement that policy in their selection
+callback.
 
 ## what the seed does not promise
 

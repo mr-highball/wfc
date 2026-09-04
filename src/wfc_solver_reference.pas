@@ -88,6 +88,10 @@ type
   TReferenceModel = record
     CellCount: Integer;
     ValueCount: Integer;
+    //Empty retains the version-1 unit-weight behavior. Nonempty arrays are
+    //positive raw frequencies in value-index order and are GCD-normalized by
+    //the solver without modifying the caller's model.
+    ValueWeights: TReferenceIntegerArray;
     Neighbors: TReferenceIntegerArray;
     Compatibility: TReferenceByteArray;
     RequiredValues: TReferenceByteArray;
@@ -110,6 +114,10 @@ uses
   SysUtils;
 
 type
+  //These arrays hold integer-valued quantities below 2^52. Double is used so
+  //the same exact storage is available to native FPC and pas2js.
+  TReferenceExactDoubleArray = array of Double;
+
   TReferenceDecisionFrame = record
     CellIndex: Integer;
     TrailMark: Integer;
@@ -130,8 +138,13 @@ type
     FModel: TReferenceModel;
     FMaxBacktracks: Integer;
     FRandomIndex: TReferenceRandomIndex;
+    FValueWeights: TReferenceIntegerArray;
+    FValueWeightLogTerms: TReferenceExactDoubleArray;
+    FAllUnitWeights: Boolean;
     FDomains: TReferenceByteArray;
     FDomainCounts: TReferenceIntegerArray;
+    FDomainWeightSums: TReferenceIntegerArray;
+    FDomainWeightLogSums: TReferenceExactDoubleArray;
     FIncomingStarts: TReferenceIntegerArray;
     FIncomingArcs: TReferenceIntegerArray;
     FQueue: TReferenceIntegerArray;
@@ -148,6 +161,9 @@ type
     function DomainIndex(const ACell, AValue: Integer): Integer; inline;
     function RelationIndex(const ADirection, ACurrentValue,
       ANeighborValue: Integer): Integer; inline;
+    function Log2Q16(const AValue: Integer): Integer;
+    procedure InitializeWeights;
+    function EntropyQ16(const ACell: Integer): Integer;
     procedure RecordContradiction(const AKind: TReferenceContradictionKind;
       const AEntryIndex, ANeighborIndex, ADirection: Integer);
     procedure EnsureTrailCapacity;
@@ -241,6 +257,17 @@ begin
   RequireLength(Length(AModel.CellOrder), AModel.CellCount,
     'CellOrder');
 
+  if Length(AModel.ValueWeights) <> 0 then
+  begin
+    RequireLength(Length(AModel.ValueWeights), AModel.ValueCount,
+      'ValueWeights');
+    for I := 0 to High(AModel.ValueWeights) do
+      if AModel.ValueWeights[I] <= 0 then
+        raise ERangeError.CreateFmt(
+          'reference value weight must be positive [%d at %d]',
+          [AModel.ValueWeights[I], I]);
+  end;
+
   for I := 0 to High(AModel.Neighbors) do
     if (AModel.Neighbors[I] < -1)
       or (AModel.Neighbors[I] >= AModel.CellCount) then
@@ -292,6 +319,132 @@ begin
     * FModel.ValueCount) + ANeighborValue;
 end;
 
+function TReferenceSolver.Log2Q16(const AValue: Integer): Integer;
+const
+  ENTROPY_ONE = 65536;
+  ENTROPY_TWO = 131072;
+var
+  LBit: Integer;
+  LDivisor: Cardinal;
+  LExponent: Integer;
+  LNormalized: Integer;
+  LScan: Cardinal;
+  LWork: Double;
+begin
+  if AValue <= 0 then
+    raise ERangeError.CreateFmt(
+      'reference logarithm value must be positive [%d]', [AValue]);
+
+  LExponent := 0;
+  LScan := Cardinal(AValue);
+  while LScan >= 2 do
+  begin
+    LScan := LScan shr 1;
+    Inc(LExponent);
+  end;
+
+  //The operands remain exact integers below 2^47. Repeated squaring derives
+  //the fractional binary logarithm without a target-specific Ln function.
+  LDivisor := 1;
+  LDivisor := LDivisor shl LExponent;
+  LWork := AValue;
+  LNormalized := Trunc((LWork * ENTROPY_ONE) / LDivisor);
+  Result := LExponent * ENTROPY_ONE;
+  for LBit := 15 downto 0 do
+  begin
+    LWork := LNormalized;
+    LNormalized := Trunc((LWork * LNormalized) / ENTROPY_ONE);
+    if LNormalized >= ENTROPY_TWO then
+    begin
+      LNormalized := LNormalized div 2;
+      Result := Result or (1 shl LBit);
+    end;
+  end;
+end;
+
+procedure TReferenceSolver.InitializeWeights;
+var
+  I: Integer;
+  LGCD: Integer;
+  LNormalized: Integer;
+  LTotal: Integer;
+  LWeight: Integer;
+
+  function GreatestCommonDivisor(const A, B: Integer): Integer;
+  var
+    LLeft: Integer;
+    LRight: Integer;
+    LRemainder: Integer;
+  begin
+    LLeft := A;
+    LRight := B;
+    while LRight <> 0 do
+    begin
+      LRemainder := LLeft mod LRight;
+      LLeft := LRight;
+      LRight := LRemainder;
+    end;
+    Result := LLeft;
+  end;
+
+begin
+  SetLength(FValueWeights, FModel.ValueCount);
+  SetLength(FValueWeightLogTerms, FModel.ValueCount);
+  FAllUnitWeights := True;
+  if FModel.ValueCount = 0 then
+    Exit;
+
+  if Length(FModel.ValueWeights) = 0 then
+    LGCD := 1
+  else
+  begin
+    LGCD := 0;
+    for I := 0 to Pred(FModel.ValueCount) do
+      LGCD := GreatestCommonDivisor(LGCD, FModel.ValueWeights[I]);
+  end;
+
+  LTotal := 0;
+  for I := 0 to Pred(FModel.ValueCount) do
+  begin
+    if Length(FModel.ValueWeights) = 0 then
+      LWeight := 1
+    else
+      LWeight := FModel.ValueWeights[I];
+    LNormalized := LWeight div LGCD;
+    if LNormalized > High(Integer) - LTotal then
+      raise ERangeError.Create(
+        'reference normalized value-weight sum is too large');
+    Inc(LTotal, LNormalized);
+    FValueWeights[I] := LNormalized;
+    if LNormalized <> 1 then
+      FAllUnitWeights := False;
+    FValueWeightLogTerms[I] := LNormalized;
+    FValueWeightLogTerms[I] := FValueWeightLogTerms[I]
+      * Log2Q16(LNormalized);
+  end;
+end;
+
+function TReferenceSolver.EntropyQ16(const ACell: Integer): Integer;
+var
+  LNumerator: Double;
+  LWeightSum: Integer;
+begin
+  LWeightSum := FDomainWeightSums[ACell];
+  if LWeightSum <= 0 then
+    raise EInvalidOperation.CreateFmt(
+      'reference entropy domain has no weight [%d]', [ACell]);
+
+  //Every operand is an integer-valued Double below 2^52. The final bounded
+  //division yields the deterministic floor of Shannon entropy in Q16 bits.
+  LNumerator := LWeightSum;
+  LNumerator := LNumerator * Log2Q16(LWeightSum)
+    - FDomainWeightLogSums[ACell];
+  if LNumerator < 0 then
+    raise EInvalidOperation.CreateFmt(
+      'reference entropy numerator is negative [%d]', [ACell]);
+  Result := Trunc(LNumerator / LWeightSum);
+end;
+
 procedure TReferenceSolver.RecordContradiction(
   const AKind: TReferenceContradictionKind; const AEntryIndex,
   ANeighborIndex, ADirection: Integer);
@@ -333,6 +486,9 @@ begin
   Inc(FTrailCount);
   FDomains[LIndex] := 0;
   Dec(FDomainCounts[ACell]);
+  Dec(FDomainWeightSums[ACell], FValueWeights[AValue]);
+  FDomainWeightLogSums[ACell] := FDomainWeightLogSums[ACell]
+    - FValueWeightLogTerms[AValue];
   if APropagation then
     IncrementCounter(FReport.Propagations);
   Enqueue(ACell);
@@ -343,6 +499,7 @@ procedure TReferenceSolver.RestoreTrail(const AMark: Integer);
 var
   LCell: Integer;
   LIndex: Integer;
+  LValue: Integer;
 begin
   while FTrailCount > AMark do
   begin
@@ -352,7 +509,11 @@ begin
     begin
       FDomains[LIndex] := 1;
       LCell := LIndex div FModel.ValueCount;
+      LValue := LIndex mod FModel.ValueCount;
       Inc(FDomainCounts[LCell]);
+      Inc(FDomainWeightSums[LCell], FValueWeights[LValue]);
+      FDomainWeightLogSums[LCell] := FDomainWeightLogSums[LCell]
+        + FValueWeightLogTerms[LValue];
     end;
   end;
 end;
@@ -441,9 +602,12 @@ var
   LKind: TReferenceContradictionKind;
   LValue: Integer;
 begin
+  InitializeWeights;
   SetLength(FDomains, SafeProduct(FModel.CellCount, FModel.ValueCount,
     'reference domains'));
   SetLength(FDomainCounts, FModel.CellCount);
+  SetLength(FDomainWeightSums, FModel.CellCount);
+  SetLength(FDomainWeightLogSums, FModel.CellCount);
   SetLength(FQueue, FModel.CellCount);
   SetLength(FInQueue, FModel.CellCount);
   SetLength(FTrail, 0);
@@ -463,6 +627,9 @@ begin
       begin
         FDomains[LIndex] := 1;
         Inc(FDomainCounts[LCell]);
+        Inc(FDomainWeightSums[LCell], FValueWeights[LValue]);
+        FDomainWeightLogSums[LCell] := FDomainWeightLogSums[LCell]
+          + FValueWeightLogTerms[LValue];
       end;
     end;
 
@@ -609,18 +776,38 @@ var
   I: Integer;
   LCell: Integer;
   LCount: Integer;
+  LEntropy: Integer;
   LMinimum: Integer;
 begin
   Result := -1;
   LMinimum := High(Integer);
+  if FAllUnitWeights then
+  begin
+    //Keep the version-1 MRV path exact for every unit-weight model.
+    for I := 0 to Pred(FModel.CellCount) do
+    begin
+      LCell := FModel.CellOrder[I];
+      LCount := FDomainCounts[LCell];
+      if (LCount > 1) and (LCount < LMinimum) then
+      begin
+        Result := LCell;
+        LMinimum := LCount;
+      end;
+    end;
+    Exit;
+  end;
+
   for I := 0 to Pred(FModel.CellCount) do
   begin
     LCell := FModel.CellOrder[I];
     LCount := FDomainCounts[LCell];
-    if (LCount > 1) and (LCount < LMinimum) then
+    if LCount <= 1 then
+      Continue;
+    LEntropy := EntropyQ16(LCell);
+    if LEntropy < LMinimum then
     begin
       Result := LCell;
-      LMinimum := LCount;
+      LMinimum := LEntropy;
     end;
   end;
 end;
@@ -665,6 +852,8 @@ var
   LCount: Integer;
   LFrame: TReferenceDecisionFrame;
   LStart: Integer;
+  LTicket: Integer;
+  LTotalWeight: Integer;
   LValues: TReferenceIntegerArray;
   LValue: Integer;
 begin
@@ -678,14 +867,33 @@ begin
       Inc(I);
     end;
 
+  LTotalWeight := FDomainWeightSums[ACell];
+  if LTotalWeight <= 0 then
+    raise EInvalidOperation.CreateFmt(
+      'reference decision domain has no weight [%d]', [ACell]);
   if Assigned(FRandomIndex) then
-    LStart := FRandomIndex(LCount)
+    LTicket := FRandomIndex(LTotalWeight)
   else
-    LStart := 0;
-  if (LStart < 0) or (LStart >= LCount) then
+    LTicket := 0;
+  if (LTicket < 0) or (LTicket >= LTotalWeight) then
     raise ERangeError.CreateFmt(
       'reference random index is out of bounds [%d of %d]',
-      [LStart, LCount]);
+      [LTicket, LTotalWeight]);
+
+  LStart := -1;
+  for I := 0 to Pred(LCount) do
+  begin
+    LValue := LValues[I];
+    if LTicket < FValueWeights[LValue] then
+    begin
+      LStart := I;
+      Break;
+    end;
+    Dec(LTicket, FValueWeights[LValue]);
+  end;
+  if LStart < 0 then
+    raise EInvalidOperation.CreateFmt(
+      'reference weighted ticket did not select a value [%d]', [ACell]);
 
   LFrame.CellIndex := ACell;
   LFrame.TrailMark := FTrailCount;

@@ -57,7 +57,7 @@ The selection is exposed through `CurrentPass` and `CurrentPassIndex`.
 The usual graph API works against the selected pass. These members are
 pass-scoped:
 
-- values introduced by `AddValue`;
+- values introduced by `AddValue`, including their positive relative weights;
 - `RuleGroups` and `Rules`;
 - `Entry[X, Y, Z]`, including the default indexed property;
 - `Planes`;
@@ -67,6 +67,23 @@ pass-scoped:
 For example, adding `land` while `terrain` is selected does not add `land` to
 the `foliage` rule set. Assigning an entry in one pass does not assign the entry
 at the same coordinate in another pass.
+
+Weights are pass-scoped with their values. Use `AddValue(Value, Weight)` when
+registering a value or assign `Rules[Value].Weight` afterward. The complete
+weight vector in one defined pass is independent of every other pass:
+
+```pascal
+LGraph.SwitchToPass('terrain');
+LGraph.AddValue('land', 4);
+LGraph.AddValue('water', 1);
+
+LGraph.SwitchToPass('foliage');
+LGraph.AddValue('tree', 1);
+LGraph.AddValue('none', 8);
+```
+
+These weights affect `TrySolve`; legacy `Run` remains callback-driven and
+uniform by default. A definitionless copying pass has no solver weight vector.
 
 A newly created pass inherits the selection and invalid-state callbacks of the
 pass immediately before it. The callback fields are separate after creation,
@@ -140,9 +157,10 @@ exception: call it on the root graph. Calling it through `PassGraph` raises
 `EInvalidOperation` rather than destroying the receiver during its own method
 call. Root `Reset` preserves the first pass's callbacks, the pipeline `Seed`,
 and pipeline-wide mode and wrapping settings while clearing dimensions, rules,
-values, and additional passes. Reset prepares and initializes its replacement
-pass before discarding the old pipeline; if the initialization hook raises,
-the old passes, dimensions, values, selected pass, and seed remain intact.
+values and their weights, and additional passes. Reset prepares and initializes
+its replacement pass before discarding the old pipeline; if the initialization
+hook raises, the old passes, dimensions, values, selected pass, and seed remain
+intact.
 
 `ForEachPass` is available when every pass should be inspected or configured.
 It visits passes in index order and restores the caller's selected pass even
@@ -222,8 +240,9 @@ write is cleared before the proposal is validated.
 
 `TrySolve` is the opt-in alternative to the legacy traversal described above.
 It maintains domains, propagates to a fixed point, observes by minimum
-remaining values, and can backtrack. More importantly for pass composition, it
-stages the complete pipeline before changing any entry.
+remaining values for unit-weight models or deterministic weighted Shannon
+entropy otherwise, and can backtrack. More importantly for pass composition,
+it stages the complete pipeline before changing any entry.
 
 ```pascal
 LOptions := DefaultGraphSolveOptions;
@@ -359,7 +378,8 @@ entries.
 random stream derived from that seed and its stable zero-based index. Renaming
 a pass or appending a later pass therefore does not change an existing pass's
 stream. Extra random choices in one pass do not advance another pass's stream,
-although changed output can still change the valid domains seen later.
+although a changed weight vector can change that pass's output and therefore
+the valid domains seen later.
 
 Every `Run` and `TrySolve` rewinds all streams. Calls to `RandomIndex` outside
 generation cannot perturb the next result, and `Reset` keeps the same seed.
@@ -394,8 +414,8 @@ The implemented pass behavior is intentionally small and sequential:
 - `TrySolve` is transactional across the current linear pipeline, but there are
   no named overlays, dependency DAGs, selective regeneration, or bounded
   feedback between passes yet;
-- the version-1 reference solver is unweighted and has no restart policy,
-  timing data, or stable trace hash.
+- the version-2 reference solver has no restart policy, timing data, or stable
+  trace hash yet.
 
 These limits keep the current contract clear. More expressive cross-pass
 queries and specialized pass layers belong to later milestones and can be

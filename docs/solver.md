@@ -1,10 +1,11 @@
 # reference solver
 
 `TGraph.TrySolve` is the opt-in propagating solver. It maintains a domain for
-every cell, propagates constraints to a fixed point, observes by minimum
-remaining values, and uses bounded chronological backtracking when a decision
-causes a contradiction. The existing `TGraph.Run` traversal remains available
-for source and behavior compatibility.
+every cell, propagates constraints to a fixed point, observes by deterministic
+weighted Shannon entropy, and uses bounded chronological backtracking when a
+decision causes a contradiction. Unit-weight models take the exact original
+minimum-remaining-values path. The existing `TGraph.Run` traversal remains
+available for source and behavior compatibility.
 
 The reference solver coordinates the complete pass pipeline. It stages every
 pass in memory and commits entry values only after every pass has solved and
@@ -25,9 +26,9 @@ begin
   Graph := TGraph.Create.Reshape(16, 16, 1);
   try
     Graph.Seed := $DEADBEEF;
-    Graph.AddValue('land')
+    Graph.AddValue('land', 4)
       .NewRule(AllDirections, ['land', 'water']);
-    Graph.AddValue('water')
+    Graph.AddValue('water', 1)
       .NewRule(AllDirections, ['land', 'water']);
 
     Options := DefaultGraphSolveOptions;
@@ -115,23 +116,54 @@ is reserved for the public empty-entry state.
 
 After initial lock and `RequirePrevious` filtering, the solver repeatedly
 propagates adjacency and required-support removals through a queue until no
-domain changes. It then observes the uncollapsed cell with the smallest domain.
-Ties use the pipeline `Mode` Z order and then ascending entry index within each
-plane.
+domain changes.
 
-Candidates retain `AddValue` order. Each decision draws one unbiased
-`RandomIndex` and uses that result as the starting offset of a cyclic candidate
-order. Failed alternatives are restored from a removal trail and retried in
-that frozen order. Backtracking is chronological and its limit is applied
-independently to each pass.
+Every registered value has a positive pass-local `Integer` weight. The
+one-argument `AddValue` overload assigns weight `1`; the two-argument overload
+sets an explicit relative frequency, and `Rules[Value].Weight` may update
+it later. Calling the one-argument overload for an existing value never resets
+its weight. Zero and negative weights raise `ERangeError` and do not change the
+group. Weights bias choices only in `TrySolve`; legacy `Run` remains uniform
+unless its caller supplies a custom selection callback.
 
-`WFC_SOLVER_ALGORITHM_VERSION = 1` identifies these propagation, observation,
+Before solving a defined pass, the solver divides the complete raw weight
+vector by its greatest common divisor. Consequently `[1, 2]` and `[2, 4]` have
+the same replay identity, random bounds, reports, and output. The normalized
+sum must fit in `Integer`; an overflow is malformed model state and raises
+without committing entries or advancing the caller-visible streams. A
+definitionless pass has no solver weight vector and retains its copy semantics.
+
+If every normalized weight is `1`, the solver executes its original
+minimum-remaining-values observation path verbatim. Otherwise it observes the
+uncollapsed cell with the lowest Q16 approximation of base-2 Shannon entropy:
+
+```text
+W = sum(weight)
+L = sum(weight * Log2Q16(weight))
+EntropyQ16 = floor((W * Log2Q16(W) - L) / W)
+```
+
+`Log2Q16` is computed with shifts and sixteen fixed-point squaring steps, not a
+host math-library logarithm. All intermediate integer-valued operations stay
+within the exact range of an IEEE `Double` on native FPC and JavaScript. Equal
+or Q16-colliding scores keep the first cell in pipeline `Mode` Z order and then
+ascending entry order; there is no random entropy noise or secondary tie-break.
+
+Candidates retain `AddValue` order. Each decision draws one unbiased ticket in
+the active normalized weight sum and maps it through cumulative weights. That
+candidate becomes the starting offset of a cyclic candidate order. Failed
+alternatives are restored from a removal trail and retried in that frozen order
+without another draw. Thus weights bias the first branch while chronological
+backtracking remains complete and reproducible. Unit weights draw with the old
+domain-count bound and preserve the exact previous candidate order.
+
+`WFC_SOLVER_ALGORITHM_VERSION = 2` identifies these propagation, observation,
 candidate-ordering, and backtracking rules. A replay identity for `TrySolve`
 includes both solver and random algorithm versions, the seed, graph topology
-and mode, pass order, value/rule construction order, locks, and solve options.
-Every call rewinds its streams, so an unchanged graph and seed replay on both
-native FPC and pas2js. A failed call restores the stream state that existed
-before the call.
+and mode, pass order, value/rule construction order, canonical normalized
+weights, locks, and solve options. Every call rewinds its streams, so an
+unchanged graph and seed replay on both native FPC and pas2js. A failed call
+restores the stream state that existed before the call.
 
 That identity guarantees replay of solver decisions. Whole-call completion and
 external side effects also require deterministic entry-setter hooks with the
@@ -184,11 +216,12 @@ caller locks on a defined solver pass and unsatisfied constraints. Malformed
 model or topology state raises before committing entries. Examples include a
 negative backtrack limit, an empty registered symbol, a rule target outside the
 value registry, duplicate directional records in a directly replaced public
-rule array, or, on a defined pass, a neighbor object outside that pass's own
-entry storage. Definitionless passes copy or preserve caller state without
-compiling a solver model. The external-neighbor restriction freezes the
-topology used by this first reference-solver version; the legacy `Run` path
-continues to support public external links.
+rule array, a normalized pass-weight sum larger than `High(Integer)`, or, on a
+defined pass, a neighbor object outside that pass's own entry storage.
+Definitionless passes copy or preserve caller state without compiling a solver
+model. The external-neighbor restriction freezes the topology used by the
+current reference solver; the legacy `Run` path continues to support public
+external links.
 
 ## implementation unit
 
@@ -201,8 +234,9 @@ tests until a separately versioned low-level API is deliberately published.
 
 ## current scope
 
-Version 1 is intentionally unweighted and has no restart policy, timing data,
-stable trace hash, soft constraints, or minimal-unsatisfiable-core analysis.
-Pass dependencies are still linear, and `RequirePrevious` still addresses only
-the same coordinate in the immediately preceding pass. These remain roadmap
-work rather than hidden or partially specified behavior.
+Version 2 provides deterministic integer weights and fixed-point Shannon
+observation, but has no restart policy, timing data, stable trace hash, soft
+constraints, or minimal-unsatisfiable-core analysis. Pass dependencies are
+still linear, and `RequirePrevious` still addresses only the same coordinate in
+the immediately preceding pass. These remain roadmap work rather than hidden
+or partially specified behavior.

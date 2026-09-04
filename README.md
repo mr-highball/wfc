@@ -12,13 +12,13 @@ modular 3D structures, music, text, and other discrete design problems.
 
 > **Project status:** the original API and greedy traversal solver remain
 > available. The opt-in reference solver now provides fixed-point propagation,
-> deterministic minimum-domain observation, bounded backtracking, structured
-> contradiction reports, and an atomic sequential pass pipeline on native FPC
-> and pas2js. The first specialized ecosystem now adds a reusable, independently
-> validated terrain → biome → foliage world with portable layer signatures and
-> an interactive browser presentation compiled from the same Pascal model.
-> Weights, richer cross-layer constraints, additional domain libraries, and
-> broader browser inspection tools remain tracked in the
+> deterministic weighted Shannon-entropy observation, bounded backtracking,
+> structured contradiction reports, and an atomic sequential pass pipeline on
+> native FPC and pas2js. The first specialized ecosystem now adds a reusable,
+> independently validated terrain → biome → foliage world with portable layer
+> signatures and an interactive browser presentation compiled from the same
+> Pascal model. Richer cross-layer constraints, additional domain libraries,
+> restart policies, and broader browser inspection tools remain tracked in the
 > [roadmap](ROADMAP.md).
 
 ## Features
@@ -30,7 +30,9 @@ modular 3D structures, music, text, and other discrete design problems.
 - sequential pipeline execution with selected-pass restoration
 - empty-pass copying and same-coordinate constraints on the previous pass
 - explicit pipeline seeds with stable, independent per-pass random streams
-- an opt-in propagating solver with deterministic MRV and bounded backtracking
+- an opt-in propagating solver with positive relative weights, deterministic
+  fixed-point Shannon entropy, exact unit-weight MRV compatibility, and bounded
+  backtracking
 - atomic all-pass staging, independent validation, and structured run reports
 - a typed 2D terrain/biome/foliage library with an independent semantic checker
 - versioned, fixed-token 2D layer signatures shared by native FPC and pas2js

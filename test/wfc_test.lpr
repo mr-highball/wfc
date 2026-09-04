@@ -84,6 +84,18 @@ type
     function DoCreateEntry: TGraphEntry; override;
   end;
 
+  TReferenceRandomProbe = class
+  strict private
+    FCallCount: Integer;
+    FCounts: array[0..15] of Integer;
+    function GetCount(const AIndex: Integer): Integer;
+  public
+    property CallCount: Integer read FCallCount;
+    property Count[const AIndex: Integer]: Integer read GetCount;
+    function RandomIndex(const ACount: Integer): Integer;
+    procedure Reset;
+  end;
+
 const
   MAX_CAPTURED_PASSES = 16;
 
@@ -117,6 +129,8 @@ var
   GCommitIdentityCount: Integer = 0;
   GCommitIdentitySwitchSelection: Boolean = False;
   GCommitIdentityPasses: array[0..Pred(MAX_CAPTURED_PASSES)] of Integer;
+  GCapturedWeightCount: Integer = 0;
+  GCapturedWeights: array[0..Pred(MAX_CAPTURED_PASSES)] of TGraphWeight;
 
 function TTestGraph.DoCreateEntry: TGraphEntry;
 begin
@@ -242,6 +256,32 @@ begin
   Result := TCommitIdentityEntry.Create;
 end;
 
+function TReferenceRandomProbe.GetCount(const AIndex: Integer): Integer;
+begin
+  if (AIndex < 0) or (AIndex >= FCallCount)
+    or (AIndex > High(FCounts)) then
+    raise ERangeError.CreateFmt(
+      'random probe index is out of bounds [%d]', [AIndex]);
+  Result := FCounts[AIndex];
+end;
+
+function TReferenceRandomProbe.RandomIndex(const ACount: Integer): Integer;
+begin
+  if FCallCount <= High(FCounts) then
+    FCounts[FCallCount] := ACount;
+  Inc(FCallCount);
+  Result := Pred(ACount);
+end;
+
+procedure TReferenceRandomProbe.Reset;
+var
+  I: Integer;
+begin
+  FCallCount := 0;
+  for I := 0 to High(FCounts) do
+    FCounts[I] := -1;
+end;
+
 procedure Check(const ACondition: Boolean; const AMessage: String);
 begin
   Inc(GCheckCount);
@@ -284,6 +324,21 @@ begin
     Result := AEntry.Value
   else
     Result := AValid[High(AValid)];
+end;
+
+function SelectFirstAndCaptureWeights(const AGraph: TGraph;
+  const AEntry: TGraphEntry; const AValid: TGraphValues): TGraphValue;
+var
+  I: Integer;
+begin
+  GCapturedWeightCount := Length(AValid);
+  for I := 0 to High(AValid) do
+    if I <= High(GCapturedWeights) then
+      GCapturedWeights[I] := AGraph.Rules[AValid[I]].Weight;
+  if Length(AValid) = 0 then
+    Result := AEntry.Value
+  else
+    Result := AValid[0];
 end;
 
 function SelectAndSwitchPass(const AGraph: TGraph;
@@ -512,6 +567,69 @@ begin
   Result.Seed := 0;
   Result.Reshape(3, 1, 1);
   Result.AddValue('A').NewRule([gdEast, gdWest], 'B');
+end;
+
+function NewWeightedScaleFixture(const AFirstWeight,
+  ASecondWeight: TGraphWeight): TGraph;
+begin
+  Result := TGraph.Create;
+  Result.Seed := 1;
+  Result.Reshape(1, 1, 1);
+  Result.WrapNeighbors := False;
+  Result.AddValue('A', AFirstWeight);
+  Result.AddValue('B', ASecondWeight);
+end;
+
+function NewWeightedEntropyFixture: TGraph;
+begin
+  Result := TGraph.Create;
+  Result.Seed := 0;
+  Result.Reshape(2, 1, 1);
+  Result.WrapNeighbors := False;
+  Result.Entry[0, 0, 0].Value := '2';
+  Result.Entry[1, 0, 0].Value := '3';
+  Result.SwitchToPass('choices');
+  Result.AddValue('A', 1).RequirePrevious(['2', '3']);
+  Result.AddValue('B', 1).RequirePrevious(['2', '3']);
+  Result.AddValue('C', 100).RequirePrevious('3');
+end;
+
+function NewEqualWeightMrvFixture(const AWeight: TGraphWeight): TGraph;
+begin
+  Result := TGraph.Create;
+  Result.Seed := 0;
+  Result.Reshape(2, 1, 1);
+  Result.WrapNeighbors := False;
+  Result.Entry[0, 0, 0].Value := '3';
+  Result.Entry[1, 0, 0].Value := '2';
+  Result.SwitchToPass('choices');
+  Result.AddValue('A', AWeight).RequirePrevious(['3', '2']);
+  Result.AddValue('B', AWeight).RequirePrevious(['3', '2']);
+  Result.AddValue('C', AWeight).RequirePrevious('3');
+end;
+
+function NewWeightedEscapeRing(const AWeight, CWeight: TGraphWeight): TGraph;
+begin
+  Result := TGraph.Create;
+  Result.Seed := 0;
+  Result.Reshape(3, 1, 1);
+  Result.AddValue('A', AWeight).NewRule([gdEast, gdWest], 'B');
+  Result.AddValue('C', CWeight).NewRule([gdEast, gdWest], 'C');
+end;
+
+function NewWeightedPassFixture: TGraph;
+begin
+  Result := TGraph.Create;
+  Result.Seed := 0;
+  Result.Reshape(1, 1, 1);
+  Result.WrapNeighbors := False;
+  Result.CurrentPass := 'first';
+  Result.AddValue('A', 1);
+  Result.AddValue('B', 3);
+  Result.SwitchToPass('second');
+  Result.AddValue('X', 3);
+  Result.AddValue('Y', 1);
+  Result.SwitchToPass('copy');
 end;
 
 function SamePassSolveReport(const A, B: TGraphPassSolveReport): Boolean;
@@ -1901,6 +2019,659 @@ begin
   end;
 end;
 
+procedure TestWeightRegistryAndValidation;
+var
+  LGraph: TGraph;
+  LGroup: TGraph.TParentedGraphRuleGroup;
+  LOriginal: TGraph.TParentedGraphRuleGroup;
+  LOptions: TGraphSolveOptions;
+  LReport: TGraphSolveReport;
+  LRaised: Boolean;
+begin
+  Check(WFC_DEFAULT_VALUE_WEIGHT = 1,
+    'the public default value weight is one');
+
+  LGraph := TGraph.Create;
+  try
+    LOriginal := LGraph.AddValue('A');
+    Check(LOriginal.Weight = WFC_DEFAULT_VALUE_WEIGHT,
+      'the one-argument AddValue overload installs the default weight');
+    LGroup := LGraph.AddValue('A', 5);
+    Check((LGroup = LOriginal) and (LGroup.Weight = 5)
+      and (LGraph.RuleGroups.Count = 1),
+      'the weighted overload updates an existing value without reordering it');
+    Check((LGraph.AddValue('A') = LOriginal)
+      and (LOriginal.Weight = 5),
+      'the compatibility overload never resets an explicit weight');
+
+    LOriginal.NewRule([gdEast], 'B');
+    Check(LGraph.Rules['B'].Weight = WFC_DEFAULT_VALUE_WEIGHT,
+      'a value introduced by a rule receives the default weight');
+    LGraph.AddValue('B', 4);
+    Check(LGraph.Rules['B'].Weight = 4,
+      'an auto-registered rule target can be weighted explicitly');
+
+    LGraph.CurrentPass := 'first';
+    LGraph.SwitchToPass('second');
+    LGraph.AddValue('A', 2);
+    Check((LGraph.Rules['A'].Weight = 2)
+      and (LGraph.PassGraph[0].Rules['A'].Weight = 5),
+      'weights belong to their pass instead of leaking across the pipeline');
+    LGraph.SwitchToPass(0);
+
+    LRaised := False;
+    try
+      LGraph.Rules['A'].Weight := 0;
+    except
+      on E: ERangeError do
+        LRaised := True;
+    end;
+    Check(LRaised and (LGraph.Rules['A'].Weight = 5),
+      'assigning zero raises and preserves the previous weight');
+
+    LRaised := False;
+    try
+      LGraph.AddValue('A', -1);
+    except
+      on E: ERangeError do
+        LRaised := True;
+    end;
+    Check(LRaised and (LGraph.Rules['A'].Weight = 5),
+      'an invalid duplicate AddValue call cannot mutate its value');
+
+    LRaised := False;
+    try
+      LGraph.AddValue('invalid', 0);
+    except
+      on E: ERangeError do
+        LRaised := True;
+    end;
+    Check(LRaised and (not LGraph.RuleGroups.ContainsKey('invalid')),
+      'an invalid new value is rejected before registry mutation');
+
+    LGraph.Reset;
+    Check(LGraph.AddValue('fresh').Weight = WFC_DEFAULT_VALUE_WEIGHT,
+      'Reset discards weighted model state with the rest of the pass model');
+  finally
+    LGraph.Free;
+  end;
+
+  LOptions := DefaultGraphSolveOptions;
+  LGraph := TGraph.Create;
+  try
+    LGraph.Seed := 1;
+    LGraph.Reshape(1, 1, 1);
+    LGraph.WrapNeighbors := False;
+    LGraph.AddValue('A', High(Integer));
+    LGraph.AddValue('B', High(Integer));
+    Check(LGraph.TrySolve(LOptions, LReport),
+      'equal maximum raw weights normalize to a valid unit model');
+    Check((SnapshotPass(LGraph, 0) = 'B/|')
+      and (LReport.Passes[0].Decisions = 1),
+      'maximum equal weights retain the unit-model seeded choice');
+  finally
+    LGraph.Free;
+  end;
+
+  LGraph := TGraph.Create;
+  try
+    LGraph.Seed := 0;
+    LGraph.Reshape(1, 1, 1);
+    LGraph.WrapNeighbors := False;
+    LGraph.AddValue('A', High(Integer) - 1);
+    LGraph.AddValue('B', 1);
+    Check(LGraph.TrySolve(LOptions, LReport),
+      'a normalized total exactly equal to High(Integer) is valid');
+    Check(SnapshotPass(LGraph, 0) = 'A/|',
+      'the maximum legal ticket range is portable under checked arithmetic');
+  finally
+    LGraph.Free;
+  end;
+end;
+
+procedure TestWeightScaleAndLegacySelection;
+var
+  LFirst: TGraph;
+  LGraph: TGraph;
+  LOptions: TGraphSolveOptions;
+  LReport: TGraphSolveReport;
+  LReportScaled: TGraphSolveReport;
+  LScaled: TGraph;
+  LTwin: TGraph;
+begin
+  LOptions := DefaultGraphSolveOptions;
+  LFirst := NewWeightedScaleFixture(1, 2);
+  LScaled := NewWeightedScaleFixture(2, 4);
+  try
+    Check(LFirst.TrySolve(LOptions, LReport)
+      and LScaled.TrySolve(LOptions, LReportScaled),
+      'GCD-equivalent weighted models both solve');
+    Check((SnapshotPass(LFirst, 0) = 'B/|')
+      and (SnapshotPass(LScaled, 0) = 'B/|'),
+      'scaled weights reproduce the same exact seeded ticket choice');
+    Check(SamePassSolveReport(LReport.Passes[0],
+      LReportScaled.Passes[0]),
+      'scaled weights reproduce the same solver counters');
+    Check(LFirst.RandomIndex(1000) = LScaled.RandomIndex(1000),
+      'scaled models leave their random streams in the same state');
+    Check(LFirst.TrySolve(LOptions, LReport)
+      and (SnapshotPass(LFirst, 0) = 'B/|'),
+      'weighted solving rewinds and replays on the same graph');
+  finally
+    LScaled.Free;
+    LFirst.Free;
+  end;
+
+  LGraph := NewEqualWeightMrvFixture(1);
+  LTwin := NewEqualWeightMrvFixture(7);
+  try
+    Check(LGraph.TrySolve(LOptions, LReport)
+      and LTwin.TrySolve(LOptions, LReportScaled),
+      'unit and scaled-equal MRV fixtures both solve');
+    Check((SnapshotPass(LGraph, 1) = 'AB/|')
+      and (SnapshotPass(LTwin, 1) = SnapshotPass(LGraph, 1)),
+      'scaled-equal weights take the exact unit-model observation order');
+    Check(SamePassSolveReport(LReport.Passes[1],
+      LReportScaled.Passes[1]),
+      'scaled-equal weights preserve unit-model solver counters');
+    Check(LGraph.PassGraph[1].RandomIndex(1000)
+        = LTwin.PassGraph[1].RandomIndex(1000),
+      'scaled-equal weights preserve the following unit-model stream state');
+  finally
+    LTwin.Free;
+    LGraph.Free;
+  end;
+
+  LGraph := TGraph.Create;
+  LTwin := TGraph.Create;
+  try
+    LGraph.Seed := 0;
+    LGraph.Reshape(1, 1, 1);
+    LGraph.WrapNeighbors := False;
+    LGraph.AddValue('A', 1);
+    LGraph.AddValue('B', 3);
+
+    LTwin.Seed := 0;
+    LTwin.Reshape(1, 1, 1);
+    LTwin.WrapNeighbors := False;
+    LTwin.AddValue('A');
+    LTwin.AddValue('B');
+
+    LGraph.Run;
+    LTwin.Run;
+    Check((SnapshotPass(LGraph, 0) = 'A/|')
+      and (SnapshotPass(LTwin, 0) = 'A/|'),
+      'legacy Run keeps its uniform compatibility selection');
+    Check(LGraph.RandomIndex(1000) = LTwin.RandomIndex(1000),
+      'legacy Run ignores weights without changing random consumption');
+  finally
+    LTwin.Free;
+    LGraph.Free;
+  end;
+
+  LGraph := TGraph.Create;
+  LTwin := TGraph.Create;
+  try
+    LGraph.Seed := 0;
+    LGraph.Reshape(1, 1, 1);
+    LGraph.WrapNeighbors := False;
+    LGraph.AddValue('A', 1);
+    LGraph.AddValue('B', 100);
+    LGraph.SelectionCallback := SelectFirstAndCaptureWeights;
+
+    LTwin.Seed := 0;
+    LTwin.Reshape(1, 1, 1);
+    LTwin.WrapNeighbors := False;
+    LTwin.AddValue('A', 1);
+    LTwin.AddValue('B', 100);
+
+    GCapturedWeightCount := 0;
+    LGraph.Run;
+    Check((SnapshotPass(LGraph, 0) = 'A/|')
+      and (GCapturedWeightCount = 2)
+      and (GCapturedWeights[0] = 1)
+      and (GCapturedWeights[1] = 100),
+      'a custom legacy callback remains authoritative and can inspect weights');
+    Check(LGraph.RandomIndex(1000) = LTwin.RandomIndex(1000),
+      'a deterministic custom callback need not consume the graph stream');
+  finally
+    LTwin.Free;
+    LGraph.Free;
+  end;
+end;
+
+procedure TestWeightedEntropyObservation;
+var
+  LBottom: TGraph;
+  LGraph: TGraph;
+  LOptions: TGraphSolveOptions;
+  LReport: TGraphSolveReport;
+  LTop: TGraph;
+begin
+  LOptions := DefaultGraphSolveOptions;
+  LGraph := NewWeightedEntropyFixture;
+  try
+    GTraversalCount := 0;
+    GInvalidRecoveryCount := 0;
+    LGraph.SelectionCallback := SelectAndCaptureTraversal;
+    LGraph.InvalidStateCallback := ReplaceInvalidWithNone;
+    Check(LGraph.TrySolve(LOptions, LReport),
+      'the weighted entropy discriminator solves');
+    Check(SnapshotPass(LGraph, 1) = 'AC/|',
+      'entropy observes the skewed three-value domain before the uniform pair');
+    Check((LReport.Passes[0].Decisions = 0)
+      and (LReport.Passes[1].Decisions = 2)
+      and (LReport.Passes[1].Propagations = 0)
+      and (LReport.Passes[1].Contradictions = 0)
+      and (LReport.Passes[1].Backtracks = 0),
+      'the entropy fixture has stable decision counters');
+    Check((GTraversalCount = 0) and (GInvalidRecoveryCount = 0),
+      'weighted reference solving still ignores legacy callbacks');
+  finally
+    LGraph.Free;
+  end;
+
+  LBottom := TGraph.Create;
+  LTop := TGraph.Create;
+  try
+    LBottom.Seed := 2;
+    LBottom.Reshape(1, 1, 2);
+    LBottom.WrapNeighbors := False;
+    LBottom.AddValue('A', 1);
+    LBottom.AddValue('B', 3);
+    Check(LBottom.TrySolve(LOptions, LReport),
+      'the bottom-up weighted entropy tie fixture solves');
+    Check((SnapshotPass(LBottom, 0) = 'A/|B/|')
+      and (LReport.Passes[0].Decisions = 2),
+      'weighted entropy ties use bottom-up cell order');
+
+    LTop.Seed := 2;
+    LTop.Reshape(1, 1, 2);
+    LTop.WrapNeighbors := False;
+    LTop.Mode := rmTopDown;
+    LTop.AddValue('A', 1);
+    LTop.AddValue('B', 3);
+    Check(LTop.TrySolve(LOptions, LReport),
+      'the top-down weighted entropy tie fixture solves');
+    Check(SnapshotPass(LTop, 0) = 'B/|A/|',
+      'weighted entropy ties use top-down cell order');
+  finally
+    LTop.Free;
+    LBottom.Free;
+  end;
+
+  LGraph := TGraph.Create;
+  try
+    LGraph.Seed := 0;
+    LGraph.Reshape(1, 1, 1);
+    LGraph.WrapNeighbors := False;
+    LGraph.Entry[0, 0, 0].Value := 'allow';
+    LGraph.SwitchToPass('choices');
+    LGraph.AddValue('A', 1).RequirePrevious('allow');
+    LGraph.AddValue('B', 100).RequirePrevious('deny');
+    LGraph.AddValue('C', 4).RequirePrevious('allow');
+    Check(LGraph.TrySolve(LOptions, LReport),
+      'the filtered weighted-domain fixture solves');
+    Check((SnapshotPass(LGraph, 1) = 'C/|')
+      and (LReport.Passes[1].Decisions = 1),
+      'weighted tickets sum only candidates active in the current domain');
+  finally
+    LGraph.Free;
+  end;
+end;
+
+procedure TestWeightedBacktracking;
+var
+  LDiscard: Integer;
+  LGraph: TGraph;
+  LOptions: TGraphSolveOptions;
+  LReport: TGraphSolveReport;
+  LTwin: TGraph;
+begin
+  LOptions := DefaultGraphSolveOptions;
+  LOptions.MaxBacktracks := 2;
+  LGraph := NewWeightedEscapeRing(100, 1);
+  LTwin := NewWeightedEscapeRing(100, 1);
+  try
+    Check(LGraph.TrySolve(LOptions, LReport),
+      'weighted recovery reaches the viable cyclic alternative');
+    Check(SnapshotPass(LGraph, 0) = 'CCC/|',
+      'weighted recovery commits the self-compatible ring');
+    Check((LReport.Passes[0].Decisions = 3)
+      and (LReport.Passes[0].Contradictions = 2)
+      and (LReport.Passes[0].Backtracks = 2),
+      'weighted alternatives are frozen in cyclic registration order');
+    LDiscard := LTwin.RandomIndex(102);
+    Check((LDiscard >= 0)
+      and (LGraph.RandomIndex(1000) = LTwin.RandomIndex(1000)),
+      'successful cyclic recovery consumes exactly one weighted ticket');
+  finally
+    LTwin.Free;
+    LGraph.Free;
+  end;
+
+  LOptions.MaxBacktracks := 1;
+  LGraph := NewWeightedEscapeRing(100, 1);
+  LTwin := NewWeightedEscapeRing(100, 1);
+  try
+    Check(not LGraph.TrySolve(LOptions, LReport),
+      'the weighted ring observes its backtrack limit');
+    Check((LReport.Status = gssBacktrackLimit)
+      and (LReport.Passes[0].Decisions = 2)
+      and (LReport.Passes[0].Contradictions = 2)
+      and (LReport.Passes[0].Backtracks = 1),
+      'weighted limit counters include both failed cyclic alternatives');
+    Check(SnapshotPass(LGraph, 0) = '/|',
+      'weighted limit exhaustion commits no partial ring');
+    Check(LGraph.RandomIndex(1000) = LTwin.RandomIndex(1000),
+      'weighted limit exhaustion restores the pre-call random stream');
+  finally
+    LTwin.Free;
+    LGraph.Free;
+  end;
+
+  LOptions.MaxBacktracks := 0;
+  LGraph := NewWeightedEscapeRing(1, 100);
+  try
+    Check(LGraph.TrySolve(LOptions, LReport),
+      'a dominant viable value solves without recovery');
+    Check((SnapshotPass(LGraph, 0) = 'CCC/|')
+      and (LReport.Passes[0].Decisions = 1)
+      and (LReport.Passes[0].Contradictions = 0)
+      and (LReport.Passes[0].Backtracks = 0),
+      'the weighted ticket selects the dominant viable branch directly');
+  finally
+    LGraph.Free;
+  end;
+end;
+
+procedure TestWeightedPassesAndAtomicity;
+var
+  LGraph: TGraph;
+  LOptions: TGraphSolveOptions;
+  LReport: TGraphSolveReport;
+  LReportTwin: TGraphSolveReport;
+  LRaised: Boolean;
+  LSnapshot: String;
+  LTwin: TGraph;
+begin
+  LOptions := DefaultGraphSolveOptions;
+  LGraph := NewWeightedPassFixture;
+  try
+    Check(LGraph.TrySolve(LOptions, LReport),
+      'the weighted multi-pass fixture solves');
+    Check(SnapshotPipeline(LGraph) = '0:B/|#1:Y/|#2:Y/|#',
+      'each weighted pass uses its independent seeded stream and copy stage');
+    Check((Length(LReport.Passes) = 3)
+      and (LReport.Passes[0].Decisions = 1)
+      and (LReport.Passes[1].Decisions = 1)
+      and (LReport.Passes[2].Decisions = 0)
+      and (LReport.Passes[0].Contradictions = 0)
+      and (LReport.Passes[1].Contradictions = 0),
+      'weighted pass reports remain isolated by pass');
+    Check(LGraph.CurrentPassIndex = 2,
+      'weighted pipeline solving restores the caller-selected pass');
+    LSnapshot := SnapshotPass(LGraph, 0);
+    LGraph.PassGraph[1].CurrentPass := 'renamed-second';
+    LGraph.SwitchToPass('later-copy');
+    Check(LGraph.TrySolve(LOptions, LReport)
+      and (SnapshotPass(LGraph, 0) = LSnapshot),
+      'renaming and appending later passes cannot perturb an earlier weighted stream');
+  finally
+    LGraph.Free;
+  end;
+
+  LGraph := NewWeightedScaleFixture(1, 2);
+  LTwin := NewWeightedScaleFixture(1, 2);
+  try
+    Check(LGraph.TrySolve(LOptions, LReport)
+      and LTwin.TrySolve(LOptions, LReportTwin),
+      'the weighted rollback twins establish matching prior output');
+    LGraph.SwitchToPass('dependent');
+    LGraph.AddValue('X').RequirePrevious('never');
+    LGraph.Entry[0, 0, 0].Value := 'X';
+    LTwin.SwitchToPass('dependent');
+    LTwin.AddValue('X').RequirePrevious('never');
+    LTwin.Entry[0, 0, 0].Value := 'X';
+    LSnapshot := SnapshotPipeline(LGraph);
+
+    Check(not LGraph.TrySolve(LOptions, LReport),
+      'a later weighted-pipeline contradiction fails atomically');
+    Check((LReport.FailedPassIndex = 1)
+      and (LReport.Contradiction.Kind = gckPreviousPass),
+      'the weighted rollback report identifies the dependent pass');
+    Check((SnapshotPipeline(LGraph) = LSnapshot)
+      and LGraph.PassGraph[0].Entry[0, 0, 0].Generated
+      and (not LGraph.PassGraph[1].Entry[0, 0, 0].Generated)
+      and (LGraph.CurrentPassIndex = 1),
+      'later failure preserves weighted output, locks, ownership, and selection');
+    Check(LGraph.PassGraph[0].RandomIndex(1000)
+        = LTwin.PassGraph[0].RandomIndex(1000),
+      'later failure restores the first weighted pass stream');
+    Check(LGraph.PassGraph[1].RandomIndex(1000)
+        = LTwin.PassGraph[1].RandomIndex(1000),
+      'later failure restores the dependent weighted pass stream');
+
+    LGraph.Rules['X'].RequirePrevious('B');
+    LTwin.Rules['X'].RequirePrevious('B');
+    Check(LGraph.TrySolve(LOptions, LReport)
+      and LTwin.TrySolve(LOptions, LReportTwin),
+      'repairing the dependent constraint permits an exact retry');
+    Check((SnapshotPipeline(LGraph) = '0:B/|#1:X/|#')
+      and (SnapshotPipeline(LTwin) = SnapshotPipeline(LGraph))
+      and SamePassSolveReport(LReport.Passes[0],
+        LReportTwin.Passes[0])
+      and SamePassSolveReport(LReport.Passes[1],
+        LReportTwin.Passes[1]),
+      'a repaired retry matches a twin that never attempted the failure');
+  finally
+    LTwin.Free;
+    LGraph.Free;
+  end;
+
+  LGraph := NewWeightedScaleFixture(1, 2);
+  LTwin := NewWeightedScaleFixture(1, 2);
+  try
+    Check(LGraph.TrySolve(LOptions, LReport)
+      and LTwin.TrySolve(LOptions, LReportTwin),
+      'the overflow twins establish matching weighted output');
+    LGraph.SwitchToPass('overflow');
+    LGraph.AddValue('X', High(Integer));
+    LGraph.AddValue('Y', High(Integer) - 1);
+    LTwin.SwitchToPass('overflow');
+    LTwin.AddValue('X', High(Integer));
+    LTwin.AddValue('Y', High(Integer) - 1);
+
+    LRaised := False;
+    try
+      LGraph.TrySolve(LOptions, LReport);
+    except
+      on E: ERangeError do
+        LRaised := True;
+    end;
+    Check(LRaised,
+      'normalized pass-weight overflow raises during model preparation');
+    Check((SnapshotPipeline(LGraph) = '0:B/|#1:/|#')
+      and (LGraph.CurrentPassIndex = 1),
+      'overflow preparation commits nothing and restores pass selection');
+    Check(LGraph.PassGraph[0].RandomIndex(1000)
+        = LTwin.PassGraph[0].RandomIndex(1000),
+      'overflow preparation restores the preceding pass stream');
+    Check(LGraph.PassGraph[1].RandomIndex(1000)
+        = LTwin.PassGraph[1].RandomIndex(1000),
+      'overflow preparation restores its malformed pass stream');
+
+    LGraph.Rules['Y'].Weight := High(Integer);
+    LTwin.Rules['Y'].Weight := High(Integer);
+    Check(LGraph.TrySolve(LOptions, LReport)
+      and LTwin.TrySolve(LOptions, LReportTwin),
+      'repairing an overflowing ratio permits deterministic retry');
+    Check((SnapshotPipeline(LGraph) = '0:B/|#1:Y/|#')
+      and (SnapshotPipeline(LTwin) = SnapshotPipeline(LGraph))
+      and SamePassSolveReport(LReport.Passes[0],
+        LReportTwin.Passes[0])
+      and SamePassSolveReport(LReport.Passes[1],
+        LReportTwin.Passes[1]),
+      'overflow repair replays exactly against the untouched twin');
+  finally
+    LTwin.Free;
+    LGraph.Free;
+  end;
+end;
+
+procedure TestReferenceWeightedKernel;
+var
+  LAssignment: TReferenceIntegerArray;
+  I: Integer;
+  LModel: TReferenceModel;
+  LProbe: TReferenceRandomProbe;
+  LReport: TReferenceSolveReport;
+  LRaised: Boolean;
+
+  procedure InitializeUnconstrainedModel(const ACellCount,
+    AValueCount: Integer; out AModel: TReferenceModel);
+  var
+    LCell: Integer;
+    LIndex: Integer;
+  begin
+    AModel := Default(TReferenceModel);
+    AModel.CellCount := ACellCount;
+    AModel.ValueCount := AValueCount;
+    SetLength(AModel.Neighbors,
+      ACellCount * WFC_REFERENCE_DIRECTION_COUNT);
+    for LIndex := 0 to High(AModel.Neighbors) do
+      AModel.Neighbors[LIndex] := -1;
+    SetLength(AModel.Compatibility,
+      WFC_REFERENCE_DIRECTION_COUNT * AValueCount * AValueCount);
+    SetLength(AModel.RequiredValues, AValueCount);
+    SetLength(AModel.RequiredSupport, Length(AModel.Compatibility));
+    SetLength(AModel.InitialAllowed, ACellCount * AValueCount);
+    SetLength(AModel.InitialFailureKinds, ACellCount);
+    SetLength(AModel.LockedValues, ACellCount);
+    SetLength(AModel.CellOrder, ACellCount);
+    for LCell := 0 to Pred(ACellCount) do
+    begin
+      AModel.InitialFailureKinds[LCell] := rckEmptyDomain;
+      AModel.LockedValues[LCell] := -1;
+      AModel.CellOrder[LCell] := LCell;
+    end;
+  end;
+
+begin
+  LProbe := TReferenceRandomProbe.Create;
+  try
+    InitializeUnconstrainedModel(2, 3, LModel);
+    LModel.InitialAllowed[0] := 1;
+    LModel.InitialAllowed[1] := 1;
+    LModel.InitialAllowed[3] := 1;
+    LModel.InitialAllowed[4] := 1;
+    LModel.InitialAllowed[5] := 1;
+    SetLength(LModel.ValueWeights, 3);
+    LModel.ValueWeights[0] := 1;
+    LModel.ValueWeights[1] := 1;
+    LModel.ValueWeights[2] := 100;
+    LProbe.Reset;
+    Check(SolveReferenceModel(LModel, 0, LProbe.RandomIndex,
+      LAssignment, LReport),
+      'the flat kernel solves a weighted entropy model');
+    Check((Length(LAssignment) = 2)
+      and (LAssignment[0] = 1) and (LAssignment[1] = 2),
+      'the flat weighted kernel maps tickets in value order');
+    Check((LProbe.CallCount = 2)
+      and (LProbe.Count[0] = 102) and (LProbe.Count[1] = 2),
+      'the flat kernel observes entropy before drawing active-domain tickets');
+
+    SetLength(LModel.ValueWeights, 0);
+    LProbe.Reset;
+    Check(SolveReferenceModel(LModel, 0, LProbe.RandomIndex,
+      LAssignment, LReport),
+      'an omitted kernel weight vector retains implicit unit weights');
+    Check((LProbe.CallCount = 2)
+      and (LProbe.Count[0] = 2) and (LProbe.Count[1] = 3),
+      'implicit unit weights retain the version-1 MRV decision order');
+
+    InitializeUnconstrainedModel(1, 2, LModel);
+    LModel.InitialAllowed[0] := 1;
+    LModel.InitialAllowed[1] := 1;
+    SetLength(LModel.ValueWeights, 2);
+    LModel.ValueWeights[0] := 1;
+    LModel.ValueWeights[1] := 2;
+    LProbe.Reset;
+    Check(SolveReferenceModel(LModel, 0, LProbe.RandomIndex,
+      LAssignment, LReport)
+      and (LAssignment[0] = 1)
+      and (LProbe.CallCount = 1) and (LProbe.Count[0] = 3),
+      'the kernel exposes the canonical weighted ticket bound');
+    LModel.ValueWeights[0] := 2;
+    LModel.ValueWeights[1] := 4;
+    LProbe.Reset;
+    Check(SolveReferenceModel(LModel, 0, LProbe.RandomIndex,
+      LAssignment, LReport)
+      and (LAssignment[0] = 1)
+      and (LProbe.CallCount = 1) and (LProbe.Count[0] = 3),
+      'the kernel normalizes scale-equivalent ratios by their GCD');
+
+    InitializeUnconstrainedModel(1, 3, LModel);
+    for I := 0 to 2 do
+      LModel.InitialAllowed[I] := 1;
+    SetLength(LModel.ValueWeights, 2);
+    LModel.ValueWeights[0] := 1;
+    LModel.ValueWeights[1] := 1;
+    LRaised := False;
+    try
+      SolveReferenceModel(LModel, 0, LProbe.RandomIndex,
+        LAssignment, LReport);
+    except
+      on E: EInvalidOperation do
+        LRaised := True;
+    end;
+    Check(LRaised,
+      'the flat kernel rejects a nonempty weight vector of the wrong length');
+
+    SetLength(LModel.ValueWeights, 3);
+    LModel.ValueWeights[0] := 1;
+    LModel.ValueWeights[1] := 0;
+    LModel.ValueWeights[2] := 1;
+    LRaised := False;
+    try
+      SolveReferenceModel(LModel, 0, LProbe.RandomIndex,
+        LAssignment, LReport);
+    except
+      on E: ERangeError do
+        LRaised := True;
+    end;
+    Check(LRaised, 'the flat kernel rejects a zero weight');
+
+    LModel.ValueWeights[1] := -1;
+    LRaised := False;
+    try
+      SolveReferenceModel(LModel, 0, LProbe.RandomIndex,
+        LAssignment, LReport);
+    except
+      on E: ERangeError do
+        LRaised := True;
+    end;
+    Check(LRaised, 'the flat kernel rejects a negative weight');
+
+    LModel.ValueWeights[0] := High(Integer);
+    LModel.ValueWeights[1] := High(Integer) - 1;
+    LModel.ValueWeights[2] := 1;
+    LProbe.Reset;
+    LRaised := False;
+    try
+      SolveReferenceModel(LModel, 0, LProbe.RandomIndex,
+        LAssignment, LReport);
+    except
+      on E: ERangeError do
+        LRaised := True;
+    end;
+    Check(LRaised and (LProbe.CallCount = 0),
+      'normalized kernel-weight overflow fails before random observation');
+  finally
+    LProbe.Free;
+  end;
+end;
+
 procedure TestReferencePropagation;
 var
   LGraph: TGraph;
@@ -1908,7 +2679,7 @@ var
   LReport: TGraphSolveReport;
   LRaised: Boolean;
 begin
-  Check(WFC_SOLVER_ALGORITHM_VERSION = 1,
+  Check(WFC_SOLVER_ALGORITHM_VERSION = 2,
     'the reference solver has an explicit replay version');
   LOptions := DefaultGraphSolveOptions;
   Check(LOptions.MaxBacktracks = 256,
@@ -3130,6 +3901,18 @@ begin
   RunTest('wrapped self constraints', @TestWrappedSelfConstraint);
   RunTest('self required-support isolation',
     @TestSelfRequiredSupportIsolation);
+  RunTest('weighted registry and validation',
+    @TestWeightRegistryAndValidation);
+  RunTest('weight scale and legacy selection',
+    @TestWeightScaleAndLegacySelection);
+  RunTest('weighted entropy observation',
+    @TestWeightedEntropyObservation);
+  RunTest('weighted bounded backtracking',
+    @TestWeightedBacktracking);
+  RunTest('weighted passes and atomicity',
+    @TestWeightedPassesAndAtomicity);
+  RunTest('reference weighted-kernel contract',
+    @TestReferenceWeightedKernel);
   RunTest('reference fixed-point propagation', @TestReferencePropagation);
   RunTest('reference mode tie-breaking', @TestReferenceModeTieBreak);
   RunTest('reference MRV selection', @TestReferenceMrvSelection);
