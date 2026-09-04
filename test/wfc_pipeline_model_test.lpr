@@ -365,7 +365,7 @@ end;
 
 procedure TestCompleteRecipeAndOwnership;
 const
-  EXPECTED_SIGNATURE = '23F87EDA';
+  EXPECTED_SIGNATURE = '2B49D38A';
 var
   LCopyRequirements: TWfcPipelineRequirements;
   LCopyVocabulary: TWfcModelTokens;
@@ -507,9 +507,55 @@ var
   I: Integer;
   LDenseSlotCount: Integer;
   LInputs: TRecipeInputs;
+  LRecipe: TWfcPipelineModel;
   LResourceCount: Integer;
   LSequenceText: String;
 begin
+  Check((WFC_PIPELINE_PATTERN_BRIDGE_VERSION = 2) and
+    (WFC_PIPELINE_SEQUENCE_BRIDGE_VERSION = 2) and
+    (CurrentWfcPipelineVersions.Pattern2DBridgeVersion = 2) and
+    (CurrentWfcPipelineVersions.SequenceBridgeVersion = 2),
+    'new recipes advertise inverse-lowering bridge version 2');
+
+  LInputs := BuildPatternRecipeInputs;
+  LInputs.Versions.Pattern2DBridgeVersion := 1;
+  LRecipe := NewRecipe(LInputs);
+  try
+    Check((LRecipe.CopyVersions.Pattern2DBridgeVersion = 1) and
+      (LRecipe.CopyVersions.SequenceBridgeVersion = 2),
+      'pattern bridge version 1 remains independently accepted');
+  finally
+    LRecipe.Free;
+  end;
+
+  LInputs := BuildSequenceRecipeInputs;
+  LInputs.Versions.SequenceBridgeVersion := 1;
+  LRecipe := NewRecipe(LInputs);
+  try
+    Check((LRecipe.CopyVersions.Pattern2DBridgeVersion = 2) and
+      (LRecipe.CopyVersions.SequenceBridgeVersion = 1),
+      'sequence bridge version 1 remains independently accepted');
+  finally
+    LRecipe.Free;
+  end;
+
+  LInputs := BuildPatternRecipeInputs;
+  LInputs.Versions.Pattern2DBridgeVersion := 0;
+  Check(RecipeRejected(LInputs, 'unsupported pattern2d bridge version'),
+    'pattern bridge version zero fails closed');
+  LInputs := BuildPatternRecipeInputs;
+  LInputs.Versions.Pattern2DBridgeVersion := 3;
+  Check(RecipeRejected(LInputs, 'unsupported pattern2d bridge version'),
+    'unknown future pattern bridge versions fail closed');
+  LInputs := BuildSequenceRecipeInputs;
+  LInputs.Versions.SequenceBridgeVersion := 0;
+  Check(RecipeRejected(LInputs, 'unsupported sequence bridge version'),
+    'sequence bridge version zero fails closed');
+  LInputs := BuildSequenceRecipeInputs;
+  LInputs.Versions.SequenceBridgeVersion := 3;
+  Check(RecipeRejected(LInputs, 'unsupported sequence bridge version'),
+    'unknown future sequence bridge versions fail closed');
+
   LInputs := BuildPatternRecipeInputs;
   LInputs.Resources[0].Document := StringReplace(
     LInputs.Resources[0].Document, #10, #13#10, [rfReplaceAll]);

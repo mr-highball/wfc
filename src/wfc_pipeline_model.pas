@@ -39,8 +39,11 @@ const
   WFC_PIPELINE_MODEL_VERSION = 1;
   WFC_PIPELINE_MODEL_SIGNATURE_VERSION = 1;
   WFC_PIPELINE_GRAPH_ADAPTER_VERSION = 1;
-  WFC_PIPELINE_PATTERN_BRIDGE_VERSION = 1;
-  WFC_PIPELINE_SEQUENCE_BRIDGE_VERSION = 1;
+  { Bridge version 2 adds deterministic inverse lowering of public run inputs
+    into the private source pass. Version 1 remains accepted as the portable
+    forward-only contract. }
+  WFC_PIPELINE_PATTERN_BRIDGE_VERSION = 2;
+  WFC_PIPELINE_SEQUENCE_BRIDGE_VERSION = 2;
 
   WFC_PIPELINE_NO_INDEX = -1;
 
@@ -539,11 +542,11 @@ begin
       LCurrent.SequenceGraphAdapterVersion then
     raise EWfcPipelineModel.Create(
       'unsupported sequence graph-adapter version');
-  if AValue.Pattern2DBridgeVersion <>
-      LCurrent.Pattern2DBridgeVersion then
+  if (AValue.Pattern2DBridgeVersion <> 1) and
+      (AValue.Pattern2DBridgeVersion <> 2) then
     raise EWfcPipelineModel.Create('unsupported pattern2d bridge version');
-  if AValue.SequenceBridgeVersion <>
-      LCurrent.SequenceBridgeVersion then
+  if (AValue.SequenceBridgeVersion <> 1) and
+      (AValue.SequenceBridgeVersion <> 2) then
     raise EWfcPipelineModel.Create('unsupported sequence bridge version');
 end;
 

@@ -40,8 +40,8 @@ type
   TTestProcedure = procedure;
 
 const
-  EXPECTED_RECIPE_SIGNATURE = '118C878C';
-  EXPECTED_RUN_SIGNATURE = '70D42A74';
+  EXPECTED_RECIPE_SIGNATURE = '5D0886DC';
+  EXPECTED_RUN_SIGNATURE = 'C6C16461';
 
 var
   GCheckCount: Integer = 0;

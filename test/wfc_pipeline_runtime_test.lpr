@@ -31,7 +31,12 @@ uses
   wfc_model,
   wfc_rule_model,
   wfc_rule_text,
+  wfc_pattern2d,
+  wfc_pattern2d_learn,
+  wfc_pattern2d_text,
   wfc_sequence,
+  wfc_sequence_learn,
+  wfc_sequence_text,
   wfc_pipeline_model,
   wfc_pipeline_run,
   wfc_pipeline_result,
@@ -81,6 +86,17 @@ begin
 end;
 
 function IntegersOf(const AValues: array of Integer): TWfcModelIntegerArray;
+var
+  I: Integer;
+begin
+  Result := nil;
+  SetLength(Result, Length(AValues));
+  for I := 0 to Length(AValues) - 1 do
+    Result[I] := AValues[I];
+end;
+
+function SequenceSamplesOf(const AValues: array of TWfcSequenceSample):
+  TWfcSequenceSamples;
 var
   I: Integer;
 begin
@@ -257,6 +273,187 @@ begin
     LResources, LPasses, LDependencies, nil, LRequirements);
 end;
 
+function BuildPatternProjectionRecipe(const AVersions: TWfcPipelineVersions;
+  const ASparseSource, AIncludeAlias,
+  AIncludeSecondTarget: Boolean): TWfcPipelineModel;
+var
+  LBridgeCount: Integer;
+  LDependencies: TWfcPipelineDependencies;
+  LDocument: String;
+  LMetadata: TWfcPipelineMetadata;
+  LPassCount: Integer;
+  LPasses: TWfcPipelinePasses;
+  LPattern: TWfcOverlappingModel2D;
+  LResources: TWfcPipelineResources;
+  LBridges: TWfcPipelineBridges;
+begin
+  if AIncludeAlias and AIncludeSecondTarget then
+    raise Exception.Create(
+      'checker fixture alias and second target are mutually exclusive');
+  if ASparseSource then
+    LPattern := LearnOverlappingModel2D(TokensOf([
+      TWfcModelToken('B'), TWfcModelToken('B'), TWfcModelToken('B'),
+      TWfcModelToken('B'), TWfcModelToken('A'), TWfcModelToken('B'),
+      TWfcModelToken('B'), TWfcModelToken('B'), TWfcModelToken('B')]),
+      3, 3, 2, 2, wmbWrap, wmsNone)
+  else
+    LPattern := LearnOverlappingModel2D(TokensOf([
+      TWfcModelToken('A'), TWfcModelToken('B'),
+      TWfcModelToken('B'), TWfcModelToken('A')]),
+      2, 2, 2, 2, wmbWrap, wmsNone);
+  try
+    LDocument := EncodeWfcPattern2DText(LPattern);
+  finally
+    LPattern.Free;
+  end;
+
+  LMetadata := MakeWfcPipelineMetadata('Runtime checker fixture', 'MIT',
+    'project-authored inverse pattern fixture',
+    'runtime:inverse-pattern:v2');
+  SetLength(LResources, 1);
+  LResources[0] := MakeWfcPipelineResource('checker-patterns',
+    wprkPattern2D, LDocument, 'runtime checker pattern fixture', 'MIT',
+    'runtime:checker-patterns:v1');
+  LPassCount := 2;
+  if AIncludeAlias or AIncludeSecondTarget then
+    Inc(LPassCount);
+  SetLength(LPasses, LPassCount);
+  LPasses[0] := MakeWfcPipelinePass('checker-states', wppvPrivate,
+    gpmOverlay, WFC_PIPELINE_NO_INDEX, wpakPattern2D, 0,
+    False, wseWhole);
+  LPasses[1] := MakeWfcPipelinePass('checker-tokens', wppvPublic,
+    gpmOverlay, WFC_PIPELINE_NO_INDEX, wpakEmpty,
+    WFC_PIPELINE_NO_INDEX, False, wseWhole);
+  if AIncludeAlias then
+    LPasses[2] := MakeWfcPipelinePass('checker-copy', wppvPublic,
+      gpmTransform, 1, wpakEmpty, WFC_PIPELINE_NO_INDEX,
+      False, wseWhole)
+  else if AIncludeSecondTarget then
+    LPasses[2] := MakeWfcPipelinePass('checker-tokens-two', wppvPublic,
+      gpmOverlay, WFC_PIPELINE_NO_INDEX, wpakEmpty,
+      WFC_PIPELINE_NO_INDEX, False, wseWhole);
+
+  SetLength(LDependencies, LPassCount - 1);
+  LDependencies[0] := MakeWfcPipelineDependency(1, 0);
+  if AIncludeAlias then
+    LDependencies[1] := MakeWfcPipelineDependency(2, 1)
+  else if AIncludeSecondTarget then
+    LDependencies[1] := MakeWfcPipelineDependency(2, 0);
+  LBridgeCount := 1;
+  if AIncludeSecondTarget then
+    Inc(LBridgeCount);
+  SetLength(LBridges, LBridgeCount);
+  LBridges[0] := MakeWfcPipelineBridge(
+    wpbkPattern2DProjection, 0, 1);
+  if AIncludeSecondTarget then
+    LBridges[1] := MakeWfcPipelineBridge(
+      wpbkPattern2DProjection, 0, 2);
+  Result := TWfcPipelineModel.Create(LMetadata, AVersions,
+    2, True, rmBottomUp, LResources, LPasses,
+    LDependencies, LBridges, nil);
+end;
+
+function BuildSequenceProjectionRecipe(
+  const AVersions: TWfcPipelineVersions;
+  const AThreeTokenSource: Boolean = False): TWfcPipelineModel;
+var
+  LBridges: TWfcPipelineBridges;
+  LDependencies: TWfcPipelineDependencies;
+  LDocument: String;
+  LMetadata: TWfcPipelineMetadata;
+  LPasses: TWfcPipelinePasses;
+  LResources: TWfcPipelineResources;
+  LSequence: TWfcSequenceModel;
+begin
+  if AThreeTokenSource then
+    LSequence := LearnSequenceModelCorpus(SequenceSamplesOf([
+      MakeWfcSequenceSample(TokensOf([
+        TWfcModelToken('B'), TWfcModelToken('A'),
+        TWfcModelToken('B')])),
+      MakeWfcSequenceSample(TokensOf([
+        TWfcModelToken('B'), TWfcModelToken('C'),
+        TWfcModelToken('B')])),
+      MakeWfcSequenceSample(TokensOf([
+        TWfcModelToken('B'), TWfcModelToken('B'),
+        TWfcModelToken('B')]))]), 1)
+  else
+    LSequence := LearnSequenceModel(TokensOf([
+      TWfcModelToken('A'), TWfcModelToken('B'),
+      TWfcModelToken('A')]), 2);
+  try
+    LDocument := EncodeWfcSequenceText(LSequence);
+  finally
+    LSequence.Free;
+  end;
+  LMetadata := MakeWfcPipelineMetadata('Runtime sequence fixture', 'MIT',
+    'project-authored inverse sequence fixture',
+    'runtime:inverse-sequence:v2');
+  SetLength(LResources, 1);
+  LResources[0] := MakeWfcPipelineResource('sequence-states',
+    wprkSequence, LDocument, 'runtime sequence projection fixture', 'MIT',
+    'runtime:sequence-states:v1');
+  SetLength(LPasses, 2);
+  LPasses[0] := MakeWfcPipelinePass('sequence-states', wppvPrivate,
+    gpmOverlay, WFC_PIPELINE_NO_INDEX, wpakSequence, 0,
+    True, wseWhole);
+  LPasses[1] := MakeWfcPipelinePass('sequence-tokens', wppvPublic,
+    gpmOverlay, WFC_PIPELINE_NO_INDEX, wpakEmpty,
+    WFC_PIPELINE_NO_INDEX, False, wseWhole);
+  SetLength(LDependencies, 1);
+  LDependencies[0] := MakeWfcPipelineDependency(1, 0);
+  SetLength(LBridges, 1);
+  LBridges[0] := MakeWfcPipelineBridge(
+    wpbkSequenceProjection, 0, 1);
+  Result := TWfcPipelineModel.Create(LMetadata, AVersions,
+    1, False, rmBottomUp, LResources, LPasses,
+    LDependencies, LBridges, nil);
+end;
+
+function BuildLimitPatternRecipe: TWfcPipelineModel;
+var
+  I: Integer;
+  LBridges: TWfcPipelineBridges;
+  LDependencies: TWfcPipelineDependencies;
+  LDocument: String;
+  LMetadata: TWfcPipelineMetadata;
+  LPasses: TWfcPipelinePasses;
+  LPattern: TWfcOverlappingModel2D;
+  LResources: TWfcPipelineResources;
+  LTraining: TWfcModelTokens;
+begin
+  SetLength(LTraining, 32 * 32);
+  for I := 0 to Length(LTraining) - 1 do
+    LTraining[I] := 'A';
+  LPattern := LearnOverlappingModel2D(LTraining, 32, 32,
+    32, 32, wmbWrap, wmsNone);
+  try
+    LDocument := EncodeWfcPattern2DText(LPattern);
+  finally
+    LPattern.Free;
+  end;
+  LMetadata := MakeWfcPipelineMetadata('Runtime inverse limit fixture',
+    'MIT', 'project-authored inverse preflight fixture',
+    'runtime:inverse-limits:v1');
+  SetLength(LResources, 1);
+  LResources[0] := MakeWfcPipelineResource('wide-pattern',
+    wprkPattern2D, LDocument, 'runtime inverse limit fixture', 'MIT',
+    'runtime:wide-pattern:v1');
+  SetLength(LPasses, 2);
+  LPasses[0] := MakeWfcPipelinePass('wide-states', wppvPrivate,
+    gpmOverlay, WFC_PIPELINE_NO_INDEX, wpakPattern2D, 0,
+    False, wseWhole);
+  LPasses[1] := MakeWfcPipelinePass('wide-tokens', wppvPublic,
+    gpmOverlay, WFC_PIPELINE_NO_INDEX, wpakEmpty,
+    WFC_PIPELINE_NO_INDEX, False, wseWhole);
+  SetLength(LDependencies, 1);
+  LDependencies[0] := MakeWfcPipelineDependency(1, 0);
+  SetLength(LBridges, 1);
+  LBridges[0] := MakeWfcPipelineBridge(
+    wpbkPattern2DProjection, 0, 1);
+  Result := TWfcPipelineModel.Create(LMetadata, 2, True,
+    rmBottomUp, LResources, LPasses, LDependencies, LBridges, nil);
+end;
+
 function BuildReversedAliasRecipe: TWfcPipelineModel;
 var
   LDependencies: TWfcPipelineDependencies;
@@ -311,6 +508,15 @@ begin
   Result := TWfcPipelineRun.Create(ARecipe, AWidth, 1, 1,
     Cardinal(4294967295), AStrategy, 16, LPassLimit, ATrace,
     ALocks, ADomains);
+end;
+
+function NewRunShape(const ARecipe: TWfcPipelineModel;
+  const AWidth, AHeight, ADepth: Integer;
+  const ALocks: TWfcPipelineCellLocks;
+  const ADomains: TWfcPipelineCellDomains): TWfcPipelineRun;
+begin
+  Result := TWfcPipelineRun.Create(ARecipe, AWidth, AHeight, ADepth,
+    0, wpssOneWay, 64, 0, True, ALocks, ADomains);
 end;
 
 procedure CheckLayer(const AResult: TWfcPipelineResult;
@@ -786,6 +992,591 @@ begin
   end;
 end;
 
+procedure TestPatternInverseLockDomainOverlapAndWrap;
+var
+  LDomains: TWfcPipelineCellDomains;
+  LLocks: TWfcPipelineCellLocks;
+  LRecipe: TWfcPipelineModel;
+  LResult: TWfcPipelineResult;
+  LRun: TWfcPipelineRun;
+begin
+  LRecipe := BuildPatternProjectionRecipe(CurrentWfcPipelineVersions,
+    False, False, False);
+  try
+    SetLength(LLocks, 1);
+    LLocks[0] := MakeWfcPipelineCellLock(1, 0, 0, 0, 'A');
+    SetLength(LDomains, 2);
+    LDomains[0] := MakeWfcPipelineCellDomain(1, 1, 0, 0,
+      TokensOf(['B']));
+    LDomains[1] := MakeWfcPipelineCellDomain(1, 1, 1, 0,
+      TokensOf(['A', 'B']));
+    LRun := NewRunShape(LRecipe, 2, 2, 1, LLocks, LDomains);
+    try
+      LResult := ExecuteWfcPipeline(LRecipe, LRun);
+      try
+        Check(LResult.Status = wprsSolved,
+          'pattern bridge v2 lowers compatible public locks and domains');
+        CheckLayer(LResult, 0, ['A', 'B', 'B', 'A'],
+          'overlapping inverse contributions preserve wrapped checker projection');
+      finally
+        LResult.Free;
+      end;
+    finally
+      LRun.Free;
+    end;
+  finally
+    LRecipe.Free;
+  end;
+end;
+
+procedure TestPatternInverseEmptyAndWrappedSelfOverlap;
+var
+  LBaseline: TWfcPipelineResult;
+  LDomains: TWfcPipelineCellDomains;
+  LFailure: TWfcPipelineFailure;
+  LLocks: TWfcPipelineCellLocks;
+  LRecipe: TWfcPipelineModel;
+  LResult: TWfcPipelineResult;
+  LRun: TWfcPipelineRun;
+begin
+  LRecipe := BuildPatternProjectionRecipe(CurrentWfcPipelineVersions,
+    True, False, False);
+  try
+    SetLength(LDomains, 1);
+    LDomains[0] := MakeWfcPipelineCellDomain(1, 0, 0, 0, nil);
+    LRun := NewRunShape(LRecipe, 2, 2, 1, nil, LDomains);
+    try
+      LResult := ExecuteWfcPipeline(LRecipe, LRun);
+      try
+        LFailure := LResult.CopyFailure;
+        Check((LResult.Status = wprsContradiction) and
+          (LFailure.Kind = gckEntryDomain) and
+          (LFailure.PassIndex = 0),
+          'an empty public pattern domain becomes a private source contradiction');
+      finally
+        LResult.Free;
+      end;
+    finally
+      LRun.Free;
+    end;
+
+    LRun := NewRunShape(LRecipe, 1, 1, 1, nil, nil);
+    try
+      LBaseline := ExecuteWfcPipeline(LRecipe, LRun);
+      try
+        Check((LBaseline.Status = wprsSolved) and
+          (LBaseline.LayerAt(0).Tokens[0] = 'B'),
+          'the wrapped one-cell sparse-pattern baseline is satisfiable');
+      finally
+        LBaseline.Free;
+      end;
+    finally
+      LRun.Free;
+    end;
+
+    SetLength(LLocks, 1);
+    LLocks[0] := MakeWfcPipelineCellLock(1, 0, 0, 0, 'A');
+    LRun := NewRunShape(LRecipe, 1, 1, 1, LLocks, nil);
+    try
+      LResult := ExecuteWfcPipeline(LRecipe, LRun);
+      try
+        LFailure := LResult.CopyFailure;
+        Check((LResult.Status = wprsContradiction) and
+          (LFailure.Kind = gckEntryDomain) and
+          (LFailure.PassIndex = 0),
+          'wrapped offsets that alias one private cell are all intersected');
+      finally
+        LResult.Free;
+      end;
+    finally
+      LRun.Free;
+    end;
+  finally
+    LRecipe.Free;
+  end;
+end;
+
+procedure TestPatternAliasCoalescingConflictAndAtomicity;
+var
+  LCaught: Boolean;
+  LDomains: TWfcPipelineCellDomains;
+  LLocks: TWfcPipelineCellLocks;
+  LRecipe: TWfcPipelineModel;
+  LResult: TWfcPipelineResult;
+  LRun: TWfcPipelineRun;
+  LRuntime: TWfcPipelineRuntime;
+begin
+  LRecipe := BuildPatternProjectionRecipe(CurrentWfcPipelineVersions,
+    False, True, False);
+  try
+    SetLength(LLocks, 2);
+    LLocks[0] := MakeWfcPipelineCellLock(1, 0, 0, 0, 'A');
+    LLocks[1] := MakeWfcPipelineCellLock(2, 0, 0, 0, 'A');
+    SetLength(LDomains, 1);
+    LDomains[0] := MakeWfcPipelineCellDomain(2, 1, 0, 0,
+      TokensOf(['B']));
+    LRun := NewRunShape(LRecipe, 2, 2, 1, LLocks, LDomains);
+    try
+      LResult := ExecuteWfcPipeline(LRecipe, LRun);
+      try
+        Check((LResult.Status = wprsSolved) and
+          (LResult.LayerCount = 2),
+          'direct and transformed pattern inputs coalesce before lowering');
+        CheckLayer(LResult, 1, ['A', 'B', 'B', 'A'],
+          'a transformed pattern target retains exact public projection');
+      finally
+        LResult.Free;
+      end;
+    finally
+      LRun.Free;
+    end;
+
+    LLocks[1] := MakeWfcPipelineCellLock(2, 0, 0, 0, 'B');
+    LRun := NewRunShape(LRecipe, 2, 2, 1, LLocks, nil);
+    try
+      LCaught := False;
+      LRuntime := nil;
+      try
+        LRuntime := TWfcPipelineRuntime.Create(LRecipe, LRun);
+      except
+        on E: EWfcPipelineRuntime do
+          LCaught := Pos('conflict after transform resolution',
+            E.Message) > 0;
+      end;
+      LRuntime.Free;
+      Check(LCaught,
+        'conflicting direct and alias locks fail before runtime publication');
+    finally
+      LRun.Free;
+    end;
+
+    SetLength(LLocks, 1);
+    LLocks[0] := MakeWfcPipelineCellLock(1, 0, 0, 0, 'A');
+    LRun := NewRunShape(LRecipe, 2, 2, 1, LLocks, nil);
+    try
+      LResult := ExecuteWfcPipeline(LRecipe, LRun);
+      try
+        Check(LResult.Status = wprsSolved,
+          'a rejected construction leaves the immutable recipe reusable');
+      finally
+        LResult.Free;
+      end;
+    finally
+      LRun.Free;
+    end;
+  finally
+    LRecipe.Free;
+  end;
+end;
+
+procedure TestMultiplePatternBridgesSharePrivateSource;
+var
+  LFailure: TWfcPipelineFailure;
+  LLocks: TWfcPipelineCellLocks;
+  LRecipe: TWfcPipelineModel;
+  LResult: TWfcPipelineResult;
+  LRun: TWfcPipelineRun;
+begin
+  LRecipe := BuildPatternProjectionRecipe(CurrentWfcPipelineVersions,
+    False, False, True);
+  try
+    SetLength(LLocks, 2);
+    LLocks[0] := MakeWfcPipelineCellLock(1, 0, 0, 0, 'A');
+    LLocks[1] := MakeWfcPipelineCellLock(2, 0, 0, 0, 'B');
+    LRun := NewRunShape(LRecipe, 2, 2, 1, LLocks, nil);
+    try
+      LResult := ExecuteWfcPipeline(LRecipe, LRun);
+      try
+        LFailure := LResult.CopyFailure;
+        Check((LResult.Status = wprsContradiction) and
+          (LFailure.Kind = gckEntryDomain) and
+          (LFailure.PassIndex = 0),
+          'different bridges globally intersect constraints on their shared private source');
+      finally
+        LResult.Free;
+      end;
+    finally
+      LRun.Free;
+    end;
+
+    LLocks[1] := MakeWfcPipelineCellLock(2, 0, 0, 0, 'A');
+    LRun := NewRunShape(LRecipe, 2, 2, 1, LLocks, nil);
+    try
+      LResult := ExecuteWfcPipeline(LRecipe, LRun);
+      try
+        Check((LResult.Status = wprsSolved) and
+          (LResult.LayerCount = 2),
+          'compatible bridges sharing one private source solve normally');
+        CheckLayer(LResult, 1, LResult.LayerAt(0).Tokens,
+          'shared-source pattern projections remain byte-semantically equal');
+      finally
+        LResult.Free;
+      end;
+    finally
+      LRun.Free;
+    end;
+  finally
+    LRecipe.Free;
+  end;
+end;
+
+procedure TestSequenceInverseDuplicateEmissionAndEndpoints;
+var
+  LDomains: TWfcPipelineCellDomains;
+  LRecipe: TWfcPipelineModel;
+  LResult: TWfcPipelineResult;
+  LRun: TWfcPipelineRun;
+begin
+  LRecipe := BuildSequenceProjectionRecipe(CurrentWfcPipelineVersions);
+  try
+    SetLength(LDomains, 3);
+    LDomains[0] := MakeWfcPipelineCellDomain(1, 0, 0, 0,
+      TokensOf(['A']));
+    LDomains[1] := MakeWfcPipelineCellDomain(1, 1, 0, 0,
+      TokensOf(['B']));
+    LDomains[2] := MakeWfcPipelineCellDomain(1, 2, 0, 0,
+      TokensOf(['A']));
+    LRun := NewRunShape(LRecipe, 3, 1, 1, nil, LDomains);
+    try
+      LResult := ExecuteWfcPipeline(LRecipe, LRun);
+      try
+        Check(LResult.Status = wprsSolved,
+          'sequence bridge v2 retains all duplicate-emission states');
+        CheckLayer(LResult, 0, ['A', 'B', 'A'],
+          'derived sequence states intersect correctly with both endpoint masks');
+      finally
+        LResult.Free;
+      end;
+    finally
+      LRun.Free;
+    end;
+  finally
+    LRecipe.Free;
+  end;
+end;
+
+procedure TestSequenceInverseEmptyAndEndpointIntersection;
+var
+  LDomains: TWfcPipelineCellDomains;
+  LFailure: TWfcPipelineFailure;
+  LLocks: TWfcPipelineCellLocks;
+  LRecipe: TWfcPipelineModel;
+  LResult: TWfcPipelineResult;
+  LRun: TWfcPipelineRun;
+begin
+  LRecipe := BuildSequenceProjectionRecipe(CurrentWfcPipelineVersions);
+  try
+    SetLength(LLocks, 1);
+    LLocks[0] := MakeWfcPipelineCellLock(1, 0, 0, 0, 'B');
+    LRun := NewRunShape(LRecipe, 3, 1, 1, LLocks, nil);
+    try
+      LResult := ExecuteWfcPipeline(LRecipe, LRun);
+      try
+        LFailure := LResult.CopyFailure;
+        Check((LResult.Status = wprsContradiction) and
+          (LFailure.Kind = gckEntryDomain) and
+          (LFailure.PassIndex = 0),
+          'sequence inverse domains intersect rather than replace the start-state mask');
+      finally
+        LResult.Free;
+      end;
+    finally
+      LRun.Free;
+    end;
+
+    SetLength(LDomains, 1);
+    LDomains[0] := MakeWfcPipelineCellDomain(1, 1, 0, 0, nil);
+    LRun := NewRunShape(LRecipe, 3, 1, 1, nil, LDomains);
+    try
+      LResult := ExecuteWfcPipeline(LRecipe, LRun);
+      try
+        LFailure := LResult.CopyFailure;
+        Check((LResult.Status = wprsContradiction) and
+          (LFailure.Kind = gckEntryDomain) and
+          (LFailure.PassIndex = 0),
+          'an empty public sequence domain becomes a private source contradiction');
+      finally
+        LResult.Free;
+      end;
+    finally
+      LRun.Free;
+    end;
+  finally
+    LRecipe.Free;
+  end;
+end;
+
+procedure TestSequenceInverseMultiTokenDomain;
+var
+  I: Integer;
+  LAllSolved: Boolean;
+  LDomains: TWfcPipelineCellDomains;
+  LLayer: TWfcPipelineResultLayer;
+  LRecipe: TWfcPipelineModel;
+  LResult: TWfcPipelineResult;
+  LRun: TWfcPipelineRun;
+  LSawA: Boolean;
+  LSawC: Boolean;
+  LToken: TWfcModelToken;
+begin
+  LRecipe := BuildSequenceProjectionRecipe(
+    CurrentWfcPipelineVersions, True);
+  try
+    SetLength(LDomains, 1);
+    LDomains[0] := MakeWfcPipelineCellDomain(1, 1, 0, 0,
+      TokensOf(['A', 'C']));
+    LAllSolved := True;
+    LSawA := False;
+    LSawC := False;
+    for I := 0 to 31 do
+    begin
+      LRun := TWfcPipelineRun.Create(LRecipe, 3, 1, 1,
+        Cardinal(I), wpssOneWay, 16, 0, False, nil, LDomains);
+      try
+        LResult := ExecuteWfcPipeline(LRecipe, LRun);
+        try
+          if (LResult.Status <> wprsSolved) or
+              (LResult.LayerCount <> 1) then
+            LAllSolved := False
+          else
+          begin
+            LLayer := LResult.LayerAt(0);
+            if Length(LLayer.Tokens) <> 3 then
+              LAllSolved := False
+            else
+            begin
+              LToken := LLayer.Tokens[1];
+              if LToken = 'A' then
+                LSawA := True
+              else if LToken = 'C' then
+                LSawC := True
+              else
+                LAllSolved := False;
+            end;
+          end;
+        finally
+          LResult.Free;
+        end;
+      finally
+        LRun.Free;
+      end;
+    end;
+    Check(LAllSolved and LSawA and LSawC,
+      'a two-of-three public domain retains both selected emissions and excludes the third');
+  finally
+    LRecipe.Free;
+  end;
+end;
+
+procedure TestBridgeVersionOneRemainsForwardOnly;
+var
+  LBaseline: TWfcPipelineResult;
+  LBaselineLayer: TWfcPipelineResultLayer;
+  LBaselineValid: Boolean;
+  LFailure: TWfcPipelineFailure;
+  LLocks: TWfcPipelineCellLocks;
+  LOpposite: TWfcModelToken;
+  LRecipe: TWfcPipelineModel;
+  LResult: TWfcPipelineResult;
+  LRun: TWfcPipelineRun;
+  LVersions: TWfcPipelineVersions;
+begin
+  LVersions := CurrentWfcPipelineVersions;
+  LVersions.Pattern2DBridgeVersion := 1;
+  LRecipe := BuildPatternProjectionRecipe(LVersions,
+    True, False, False);
+  try
+    LRun := NewRunShape(LRecipe, 2, 2, 1, nil, nil);
+    try
+      LBaseline := ExecuteWfcPipeline(LRecipe, LRun);
+      try
+        LBaselineValid := (LBaseline.Status = wprsSolved) and
+          (LBaseline.LayerCount = 1);
+        if LBaselineValid then
+        begin
+          LBaselineLayer := LBaseline.LayerAt(0);
+          LBaselineValid := Length(LBaselineLayer.Tokens) = 4;
+        end;
+        Check(LBaselineValid,
+          'the version-1 forward-only control solves before comparison');
+        if LBaselineValid then
+        begin
+          if LBaselineLayer.Tokens[0] = 'A' then
+            LOpposite := 'B'
+          else
+            LOpposite := 'A';
+        end
+        else
+          LOpposite := 'A';
+      finally
+        LBaseline.Free;
+      end;
+    finally
+      LRun.Free;
+    end;
+    SetLength(LLocks, 1);
+    LLocks[0] := MakeWfcPipelineCellLock(1, 0, 0, 0, LOpposite);
+    LRun := NewRunShape(LRecipe, 2, 2, 1, LLocks, nil);
+    try
+      LResult := ExecuteWfcPipeline(LRecipe, LRun);
+      try
+        LFailure := LResult.CopyFailure;
+        Check((LResult.Status = wprsContradiction) and
+          (LFailure.PassIndex = 1),
+          'bridge version 1 preserves forward-only target-side failure semantics');
+      finally
+        LResult.Free;
+      end;
+    finally
+      LRun.Free;
+    end;
+  finally
+    LRecipe.Free;
+  end;
+end;
+
+procedure TestBridgeVersionSelectionIsKindLocal;
+var
+  LFailure: TWfcPipelineFailure;
+  LLocks: TWfcPipelineCellLocks;
+  LRecipe: TWfcPipelineModel;
+  LResult: TWfcPipelineResult;
+  LRun: TWfcPipelineRun;
+  LVersions: TWfcPipelineVersions;
+begin
+  LVersions := CurrentWfcPipelineVersions;
+  LVersions.SequenceBridgeVersion := 1;
+  LRecipe := BuildSequenceProjectionRecipe(LVersions);
+  try
+    SetLength(LLocks, 1);
+    LLocks[0] := MakeWfcPipelineCellLock(1, 0, 0, 0, 'B');
+    LRun := NewRunShape(LRecipe, 3, 1, 1, LLocks, nil);
+    try
+      LResult := ExecuteWfcPipeline(LRecipe, LRun);
+      try
+        LFailure := LResult.CopyFailure;
+        Check((LResult.Status = wprsContradiction) and
+          (LFailure.PassIndex = 1),
+          'sequence bridge version 1 remains forward-only');
+      finally
+        LResult.Free;
+      end;
+    finally
+      LRun.Free;
+    end;
+  finally
+    LRecipe.Free;
+  end;
+
+  LVersions := CurrentWfcPipelineVersions;
+  LVersions.Pattern2DBridgeVersion := 1;
+  LRecipe := BuildSequenceProjectionRecipe(LVersions);
+  try
+    SetLength(LLocks, 1);
+    LLocks[0] := MakeWfcPipelineCellLock(1, 0, 0, 0, 'B');
+    LRun := NewRunShape(LRecipe, 3, 1, 1, LLocks, nil);
+    try
+      LResult := ExecuteWfcPipeline(LRecipe, LRun);
+      try
+        LFailure := LResult.CopyFailure;
+        Check((LResult.Status = wprsContradiction) and
+          (LFailure.PassIndex = 0),
+          'sequence lowering reads only the sequence bridge version field');
+      finally
+        LResult.Free;
+      end;
+    finally
+      LRun.Free;
+    end;
+  finally
+    LRecipe.Free;
+  end;
+
+  LVersions := CurrentWfcPipelineVersions;
+  LVersions.SequenceBridgeVersion := 1;
+  LRecipe := BuildPatternProjectionRecipe(LVersions,
+    True, False, False);
+  try
+    SetLength(LLocks, 1);
+    LLocks[0] := MakeWfcPipelineCellLock(1, 0, 0, 0, 'A');
+    LRun := NewRunShape(LRecipe, 1, 1, 1, LLocks, nil);
+    try
+      LResult := ExecuteWfcPipeline(LRecipe, LRun);
+      try
+        LFailure := LResult.CopyFailure;
+        Check((LResult.Status = wprsContradiction) and
+          (LFailure.PassIndex = 0),
+          'pattern lowering reads only the pattern bridge version field');
+      finally
+        LResult.Free;
+      end;
+    finally
+      LRun.Free;
+    end;
+  finally
+    LRecipe.Free;
+  end;
+end;
+
+procedure TestInverseLoweringLimitsAndAtomicity;
+var
+  I: Integer;
+  LCaught: Boolean;
+  LLocks: TWfcPipelineCellLocks;
+  LRecipe: TWfcPipelineModel;
+  LResult: TWfcPipelineResult;
+  LRun: TWfcPipelineRun;
+  LRuntime: TWfcPipelineRuntime;
+begin
+  Check((WFC_PIPELINE_RUNTIME_VERSION = 2) and
+    (WFC_PIPELINE_RUNTIME_INVERSE_LIMITS_VERSION = 1) and
+    (WFC_PIPELINE_RUNTIME_MAX_INVERSE_CONTRIBUTION_COUNT = 1048576) and
+    (WFC_PIPELINE_RUNTIME_MAX_INVERSE_CANDIDATE_VISIT_COUNT = 16777216) and
+    (WFC_PIPELINE_RUNTIME_MAX_INVERSE_PRIVATE_INDEX_COUNT = 4194304),
+    'runtime-v2 inverse lowering exposes its exact fixed limits');
+
+  LRecipe := BuildLimitPatternRecipe;
+  try
+    SetLength(LLocks, 1025);
+    for I := 0 to Length(LLocks) - 1 do
+      LLocks[I] := MakeWfcPipelineCellLock(1, I, 0, 0, 'A');
+    LRun := NewRunShape(LRecipe, 1025, 1, 1, LLocks, nil);
+    try
+      LCaught := False;
+      LRuntime := nil;
+      try
+        LRuntime := TWfcPipelineRuntime.Create(LRecipe, LRun);
+      except
+        on E: EWfcPipelineRuntime do
+          LCaught := Pos('inverse bridge contribution count exceeds',
+            E.Message) > 0;
+      end;
+      LRuntime.Free;
+      Check(LCaught,
+        'inverse contribution work is rejected before its million-record allocation');
+    finally
+      LRun.Free;
+    end;
+
+    SetLength(LLocks, 1);
+    LLocks[0] := MakeWfcPipelineCellLock(1, 0, 0, 0, 'A');
+    LRun := NewRunShape(LRecipe, 1, 1, 1, LLocks, nil);
+    try
+      LResult := ExecuteWfcPipeline(LRecipe, LRun);
+      try
+        Check(LResult.Status = wprsSolved,
+          'a preflight rejection leaves its immutable recipe reusable');
+      finally
+        LResult.Free;
+      end;
+    finally
+      LRun.Free;
+    end;
+  finally
+    LRecipe.Free;
+  end;
+end;
+
 procedure TestOutputBudgetRejectedBeforeCompilation;
 var
   LCaught: Boolean;
@@ -894,6 +1685,26 @@ begin
   RunTest('reversed alias ordering', TestReversedAliasOrderConflict);
   RunTest('detached result lifetime', TestDetachedResultLifetime);
   RunTest('recipe mismatch', TestRecipeMismatchRejected);
+  RunTest('pattern inverse lock/domain overlap and wrap',
+    TestPatternInverseLockDomainOverlapAndWrap);
+  RunTest('pattern inverse empty and self-overlap',
+    TestPatternInverseEmptyAndWrappedSelfOverlap);
+  RunTest('pattern alias coalescing and atomicity',
+    TestPatternAliasCoalescingConflictAndAtomicity);
+  RunTest('multiple pattern bridges sharing a source',
+    TestMultiplePatternBridgesSharePrivateSource);
+  RunTest('sequence inverse duplicate emission and endpoints',
+    TestSequenceInverseDuplicateEmissionAndEndpoints);
+  RunTest('sequence inverse empty and endpoint intersection',
+    TestSequenceInverseEmptyAndEndpointIntersection);
+  RunTest('sequence inverse multi-token domain',
+    TestSequenceInverseMultiTokenDomain);
+  RunTest('bridge version one forward-only compatibility',
+    TestBridgeVersionOneRemainsForwardOnly);
+  RunTest('bridge version selection by projection kind',
+    TestBridgeVersionSelectionIsKindLocal);
+  RunTest('inverse lowering limits and atomicity',
+    TestInverseLoweringLimitsAndAtomicity);
   RunTest('output budget', TestOutputBudgetRejectedBeforeCompilation);
   RunTest('encoded output budget',
     TestEncodedOutputBudgetRejectedBeforeCompilation);

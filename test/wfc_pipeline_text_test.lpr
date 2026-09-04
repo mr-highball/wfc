@@ -122,8 +122,8 @@ const
     'rules-graph-adapter-version=1'#10 +
     'pattern2d-graph-adapter-version=1'#10 +
     'sequence-graph-adapter-version=1'#10 +
-    'pattern2d-bridge-version=1'#10 +
-    'sequence-bridge-version=1'#10 +
+    'pattern2d-bridge-version=2'#10 +
+    'sequence-bridge-version=2'#10 +
     'rank=1'#10 +
     'wrap=false'#10 +
     'traversal=bottom-up'#10 +
@@ -138,7 +138,7 @@ const
     'dependencies=0'#10 +
     'bridges=0'#10 +
     'requirements=0'#10 +
-    'signature=9B25EECF'#10 +
+    'signature=81DC669F'#10 +
     'end'#10;
 
 var
@@ -465,7 +465,7 @@ end;
 
 procedure TestEveryRecordSurface;
 const
-  EXPECTED_SIGNATURE = '2360A4E3';
+  EXPECTED_SIGNATURE = '564C7ED3';
 var
   LDecoded: TWfcPipelineModel;
   LEncoded: String;
@@ -511,8 +511,8 @@ end;
 
 procedure TestTypedProjectionRecords;
 const
-  EXPECTED_PATTERN_SIGNATURE = 'E196772F';
-  EXPECTED_SEQUENCE_SIGNATURE = '62823B57';
+  EXPECTED_PATTERN_SIGNATURE = 'DCFE0ADF';
+  EXPECTED_SEQUENCE_SIGNATURE = '82728C07';
 var
   LDecoded: TWfcPipelineModel;
   LEncoded: String;
@@ -593,6 +593,18 @@ begin
   ExpectDecodeRejected(ReplaceOnce(LEncoded,
     'graph-model-version=1', 'graph-model-version=2'),
     'unknown compatibility versions fail closed');
+  ExpectDecodeRejected(ReplaceOnce(LEncoded,
+    'pattern2d-bridge-version=2', 'pattern2d-bridge-version=3'),
+    'unknown future pattern bridge versions fail closed');
+  ExpectDecodeRejected(ReplaceOnce(LEncoded,
+    'pattern2d-bridge-version=2', 'pattern2d-bridge-version=0'),
+    'pattern bridge version zero fails closed');
+  ExpectDecodeRejected(ReplaceOnce(LEncoded,
+    'sequence-bridge-version=2', 'sequence-bridge-version=3'),
+    'unknown future sequence bridge versions fail closed');
+  ExpectDecodeRejected(ReplaceOnce(LEncoded,
+    'sequence-bridge-version=2', 'sequence-bridge-version=0'),
+    'sequence bridge version zero fails closed');
   ExpectDecodeRejected(ReplaceOnce(LEncoded, ',rules,', ',callback,'),
     'unknown resource kinds fail closed');
   ExpectDecodeRejected(ReplaceOnce(LEncoded, ',public,legacy,',
@@ -779,7 +791,42 @@ begin
     'bridges=257'), 'bridge counts above the public limit are rejected');
 end;
 
+procedure CheckBridgeVersionRoundTrip(const ACurrent: TWfcPipelineModel;
+  const APatternVersion, ASequenceVersion: Integer;
+  const ALabel: String);
+var
+  LDecoded: TWfcPipelineModel;
+  LEncoded: String;
+  LFixture: TWfcPipelineModel;
+  LVersions: TWfcPipelineVersions;
+begin
+  LVersions := ACurrent.CopyVersions;
+  LVersions.Pattern2DBridgeVersion := APatternVersion;
+  LVersions.SequenceBridgeVersion := ASequenceVersion;
+  LFixture := TWfcPipelineModel.Create(ACurrent.CopyMetadata,
+    LVersions, ACurrent.Rank, ACurrent.WrapNeighbors,
+    ACurrent.RunMode, ACurrent.CopyResources,
+    ACurrent.CopyPasses, ACurrent.CopyDependencies,
+    ACurrent.CopyBridges, ACurrent.CopyRequirements);
+  try
+    LEncoded := EncodeWfcPipelineModelText(LFixture);
+    LDecoded := DecodeWfcPipelineModelText(LEncoded);
+    try
+      LVersions := LDecoded.CopyVersions;
+      Check((LVersions.Pattern2DBridgeVersion = APatternVersion) and
+        (LVersions.SequenceBridgeVersion = ASequenceVersion) and
+        (EncodeWfcPipelineModelText(LDecoded) = LEncoded), ALabel);
+    finally
+      LDecoded.Free;
+    end;
+  finally
+    LFixture.Free;
+  end;
+end;
+
 procedure TestVersions;
+var
+  LCurrent: TWfcPipelineModel;
 begin
   Check((WFC_PIPELINE_TEXT_VERSION = 1) and
     (WFC_PIPELINE_MODEL_VERSION = 1) and
@@ -794,6 +841,21 @@ begin
     (WFC_PIPELINE_MAX_TOTAL_ENCODED_TOKEN_LENGTH = 16777216) and
     (WFC_PIPELINE_MAX_TOTAL_RESOURCE_RELATION_SLOT_COUNT = 16777216),
     'the recipe owner has fixed aggregate complexity limits');
+  Check((WFC_PIPELINE_PATTERN_BRIDGE_VERSION = 2) and
+    (WFC_PIPELINE_SEQUENCE_BRIDGE_VERSION = 2),
+    'new canonical recipes select inverse-lowering bridge version 2');
+
+  LCurrent := BuildMinimalFixture;
+  try
+    CheckBridgeVersionRoundTrip(LCurrent, 1, 1,
+      'canonical bridge-version-1 recipes remain byte-exact decodable');
+    CheckBridgeVersionRoundTrip(LCurrent, 1, 2,
+      'mixed pattern-v1 and sequence-v2 recipes round-trip exactly');
+    CheckBridgeVersionRoundTrip(LCurrent, 2, 1,
+      'mixed pattern-v2 and sequence-v1 recipes round-trip exactly');
+  finally
+    LCurrent.Free;
+  end;
 end;
 
 begin

@@ -112,7 +112,7 @@ incompatibly requires a new limits or artifact version.
 | pipeline recipe | 64 resources; 16 MiB per payload and 64 MiB aggregate payload; 256 passes; 4,096 dependencies; 256 bridges; 4,096 requirements; 256 terms per requirement and 8,192 aggregate terms; 1,024 allowed tokens per term and 65,536 aggregate allowed-token records; 1 MiB per encoded outer token and 16 MiB aggregate encoded outer-token text; 16,777,216 aggregate typed-resource relation slots; 256 MiB encoded text; 82,522 lines |
 | pipeline run | 4,194,304 per dimension and aggregate cells; 262,144 locks; 262,144 domains; 1,024 tokens per domain and 1,048,576 aggregate domain tokens; 1,000,000 local backtracks; 65,536 pass backtracks; 1 MiB per encoded token and 16 MiB aggregate encoded token text; 64 MiB encoded text; 1,572,878 lines |
 | pipeline compiler | 4,194,304 per dimension and aggregate cells for a direct compile request |
-| pipeline runtime | 16,777,216 aggregate pass cells in addition to the run and result limits; worst-case public-vocabulary encoding is preflighted before graph compilation |
+| pipeline runtime | 16,777,216 aggregate pass cells in addition to the run and result limits; worst-case public-vocabulary encoding is preflighted before graph compilation; inverse-lowering limits version 1 permits 1,048,576 contributions, 16,777,216 candidate predicate visits, and 4,194,304 stored private indices per invocation |
 | pipeline result | 256 public layers; 4,194,304 aggregate public cells; 1 MiB per encoded token and 64 MiB aggregate encoded token text; 256 MiB encoded text; 4,194,850 lines |
 
 Dimensions share the listed cell budgets and are checked before
@@ -132,12 +132,21 @@ output envelope independent of solver luck.
 
 Rule and generic-model passes may be public or private. Pattern and sequence
 passes must be private because their graph keys are representation details.
-They can reach a public layer only through one of the closed version-1 bridge
-kinds:
+They can reach a public layer only through one of the closed bridge kinds:
 
 - `pattern2d-projection` declares a wrapped rank-2 palette projection;
 - `sequence-projection` declares the emitted-token projection of a rank-1
   sequence.
+
+The two bridge-version fields are independent. Versions 1 and 2 are accepted;
+newly constructed recipes select version 2. Version 1 retains the original
+forward-only materialization contract. Version 2 additionally lowers public
+locks and domains through its matching bridge before the private source pass
+is solved. Unknown versions fail closed, and changing one bridge field never
+changes the other projection kind.
+
+This preparation behavior is the `WFC_PIPELINE_RUNTIME_VERSION = 2`
+contract; the outer recipe, run, and result text envelopes remain version 1.
 
 Pattern projection rejects palette tokens in the reserved private-key form
 `@p` followed only by decimal digits. The recipe and runtime adapter call the
@@ -218,13 +227,16 @@ The normal execution path is:
 1. Decode or construct one immutable `TWfcPipelineModel` recipe.
 2. Decode or construct one `TWfcPipelineRun` against that recipe. The run's
    signature covers the recipe signature and every effective invocation field.
-3. `CompileWfcPipeline` materializes the recipe into a fresh
+3. `TWfcPipelineRuntime` resolves transform aliases, consolidates public
+   inputs, and preflights any bridge-version-2 inverse work without publishing
+   a graph.
+4. `CompileWfcPipeline` materializes the recipe into a fresh
    `TWfcCompiledPipeline`, including passes, the dependency DAG, typed adapters,
    projection bridges, requirements, shape, and commit validation.
-4. `TWfcPipelineRuntime.Execute`, or the one-call `ExecuteWfcPipeline` helper,
-   applies the run to that fresh compiled graph and uses either ordinary or
-   negotiated solving.
-5. Execution returns a detached `TWfcPipelineResult`. The caller may encode or
+5. The runtime intersects derived private domains with adapter-installed
+   domains, applies the original public domains and locks, and then uses either
+   ordinary or negotiated solving.
+6. Execution returns a detached `TWfcPipelineResult`. The caller may encode or
    retain it after the runtime, compiled graph, run, and recipe are gone.
 
 Compilation and execution are transactional. A compile error frees the
@@ -265,6 +277,36 @@ This normalization prevents a lock on a definitionless transform from
 silently overriding its declared copy semantics. The commit validator checks
 every transform cell against its source again inside the rollback-capable
 transaction.
+
+For a version-2 Pattern2D projection, every constrained target cell contributes
+one predicate for every footprint coordinate. A target `(tx, ty)` and footprint
+offset `(ox, oy)` constrain the wrapped private anchor
+`(tx - ox, ty - oy)`. Candidate pattern indices remain in ascending model
+order and survive only when their palette index at that exact footprint
+coordinate belongs to the effective public domain. Folded offsets on small
+wrapped grids are separate contributions and therefore intersect even when
+they name the same private cell.
+
+For a version-2 Sequence projection, a constrained target position contributes
+the ascending set of every private state whose emitted-token index is in the
+effective public domain. Duplicate-emission states are all retained. The
+derived set is intersected with the sequence adapter's existing start, end,
+fragment, or wrapped domain; it never replaces or widens that mask.
+
+Contributions from different inputs and different bridges are sorted by
+private source pass and row-major cell, then globally intersected. This also
+covers multiple public projections sharing one private source. An empty
+intersection is a valid semantic contradiction installed on the graph, not a
+construction error. Original public inputs remain installed as well, and the
+commit validator independently verifies the forward projection. Version-1
+bridges skip only the inverse-lowering step and retain their original
+target-side behavior.
+
+The lowering path uses only project-owned Pascal arrays, stable merge sort,
+ordered integer-set intersection, and the existing collision-safe token
+lookup. No container, serialization, or solver dependency is added; when a
+portable operation is practical in FPC and pas2js, the ecosystem owns that
+implementation.
 
 ### One-way and negotiated outcomes
 

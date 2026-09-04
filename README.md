@@ -68,7 +68,9 @@ modular 3D structures, music, text, and other discrete design problems.
 > deterministic one-way or bounded negotiated solves. Strict canonical
 > `wfcpipeline-run=1` and `wfcpipeline-result=1` artifacts preserve provenance,
 > options, reports, public layers, and failed outcomes across native FPC and
-> pas2js/Node. Shared Pascal application units power a recipe validator and a
+> pas2js/Node. Runtime v2 lowers public Pattern2D and Sequence locks and
+> domains back into bounded private source domains while retaining bridge-v1
+> forward-only replay. Shared Pascal application units power a recipe validator and a
 > headless recipe-plus-run executor; their native and Node hosts contain only
 > bounded file, standard-stream, and process plumbing.
 > Pipeline v2 adds exact signed-offset and finite any-of-neighborhood reads
@@ -145,8 +147,9 @@ modular 3D structures, music, text, and other discrete design problems.
   with strict canonical text, complete provenance, deterministic replay,
   structured failures, public-only layers, and fixed allocation/encoding limits
 - transform-alias-aware public locks and domains with exact intersection,
-  pre-publication conflict detection, and a project-owned collision-safe token
-  lookup shared by native FPC and pas2js
+  deterministic bridge-v2 inverse lowering into private Pattern2D and Sequence
+  states, pre-publication conflict detection, and project-owned bounded lookup,
+  sorting, and intersection shared by native FPC and pas2js
 - dependency-free recipe-validation and headless-execution application units
   with thin native and Node command-line hosts and documented exit contracts
 - deterministic overlapping 2D pattern extraction with heterogeneous corpora,

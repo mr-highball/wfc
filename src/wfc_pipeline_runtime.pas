@@ -37,12 +37,20 @@ uses
   wfc_pipeline_result;
 
 const
-  WFC_PIPELINE_RUNTIME_VERSION = 1;
+  WFC_PIPELINE_RUNTIME_VERSION = 2;
+  WFC_PIPELINE_RUNTIME_INVERSE_LIMITS_VERSION = 1;
 
   { A run already limits one grid to 4,194,304 cells. The executable boundary
     additionally limits the sum of every materialized pass grid so a recipe
     cannot multiply a small-looking run into an unbounded allocation. }
   WFC_PIPELINE_RUNTIME_MAX_TOTAL_PASS_CELL_COUNT = 16777216;
+
+  { Fixed aggregate work and storage boundaries for bridge-v2 inverse public
+    input lowering. They apply to one runtime construction across every
+    Pattern2D and Sequence bridge. }
+  WFC_PIPELINE_RUNTIME_MAX_INVERSE_CONTRIBUTION_COUNT = 1048576;
+  WFC_PIPELINE_RUNTIME_MAX_INVERSE_CANDIDATE_VISIT_COUNT = 16777216;
+  WFC_PIPELINE_RUNTIME_MAX_INVERSE_PRIVATE_INDEX_COUNT = 4194304;
 
 type
   EWfcPipelineRuntime = class(Exception);
@@ -76,7 +84,9 @@ implementation
 
 uses
   wfc_text_codec,
-  wfc_token_lookup;
+  wfc_token_lookup,
+  wfc_pattern2d,
+  wfc_sequence;
 
 type
   TIntegerArray = array of Integer;
@@ -104,6 +114,39 @@ type
     InputIndex: Integer;
   end;
   TEffectiveDomains = array of TEffectiveDomain;
+
+  TEffectiveConstraint = record
+    Key: Integer;
+    PassIndex: Integer;
+    X: Integer;
+    Y: Integer;
+    Z: Integer;
+    AllowedTokenIndices: TIntegerArray;
+  end;
+  TEffectiveConstraints = array of TEffectiveConstraint;
+
+  TInverseContribution = record
+    Key: Integer;
+    PassIndex: Integer;
+    X: Integer;
+    Y: Integer;
+    Z: Integer;
+    BridgeIndex: Integer;
+    ConstraintIndex: Integer;
+    OffsetX: Integer;
+    OffsetY: Integer;
+    CandidateCount: Integer;
+  end;
+  TInverseContributions = array of TInverseContribution;
+
+  TInverseDomain = record
+    PassIndex: Integer;
+    X: Integer;
+    Y: Integer;
+    Z: Integer;
+    AllowedValueIndices: TIntegerArray;
+  end;
+  TInverseDomains = array of TInverseDomain;
 
 function CheckedCellCount(const ARun: TWfcPipelineRun): Integer;
 var
@@ -608,6 +651,423 @@ begin
   SetLength(AValues, LWrite + 1);
 end;
 
+function CopyIndices(const AValues: TIntegerArray): TIntegerArray;
+var
+  I: Integer;
+begin
+  Result := nil;
+  SetLength(Result, Length(AValues));
+  for I := 0 to Length(AValues) - 1 do
+    Result[I] := AValues[I];
+end;
+
+function IsWholeVocabulary(const AValues: TIntegerArray;
+  const AVocabularyCount: Integer): Boolean;
+var
+  I: Integer;
+begin
+  if Length(AValues) <> AVocabularyCount then
+    Exit(False);
+  for I := 0 to Length(AValues) - 1 do
+    if AValues[I] <> I then
+      Exit(False);
+  Result := True;
+end;
+
+procedure BuildEffectiveConstraints(const ALocks: TEffectiveLocks;
+  const ADomains: TEffectiveDomains;
+  const AVocabularies: TVocabularyArray;
+  out AValues: TEffectiveConstraints);
+var
+  LDomainIndex: Integer;
+  LLockIndex: Integer;
+  LWrite: Integer;
+
+  procedure AppendLock(const ALock: TEffectiveLock);
+  begin
+    AValues[LWrite].Key := ALock.Key;
+    AValues[LWrite].PassIndex := ALock.PassIndex;
+    AValues[LWrite].X := ALock.X;
+    AValues[LWrite].Y := ALock.Y;
+    AValues[LWrite].Z := ALock.Z;
+    SetLength(AValues[LWrite].AllowedTokenIndices, 1);
+    AValues[LWrite].AllowedTokenIndices[0] := ALock.TokenIndex;
+    Inc(LWrite);
+  end;
+
+  procedure AppendDomain(const ADomain: TEffectiveDomain);
+  begin
+    if IsWholeVocabulary(ADomain.AllowedTokenIndices,
+        Length(AVocabularies[ADomain.PassIndex])) then
+      Exit;
+    AValues[LWrite].Key := ADomain.Key;
+    AValues[LWrite].PassIndex := ADomain.PassIndex;
+    AValues[LWrite].X := ADomain.X;
+    AValues[LWrite].Y := ADomain.Y;
+    AValues[LWrite].Z := ADomain.Z;
+    AValues[LWrite].AllowedTokenIndices := CopyIndices(
+      ADomain.AllowedTokenIndices);
+    Inc(LWrite);
+  end;
+begin
+  AValues := nil;
+  SetLength(AValues, Length(ALocks) + Length(ADomains));
+  LLockIndex := 0;
+  LDomainIndex := 0;
+  LWrite := 0;
+  while (LLockIndex < Length(ALocks)) or
+      (LDomainIndex < Length(ADomains)) do
+  begin
+    if (LDomainIndex >= Length(ADomains)) or
+        ((LLockIndex < Length(ALocks)) and
+         (ALocks[LLockIndex].Key < ADomains[LDomainIndex].Key)) then
+    begin
+      AppendLock(ALocks[LLockIndex]);
+      Inc(LLockIndex);
+    end
+    else if (LLockIndex >= Length(ALocks)) or
+        (ADomains[LDomainIndex].Key < ALocks[LLockIndex].Key) then
+    begin
+      AppendDomain(ADomains[LDomainIndex]);
+      Inc(LDomainIndex);
+    end
+    else
+    begin
+      { Compatibility has already been proved. A lock is the exact
+        intersection and retains the stronger public constraint. }
+      AppendLock(ALocks[LLockIndex]);
+      Inc(LLockIndex);
+      Inc(LDomainIndex);
+    end;
+  end;
+  SetLength(AValues, LWrite);
+end;
+
+function WrappedSubtract(const ACoordinate, AOffset,
+  ADimension: Integer): Integer;
+var
+  LOffset: Integer;
+begin
+  LOffset := AOffset mod ADimension;
+  if ACoordinate >= LOffset then
+    Result := ACoordinate - LOffset
+  else
+    Result := ADimension - (LOffset - ACoordinate);
+end;
+
+procedure AddBoundedWork(var ATotal: Integer; const ACount,
+  AUnitCost, AMaximum: Integer; const ALabel: String);
+begin
+  if (ACount < 0) or (AUnitCost < 0) then
+    raise EWfcPipelineRuntime.Create(ALabel + ' contains a negative count');
+  if (ACount <> 0) and
+      (AUnitCost > (AMaximum - ATotal) div ACount) then
+    raise EWfcPipelineRuntime.Create(ALabel + ' exceeds the runtime limit');
+  Inc(ATotal, ACount * AUnitCost);
+end;
+
+procedure MergeSortInverseContributions(
+  var AValues: TInverseContributions);
+var
+  I: Integer;
+  LLeft: Integer;
+  LLeftEnd: Integer;
+  LMiddle: Integer;
+  LRight: Integer;
+  LRightEnd: Integer;
+  LTarget: Integer;
+  LTemporary: TInverseContributions;
+  LWidth: Integer;
+begin
+  if Length(AValues) < 2 then
+    Exit;
+  SetLength(LTemporary, Length(AValues));
+  LWidth := 1;
+  while LWidth < Length(AValues) do
+  begin
+    LLeft := 0;
+    while LLeft < Length(AValues) do
+    begin
+      LMiddle := LLeft + LWidth;
+      if LMiddle > Length(AValues) then
+        LMiddle := Length(AValues);
+      LRightEnd := LMiddle + LWidth;
+      if LRightEnd > Length(AValues) then
+        LRightEnd := Length(AValues);
+      LLeftEnd := LMiddle;
+      I := LLeft;
+      LRight := LMiddle;
+      LTarget := LLeft;
+      while (I < LLeftEnd) and (LRight < LRightEnd) do
+      begin
+        if AValues[I].Key <= AValues[LRight].Key then
+        begin
+          LTemporary[LTarget] := AValues[I];
+          Inc(I);
+        end
+        else
+        begin
+          LTemporary[LTarget] := AValues[LRight];
+          Inc(LRight);
+        end;
+        Inc(LTarget);
+      end;
+      while I < LLeftEnd do
+      begin
+        LTemporary[LTarget] := AValues[I];
+        Inc(I);
+        Inc(LTarget);
+      end;
+      while LRight < LRightEnd do
+      begin
+        LTemporary[LTarget] := AValues[LRight];
+        Inc(LRight);
+        Inc(LTarget);
+      end;
+      LLeft := LRightEnd;
+    end;
+    for I := 0 to Length(AValues) - 1 do
+      AValues[I] := LTemporary[I];
+    if LWidth > Length(AValues) div 2 then
+      LWidth := Length(AValues)
+    else
+      LWidth := LWidth * 2;
+  end;
+end;
+
+procedure BuildInverseContributions(const ARecipe: TWfcPipelineModel;
+  const ARun: TWfcPipelineRun; const ACellCount: Integer;
+  const AConstraints: TEffectiveConstraints;
+  out AValues: TInverseContributions);
+var
+  I: Integer;
+  J: Integer;
+  LBridge: TWfcPipelineBridge;
+  LBridgeForTarget: TIntegerArray;
+  LContributionCount: Integer;
+  LFootprintSize: Integer;
+  LModel2D: TWfcOverlappingModel2D;
+  LSequence: TWfcSequenceModel;
+  LVersions: TWfcPipelineVersions;
+  LVisitCount: Integer;
+  LWrite: Integer;
+  X: Integer;
+  Y: Integer;
+begin
+  AValues := nil;
+  LVersions := ARecipe.CopyVersions;
+  SetLength(LBridgeForTarget, ARecipe.PassCount);
+  for I := 0 to Length(LBridgeForTarget) - 1 do
+    LBridgeForTarget[I] := WFC_PIPELINE_NO_INDEX;
+  for I := 0 to ARecipe.BridgeCount - 1 do
+  begin
+    LBridge := ARecipe.BridgeAt(I);
+    if ((LBridge.Kind = wpbkPattern2DProjection) and
+        (LVersions.Pattern2DBridgeVersion = 2)) or
+        ((LBridge.Kind = wpbkSequenceProjection) and
+        (LVersions.SequenceBridgeVersion = 2)) then
+      LBridgeForTarget[LBridge.TargetPassIndex] := I;
+  end;
+
+  LContributionCount := 0;
+  LVisitCount := 0;
+  for I := 0 to Length(AConstraints) - 1 do
+  begin
+    J := LBridgeForTarget[AConstraints[I].PassIndex];
+    if J = WFC_PIPELINE_NO_INDEX then
+      Continue;
+    LBridge := ARecipe.BridgeAt(J);
+    case LBridge.Kind of
+      wpbkPattern2DProjection:
+        begin
+          LModel2D := ARecipe.BorrowPattern2DResource(
+            ARecipe.PassAt(LBridge.SourcePassIndex).ResourceIndex);
+          LFootprintSize := LModel2D.PatternWidth *
+            LModel2D.PatternHeight;
+          AddBoundedWork(LContributionCount, 1, LFootprintSize,
+            WFC_PIPELINE_RUNTIME_MAX_INVERSE_CONTRIBUTION_COUNT,
+            'inverse bridge contribution count');
+          AddBoundedWork(LVisitCount, LFootprintSize,
+            LModel2D.PatternCount,
+            WFC_PIPELINE_RUNTIME_MAX_INVERSE_CANDIDATE_VISIT_COUNT,
+            'inverse bridge candidate visits');
+        end;
+      wpbkSequenceProjection:
+        begin
+          LSequence := ARecipe.BorrowSequenceResource(
+            ARecipe.PassAt(LBridge.SourcePassIndex).ResourceIndex);
+          AddBoundedWork(LContributionCount, 1, 1,
+            WFC_PIPELINE_RUNTIME_MAX_INVERSE_CONTRIBUTION_COUNT,
+            'inverse bridge contribution count');
+          AddBoundedWork(LVisitCount, 1, LSequence.StateCount,
+            WFC_PIPELINE_RUNTIME_MAX_INVERSE_CANDIDATE_VISIT_COUNT,
+            'inverse bridge candidate visits');
+        end;
+    end;
+  end;
+
+  SetLength(AValues, LContributionCount);
+  LWrite := 0;
+  for I := 0 to Length(AConstraints) - 1 do
+  begin
+    J := LBridgeForTarget[AConstraints[I].PassIndex];
+    if J = WFC_PIPELINE_NO_INDEX then
+      Continue;
+    LBridge := ARecipe.BridgeAt(J);
+    case LBridge.Kind of
+      wpbkPattern2DProjection:
+        begin
+          LModel2D := ARecipe.BorrowPattern2DResource(
+            ARecipe.PassAt(LBridge.SourcePassIndex).ResourceIndex);
+          for Y := 0 to LModel2D.PatternHeight - 1 do
+            for X := 0 to LModel2D.PatternWidth - 1 do
+            begin
+              AValues[LWrite].PassIndex := LBridge.SourcePassIndex;
+              AValues[LWrite].X := WrappedSubtract(
+                AConstraints[I].X, X, ARun.Width);
+              AValues[LWrite].Y := WrappedSubtract(
+                AConstraints[I].Y, Y, ARun.Height);
+              AValues[LWrite].Z := 0;
+              AValues[LWrite].Key := CellKey(LBridge.SourcePassIndex,
+                AValues[LWrite].X, AValues[LWrite].Y, 0,
+                ACellCount, ARun);
+              AValues[LWrite].BridgeIndex := J;
+              AValues[LWrite].ConstraintIndex := I;
+              AValues[LWrite].OffsetX := X;
+              AValues[LWrite].OffsetY := Y;
+              AValues[LWrite].CandidateCount := LModel2D.PatternCount;
+              Inc(LWrite);
+            end;
+        end;
+      wpbkSequenceProjection:
+        begin
+          LSequence := ARecipe.BorrowSequenceResource(
+            ARecipe.PassAt(LBridge.SourcePassIndex).ResourceIndex);
+          AValues[LWrite].PassIndex := LBridge.SourcePassIndex;
+          AValues[LWrite].X := AConstraints[I].X;
+          AValues[LWrite].Y := 0;
+          AValues[LWrite].Z := 0;
+          AValues[LWrite].Key := CellKey(LBridge.SourcePassIndex,
+            AConstraints[I].X, 0, 0, ACellCount, ARun);
+          AValues[LWrite].BridgeIndex := J;
+          AValues[LWrite].ConstraintIndex := I;
+          AValues[LWrite].OffsetX := 0;
+          AValues[LWrite].OffsetY := 0;
+          AValues[LWrite].CandidateCount := LSequence.StateCount;
+          Inc(LWrite);
+        end;
+    end;
+  end;
+  if LWrite <> Length(AValues) then
+    raise EWfcPipelineRuntime.Create(
+      'inverse bridge contribution preflight disagrees with construction');
+  MergeSortInverseContributions(AValues);
+
+  LVisitCount := 0;
+  for I := 0 to Length(AValues) - 1 do
+    if (I = 0) or (AValues[I].Key <> AValues[I - 1].Key) then
+      AddBoundedWork(LVisitCount, 1, AValues[I].CandidateCount,
+        WFC_PIPELINE_RUNTIME_MAX_INVERSE_PRIVATE_INDEX_COUNT,
+        'inverse bridge private indices')
+    else if AValues[I].CandidateCount <> AValues[I - 1].CandidateCount then
+      raise EWfcPipelineRuntime.Create(
+        'inverse bridge source registry count is inconsistent');
+end;
+
+function GenerateInverseCandidates(const ARecipe: TWfcPipelineModel;
+  const AContribution: TInverseContribution;
+  const AConstraint: TEffectiveConstraint): TIntegerArray;
+var
+  I: Integer;
+  LBridge: TWfcPipelineBridge;
+  LModel2D: TWfcOverlappingModel2D;
+  LSequence: TWfcSequenceModel;
+  LWrite: Integer;
+begin
+  Result := nil;
+  LBridge := ARecipe.BridgeAt(AContribution.BridgeIndex);
+  SetLength(Result, AContribution.CandidateCount);
+  LWrite := 0;
+  case LBridge.Kind of
+    wpbkPattern2DProjection:
+      begin
+        LModel2D := ARecipe.BorrowPattern2DResource(
+          ARecipe.PassAt(LBridge.SourcePassIndex).ResourceIndex);
+        for I := 0 to LModel2D.PatternCount - 1 do
+          if ContainsIndex(AConstraint.AllowedTokenIndices,
+              LModel2D.PatternPaletteIndexAt(I,
+                AContribution.OffsetX, AContribution.OffsetY)) then
+          begin
+            Result[LWrite] := I;
+            Inc(LWrite);
+          end;
+      end;
+    wpbkSequenceProjection:
+      begin
+        LSequence := ARecipe.BorrowSequenceResource(
+          ARecipe.PassAt(LBridge.SourcePassIndex).ResourceIndex);
+        for I := 0 to LSequence.StateCount - 1 do
+          if ContainsIndex(AConstraint.AllowedTokenIndices,
+              LSequence.StateEmittedTokenIndexAt(I)) then
+          begin
+            Result[LWrite] := I;
+            Inc(LWrite);
+          end;
+      end;
+  end;
+  SetLength(Result, LWrite);
+end;
+
+procedure BuildInverseDomains(const ARecipe: TWfcPipelineModel;
+  const AConstraints: TEffectiveConstraints;
+  const AContributions: TInverseContributions;
+  out AValues: TInverseDomains);
+var
+  I: Integer;
+  LCurrent: TIntegerArray;
+  LCandidates: TIntegerArray;
+  LGroupCount: Integer;
+  LGroupEnd: Integer;
+  LWrite: Integer;
+begin
+  AValues := nil;
+  LGroupCount := 0;
+  for I := 0 to Length(AContributions) - 1 do
+    if (I = 0) or (AContributions[I].Key <>
+        AContributions[I - 1].Key) then
+      Inc(LGroupCount);
+  SetLength(AValues, LGroupCount);
+  I := 0;
+  LWrite := 0;
+  while I < Length(AContributions) do
+  begin
+    LGroupEnd := I + 1;
+    while (LGroupEnd < Length(AContributions)) and
+        (AContributions[LGroupEnd].Key = AContributions[I].Key) do
+      Inc(LGroupEnd);
+
+    LCurrent := GenerateInverseCandidates(ARecipe, AContributions[I],
+      AConstraints[AContributions[I].ConstraintIndex]);
+    Inc(I);
+    while I < LGroupEnd do
+    begin
+      LCandidates := GenerateInverseCandidates(ARecipe,
+        AContributions[I],
+        AConstraints[AContributions[I].ConstraintIndex]);
+      LCurrent := IntersectIndices(LCurrent, LCandidates);
+      Inc(I);
+    end;
+
+    AValues[LWrite].PassIndex := AContributions[LGroupEnd - 1].PassIndex;
+    AValues[LWrite].X := AContributions[LGroupEnd - 1].X;
+    AValues[LWrite].Y := AContributions[LGroupEnd - 1].Y;
+    AValues[LWrite].Z := AContributions[LGroupEnd - 1].Z;
+    AValues[LWrite].AllowedValueIndices := LCurrent;
+    Inc(LWrite);
+  end;
+  SetLength(AValues, LWrite);
+end;
+
 procedure ValidateLockDomainCompatibility(const ALocks: TEffectiveLocks;
   const ADomains: TEffectiveDomains);
 var
@@ -635,6 +1095,93 @@ begin
       Inc(LLockIndex);
       Inc(LDomainIndex);
     end;
+  end;
+end;
+
+procedure ApplyInverseDomains(const ACompiled: TWfcCompiledPipeline;
+  const ADomains: TInverseDomains);
+type
+  TBooleanArray = array of Boolean;
+  TGraphValuesArray = array of TGraphValues;
+var
+  I: Integer;
+  J: Integer;
+  LAllowed: TGraphValues;
+  LCandidateIndex: Integer;
+  LCached: TBooleanArray;
+  LCachedPassValues: TGraphValuesArray;
+  LExisting: TGraphValues;
+  LExistingIndex: Integer;
+  LGraph: TGraph;
+  LPassValues: TGraphValues;
+  LWrite: Integer;
+
+  procedure LoadPassValues(const APassIndex: Integer;
+    out AValues: TGraphValues);
+  begin
+    if not LCached[APassIndex] then
+    begin
+      LCachedPassValues[APassIndex] := ACompiled.Graph.PassGraph[
+        APassIndex].CopyRegisteredValues;
+      LCached[APassIndex] := True;
+    end;
+    AValues := LCachedPassValues[APassIndex];
+  end;
+begin
+  SetLength(LCached, ACompiled.Graph.TotalPassCount);
+  SetLength(LCachedPassValues, ACompiled.Graph.TotalPassCount);
+  for I := 0 to Length(ADomains) - 1 do
+  begin
+    LoadPassValues(ADomains[I].PassIndex, LPassValues);
+    for J := 0 to Length(ADomains[I].AllowedValueIndices) - 1 do
+      if (ADomains[I].AllowedValueIndices[J] < 0) or
+          (ADomains[I].AllowedValueIndices[J] >= Length(LPassValues)) then
+        raise EWfcPipelineRuntime.CreateFmt(
+          'compiled private vocabulary is incomplete at pass %d',
+          [ADomains[I].PassIndex]);
+
+    LGraph := ACompiled.Graph.PassGraph[ADomains[I].PassIndex];
+    if not LGraph.HasAllowedValues(ADomains[I].X,
+        ADomains[I].Y, ADomains[I].Z) then
+    begin
+      SetLength(LAllowed, Length(ADomains[I].AllowedValueIndices));
+      for J := 0 to Length(ADomains[I].AllowedValueIndices) - 1 do
+        LAllowed[J] := LPassValues[
+          ADomains[I].AllowedValueIndices[J]];
+    end
+    else
+    begin
+      { Both arrays are canonical subsequences of the registered value order.
+        Walk that order once so no host-specific map or sort is needed. }
+      LExisting := LGraph.CopyAllowedValues(ADomains[I].X,
+        ADomains[I].Y, ADomains[I].Z);
+      SetLength(LAllowed, Length(ADomains[I].AllowedValueIndices));
+      LCandidateIndex := 0;
+      LExistingIndex := 0;
+      LWrite := 0;
+      for J := 0 to Length(LPassValues) - 1 do
+      begin
+        if (LExistingIndex < Length(LExisting)) and
+            (LExisting[LExistingIndex] = LPassValues[J]) then
+        begin
+          if (LCandidateIndex <
+              Length(ADomains[I].AllowedValueIndices)) and
+              (ADomains[I].AllowedValueIndices[LCandidateIndex] = J) then
+          begin
+            LAllowed[LWrite] := LPassValues[J];
+            Inc(LWrite);
+          end;
+          Inc(LExistingIndex);
+        end;
+        if (LCandidateIndex <
+            Length(ADomains[I].AllowedValueIndices)) and
+            (ADomains[I].AllowedValueIndices[LCandidateIndex] = J) then
+          Inc(LCandidateIndex);
+      end;
+      SetLength(LAllowed, LWrite);
+    end;
+    LGraph.SetAllowedValues(ADomains[I].X, ADomains[I].Y,
+      ADomains[I].Z, LAllowed);
   end;
 end;
 
@@ -716,7 +1263,10 @@ procedure TWfcPipelineRuntime.Initialize(const ARecipe: TWfcPipelineModel;
 var
   LCellCount: Integer;
   LCompiled: TWfcCompiledPipeline;
+  LConstraints: TEffectiveConstraints;
+  LContributions: TInverseContributions;
   LDomains: TEffectiveDomains;
+  LInverseDomains: TInverseDomains;
   LLocks: TEffectiveLocks;
   LResolvedPasses: TIntegerArray;
   LTokenLookups: TTokenLookupArray;
@@ -743,11 +1293,18 @@ begin
     ConsolidateLocks(LLocks);
     ConsolidateDomains(LDomains);
     ValidateLockDomainCompatibility(LLocks, LDomains);
+    BuildEffectiveConstraints(LLocks, LDomains, LVocabularies,
+      LConstraints);
+    BuildInverseContributions(ARecipe, ARun, LCellCount,
+      LConstraints, LContributions);
+    BuildInverseDomains(ARecipe, LConstraints, LContributions,
+      LInverseDomains);
 
     LCompiled := nil;
     try
       LCompiled := CompileWfcPipeline(ARecipe, ARun.Width,
         ARun.Height, ARun.Depth);
+      ApplyInverseDomains(LCompiled, LInverseDomains);
       ApplyInputs(LCompiled, LLocks, LDomains);
       LCompiled.Graph.Seed := ARun.Seed;
       FRecipe := ARecipe;

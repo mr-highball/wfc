@@ -371,7 +371,7 @@ begin
     LOutput, LError);
   Check((LStatus = WFC_RUN_EXIT_SOLVED) and (LError = '') and
     (LOutput = 'wfc-run 1 (wfcpipeline=1, wfcpipeline-run=1, ' +
-      'wfcpipeline-result=1, runtime=1)'#10),
+      'wfcpipeline-result=1, runtime=2)'#10),
     'version identifies every portable artifact and runtime contract');
 end;
 

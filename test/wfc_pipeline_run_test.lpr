@@ -39,7 +39,7 @@ type
   TTestProcedure = procedure;
 
 const
-  EXPECTED_RUN_SIGNATURE = '9788EDD5';
+  EXPECTED_RUN_SIGNATURE = 'E4DFFC20';
 
 var
   GCheckCount: Integer = 0;

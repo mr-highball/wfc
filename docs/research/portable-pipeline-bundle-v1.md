@@ -264,15 +264,18 @@ runtime:
 2. decode or obtain every typed resource;
 3. validate all pass/resource, bridge, vocabulary, dependency, and topology
    relationships without a graph;
-4. create every pass and assign its stable label;
-5. clear compatibility dependencies where the declared mode requires it;
-6. install the exact declared DAG and transform sources;
-7. apply typed pass adapters;
-8. apply materializing bridges;
-9. apply public token requirements;
-10. apply caller locks and domains from the run artifact;
-11. compare the resulting public definition with the recipe;
-12. expose the runtime only after all steps succeed.
+4. resolve public transform aliases, coalesce equal locks, reject conflicting
+   locks, and intersect domains in public-vocabulary order;
+5. preflight and derive bridge-version-2 private source domains without
+   allocating a graph;
+6. create every pass and assign its stable label;
+7. clear compatibility dependencies where the declared mode requires it;
+8. install the exact declared DAG and transform sources;
+9. apply typed pass adapters, materializing bridges, and public requirements,
+   then verify the complete compiled definition against the recipe;
+10. intersect derived private domains with any adapter-installed domains;
+11. apply the original effective public domains and locks;
+12. select the run seed and expose the runtime only after every step succeeds.
 
 Any exception frees the unpublished graph and temporary state. There is no
 partially configured caller-owned target.
@@ -302,6 +305,16 @@ Inputs use coordinates and public tokens. Inputs cannot target a private pass.
 Pattern selection is constrained through its public projection. Sequence
 selection is constrained through its public projection or a future typed
 sequence-input record, never through a private state key.
+
+Bridge version 1 preserves forward-only projection. Current recipes use bridge
+version 2, which deterministically lowers those same public locks and domains
+into the matching private Pattern2D anchors or Sequence states before solving.
+The Pattern2D inverse accounts for every wrapped footprint offset; the Sequence
+inverse retains every duplicate-emission state and intersects with endpoint or
+extent masks. Contributions from aliases and from multiple bridges sharing a
+private source are globally intersected. Empty intersections remain ordinary
+solve contradictions, while the original public constraints stay in place for
+commit-time forward validation.
 
 A lock or domain on a definitionless public transform is resolved to the final
 materialized public source. Alias domains at the same effective cell are
@@ -386,8 +399,11 @@ development FPC, and pas2js/Node:
   semantic signatures and reject malformed envelopes, versions, references,
   ordering, and provenance;
 - runtime fixtures exercise transform-targeted locks and domains, alias-domain
-  intersection, explicit contradictions, deterministic replay, real outer-pass
-  repair, pass-budget exhaustion, and detached result lifetime;
+  intersection, inverse Pattern2D overlap/wrap lowering, Sequence
+  duplicate-emission and endpoint intersection, shared private sources,
+  version-1 forward compatibility, explicit contradictions, deterministic
+  replay, real outer-pass repair, inverse-work and pass-budget exhaustion, and
+  detached result lifetime;
 - application fixtures execute encoded recipe-plus-run input into decoded
   canonical results and verify non-solved behavior; native and Node hosts run a
   committed process matrix covering exact bytes, both legal standard-input

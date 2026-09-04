@@ -126,7 +126,10 @@ The repository already contains the beginnings of the ecosystem:
 - a complete Portable Pipeline Execution v1 path that compiles immutable
   recipes into fresh transactional graphs, applies typed adapters, projection
   bridges, public requirements, and independent commit validators, then accepts
-  canonical recipe-bound locks and domains through transform aliases;
+  canonical recipe-bound locks and domains through transform aliases; current
+  Pattern2D and Sequence bridge v2 recipes deterministically lower those public
+  constraints back into intersected private source domains, while bridge v1
+  remains forward-only for exact replay compatibility;
 - strict canonical `wfcpipeline-run=1` and `wfcpipeline-result=1` artifacts,
   deterministic one-way and bounded negotiated replay, public-only successful
   layers, structured non-solved results, fixed allocation/encoding limits, and
@@ -428,8 +431,13 @@ bridges, public vocabularies, and signed-offset requirements; and round-trips
 through the same dependency-free codec on native FPC and pas2js. Portable
 Pipeline Execution v1 now compiles that recipe into a fresh transactional
 graph, installs every supported adapter, bridge, requirement, and independent
-validator, resolves public inputs through transform aliases, and emits strict
-canonical `wfcpipeline-run=1` and `wfcpipeline-result=1` replay artifacts.
+validator, resolves public inputs through transform aliases, and uses current
+Pattern2D and Sequence bridge v2 declarations to lower locks and domains into
+globally intersected private source domains. Bridge v1 remains forward-only
+for replay compatibility; the bounded inverse lowering, sorting, lookup, and
+intersection machinery is project-owned Pascal shared by native FPC and
+pas2js. Execution emits strict canonical `wfcpipeline-run=1` and
+`wfcpipeline-result=1` replay artifacts.
 Shared Pascal application logic now drives a strict recipe validator and a
 headless recipe-plus-run executor through thin native and pas2js/Node hosts.
 Word-boundary tables, wrapped sequence training, higher-dimensional extraction,
