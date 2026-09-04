@@ -217,6 +217,8 @@ jobs:
           world_test_bin='build/pas2js/world-test/bin'
           learning_test_units='build/pas2js/learning-test/units'
           learning_test_bin='build/pas2js/learning-test/bin'
+          pattern_test_units='build/pas2js/pattern-test/units'
+          pattern_test_bin='build/pas2js/pattern-test/bin'
           example_units='build/pas2js/example/units'
           example_bin='build/pas2js/example/bin'
           world_example_units='build/pas2js/world-example/units'
@@ -225,14 +227,18 @@ jobs:
           learning_example_bin='build/pas2js/learning-example/bin'
           corpus_example_units='build/pas2js/corpus-example/units'
           corpus_example_bin='build/pas2js/corpus-example/bin'
+          pattern_example_units='build/pas2js/pattern-example/units'
+          pattern_example_bin='build/pas2js/pattern-example/bin'
           mkdir -p \
             "$test_units" "$test_bin" \
             "$world_test_units" "$world_test_bin" \
             "$learning_test_units" "$learning_test_bin" \
+            "$pattern_test_units" "$pattern_test_bin" \
             "$example_units" "$example_bin" \
             "$world_example_units" "$world_example_bin" \
             "$learning_example_units" "$learning_example_bin" \
-            "$corpus_example_units" "$corpus_example_bin"
+            "$corpus_example_units" "$corpus_example_bin" \
+            "$pattern_example_units" "$pattern_example_bin"
 
           "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
             -FU"$test_units" -FE"$test_bin" test/wfc_test.lpr
@@ -247,6 +253,11 @@ jobs:
             -FU"$learning_test_units" -FE"$learning_test_bin" \
             test/wfc_learn_test.lpr
           node "$learning_test_bin/wfc_learn_test.js"
+
+          "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
+            -FU"$pattern_test_units" -FE"$pattern_test_bin" \
+            test/wfc_pattern2d_test.lpr
+          node "$pattern_test_bin/wfc_pattern2d_test.js"
 
           "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
             -FU"$example_units" -FE"$example_bin" \
@@ -269,6 +280,11 @@ jobs:
             -FU"$corpus_example_units" -FE"$corpus_example_bin" \
             examples/learning/02_LearnCorpus/LearnCorpus.lpr
           node "$corpus_example_bin/LearnCorpus.js" 0 >/dev/null
+
+          "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
+            -FU"$pattern_example_units" -FE"$pattern_example_bin" \
+            examples/learning/03_LearnPatterns/LearnPatterns.lpr
+          node "$pattern_example_bin/LearnPatterns.js" 0 >/dev/null
 
       - name: Build and self-test browser world
         shell: bash

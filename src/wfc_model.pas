@@ -148,6 +148,8 @@ function MergeWfcModels(const AModels: TWfcModels): TWfcModel;
 function OppositeModelDirection(
   const ADirection: TWfcModelDirection): TWfcModelDirection;
 
+function WfcModelTokenIsValid(const AToken: TWfcModelToken): Boolean;
+
 procedure ApplyModelToGraph(const AModel: TWfcModel; const AGraph: TGraph);
 
 implementation
@@ -357,6 +359,11 @@ begin
   {$ELSE}
   Result := IsValidUtf8(AToken);
   {$ENDIF}
+end;
+
+function WfcModelTokenIsValid(const AToken: TWfcModelToken): Boolean;
+begin
+  Result := TokenIsValidUtf8(AToken);
 end;
 
 function ModelTokenToGraphValue(const AToken: TWfcModelToken): TGraphValue;
@@ -814,14 +821,44 @@ begin
 end;
 
 procedure ApplyModelToGraph(const AModel: TWfcModel; const AGraph: TGraph);
+type
+  TGraphRuleMatrix = array of TGraphRules;
+  TGraphDirectionArray = array of TGraphDirection;
+  TGraphDirectionMatrix = array of TGraphDirectionArray;
+  TIntegerArray = array of Integer;
 var
   D: TWfcModelDirection;
   I: Integer;
   J: Integer;
   LGraphDirection: TGraphDirection;
   LGraphValues: TGraphValues;
-  LTargets: TGraphValues;
+  LRuleCount: TIntegerArray;
+  LRuleDirections: TGraphDirectionMatrix;
+  LRuleSlots: TIntegerArray;
+  LRules: TGraphRuleMatrix;
+  LSlot: Integer;
   LTargetCount: Integer;
+
+  function RuleSlotIndex(const AValue: Integer;
+    const ADirection: TGraphDirection): Integer;
+  begin
+    Result := (AValue * (Ord(High(TGraphDirection)) + 1))
+      + Ord(ADirection);
+  end;
+
+  procedure EnsureRuleSlot(const AValue: Integer;
+    const ADirection: TGraphDirection);
+  var
+    LIndex: Integer;
+  begin
+    LIndex := RuleSlotIndex(AValue, ADirection);
+    if LRuleSlots[LIndex] >= 0 then
+      Exit;
+    LRuleSlots[LIndex] := LRuleCount[AValue];
+    Inc(LRuleCount[AValue]);
+    SetLength(LRuleDirections[AValue], LRuleCount[AValue]);
+    LRuleDirections[AValue][Pred(LRuleCount[AValue])] := ADirection;
+  end;
 begin
   if not Assigned(AModel) then
     raise EWfcModel.Create('model must be assigned');
@@ -865,8 +902,44 @@ begin
             [Ord(D), I]);
       end;
 
+  //Build the complete public rule arrays before mutating the target graph.
+  //Calling NewRule once per dense edge makes every call run inverse-rule
+  //fixed-point synchronization over the model built so far. TWfcModel has
+  //already proved that every relation is reciprocal, and imported rules are
+  //never required, so that repeated closure is unnecessary here. Discover
+  //slots in the same edge order as the fluent builder to preserve observable
+  //TGraphRuleGroup.Rules ordering as well as solver semantics.
+  SetLength(LRuleCount, AModel.ValueCount);
+  SetLength(LRuleDirections, AModel.ValueCount);
+  SetLength(LRuleSlots, AModel.ValueCount *
+    (Ord(High(TGraphDirection)) + 1));
+  for I := 0 to High(LRuleSlots) do
+    LRuleSlots[I] := -1;
+
+  for D := Low(TWfcModelDirection) to High(TWfcModelDirection) do
+    if D in AModel.Directions then
+    begin
+      LGraphDirection := ModelDirectionToGraphDirection(D);
+      for I := 0 to Pred(AModel.ValueCount) do
+        for J := 0 to Pred(AModel.ValueCount) do
+          if AModel.RelationCount(D, I, J) > 0 then
+          begin
+            EnsureRuleSlot(I, LGraphDirection);
+            EnsureRuleSlot(J, InverseOfDir(LGraphDirection));
+          end;
+    end;
+
+  SetLength(LRules, AModel.ValueCount);
   for I := 0 to Pred(AModel.ValueCount) do
-    AGraph.AddValue(LGraphValues[I], AModel.WeightAt(I));
+  begin
+    SetLength(LRules[I], LRuleCount[I]);
+    for J := 0 to Pred(LRuleCount[I]) do
+    begin
+      LRules[I][J].Key := LRuleDirections[I][J];
+      LRules[I][J].Info := False;
+      SetLength(LRules[I][J].Value, 0);
+    end;
+  end;
 
   for D := Low(TWfcModelDirection) to High(TWfcModelDirection) do
     if D in AModel.Directions then
@@ -874,17 +947,27 @@ begin
       LGraphDirection := ModelDirectionToGraphDirection(D);
       for I := 0 to Pred(AModel.ValueCount) do
       begin
-        SetLength(LTargets, 0);
+        LSlot := LRuleSlots[RuleSlotIndex(I, LGraphDirection)];
+        LTargetCount := 0;
+        for J := 0 to Pred(AModel.ValueCount) do
+          if AModel.RelationCount(D, I, J) > 0 then
+            Inc(LTargetCount);
+        SetLength(LRules[I][LSlot].Value, LTargetCount);
+        LTargetCount := 0;
         for J := 0 to Pred(AModel.ValueCount) do
           if AModel.RelationCount(D, I, J) > 0 then
           begin
-            SetLength(LTargets, Length(LTargets) + 1);
-            LTargets[High(LTargets)] := LGraphValues[J];
+            LRules[I][LSlot].Value[LTargetCount] := LGraphValues[J];
+            Inc(LTargetCount);
           end;
-        AGraph.Rules[LGraphValues[I]].NewRule(
-          [LGraphDirection], LTargets);
       end;
     end;
+
+  for I := 0 to Pred(AModel.ValueCount) do
+    AGraph.AddValue(LGraphValues[I], AModel.WeightAt(I));
+
+  for I := 0 to Pred(AModel.ValueCount) do
+    AGraph.Rules[LGraphValues[I]].Rules := LRules[I];
 end;
 
 end.

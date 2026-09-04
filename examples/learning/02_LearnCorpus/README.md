@@ -68,7 +68,10 @@ noncanonical artifact, or unsupported generated adjacency prints an actionable
   model.
 
 This example deliberately trains radius-one token adjacency. The core exposes
-model merging separately; overlapping patterns, smoothing, and learned
-cross-pass constraints remain explicit higher-level operations rather than
-hidden corpus behavior. See [model learning and priming](../../../docs/learning.md)
-for the model, adapter, serialization, and replay contracts.
+model merging separately; overlapping 2D patterns are the explicit
+higher-level operation demonstrated by
+[`03_LearnPatterns`](../03_LearnPatterns/README.md). Smoothing and learned
+cross-pass constraints remain future operations rather than hidden corpus
+behavior. See [model learning and priming](../../../docs/learning.md) and
+[overlapping 2D patterns](../../../docs/patterns.md) for the model, adapter,
+serialization, projection, and replay contracts.

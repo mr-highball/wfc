@@ -15,6 +15,7 @@ $sourceDirectory = Join-Path $repositoryRoot 'src'
 $testSource = Join-Path $repositoryRoot 'test/wfc_test.lpr'
 $worldTestSource = Join-Path $repositoryRoot 'test/wfc_world2d_test.lpr'
 $learningTestSource = Join-Path $repositoryRoot 'test/wfc_learn_test.lpr'
+$patternTestSource = Join-Path $repositoryRoot 'test/wfc_pattern2d_test.lpr'
 $exampleSource = Join-Path $repositoryRoot `
   'examples/text/01_SimpleTiledWorld/SimpleTiledWorld.lpr'
 $worldExampleSource = Join-Path $repositoryRoot `
@@ -23,6 +24,8 @@ $learningExampleSource = Join-Path $repositoryRoot `
   'examples/learning/01_LearnTiles/LearnTiles.lpr'
 $corpusExampleSource = Join-Path $repositoryRoot `
   'examples/learning/02_LearnCorpus/LearnCorpus.lpr'
+$patternExampleSource = Join-Path $repositoryRoot `
+  'examples/learning/03_LearnPatterns/LearnPatterns.lpr'
 $worldCommonDirectory = Join-Path $repositoryRoot 'examples/2D/common'
 $unitOutputDirectory = Join-Path $repositoryRoot 'build/native/units'
 $binaryOutputDirectory = Join-Path $repositoryRoot 'build/native/bin'
@@ -135,6 +138,42 @@ Write-Host "Running '$learningTestExecutable'."
 $learningTestExitCode = $LASTEXITCODE
 if ($learningTestExitCode -ne 0) {
   exit $learningTestExitCode
+}
+
+$patternTestCompilerArguments = @(
+  $CompilerOptions
+  '-B'
+  '-Mdelphi'
+  '-Sa'
+  '-Cr'
+  '-Co'
+  '-Ci'
+  "-Fu$sourceDirectory"
+  "-FU$unitOutputDirectory"
+  "-FE$binaryOutputDirectory"
+  $patternTestSource
+)
+
+Write-Host 'Building the overlapping-pattern conformance suite.'
+& $Compiler @patternTestCompilerArguments
+$patternTestCompilerExitCode = $LASTEXITCODE
+if ($patternTestCompilerExitCode -ne 0) {
+  exit $patternTestCompilerExitCode
+}
+
+$patternTestExecutableName = if ($env:OS -eq 'Windows_NT') {
+  'wfc_pattern2d_test.exe'
+} else {
+  'wfc_pattern2d_test'
+}
+$patternTestExecutable = Join-Path $binaryOutputDirectory `
+  $patternTestExecutableName
+
+Write-Host "Running '$patternTestExecutable'."
+& $patternTestExecutable
+$patternTestExitCode = $LASTEXITCODE
+if ($patternTestExitCode -ne 0) {
+  exit $patternTestExitCode
 }
 
 $exampleCompilerArguments = @(
@@ -283,4 +322,40 @@ $corpusExampleExecutable = Join-Path $binaryOutputDirectory `
 
 Write-Host "Smoke testing '$corpusExampleExecutable' with seed 0."
 & $corpusExampleExecutable 0 | Out-Null
+$corpusExampleExitCode = $LASTEXITCODE
+if ($corpusExampleExitCode -ne 0) {
+  exit $corpusExampleExitCode
+}
+
+$patternExampleCompilerArguments = @(
+  $CompilerOptions
+  '-B'
+  '-Mdelphi'
+  '-Sa'
+  '-Cr'
+  '-Co'
+  '-Ci'
+  "-Fu$sourceDirectory"
+  "-FU$unitOutputDirectory"
+  "-FE$binaryOutputDirectory"
+  $patternExampleSource
+)
+
+Write-Host 'Building the portable overlapping-pattern example.'
+& $Compiler @patternExampleCompilerArguments
+$patternExampleCompilerExitCode = $LASTEXITCODE
+if ($patternExampleCompilerExitCode -ne 0) {
+  exit $patternExampleCompilerExitCode
+}
+
+$patternExampleExecutableName = if ($env:OS -eq 'Windows_NT') {
+  'LearnPatterns.exe'
+} else {
+  'LearnPatterns'
+}
+$patternExampleExecutable = Join-Path $binaryOutputDirectory `
+  $patternExampleExecutableName
+
+Write-Host "Smoke testing '$patternExampleExecutable' with seed 0."
+& $patternExampleExecutable 0 | Out-Null
 exit $LASTEXITCODE

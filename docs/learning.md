@@ -6,6 +6,11 @@ supply tokens, choose boundary and symmetry policies, then either apply the
 immutable model to `TGraph` or serialize it in the canonical `.wfcm` text
 format.
 
+For multi-cell footprints rather than single-token adjacency, see the
+separate [overlapping 2D patterns](patterns.md) layer. It builds on the same
+tokens and graph adapter while retaining pattern payloads and projection data
+that do not belong in the generic `TWfcModel` IR.
+
 This is the first training primitive for the wider ecosystem. A tile, note,
 word, voxel label, or other discrete symbol uses the same frequency and
 adjacency representation.
@@ -258,7 +263,7 @@ Recreating that model from training input additionally requires:
 - `WFC_LEARN_CORPUS_ALGORITHM_VERSION` for multiple samples;
 - the exact ordered UTF-8 token sequence and dimensions of every sample;
 - boundary and symmetry policies; and
-- `WFC_MODEL_MERGE_ALGORITHM_VERSION` when models were merged; and
+- `WFC_MODEL_MERGE_ALGORITHM_VERSION` when models were merged;
 - the selected model-text profile when comparing serialized bytes.
 
 Solving still uses the replay identity documented in
@@ -268,8 +273,9 @@ topology, solve options, and solver/random algorithm versions.
 ## current scope
 
 The current learner handles ordered heterogeneous pretokenized corpora of
-single-layer 1D or 2D samples with cardinal radius-one relations. It does not
-yet tokenize raw files, extract overlapping multi-cell patterns, learn 3D
-neighborhoods, smooth unseen relations, attach provenance or semantic tags, or
-train cross-pass predicates. Those are deliberate extension points built on
-the stable IR rather than hidden behavior.
+single-layer 1D or 2D samples with cardinal radius-one relations. The separate
+pattern layer now extracts overlapping multi-cell 2D footprints. Neither layer
+yet tokenizes raw files, learns 3D neighborhoods, smooths unseen relations,
+attaches provenance or semantic tags, or trains cross-pass predicates. Those
+are deliberate extension points built on stable explicit IR rather than
+hidden behavior.

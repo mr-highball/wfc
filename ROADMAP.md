@@ -45,6 +45,10 @@ The repository already contains the beginnings of the ecosystem:
   heterogeneous ordered samples, open/wrapped boundaries, explicit D4
   augmentation, checked model merging, strict canonical `.wfcm` text I/O, and
   native/pas2js learning demonstrations;
+- an immutable overlapping-pattern 2D model with heterogeneous extraction,
+  exact structural compatibility, latent assignment capture, independently
+  checked projection, strict canonical `.wfcp` text I/O, and a portable seeded
+  demonstration;
 - stack-safe iterative traversal of large planes while preserving the legacy
   solver's north/east/south/west depth-first order;
 - checked one-command native build gates, an FPM package, a runtime-only
@@ -73,9 +77,10 @@ It is not yet the finished system described above:
 - the first interactive pas2js demo and browser test host now exist, but there
   is no complete pass/domain inspector or stable native/pas2js decision-trace
   parity suite (canonical seeded value fixtures do already match);
-- model learning currently covers pretokenized cardinal radius-one corpora;
-  overlapping patterns, 3D neighborhoods, pass dependencies, provenance
-  metadata, and the planned validation/run/inspection tools remain;
+- model learning now covers pretokenized cardinal radius-one corpora and
+  structurally compatible overlapping 2D footprints with explicit projection;
+  3D neighborhoods, pass dependencies, provenance metadata, and the planned
+  validation/run/inspection tools remain;
 - the hosted CI definition is present, but its first remote run still needs to
   be observed before the Phase 0 exit gate is claimed complete;
 - music playback currently depends on the GPL-licensed SoundShop submodule,
@@ -107,6 +112,11 @@ to preserve what is interesting while making the foundation trustworthy.
 - **MIT by default.** Project-authored source and assets remain MIT. External
   code and data must be optional, documented, and license-compatible with the
   way they are distributed.
+- **Own the portable foundation.** When the choice is between making a library
+  foundational or writing the needed behavior in portable Pascal, write and
+  maintain the Pascal implementation here. Third-party engines, viewers, and
+  media backends may be isolated optional adapters; canonical models,
+  algorithms, validation, and replay behavior must not depend on them.
 
 ## Phase 0: a trustworthy baseline
 
@@ -236,8 +246,13 @@ compatible models, store ordered source shapes in immutable model data, adapt
 representable models to `TGraph`, and round-trip strict canonical `.wfcm`
 documents using the `wfcm=1` and `wfcm=2` profiles on native FPC and pas2js.
 Portable single-sample and corpus fixtures prove those vertical slices. The
-broader tools, provenance metadata, pattern and higher-dimensional extraction,
-and complete exit gate remain open.
+overlapping-pattern version-1 layer additionally extracts deterministic
+rectangular 2D payloads, supports open/wrapped heterogeneous sources and
+square-footprint D4 augmentation, compiles exact structural overlap, keeps
+latent assignments separate from projected tokens, independently validates
+both, and round-trips strict standalone `wfcp=1` artifacts. The broader tools,
+provenance metadata, higher-dimensional extraction, projection-aware pass
+composition, and complete exit gate remain open.
 
 ### Deliverables
 

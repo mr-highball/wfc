@@ -19,7 +19,7 @@ begin
     P.Author := 'mr-highball';
     P.License := 'MIT';
     P.HomepageURL := 'https://github.com/mr-highball/wfc';
-    P.Description := 'Wave Function Collapse, multi-pass generation, and model learning library';
+    P.Description := 'Wave Function Collapse, multi-pass generation, and pattern learning library';
     P.Dependencies.Add('rtl-generics');
     P.SetUnitsOutputDir('build' + PathDelim + 'fpm' + PathDelim + 'units' +
       PathDelim + '$(target)');
@@ -28,7 +28,11 @@ begin
     P.Targets.AddUnit('wfc.pas');
     P.Targets.AddUnit('wfc_model.pas');
     P.Targets.AddUnit('wfc_learn.pas');
+    P.Targets.AddUnit('wfc_text_codec.pas');
     P.Targets.AddUnit('wfc_model_text.pas');
+    P.Targets.AddUnit('wfc_pattern2d.pas');
+    P.Targets.AddUnit('wfc_pattern2d_learn.pas');
+    P.Targets.AddUnit('wfc_pattern2d_text.pas');
     P.Targets.AddUnit('wfc_world2d.pas');
     P.Targets.AddUnit('wfc_world2d_validate.pas');
     Run;

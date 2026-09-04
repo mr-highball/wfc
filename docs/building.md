@@ -1,10 +1,11 @@
 # Building and testing
 
-The dependency-free build covers the core, specialized 2D, and model-learning
-units; all three conformance suites; and seeded smoke runs of the
-text-rendered tiled world, multi-pass 2D ecosystem, learned-tiles, and
-learned-corpus demos. It does not initialize the optional music submodule or
-build the unfinished Castle Game Engine viewer. The browser world has its own
+The dependency-free build covers the core, specialized 2D, radius-one model
+learning, and overlapping-pattern units; all four conformance suites; and
+seeded smoke runs of the text-rendered tiled world, multi-pass 2D ecosystem,
+learned-tiles, learned-corpus, and overlapping-pattern demos. It does not
+initialize the optional music submodule or build the unfinished Castle Game
+Engine viewer. The browser world has its own
 dependency-free pas2js entry point described below.
 
 FPC 3.2.2 is the supported stable compiler. The current FPC development
@@ -23,9 +24,10 @@ From the repository root, use the entry point for your shell:
 ```
 
 Both scripts rebuild with assertions and range, overflow, and I/O checks, run
-`wfc_test`, `wfc_world2d_test`, and `wfc_learn_test`, then compile and
-smoke-test all four portable console examples with seed `0` and the
-multi-pass world with its default seed as well. A compiler error, failed check,
+`wfc_test`, `wfc_world2d_test`, `wfc_learn_test`, and
+`wfc_pattern2d_test`, then compile and smoke-test all five portable console
+examples with seed `0` and the multi-pass world with its default seed as well.
+A compiler error, failed check,
 or example failure produces a nonzero exit code. Compiler units and binaries
 are written beneath `build/native/`; running the gate does not modify tracked
 source files.
@@ -44,8 +46,10 @@ FPC=/opt/fpc/bin/fpc ./build.sh -O2
 
 ## FPM package
 
-`fpmake.pp` describes the runtime `wfc` package and its `rtl-generics`
-dependency. Bootstrap FPMake with the compiler, then build the package:
+`fpmake.pp` describes the runtime `wfc` package. Its only declared dependency,
+`rtl-generics`, is part of the standard FPC distribution; no third-party
+runtime library is required. Bootstrap FPMake with the compiler, then build
+the package:
 
 ```powershell
 New-Item -ItemType Directory -Force `
@@ -110,6 +114,12 @@ pas2js -B -Tnodejs -Mdelphi -Fusrc \
   -FUbuild/pas2js/learning-units -FEbuild/pas2js/learning \
   test/wfc_learn_test.lpr
 node build/pas2js/learning/wfc_learn_test.js
+
+mkdir -p build/pas2js/pattern-units build/pas2js/pattern
+pas2js -B -Tnodejs -Mdelphi -Fusrc \
+  -FUbuild/pas2js/pattern-units -FEbuild/pas2js/pattern \
+  test/wfc_pattern2d_test.lpr
+node build/pas2js/pattern/wfc_pattern2d_test.js
 ```
 
 The portable multi-pass host uses the same target:
@@ -141,6 +151,17 @@ pas2js -B -Tnodejs -Mdelphi -Fusrc \
   -FUbuild/pas2js/corpus-example-units -FEbuild/pas2js/corpus-example \
   examples/learning/02_LearnCorpus/LearnCorpus.lpr
 node build/pas2js/corpus-example/LearnCorpus.js 0
+```
+
+The overlapping-pattern host exercises canonical `wfcp=1`, latent capture,
+and independently checked projection:
+
+```bash
+mkdir -p build/pas2js/pattern-example-units build/pas2js/pattern-example
+pas2js -B -Tnodejs -Mdelphi -Fusrc \
+  -FUbuild/pas2js/pattern-example-units -FEbuild/pas2js/pattern-example \
+  examples/learning/03_LearnPatterns/LearnPatterns.lpr
+node build/pas2js/pattern-example/LearnPatterns.js 0
 ```
 
 A standalone `pas2js` executable is not enough when its RTL unit paths are
@@ -182,8 +203,9 @@ not commit them.
 
 The hosted pas2js gate uses exact official upstream pas2js and FPC-source
 revisions, verifies both source-archive SHA-256 digests, and caches the resulting
-3.3.1 toolchain. It runs all three conformance suites, the tiled-world,
-learned-tiles, and learned-corpus seed-zero smoke tests, and the multi-pass
+3.3.1 toolchain. It runs all four conformance suites, the tiled-world,
+learned-tiles, learned-corpus, and overlapping-pattern seed-zero smoke tests,
+and the multi-pass
 world with both seed zero and its default seed under Node.js 22.23.2. It then
 builds the browser target, serves the staged site, and checks its exact
 body-state contract in headless Chrome. A pinned development compiler is used

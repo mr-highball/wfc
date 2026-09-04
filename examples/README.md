@@ -10,6 +10,7 @@ the [roadmap](../ROADMAP.md).
 | Interactive browser world | `2D/02_BrowserWorld/BrowserWorld.lpr` | pas2js/browser | Runs the same model and validator in a responsive three-layer canvas UI with seeds, wrapping, cell locks, and an exact headless-browser fixture. |
 | Learned tiles | `learning/01_LearnTiles/LearnTiles.lpr` | Native FPC, pas2js/Node | Learns weighted cardinal constraints from a tokenized sample, serializes the immutable model canonically, generates a seeded grid, and independently validates every emitted adjacency without external dependencies. |
 | Learned corpus | `learning/02_LearnCorpus/LearnCorpus.lpr` | Native FPC, pas2js/Node | Learns one directed model from two differently sized samples, proves their local wraps and absent cross-sample seams, round-trips canonical `wfcm=2`, and independently validates generated orientation. |
+| Overlapping patterns | `learning/03_LearnPatterns/LearnPatterns.lpr` | Native FPC, pas2js/Node | Learns weighted `2x2` structure from heterogeneous grids with D4 augmentation, round-trips strict `wfcp=1`, solves private latent patterns, independently validates every overlap and projected token contribution, and prints a portable signature without external dependencies. |
 | Text-rendered 2D world | `text/01_SimpleTiledWorld/SimpleTiledWorld.lpr` | Native FPC, pas2js/Node | Builds and runs from the same Pascal source, prints and accepts an optional replay seed, and needs no external dependency. This is world generation rendered as text, not a text-prediction model. |
 | Building-kit console | `3D/01_SimpleBuildingKit/tester.lpr` | Native FPC | Builds without Castle Game Engine, but its current fixture reaches a no-valid-value failure before rendering. It does not yet prove vertical 3D constraints. |
 | Castle viewer shell | `3D/01_SimpleBuildingKit/castle-demo/` | Native Castle Game Engine | The project shell and assets exist, but its game state does not yet call WFC or render generated building geometry. |
@@ -86,6 +87,23 @@ node build/examples/learning-corpus/pas2js/bin/LearnCorpus.js 0
 
 See the [corpus-learning guide](learning/02_LearnCorpus/README.md) for the exact
 samples, deterministic ordering, no-seam invariant, and expected output.
+
+The overlapping-pattern example preserves multi-cell structure through an
+explicit latent assignment and projection boundary:
+
+```text
+fpc -B -Mdelphi -Sa -Cr -Co -Ci -Fusrc -FUbuild/examples/pattern/native/units -FEbuild/examples/pattern/native/bin examples/learning/03_LearnPatterns/LearnPatterns.lpr
+build/examples/pattern/native/bin/LearnPatterns 0
+```
+
+```text
+pas2js -B -Tnodejs -Mdelphi -Fusrc -FUbuild/examples/pattern/pas2js/units -FEbuild/examples/pattern/pas2js/bin examples/learning/03_LearnPatterns/LearnPatterns.lpr
+node build/examples/pattern/pas2js/bin/LearnPatterns.js 0
+```
+
+See the [overlapping-pattern guide](learning/03_LearnPatterns/README.md) and
+the [model documentation](../docs/patterns.md) for extraction, compatibility,
+projection, replay identity, and the current pass-composition boundary.
 
 The browser host has dedicated entry points that compile its Pascal program
 and stage a complete static site beneath `build/browser/world2d/www`:

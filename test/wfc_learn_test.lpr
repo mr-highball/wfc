@@ -172,6 +172,16 @@ begin
     AValueCount)] := ACount;
 end;
 
+procedure SetReciprocalRelation(var ARelations: TWfcModelIntegerArray;
+  const ADirection: TWfcModelDirection;
+  const ASource, ATarget, AValueCount, ACount: Integer);
+begin
+  SetRelation(ARelations, ADirection, ASource, ATarget,
+    AValueCount, ACount);
+  SetRelation(ARelations, OppositeModelDirection(ADirection),
+    ATarget, ASource, AValueCount, ACount);
+end;
+
 function ReplaceOnce(const AText, AOld, ANew: String): String;
 var
   LPosition: Integer;
@@ -212,6 +222,184 @@ begin
   {$ELSE}
   Result := TWfcModelToken(UTF8Encode(UnicodeString(AValue)));
   {$ENDIF}
+end;
+
+function ModelTokenAsGraphValue(const AToken: TWfcModelToken):
+  TGraphValue;
+begin
+  {$IFDEF PAS2JS}
+  Result := TGraphValue(AToken);
+  {$ELSE}
+  Result := TGraphValue(UTF8Decode(AToken));
+  {$ENDIF}
+end;
+
+function TestModelDirectionToGraphDirection(
+  const ADirection: TWfcModelDirection): TGraphDirection;
+begin
+  case ADirection of
+    wmdNorth:
+      Result := gdNorth;
+    wmdEast:
+      Result := gdWest;
+    wmdSouth:
+      Result := gdSouth;
+    wmdWest:
+      Result := gdEast;
+  end;
+end;
+
+procedure ApplyModelFluentlyForTest(const AModel: TWfcModel;
+  const AGraph: TGraph);
+var
+  D: TWfcModelDirection;
+  I: Integer;
+  J: Integer;
+  LGraphDirection: TGraphDirection;
+  LGraphValues: TGraphValues;
+  LTargets: TGraphValues;
+begin
+  SetLength(LGraphValues, AModel.ValueCount);
+  for I := 0 to Pred(AModel.ValueCount) do
+  begin
+    LGraphValues[I] := ModelTokenAsGraphValue(AModel.TokenAt(I));
+    AGraph.AddValue(LGraphValues[I], AModel.WeightAt(I));
+  end;
+
+  for D := Low(TWfcModelDirection) to High(TWfcModelDirection) do
+    if D in AModel.Directions then
+    begin
+      LGraphDirection := TestModelDirectionToGraphDirection(D);
+      for I := 0 to Pred(AModel.ValueCount) do
+      begin
+        SetLength(LTargets, 0);
+        for J := 0 to Pred(AModel.ValueCount) do
+          if AModel.RelationCount(D, I, J) > 0 then
+          begin
+            SetLength(LTargets, Succ(Length(LTargets)));
+            LTargets[High(LTargets)] := LGraphValues[J];
+          end;
+        AGraph.Rules[LGraphValues[I]].NewRule(
+          [LGraphDirection], LTargets);
+      end;
+    end;
+end;
+
+function SameGraphValues(const ALeft, ARight: TGraphValues): Boolean;
+var
+  I: Integer;
+begin
+  if Length(ALeft) <> Length(ARight) then
+    Exit(False);
+  for I := 0 to High(ALeft) do
+    if ALeft[I] <> ARight[I] then
+      Exit(False);
+  Result := True;
+end;
+
+function SamePublicGraphModel(const ALeft, ARight: TGraph;
+  const AModel: TWfcModel): Boolean;
+var
+  I: Integer;
+  J: Integer;
+  LLeftGroup: TGraphRuleGroup;
+  LLeftRules: TGraphRules;
+  LRightGroup: TGraphRuleGroup;
+  LRightRules: TGraphRules;
+  LValue: TGraphValue;
+begin
+  Result := False;
+  if ALeft.RuleGroups.Count <> ARight.RuleGroups.Count then
+    Exit;
+  if ALeft.RuleGroups.Count <> AModel.ValueCount then
+    Exit;
+
+  for I := 0 to Pred(AModel.ValueCount) do
+  begin
+    LValue := ModelTokenAsGraphValue(AModel.TokenAt(I));
+    if (not ALeft.RuleGroups.ContainsKey(LValue)) or
+      (not ARight.RuleGroups.ContainsKey(LValue)) then
+      Exit;
+    LLeftGroup := ALeft.RuleGroups[LValue];
+    LRightGroup := ARight.RuleGroups[LValue];
+    if (LLeftGroup.Value <> LRightGroup.Value) or
+      (LLeftGroup.Value <> LValue) or
+      (LLeftGroup.Weight <> LRightGroup.Weight) or
+      (LLeftGroup.Weight <> AModel.WeightAt(I)) or
+      (LLeftGroup.HasRequired <> LRightGroup.HasRequired) or
+      (not SameGraphValues(LLeftGroup.PreviousValues,
+        LRightGroup.PreviousValues)) then
+      Exit;
+
+    LLeftRules := LLeftGroup.Rules;
+    LRightRules := LRightGroup.Rules;
+    if Length(LLeftRules) <> Length(LRightRules) then
+      Exit;
+    for J := 0 to High(LLeftRules) do
+      if (LLeftRules[J].Key <> LRightRules[J].Key) or
+        (LLeftRules[J].Info <> LRightRules[J].Info) or
+        (not SameGraphValues(LLeftRules[J].Value,
+          LRightRules[J].Value)) then
+        Exit;
+  end;
+  Result := True;
+end;
+
+function GraphRulesMatchModel(const AGraph: TGraph;
+  const AModel: TWfcModel): Boolean;
+var
+  D: TWfcModelDirection;
+  I: Integer;
+  J: Integer;
+  LExpectedCount: Integer;
+  LGraphDirection: TGraphDirection;
+  LGroup: TGraphRuleGroup;
+  LRule: TGraphRule;
+  LTargetIndex: Integer;
+  LValue: TGraphValue;
+begin
+  Result := False;
+  if AGraph.RuleGroups.Count <> AModel.ValueCount then
+    Exit;
+  for I := 0 to Pred(AModel.ValueCount) do
+  begin
+    LValue := ModelTokenAsGraphValue(AModel.TokenAt(I));
+    if not AGraph.RuleGroups.ContainsKey(LValue) then
+      Exit;
+    LGroup := AGraph.RuleGroups[LValue];
+    if (LGroup.Weight <> AModel.WeightAt(I)) or LGroup.HasRequired or
+      (Length(LGroup.PreviousValues) <> 0) or
+      (Length(LGroup.Rules) <> 4) or
+      LGroup.Exists[gdUp] or LGroup.Exists[gdDown] then
+      Exit;
+
+    for D := Low(TWfcModelDirection) to High(TWfcModelDirection) do
+      if D in AModel.Directions then
+      begin
+        LGraphDirection := TestModelDirectionToGraphDirection(D);
+        if not LGroup.Exists[LGraphDirection] then
+          Exit;
+        LRule := LGroup.Rule[LGraphDirection];
+        if LRule.Info then
+          Exit;
+        LExpectedCount := 0;
+        for J := 0 to Pred(AModel.ValueCount) do
+          if AModel.RelationCount(D, I, J) > 0 then
+            Inc(LExpectedCount);
+        if Length(LRule.Value) <> LExpectedCount then
+          Exit;
+        LTargetIndex := 0;
+        for J := 0 to Pred(AModel.ValueCount) do
+          if AModel.RelationCount(D, I, J) > 0 then
+          begin
+            if LRule.Value[LTargetIndex] <>
+              ModelTokenAsGraphValue(AModel.TokenAt(J)) then
+              Exit;
+            Inc(LTargetIndex);
+          end;
+      end;
+  end;
+  Result := True;
 end;
 
 procedure CheckDecodeRejected(const AText, AMessage: String);
@@ -934,6 +1122,123 @@ begin
   end;
 end;
 
+function MakeAsymmetricDense2DModel: TWfcModel;
+var
+  LRelations: TWfcModelIntegerArray;
+  LTokens: TWfcModelTokens;
+  LWeights: TWfcModelIntegerArray;
+begin
+  LTokens := Tokens('A', 'B', 'C', 'D');
+  SetLength(LWeights, 4);
+  LWeights[0] := 1;
+  LWeights[1] := 2;
+  LWeights[2] := 3;
+  LWeights[3] := 4;
+  SetLength(LRelations, 4 * 4 * 4);
+
+  //North rows and their south transposes are deliberately all different.
+  SetReciprocalRelation(LRelations, wmdNorth, 0, 0, 4, 2);
+  SetReciprocalRelation(LRelations, wmdNorth, 0, 1, 4, 1);
+  SetReciprocalRelation(LRelations, wmdNorth, 1, 2, 4, 3);
+  SetReciprocalRelation(LRelations, wmdNorth, 2, 0, 4, 1);
+  SetReciprocalRelation(LRelations, wmdNorth, 2, 2, 4, 2);
+  SetReciprocalRelation(LRelations, wmdNorth, 2, 3, 4, 1);
+  SetReciprocalRelation(LRelations, wmdNorth, 3, 1, 4, 2);
+  SetReciprocalRelation(LRelations, wmdNorth, 3, 3, 4, 1);
+
+  //East rows and west transposes differ from the vertical supports and from
+  //one another, exposing any reused pas2js rule record or target array.
+  SetReciprocalRelation(LRelations, wmdEast, 0, 0, 4, 1);
+  SetReciprocalRelation(LRelations, wmdEast, 0, 2, 4, 2);
+  SetReciprocalRelation(LRelations, wmdEast, 1, 0, 4, 3);
+  SetReciprocalRelation(LRelations, wmdEast, 1, 1, 4, 1);
+  SetReciprocalRelation(LRelations, wmdEast, 1, 3, 4, 2);
+  SetReciprocalRelation(LRelations, wmdEast, 2, 1, 4, 1);
+  SetReciprocalRelation(LRelations, wmdEast, 3, 2, 4, 3);
+  SetReciprocalRelation(LRelations, wmdEast, 3, 3, 4, 1);
+
+  Result := TWfcModel.Create(2, 2, 2, wmbWrap, wmsNone,
+    [wmdNorth, wmdEast, wmdSouth, wmdWest], LTokens,
+    LWeights, LRelations);
+end;
+
+procedure TestDenseAdapterPublicEquivalence;
+var
+  I: Integer;
+  LBulk: TGraph;
+  LFluent: TGraph;
+  LModel: TWfcModel;
+  LRules: TGraphRules;
+  LTokens: TWfcModelTokens;
+begin
+  LModel := LearnModel1D(Tokens('A', 'B', 'C'), wmbWrap);
+  LBulk := TGraph.Create;
+  LFluent := TGraph.Create;
+  try
+    ApplyModelToGraph(LModel, LBulk);
+    ApplyModelFluentlyForTest(LModel, LFluent);
+    Check(SamePublicGraphModel(LBulk, LFluent, LModel),
+      'dense rank-1 import exactly matches fluent rule order, targets, weights, and metadata');
+
+    LRules := LBulk.Rules['B'].Rules;
+    Check((Length(LRules) = 2) and
+      (LRules[0].Key = gdEast) and (LRules[1].Key = gdWest),
+      'dense import preserves inverse-before-forward public rule ordering');
+
+    LBulk.Rules['A'].NewRule([gdEast], 'B', True);
+    LFluent.Rules['A'].NewRule([gdEast], 'B', True);
+    Check(SamePublicGraphModel(LBulk, LFluent, LModel) and
+      LBulk.Rules['A'].HasRequired and
+      LBulk.Rules['A'].Rule[gdEast].Info and
+      LBulk.Rules['B'].Rule[gdWest].Info,
+      'later fluent required edges retain exact reciprocal fixed-point closure');
+  finally
+    LFluent.Free;
+    LBulk.Free;
+    LModel.Free;
+  end;
+
+  SetLength(LTokens, 6);
+  for I := 0 to High(LTokens) do
+    LTokens[I] := TWfcModelToken(Chr(Ord('A') + I));
+  LModel := LearnModel2D(LTokens, 3, 2, wmbWrap, wmsNone);
+  LBulk := TGraph.Create;
+  LFluent := TGraph.Create;
+  try
+    ApplyModelToGraph(LModel, LBulk);
+    ApplyModelFluentlyForTest(LModel, LFluent);
+    Check(SamePublicGraphModel(LBulk, LFluent, LModel),
+      'dense rank-2 import exactly matches the former fluent adapter state');
+  finally
+    LFluent.Free;
+    LBulk.Free;
+    LModel.Free;
+  end;
+end;
+
+procedure TestDenseAdapterRecordIsolation;
+var
+  LBulk: TGraph;
+  LFluent: TGraph;
+  LModel: TWfcModel;
+begin
+  LModel := MakeAsymmetricDense2DModel;
+  LBulk := TGraph.Create;
+  LFluent := TGraph.Create;
+  try
+    ApplyModelToGraph(LModel, LBulk);
+    ApplyModelFluentlyForTest(LModel, LFluent);
+    Check(GraphRulesMatchModel(LBulk, LModel),
+      'asymmetric dense import keeps every rule record and target array isolated');
+    Check(SamePublicGraphModel(LBulk, LFluent, LModel),
+      'asymmetric dense import remains exactly equivalent at the public rule surface');
+  finally
+    LFluent.Free;
+    LBulk.Free;
+    LModel.Free;
+  end;
+end;
+
 procedure TestCorpusLearning;
 var
   D: TWfcModelDirection;
@@ -1608,6 +1913,10 @@ begin
   RunTest('graph adapter boundaries and solve', @TestGraphAdapter);
   RunTest('asymmetric graph adapter orientation',
     @TestAsymmetricGraphAdapter);
+  RunTest('dense graph adapter public-state equivalence',
+    @TestDenseAdapterPublicEquivalence);
+  RunTest('dense graph adapter record isolation',
+    @TestDenseAdapterRecordIsolation);
   RunTest('multi-sample corpus observations', @TestCorpusLearning);
   RunTest('corpus D4 and duplicate-sample invariants',
     @TestCorpusD4AndDuplicateSamples);

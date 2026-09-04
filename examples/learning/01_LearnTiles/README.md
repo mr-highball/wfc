@@ -77,8 +77,10 @@ that rejection explicitly.
 
 This example uses the radius-one, cardinal, single-layer learner with one
 sample. Ordered heterogeneous corpora and deterministic model merging are
-available in the core and demonstrated by `02_LearnCorpus`; larger
-neighborhoods, overlapping patterns, smoothing, and learned cross-pass
-relations remain separate extensions rather than hidden behavior. See
-[model learning and priming](../../../docs/learning.md) for the complete model,
-adapter, serialization, and replay contracts.
+available in the core and demonstrated by `02_LearnCorpus`; multi-cell 2D
+neighborhoods are handled by the separate learner demonstrated by
+[`03_LearnPatterns`](../03_LearnPatterns/README.md). Smoothing and learned
+cross-pass relations remain explicit future extensions rather than hidden
+behavior. See [model learning and priming](../../../docs/learning.md) and
+[overlapping 2D patterns](../../../docs/patterns.md) for the model, adapter,
+serialization, projection, and replay contracts.

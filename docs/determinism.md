@@ -80,10 +80,20 @@ A canonical `.wfcm` document captures the resulting immutable shapes, weights,
 and relations directly. See [model learning and priming](learning.md) for that
 contract and its deliberate tokenization boundary.
 
+Overlapping models additionally depend on footprint dimensions and
+`WFC_OVERLAPPING_2D_ALGORITHM_VERSION`. Canonical `.wfcp` stores source shapes,
+palette, weighted payloads, and the complete recomputable structural relation
+set, but not the original corpus. Output replay also includes latent graph
+shape and wrapping, locks, and projection version. See
+[overlapping 2D patterns](patterns.md).
+
 The replay contract assumes values and rules are registered through
-`AddValue`, `NewRule`, and `RequirePrevious`. Directly mutating the exposed
-rule arrays or dictionary internals bypasses ordered registration and is not a
-portable replay input.
+the public builders or a versioned project adapter such as
+`ApplyModelToGraph`. Arbitrary caller mutation of exposed rule arrays or
+dictionary internals bypasses ordered registration and is not a portable
+replay input. The model adapter's dense installation path validates complete
+reciprocity and preserves the historical public rule order before assigning
+arrays; it is not a general bulk-rule API.
 
 Entry GUIDs are intentionally excluded from replay output. Canonical results
 should serialize passes by index and entries by index or coordinate.

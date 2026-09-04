@@ -20,7 +20,10 @@ modular 3D structures, music, text, and other discrete design problems.
 > Pascal model. Deterministic training primitives can also learn cardinal
 > constraints and raw weights from ordered heterogeneous 1D/2D corpora, merge
 > compatible models, apply immutable results to a graph, and round-trip them
-> through a strict canonical text format.
+> through a strict canonical text format. A second learner extracts weighted
+> overlapping 2D footprints, compiles exact structural overlap, captures
+> latent assignments, and independently validates projected token grids
+> through canonical `wfcp=1` artifacts.
 > Richer cross-layer constraints, additional domain libraries, restart
 > policies, and broader inspection and training tools remain tracked in the
 > [roadmap](ROADMAP.md).
@@ -51,6 +54,10 @@ modular 3D structures, music, text, and other discrete design problems.
   cross-sample seam relations
 - strict canonical `.wfcm` text with UTF-8 percent encoding and byte-exact
   decode/re-encode validation
+- deterministic overlapping 2D pattern extraction with heterogeneous corpora,
+  open/wrapped sources, square-footprint D4 augmentation, structural
+  compatibility, explicit latent-to-token projection, and strict `.wfcp`
+  replay artifacts
 - iterative traversal without a graph-sized call stack
 - extension hooks for custom graph and entry behavior
 - one Pascal core for native FPC and pas2js
@@ -96,6 +103,9 @@ and browser demonstrations, see the [2D ecosystem](docs/world2d.md).
 For learned frequencies and adjacency, immutable model data, graph adaptation,
 the `.wfcm` format, and exact replay inputs, see
 [model learning and priming](docs/learning.md).
+For multi-cell extraction, structural overlap, latent assignment, projection,
+independent validation, and the `.wfcp` format, see
+[overlapping 2D patterns](docs/patterns.md).
 
 ## Build and test
 
@@ -110,8 +120,9 @@ Run the checked native build and conformance suite from the repository root:
 ```
 
 Both entry points compile with checked FPC options, keep all output under
-`build/`, run the core, 2D ecosystem, and learning suites, smoke-test the four
-portable console examples, and preserve failure exit codes. The repository
+`build/`, run the core, 2D ecosystem, radius-one learning, and overlapping
+pattern suites, smoke-test the five portable console examples, and preserve
+failure exit codes. The repository
 also includes an FPM package, a runtime-only Lazarus package, and the same
 conformance sources for pas2js/Node. Separate `build-browser.ps1` and
 `build-browser.sh` entry points stage the interactive browser world without
@@ -125,10 +136,16 @@ require Lazarus/LCL, SDL2, and the optional GPL-3.0 SoundShop
 submodule; they are not part of the dependency-free MIT build path. See the
 [examples index](examples/README.md) for exact status and commands.
 
+The portable foundation is project-owned Pascal. When functionality can be
+implemented here or made dependent on another library, the default is to
+implement it here for FPC and pas2js. Engines, viewers, and media backends may
+be optional adapters, but canonical algorithms, models, validation, and replay
+behavior remain dependency-free.
+
 ## Direction
 
 The [roadmap](ROADMAP.md) covers the remaining reference-solver work, richer
-pass composition, pattern and higher-dimensional learning, validation tools,
+pass composition, higher-dimensional and cross-pass learning, validation tools,
 2D/3D/music/text ecosystems, pas2js playgrounds, reproducible research,
 documentation, and release provenance. Current examples are indexed under
 [examples](examples/README.md).
