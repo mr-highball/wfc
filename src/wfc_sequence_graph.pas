@@ -1,0 +1,2014 @@
+(*
+MIT License
+
+Copyright (c) 2021 mr-highball
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+*)
+unit wfc_sequence_graph;
+
+{$mode delphi}{$H+}
+
+interface
+
+uses
+  SysUtils,
+  wfc,
+  wfc_model,
+  wfc_sequence;
+
+const
+  WFC_SEQUENCE_GRAPH_ADAPTER_VERSION = 1;
+  WFC_SEQUENCE_SEGMENT_VERSION = 1;
+  WFC_SEQUENCE_PARTIAL_PROJECTION_VERSION = 1;
+
+type
+  EWfcSequenceGraph = class(EWfcSequence);
+
+  TWfcSequenceGraphIssueKind = (
+    wsgikNone,
+    wsgikGraphShape,
+    wsgikModelIdentity,
+    wsgikEmptyCell,
+    wsgikUnknownStateKey,
+    wsgikStateIndex,
+    wsgikBoundaryState,
+    wsgikStartState,
+    wsgikEndState,
+    wsgikTransition
+  );
+
+  TWfcSequenceGraphIssue = record
+    Kind: TWfcSequenceGraphIssueKind;
+    Position: Integer;
+    RelatedPosition: Integer;
+    StateIndex: Integer;
+    RelatedStateIndex: Integer;
+  end;
+
+  TWfcSequenceGraphValidationReport = record
+    Valid: Boolean;
+    CheckedStates: Integer;
+    CheckedTransitions: Integer;
+    Issue: TWfcSequenceGraphIssue;
+  end;
+
+  TWfcGeneratedSequence = record
+    Boundary: TWfcModelBoundary;
+    Extent: TWfcSequenceExtent;
+    StateIndices: TWfcSequenceStateIndices;
+    Tokens: TWfcModelTokens;
+  end;
+
+  { A finite segment has either an observed start or one exact predecessor
+    state. The predecessor already carries all Order-1 latent history, even
+    when early history still contains BOS. A caller carrying a published
+    stream is responsible for authenticating that predecessor's provenance. }
+  TWfcSequenceSegmentBoundary = record
+    HasPrevious: Boolean;
+    PreviousState: Integer;
+    RequireObservedEnd: Boolean;
+  end;
+
+  TWfcGeneratedSequenceSegment = record
+    Boundary: TWfcSequenceSegmentBoundary;
+    StateIndices: TWfcSequenceStateIndices;
+    Tokens: TWfcModelTokens;
+  end;
+
+  { A complete public-token mapping from one latent sequence pass to another.
+    TargetToken identifies one public token in the consumer model. Every
+    SourceTokens item is an OR alternative projected by the provider model.
+    Distinct source passes remain conjunctive under the graph pass contract. }
+  TWfcSequenceProjectionRule = record
+    TargetToken: TWfcModelToken;
+    SourceTokens: TWfcModelTokens;
+  end;
+  TWfcSequenceProjectionRules = array of TWfcSequenceProjectionRule;
+
+  { One named provider in an atomic multi-source projection bundle. Distinct
+    source passes are conjunctive. Duplicate labels are rejected so two maps
+    from one provider cannot accidentally masquerade as independent AND
+    constraints when the graph's same-source requirement contract is OR. }
+  TWfcSequenceProjectionBinding = record
+    SourceModel: TWfcSequenceModel;
+    SourcePass: String;
+    Rules: TWfcSequenceProjectionRules;
+  end;
+  TWfcSequenceProjectionBindings = array of TWfcSequenceProjectionBinding;
+
+function MakeWfcSequenceProjectionRule(
+  const ATargetToken: TWfcModelToken;
+  const ASourceTokens: TWfcModelTokens): TWfcSequenceProjectionRule;
+
+function MakeWfcSequenceProjectionBinding(
+  const ASourceModel: TWfcSequenceModel; const ASourcePass: String;
+  const ARules: TWfcSequenceProjectionRules):
+  TWfcSequenceProjectionBinding;
+
+function MakeWfcSequenceInitialSegmentBoundary(
+  const ARequireObservedEnd: Boolean): TWfcSequenceSegmentBoundary;
+function MakeWfcSequenceContinuingSegmentBoundary(
+  const APreviousState: Integer; const ARequireObservedEnd: Boolean):
+  TWfcSequenceSegmentBoundary;
+
+{ New segment APIs leave ordinary extent semantics and exact model identities
+  unchanged. Initial boundaries use PreviousState=-1; continuing boundaries
+  require an in-range predecessor. Malformed boundaries are rejected before
+  application; validation/capture report wsgikGraphShape and return False.
+  A failed incoming seam is a transition from position -1 to position 0. }
+procedure ApplySequenceModelSegmentToGraph(const AModel: TWfcSequenceModel;
+  const AGraph: TGraph; const ABoundary: TWfcSequenceSegmentBoundary);
+function ValidateSequenceSegmentStatePath(const AModel: TWfcSequenceModel;
+  const AStateIndices: TWfcSequenceStateIndices;
+  const ABoundary: TWfcSequenceSegmentBoundary;
+  out AReport: TWfcSequenceGraphValidationReport): Boolean;
+function CaptureSolvedSequenceSegment(const AModel: TWfcSequenceModel;
+  const AGraph: TGraph; const ABoundary: TWfcSequenceSegmentBoundary;
+  out ASequence: TWfcGeneratedSequenceSegment;
+  out AReport: TWfcSequenceGraphValidationReport): Boolean;
+
+{ Applies the latent model to an already shaped, empty, one-dimensional graph
+  pass. Open graphs receive observed start/end domains. Wrapped graphs receive
+  BOS-free domains and a derived structural cycle; that is not wrapped
+  training evidence. }
+procedure ApplySequenceModelToGraph(const AModel: TWfcSequenceModel;
+  const AGraph: TGraph); overload;
+procedure ApplySequenceModelToGraph(const AModel: TWfcSequenceModel;
+  const AGraph: TGraph; const AExtent: TWfcSequenceExtent); overload;
+
+{ Intersects one cell's latent domain with every state that projects to one of
+  the supplied public tokens. Existing endpoint and caller domains survive. }
+procedure IntersectSequenceAllowedTokens(
+  const AModel: TWfcSequenceModel; const AGraph: TGraph;
+  const APosition: Integer; const ATokens: TWfcModelTokens); overload;
+procedure IntersectSequenceAllowedTokens(
+  const AModel: TWfcSequenceModel; const AGraph: TGraph;
+  const APosition: Integer; const AToken: TWfcModelToken); overload;
+
+{ Atomically intersects an ordered set of public-token domains. Repeated
+  positions are intersections, so callers can compose independent masks. }
+procedure IntersectSequenceTokenConstraints(
+  const AModel: TWfcSequenceModel; const AGraph: TGraph;
+  const AConstraints: TWfcSequenceTokenConstraints);
+
+{ Exact-token bulk helpers. Positions are token ordinals, never native byte or
+  JavaScript UTF-16 offsets. }
+procedure IntersectSequenceLockedSpan(
+  const AModel: TWfcSequenceModel; const AGraph: TGraph;
+  const AStart: Integer; const ATokens: TWfcModelTokens);
+procedure IntersectSequencePrefix(
+  const AModel: TWfcSequenceModel; const AGraph: TGraph;
+  const ATokens: TWfcModelTokens);
+procedure IntersectSequenceSuffix(
+  const AModel: TWfcSequenceModel; const AGraph: TGraph;
+  const ATokens: TWfcModelTokens);
+
+{ Checks one state identity against the caller-owned domain and lock at one
+  graph position without exposing the model-qualified private graph key.
+  Generated values are results rather than constraints and are ignored. }
+function SequenceStateSatisfiesEntryConstraints(
+  const AModel: TWfcSequenceModel; const AGraph: TGraph;
+  const APosition, AStateIndex: Integer): Boolean;
+
+{ Checks a complete public state-index path against caller-owned entry locks
+  and allowed domains. Model/graph identity is validated once for the whole
+  path, so owner-level validation does not repeat the quadratic adapter proof
+  for every position. AFalsePosition is -1 on success. }
+function SequenceStatesSatisfyEntryConstraints(
+  const AModel: TWfcSequenceModel; const AGraph: TGraph;
+  const AStateIndices: TWfcSequenceStateIndices;
+  out AFalsePosition: Integer): Boolean;
+
+{ Makes every latent state require its projected public token from a named
+  pass at the same coordinate. The provider pass therefore exposes public
+  tokens while this pass keeps its context-bearing keys private. }
+procedure RequireSequenceProjectionFromTokenPass(
+  const AModel: TWfcSequenceModel; const AGraph: TGraph;
+  const ASourcePass: String);
+
+{ Lets one value in a downstream pass depend on the projected token of a
+  latent sequence source pass. Every source state with an allowed emission is
+  added as an OR alternative without exposing its private key to the caller. }
+procedure RequireProjectedSequenceFromPass(
+  const ASourceModel: TWfcSequenceModel; const ATargetGraph: TGraph;
+  const ATargetValue: TGraphValue; const ASourcePass: String;
+  const AAllowedPublicTokens: TWfcModelTokens);
+
+{ Partial counterpart for a plain downstream graph value. Empty alternatives
+  explicitly prune it through a zero-match clause over all provider states.
+  Nonempty alternatives are a distinct conjunctive clause. }
+procedure RequirePartialProjectedSequenceFromPass(
+  const ASourceModel: TWfcSequenceModel; const ATargetGraph: TGraph;
+  const ATargetValue: TGraphValue; const ASourcePass: String;
+  const AAllowedPublicTokens: TWfcModelTokens);
+
+{ Checks a complete projection-to-projection relation without adding it.
+  Rules must cover every target public token exactly once; alternatives must
+  be nonempty, known, and unique. Applied model identities and dependency
+  acyclicity are also validated. }
+procedure ValidateSequenceProjectionMapFromPass(
+  const ATargetModel, ASourceModel: TWfcSequenceModel;
+  const ATargetGraph: TGraph; const ASourcePass: String;
+  const ARules: TWfcSequenceProjectionRules);
+
+{ Validates, then adds the complete relation to the active target pass. }
+procedure RequireSequenceProjectionMapFromPass(
+  const ATargetModel, ASourceModel: TWfcSequenceModel;
+  const ATargetGraph: TGraph; const ASourcePass: String;
+  const ARules: TWfcSequenceProjectionRules);
+
+{ Preflights a complete group of distinct named source maps before the first
+  graph rule is changed. This is the reusable atomic boundary for consumers
+  such as punctuation, melody, or placement passes that require two or more
+  earlier semantic owners simultaneously. }
+procedure ValidateSequenceProjectionMapsFromPasses(
+  const ATargetModel: TWfcSequenceModel; const ATargetGraph: TGraph;
+  const ABindings: TWfcSequenceProjectionBindings);
+
+procedure RequireSequenceProjectionMapsFromPasses(
+  const ATargetModel: TWfcSequenceModel; const ATargetGraph: TGraph;
+  const ABindings: TWfcSequenceProjectionBindings);
+
+{ Additive partial relations. Every target token is still listed exactly once,
+  but an empty source list explicitly forbids that target: a zero-match clause
+  against every source state prunes it when the provider is solved. It is NEVER
+  passed to the historical empty-array RequireFromPass overload. Nonempty
+  relations are distinct conjunctive clauses, including repeated applications.
+  Caller entry domains/locks are untouched. All bindings are preflighted before
+  mutation; an allocation failure during application requires discarding the
+  graph, as with other multi-rule construction operations. }
+procedure ValidateSequencePartialProjectionMapsFromPasses(
+  const ATargetModel: TWfcSequenceModel; const ATargetGraph: TGraph;
+  const ABindings: TWfcSequenceProjectionBindings);
+procedure RequireSequencePartialProjectionMapsFromPasses(
+  const ATargetModel: TWfcSequenceModel; const ATargetGraph: TGraph;
+  const ABindings: TWfcSequenceProjectionBindings);
+
+function ValidateSequenceStatePath(const AModel: TWfcSequenceModel;
+  const AStateIndices: TWfcSequenceStateIndices;
+  const ABoundary: TWfcModelBoundary;
+  out AReport: TWfcSequenceGraphValidationReport): Boolean; overload;
+function ValidateSequenceStatePath(const AModel: TWfcSequenceModel;
+  const AStateIndices: TWfcSequenceStateIndices;
+  const AExtent: TWfcSequenceExtent;
+  out AReport: TWfcSequenceGraphValidationReport): Boolean; overload;
+
+function CaptureSolvedSequence(const AModel: TWfcSequenceModel;
+  const AGraph: TGraph; out ASequence: TWfcGeneratedSequence;
+  out AReport: TWfcSequenceGraphValidationReport): Boolean; overload;
+function CaptureSolvedSequence(const AModel: TWfcSequenceModel;
+  const AGraph: TGraph; const AExtent: TWfcSequenceExtent;
+  out ASequence: TWfcGeneratedSequence;
+  out AReport: TWfcSequenceGraphValidationReport): Boolean; overload;
+
+function DescribeSequenceGraphIssue(
+  const AIssue: TWfcSequenceGraphIssue): String;
+
+implementation
+
+uses
+  wfc_text_codec;
+
+type
+  TSequenceBooleanArray = array of Boolean;
+  TSequenceByteArray = array of Byte;
+  TSequenceGraphValueArrays = array of TGraphValues;
+  TSequenceIntegerArray = array of Integer;
+
+  TPreparedSequenceProjectionBinding = record
+    SourcePass: String;
+    SourceValuesByTarget: TSequenceGraphValueArrays;
+    AllSourceValues: TGraphValues;
+  end;
+  TPreparedSequenceProjectionBindings =
+    array of TPreparedSequenceProjectionBinding;
+
+function CheckedGraphManagedLength(const ALength: SizeInt;
+  const ALabel: String): Integer;
+begin
+  if (ALength < 0) or
+      ((ALength and (not SizeInt(High(Integer)))) <> 0) then
+    raise ERangeError.Create(ALabel + ' exceeds the Integer range');
+  Result := Integer(ALength);
+end;
+
+function MakeWfcSequenceProjectionRule(
+  const ATargetToken: TWfcModelToken;
+  const ASourceTokens: TWfcModelTokens): TWfcSequenceProjectionRule;
+var
+  I: Integer;
+begin
+  Result.TargetToken := ATargetToken;
+  SetLength(Result.SourceTokens, Length(ASourceTokens));
+  for I := 0 to Length(ASourceTokens) - 1 do
+    Result.SourceTokens[I] := ASourceTokens[I];
+end;
+
+function MakeWfcSequenceInitialSegmentBoundary(
+  const ARequireObservedEnd: Boolean): TWfcSequenceSegmentBoundary;
+begin
+  Result.HasPrevious := False;
+  Result.PreviousState := -1;
+  Result.RequireObservedEnd := ARequireObservedEnd;
+end;
+
+function MakeWfcSequenceContinuingSegmentBoundary(
+  const APreviousState: Integer; const ARequireObservedEnd: Boolean):
+  TWfcSequenceSegmentBoundary;
+begin
+  if APreviousState < 0 then
+    raise ERangeError.Create('sequence segment predecessor must be nonnegative');
+  Result.HasPrevious := True;
+  Result.PreviousState := APreviousState;
+  Result.RequireObservedEnd := ARequireObservedEnd;
+end;
+
+function SegmentBoundaryIsValid(const AModel: TWfcSequenceModel;
+  const ABoundary: TWfcSequenceSegmentBoundary): Boolean;
+begin
+  if ABoundary.HasPrevious then
+    Result := (ABoundary.PreviousState >= 0) and
+      (ABoundary.PreviousState < AModel.StateCount)
+  else
+    Result := ABoundary.PreviousState = -1;
+end;
+
+function MakeWfcSequenceProjectionBinding(
+  const ASourceModel: TWfcSequenceModel; const ASourcePass: String;
+  const ARules: TWfcSequenceProjectionRules):
+  TWfcSequenceProjectionBinding;
+var
+  I: Integer;
+begin
+  Result.SourceModel := ASourceModel;
+  Result.SourcePass := ASourcePass;
+  SetLength(Result.Rules, Length(ARules));
+  for I := 0 to Length(ARules) - 1 do
+    Result.Rules[I] := MakeWfcSequenceProjectionRule(
+      ARules[I].TargetToken, ARules[I].SourceTokens);
+end;
+
+function AsciiToModelToken(const AText: String): TWfcModelToken;
+begin
+  {$IFDEF PAS2JS}
+  Result := TWfcModelToken(AText);
+  {$ELSE}
+  Result := UTF8Encode(UnicodeString(AText));
+  {$ENDIF}
+end;
+
+function ModelTokenToGraphValue(
+  const AToken: TWfcModelToken): TGraphValue;
+begin
+  {$IFDEF PAS2JS}
+  Result := TGraphValue(AToken);
+  {$ELSE}
+  Result := TGraphValue(UTF8Decode(AToken));
+  {$ENDIF}
+end;
+
+function GraphValueToModelToken(
+  const AValue: TGraphValue): TWfcModelToken;
+begin
+  {$IFDEF PAS2JS}
+  Result := TWfcModelToken(AValue);
+  {$ELSE}
+  Result := UTF8Encode(UnicodeString(AValue));
+  {$ENDIF}
+end;
+
+function StateIdentity(const AModel: TWfcSequenceModel;
+  const AStateIndex: Integer): String;
+var
+  I: Integer;
+  LHistory: TWfcSequenceHistoryItem;
+  LTokenIndex: Integer;
+begin
+  Result := 'o' + IntToStr(AModel.Order);
+  if AStateIndex = 0 then
+  begin
+    Result := Result + ':n' + IntToStr(AModel.SampleCount);
+    for I := 0 to AModel.SampleCount - 1 do
+      Result := Result + '.l' + IntToStr(AModel.SampleLengthAt(I));
+  end;
+  Result := Result + ':c' +
+    IntToStr(AModel.StateObservationCountAt(AStateIndex)) + '.' +
+    IntToStr(AModel.StartCountAt(AStateIndex)) + '.' +
+    IntToStr(AModel.EndCountAt(AStateIndex)) + ':h';
+  for I := 0 to AModel.HistorySize - 1 do
+  begin
+    LHistory := AModel.HistoryItemAt(AStateIndex, I);
+    if LHistory.Kind = wshBos then
+      Result := Result + '.b'
+    else
+      Result := Result + '.t' + IntToStr(LHistory.TokenIndex);
+  end;
+  LTokenIndex := AModel.StateEmittedTokenIndexAt(AStateIndex);
+  Result := Result + ':e' + IntToStr(LTokenIndex) + '.' +
+    WfcTextEncodeToken(AModel.PublicTokenAt(LTokenIndex),
+      'sequence state key');
+end;
+
+function RawStateKey(const AModel: TWfcSequenceModel;
+  const ASalt, AStateIndex: Integer): TWfcModelToken;
+begin
+  Result := AsciiToModelToken('@wfcs1:' + IntToStr(ASalt) + ':' +
+    IntToStr(AStateIndex) + ':' + StateIdentity(AModel, AStateIndex));
+end;
+
+function TryParseRawStateKey(const AToken: TWfcModelToken;
+  out ASalt, AStateIndex: Integer): Boolean;
+const
+  PREFIX = '@wfcs1:';
+var
+  I: Integer;
+
+  function ParseCanonicalNumber(var APosition: Integer;
+    out AValue: Integer): Boolean;
+  var
+    LDigit: Integer;
+    LStart: Integer;
+  begin
+    AValue := 0;
+    LStart := APosition;
+    while (APosition <= Length(AToken)) and
+        (AToken[APosition] >= '0') and (AToken[APosition] <= '9') do
+    begin
+      LDigit := Ord(AToken[APosition]) - Ord('0');
+      if AValue > (High(Integer) - LDigit) div 10 then
+        Exit(False);
+      AValue := AValue * 10 + LDigit;
+      Inc(APosition);
+    end;
+    Result := (APosition > LStart) and
+      ((APosition - LStart = 1) or (AToken[LStart] <> '0'));
+  end;
+
+begin
+  Result := False;
+  ASalt := -1;
+  AStateIndex := -1;
+  if Length(AToken) <= Length(PREFIX) + 2 then
+    Exit;
+  for I := 1 to Length(PREFIX) do
+    if AToken[I] <> PREFIX[I] then
+      Exit;
+  I := Length(PREFIX) + 1;
+  if not ParseCanonicalNumber(I, ASalt) then
+    Exit;
+  if (I > Length(AToken)) or (AToken[I] <> ':') then
+    Exit;
+  Inc(I);
+  if not ParseCanonicalNumber(I, AStateIndex) then
+    Exit;
+  Result := (I <= Length(AToken)) and (AToken[I] = ':');
+end;
+
+function SequenceKeySalt(const AModel: TWfcSequenceModel): Integer;
+var
+  I: Integer;
+  LSalt: Integer;
+  LState: Integer;
+  LUsed: array of Boolean;
+begin
+  SetLength(LUsed, AModel.PublicTokenCount + 1);
+  for I := 0 to AModel.PublicTokenCount - 1 do
+    if TryParseRawStateKey(AModel.PublicTokenAt(I), LSalt, LState) and
+        (LSalt >= 0) and (LSalt <= AModel.PublicTokenCount) and
+        (LState >= 0) and (LState < AModel.StateCount) then
+      LUsed[LSalt] := True;
+  for Result := 0 to AModel.PublicTokenCount do
+    if not LUsed[Result] then
+      Exit;
+  raise EWfcSequenceGraph.Create(
+    'sequence state-key salt search failed');
+end;
+
+procedure RequireAssigned(const AModel: TWfcSequenceModel;
+  const AGraph: TGraph);
+begin
+  if not Assigned(AModel) then
+    raise EArgumentNilException.Create('sequence model cannot be nil');
+  if not Assigned(AGraph) then
+    raise EArgumentNilException.Create('sequence graph cannot be nil');
+end;
+
+procedure ValidateGraphShape(const AGraph: TGraph;
+  const AOperation: String);
+begin
+  if (AGraph.Dimension.Width = 0) or
+      (AGraph.Dimension.Width > TGraphCoordinate(High(Integer))) or
+      (AGraph.Dimension.Height <> 1) or
+      (AGraph.Dimension.Depth <> 1) then
+    raise EWfcSequenceGraph.Create(AOperation +
+      ' requires a positive one-dimensional graph');
+end;
+
+function SaltedStateGraphValue(const ASalt,
+  AStateIndex: Integer; const AModel: TWfcSequenceModel): TGraphValue;
+begin
+  Result := ModelTokenToGraphValue(
+    RawStateKey(AModel, ASalt, AStateIndex));
+end;
+
+function CopyStateKeys(const AModel: TWfcSequenceModel): TWfcModelTokens;
+var
+  I: Integer;
+  LSalt: Integer;
+begin
+  Result := nil;
+  LSalt := SequenceKeySalt(AModel);
+  SetLength(Result, AModel.StateCount);
+  for I := 0 to AModel.StateCount - 1 do
+    Result[I] := RawStateKey(AModel, LSalt, I);
+end;
+
+function StateAllowedInDirection(const AModel: TWfcSequenceModel;
+  const ASourceState, ATargetState: Integer;
+  const ADirection: TGraphDirection): Boolean;
+begin
+  case ADirection of
+    gdWest:
+      Result := AModel.StatesCompatible(ASourceState, ATargetState);
+    gdEast:
+      Result := AModel.StatesCompatible(ATargetState, ASourceState);
+  else
+    Result := False;
+  end;
+end;
+
+function StateRulesMatch(const AModel: TWfcSequenceModel;
+  const AGroup: TGraphRuleGroup; const AStateIndex,
+  ASalt: Integer): Boolean;
+var
+  D: TGraphDirection;
+  I: Integer;
+  LExpectedRuleCount: Integer;
+  LExpectedTargetCount: Integer;
+  LRule: TGraphRule;
+  LTargetIndex: Integer;
+begin
+  Result := False;
+  LExpectedRuleCount := 0;
+  for D := Low(TGraphDirection) to High(TGraphDirection) do
+  begin
+    if D in [gdEast, gdWest] then
+    begin
+      LExpectedTargetCount := 0;
+      for I := 0 to AModel.StateCount - 1 do
+        if StateAllowedInDirection(AModel, AStateIndex, I, D) then
+          Inc(LExpectedTargetCount);
+      if LExpectedTargetCount = 0 then
+      begin
+        if AGroup.Exists[D] or (not AGroup.Denied[D]) then
+          Exit;
+      end
+      else
+      begin
+        Inc(LExpectedRuleCount);
+        if (not AGroup.Exists[D]) or AGroup.Denied[D] then
+          Exit;
+        LRule := AGroup[D];
+        if LRule.Info or (Length(LRule.Value) <> LExpectedTargetCount) then
+          Exit;
+        LTargetIndex := 0;
+        for I := 0 to AModel.StateCount - 1 do
+          if StateAllowedInDirection(AModel, AStateIndex, I, D) then
+          begin
+            if LRule.Value[LTargetIndex] <>
+                SaltedStateGraphValue(ASalt, I, AModel) then
+              Exit;
+            Inc(LTargetIndex);
+          end;
+      end;
+    end
+    else if AGroup.Exists[D] or AGroup.Denied[D] then
+      Exit;
+  end;
+  Result := Length(AGroup.Rules) = LExpectedRuleCount;
+end;
+
+function AppliedModelMatches(const AModel: TWfcSequenceModel;
+  const AGraph: TGraph): Boolean;
+var
+  I: Integer;
+  LActivePass: TGraph;
+  LGroup: TGraphRuleGroup;
+  LParentedGroup: TGraph.TParentedGraphRuleGroup;
+  LSalt: Integer;
+  LValue: TGraphValue;
+begin
+  Result := False;
+  if AGraph.RuleGroups.Count <> AModel.StateCount then
+    Exit;
+  LActivePass := AGraph.PassGraph[AGraph.CurrentPassIndex];
+  LSalt := SequenceKeySalt(AModel);
+  for I := 0 to AModel.StateCount - 1 do
+  begin
+    LValue := SaltedStateGraphValue(LSalt, I, AModel);
+    if (not AGraph.RuleGroups.TryGetValue(LValue, LGroup)) or
+        (not Assigned(LGroup)) or (LGroup.Value <> LValue) or
+        (not (LGroup is TGraph.TParentedGraphRuleGroup)) then
+      Exit;
+    LParentedGroup := TGraph.TParentedGraphRuleGroup(LGroup);
+    if (LParentedGroup.Parent <> LActivePass) or
+        (LGroup.Weight <>
+          AModel.StateObservationCountAt(I)) or
+        (not StateRulesMatch(AModel, LGroup, I, LSalt)) then
+      Exit;
+  end;
+  Result := True;
+end;
+
+procedure ValidateAppliedModel(const AModel: TWfcSequenceModel;
+  const AGraph: TGraph; const AOperation: String);
+begin
+  if not AppliedModelMatches(AModel, AGraph) then
+    raise EWfcSequenceGraph.Create(AOperation +
+      ' requires the matching sequence model on the graph pass');
+end;
+
+function ContainsGraphValue(const AValues: TGraphValues;
+  const AValue: TGraphValue): Boolean;
+var
+  I: Integer;
+begin
+  for I := 0 to Length(AValues) - 1 do
+    if AValues[I] = AValue then
+      Exit(True);
+  Result := False;
+end;
+
+function CopyProjectedGraphValues(const AModel: TWfcSequenceModel;
+  const AOperation: String): TGraphValues;
+var
+  I: Integer;
+  J: Integer;
+  LToken: TWfcModelToken;
+begin
+  Result := nil;
+  SetLength(Result, AModel.PublicTokenCount);
+  for I := 0 to AModel.PublicTokenCount - 1 do
+  begin
+    LToken := AModel.PublicTokenAt(I);
+    Result[I] := ModelTokenToGraphValue(LToken);
+    if (Length(Result[I]) = 0) or
+        (GraphValueToModelToken(Result[I]) <> LToken) then
+      raise EWfcSequenceGraph.CreateFmt(
+        '%s cannot represent public token %d in graph strings',
+        [AOperation, I]);
+    for J := 0 to I - 1 do
+      if Result[I] = Result[J] then
+        raise EWfcSequenceGraph.CreateFmt(
+          '%s public-token conversion is not unique [%d, %d]',
+          [AOperation, J, I]);
+  end;
+end;
+
+function FindPassGraph(const AGraph: TGraph; const APass,
+  AOperation: String): TGraph;
+var
+  I: Integer;
+  LPass: TGraph;
+begin
+  for I := 0 to AGraph.TotalPassCount - 1 do
+  begin
+    LPass := AGraph.PassGraph[I];
+    if LPass.CurrentPass = APass then
+      Exit(LPass);
+  end;
+  raise EWfcSequenceGraph.CreateFmt(
+    '%s cannot find source pass "%s"', [AOperation, APass]);
+end;
+
+procedure IntersectGraphDomain(const AGraph: TGraph;
+  const APosition: Integer; const ACandidates: TGraphValues);
+var
+  I: Integer;
+  LExisting: TGraphValues;
+  LIntersection: TGraphValues;
+begin
+  if not AGraph.HasAllowedValues(TGraphCoordinate(APosition), 0, 0) then
+  begin
+    AGraph.SetAllowedValues(TGraphCoordinate(APosition), 0, 0,
+      ACandidates);
+    Exit;
+  end;
+
+  LExisting := AGraph.CopyAllowedValues(
+    TGraphCoordinate(APosition), 0, 0);
+  SetLength(LIntersection, 0);
+  for I := 0 to Length(ACandidates) - 1 do
+    if ContainsGraphValue(LExisting, ACandidates[I]) then
+    begin
+      SetLength(LIntersection, Length(LIntersection) + 1);
+      LIntersection[High(LIntersection)] := ACandidates[I];
+    end;
+  AGraph.SetAllowedValues(TGraphCoordinate(APosition), 0, 0,
+    LIntersection);
+end;
+
+function SequenceExtentIsValid(
+  const AExtent: TWfcSequenceExtent): Boolean;
+var
+  LOrdinal: Integer;
+begin
+  LOrdinal := Ord(AExtent);
+  Result := (LOrdinal >= Ord(Low(TWfcSequenceExtent))) and
+    (LOrdinal <= Ord(High(TWfcSequenceExtent)));
+end;
+
+procedure ValidateSequenceExtentForGraph(const AGraph: TGraph;
+  const AExtent: TWfcSequenceExtent; const AOperation: String);
+begin
+  if not SequenceExtentIsValid(AExtent) then
+    raise EArgumentException.CreateFmt(
+      '%s has an invalid sequence extent [%d]',
+      [AOperation, Ord(AExtent)]);
+  if AGraph.WrapNeighbors <> (AExtent = wseWrap) then
+    raise EWfcSequenceGraph.Create(AOperation +
+      ' extent does not match graph wrapping');
+end;
+
+function StateHasBos(const AModel: TWfcSequenceModel;
+  const AStateIndex: Integer): Boolean; forward;
+
+procedure ApplyEndpointDomains(const AModel: TWfcSequenceModel;
+  const AGraph: TGraph; const AExtent: TWfcSequenceExtent);
+var
+  I: Integer;
+  LEndValues: TGraphValues;
+  LInteriorValues: TGraphValues;
+  LSalt: Integer;
+  LStartValues: TGraphValues;
+  LWidth: Integer;
+begin
+  LWidth := Integer(AGraph.Dimension.Width);
+  LSalt := SequenceKeySalt(AModel);
+  SetLength(LStartValues, 0);
+  SetLength(LEndValues, 0);
+  SetLength(LInteriorValues, 0);
+  for I := 0 to AModel.StateCount - 1 do
+  begin
+    if AModel.StartCountAt(I) > 0 then
+    begin
+      SetLength(LStartValues, Length(LStartValues) + 1);
+      LStartValues[High(LStartValues)] :=
+        SaltedStateGraphValue(LSalt, I, AModel);
+    end;
+    if AModel.EndCountAt(I) > 0 then
+    begin
+      SetLength(LEndValues, Length(LEndValues) + 1);
+      LEndValues[High(LEndValues)] :=
+        SaltedStateGraphValue(LSalt, I, AModel);
+    end;
+    if not StateHasBos(AModel, I) then
+    begin
+      SetLength(LInteriorValues, Length(LInteriorValues) + 1);
+      LInteriorValues[High(LInteriorValues)] :=
+        SaltedStateGraphValue(LSalt, I, AModel);
+    end;
+  end;
+
+  if AExtent in [wseWhole, wsePrefix] then
+    IntersectGraphDomain(AGraph, 0, LStartValues)
+  else
+    IntersectGraphDomain(AGraph, 0, LInteriorValues);
+  if AExtent in [wseWhole, wseSuffix] then
+    IntersectGraphDomain(AGraph, LWidth - 1, LEndValues);
+end;
+
+function StateHasBos(const AModel: TWfcSequenceModel;
+  const AStateIndex: Integer): Boolean;
+var
+  I: Integer;
+begin
+  for I := 0 to AModel.HistorySize - 1 do
+    if AModel.HistoryItemAt(AStateIndex, I).Kind = wshBos then
+      Exit(True);
+  Result := False;
+end;
+
+procedure ApplyWrappedDomains(const AModel: TWfcSequenceModel;
+  const AGraph: TGraph);
+var
+  I: Integer;
+  LAllowed: TGraphValues;
+  LPosition: Integer;
+  LSalt: Integer;
+begin
+  LSalt := SequenceKeySalt(AModel);
+  SetLength(LAllowed, 0);
+  for I := 0 to AModel.StateCount - 1 do
+    if not StateHasBos(AModel, I) then
+    begin
+      SetLength(LAllowed, Length(LAllowed) + 1);
+      LAllowed[High(LAllowed)] :=
+        SaltedStateGraphValue(LSalt, I, AModel);
+    end;
+  for LPosition := 0 to Integer(AGraph.Dimension.Width) - 1 do
+    IntersectGraphDomain(AGraph, LPosition, LAllowed);
+end;
+
+procedure ApplySequenceModelToGraph(const AModel: TWfcSequenceModel;
+  const AGraph: TGraph);
+var
+  LExtent: TWfcSequenceExtent;
+begin
+  if Assigned(AGraph) and AGraph.WrapNeighbors then
+    LExtent := wseWrap
+  else
+    LExtent := wseWhole;
+  ApplySequenceModelToGraph(AModel, AGraph, LExtent);
+end;
+
+procedure ApplySequenceModelToGraph(const AModel: TWfcSequenceModel;
+  const AGraph: TGraph; const AExtent: TWfcSequenceExtent);
+var
+  LGraphModel: TWfcModel;
+  LKeys: TWfcModelTokens;
+begin
+  RequireAssigned(AModel, AGraph);
+  if AGraph.Running then
+    raise EWfcSequenceGraph.Create(
+      'sequence model cannot be applied while the pipeline is running');
+  ValidateGraphShape(AGraph, 'sequence model application');
+  ValidateSequenceExtentForGraph(AGraph, AExtent,
+    'sequence model application');
+  LKeys := CopyStateKeys(AModel);
+  LGraphModel := AModel.CreateGraphModel(LKeys);
+  try
+    ApplyModelToGraph(LGraphModel, AGraph);
+  finally
+    LGraphModel.Free;
+  end;
+  if AExtent = wseWrap then
+    ApplyWrappedDomains(AModel, AGraph)
+  else
+    ApplyEndpointDomains(AModel, AGraph, AExtent);
+end;
+
+procedure ApplySequenceModelSegmentToGraph(const AModel: TWfcSequenceModel;
+  const AGraph: TGraph; const ABoundary: TWfcSequenceSegmentBoundary);
+var
+  I: Integer;
+  LAllowed: Boolean;
+  LFirstValues, LEndValues: TGraphValues;
+  LKeys: TWfcModelTokens;
+  LGraphModel: TWfcModel;
+begin
+  RequireAssigned(AModel, AGraph);
+  if AGraph.Running then
+    raise EWfcSequenceGraph.Create(
+      'sequence segment cannot be applied while the pipeline is running');
+  ValidateGraphShape(AGraph, 'sequence segment application');
+  if AGraph.WrapNeighbors or not SegmentBoundaryIsValid(AModel, ABoundary) then
+    raise EWfcSequenceGraph.Create('sequence segment boundary is invalid');
+
+  //Prepare every endpoint candidate before changing the graph. Only domains
+  //differ from ordinary application; the private keys and directional rules
+  //remain exactly those of the existing adapter.
+  LKeys := CopyStateKeys(AModel);
+  LFirstValues := nil;
+  LEndValues := nil;
+  for I := 0 to AModel.StateCount - 1 do
+  begin
+    if ABoundary.HasPrevious then
+      LAllowed := AModel.StatesCompatible(ABoundary.PreviousState, I)
+    else
+      LAllowed := AModel.StartCountAt(I) > 0;
+    if LAllowed then
+    begin
+      SetLength(LFirstValues, Length(LFirstValues) + 1);
+      LFirstValues[High(LFirstValues)] := ModelTokenToGraphValue(LKeys[I]);
+    end;
+    if ABoundary.RequireObservedEnd and (AModel.EndCountAt(I) > 0) then
+    begin
+      SetLength(LEndValues, Length(LEndValues) + 1);
+      LEndValues[High(LEndValues)] := ModelTokenToGraphValue(LKeys[I]);
+    end;
+  end;
+  LGraphModel := AModel.CreateGraphModel(LKeys);
+  try
+    ApplyModelToGraph(LGraphModel, AGraph);
+  finally
+    LGraphModel.Free;
+  end;
+  IntersectGraphDomain(AGraph, 0, LFirstValues);
+  if ABoundary.RequireObservedEnd then
+    IntersectGraphDomain(AGraph, Integer(AGraph.Dimension.Width) - 1,
+      LEndValues);
+end;
+
+procedure IntersectSequenceAllowedTokens(
+  const AModel: TWfcSequenceModel; const AGraph: TGraph;
+  const APosition: Integer; const ATokens: TWfcModelTokens);
+var
+  I: Integer;
+  J: Integer;
+  LAllowed: TGraphValues;
+  LSalt: Integer;
+  LTokenCount: Integer;
+  LTokenIndices: array of Integer;
+begin
+  RequireAssigned(AModel, AGraph);
+  if AGraph.Running then
+    raise EWfcSequenceGraph.Create(
+      'sequence token domains cannot change while the pipeline is running');
+  ValidateGraphShape(AGraph, 'sequence token-domain intersection');
+  ValidateAppliedModel(AModel, AGraph,
+    'sequence token-domain intersection');
+  if (APosition < 0) or
+      (APosition >= Integer(AGraph.Dimension.Width)) then
+    raise ERangeError.CreateFmt(
+      'sequence position is out of bounds [%d]', [APosition]);
+  LSalt := SequenceKeySalt(AModel);
+
+  LTokenCount := CheckedGraphManagedLength(Length(ATokens),
+    'sequence token-domain token count');
+  SetLength(LTokenIndices, LTokenCount);
+  for I := 0 to LTokenCount - 1 do
+  begin
+    LTokenIndices[I] := AModel.FindPublicToken(ATokens[I]);
+    if LTokenIndices[I] < 0 then
+      raise EArgumentException.CreateFmt(
+        'unknown sequence public token [%d]', [I]);
+  end;
+
+  SetLength(LAllowed, 0);
+  for I := 0 to AModel.StateCount - 1 do
+    for J := 0 to Length(LTokenIndices) - 1 do
+      if AModel.StateEmittedTokenIndexAt(I) = LTokenIndices[J] then
+      begin
+        SetLength(LAllowed, Length(LAllowed) + 1);
+        LAllowed[High(LAllowed)] :=
+          SaltedStateGraphValue(LSalt, I, AModel);
+        Break;
+      end;
+  IntersectGraphDomain(AGraph, APosition, LAllowed);
+end;
+
+procedure IntersectSequenceAllowedTokens(
+  const AModel: TWfcSequenceModel; const AGraph: TGraph;
+  const APosition: Integer; const AToken: TWfcModelToken);
+var
+  LTokens: TWfcModelTokens;
+begin
+  SetLength(LTokens, 1);
+  LTokens[0] := AToken;
+  IntersectSequenceAllowedTokens(AModel, AGraph, APosition, LTokens);
+end;
+
+procedure IntersectSequenceTokenConstraints(
+  const AModel: TWfcSequenceModel; const AGraph: TGraph;
+  const AConstraints: TWfcSequenceTokenConstraints);
+var
+  I: Integer;
+  LConstraintCount: Integer;
+  LHadDomain: TSequenceBooleanArray;
+  LPreviousDomains: TSequenceGraphValueArrays;
+  LWidth: Integer;
+begin
+  RequireAssigned(AModel, AGraph);
+  if AGraph.Running then
+    raise EWfcSequenceGraph.Create(
+      'sequence token constraints cannot change while the pipeline is running');
+  ValidateGraphShape(AGraph, 'sequence token constraints');
+  ValidateAppliedModel(AModel, AGraph, 'sequence token constraints');
+  LWidth := Integer(AGraph.Dimension.Width);
+
+  { Complete preflight keeps malformed bulk requests from changing any cell. }
+  LConstraintCount := CheckedGraphManagedLength(Length(AConstraints),
+    'sequence constraint count');
+  ValidateSequenceTokenConstraints(AModel, LWidth, AConstraints);
+
+  SetLength(LHadDomain, LWidth);
+  SetLength(LPreviousDomains, LWidth);
+  for I := 0 to LWidth - 1 do
+  begin
+    LHadDomain[I] := AGraph.HasAllowedValues(
+      TGraphCoordinate(I), 0, 0);
+    if LHadDomain[I] then
+      LPreviousDomains[I] := AGraph.CopyAllowedValues(
+        TGraphCoordinate(I), 0, 0);
+  end;
+
+  try
+    for I := 0 to LConstraintCount - 1 do
+      IntersectSequenceAllowedTokens(AModel, AGraph,
+        AConstraints[I].Position, AConstraints[I].AllowedTokens);
+  except
+    for I := 0 to LWidth - 1 do
+      if LHadDomain[I] then
+        AGraph.SetAllowedValues(TGraphCoordinate(I), 0, 0,
+          LPreviousDomains[I])
+      else
+        AGraph.ClearAllowedValues(TGraphCoordinate(I), 0, 0);
+    raise;
+  end;
+end;
+
+procedure IntersectSequenceLockedSpan(
+  const AModel: TWfcSequenceModel; const AGraph: TGraph;
+  const AStart: Integer; const ATokens: TWfcModelTokens);
+var
+  I: Integer;
+  LConstraints: TWfcSequenceTokenConstraints;
+  LTokenCount: Integer;
+  LWidth: Integer;
+begin
+  RequireAssigned(AModel, AGraph);
+  ValidateGraphShape(AGraph, 'sequence locked span');
+  LWidth := Integer(AGraph.Dimension.Width);
+  LTokenCount := CheckedGraphManagedLength(Length(ATokens),
+    'sequence locked-span token count');
+  if AStart < 0 then
+    raise ERangeError.CreateFmt(
+      'sequence locked span is out of bounds [%d, %d]',
+      [AStart, LTokenCount]);
+  if (AStart > LWidth) or (LTokenCount > LWidth - AStart) then
+    raise ERangeError.CreateFmt(
+      'sequence locked span is out of bounds [%d, %d]',
+      [AStart, LTokenCount]);
+  SetLength(LConstraints, LTokenCount);
+  for I := 0 to LTokenCount - 1 do
+  begin
+    LConstraints[I].Position := AStart + I;
+    SetLength(LConstraints[I].AllowedTokens, 1);
+    LConstraints[I].AllowedTokens[0] := ATokens[I];
+  end;
+  IntersectSequenceTokenConstraints(AModel, AGraph, LConstraints);
+end;
+
+procedure IntersectSequencePrefix(
+  const AModel: TWfcSequenceModel; const AGraph: TGraph;
+  const ATokens: TWfcModelTokens);
+begin
+  IntersectSequenceLockedSpan(AModel, AGraph, 0, ATokens);
+end;
+
+procedure IntersectSequenceSuffix(
+  const AModel: TWfcSequenceModel; const AGraph: TGraph;
+  const ATokens: TWfcModelTokens);
+var
+  LStart: Integer;
+  LTokenCount: Integer;
+begin
+  RequireAssigned(AModel, AGraph);
+  ValidateGraphShape(AGraph, 'sequence suffix');
+  LTokenCount := CheckedGraphManagedLength(Length(ATokens),
+    'sequence suffix token count');
+  if LTokenCount > Integer(AGraph.Dimension.Width) then
+    raise ERangeError.CreateFmt(
+      'sequence suffix is longer than the graph [%d]',
+      [LTokenCount]);
+  LStart := Integer(AGraph.Dimension.Width) - LTokenCount;
+  IntersectSequenceLockedSpan(AModel, AGraph, LStart, ATokens);
+end;
+
+function PreparedSequenceStateSatisfiesEntryConstraints(
+  const AGraph: TGraph; const APosition: Integer;
+  const AExpected: TGraphValue): Boolean;
+var
+  I: Integer;
+  LAllowed: TGraphValues;
+  LEntry: TGraphEntry;
+begin
+  LEntry := AGraph.Entry[APosition, 0, 0];
+  if (not LEntry.Empty) and (not LEntry.Generated) and
+      (LEntry.Value <> AExpected) then
+    Exit(False);
+
+  if not AGraph.HasAllowedValues(APosition, 0, 0) then
+    Exit(True);
+  LAllowed := AGraph.CopyAllowedValues(APosition, 0, 0);
+  for I := 0 to Length(LAllowed) - 1 do
+    if LAllowed[I] = AExpected then
+      Exit(True);
+  Result := False;
+end;
+
+function SequenceStateSatisfiesEntryConstraints(
+  const AModel: TWfcSequenceModel; const AGraph: TGraph;
+  const APosition, AStateIndex: Integer): Boolean;
+var
+  LExpected: TGraphValue;
+  LSalt: Integer;
+begin
+  RequireAssigned(AModel, AGraph);
+  ValidateGraphShape(AGraph, 'sequence entry constraint validation');
+  ValidateAppliedModel(AModel, AGraph,
+    'sequence entry constraint validation');
+  if (APosition < 0) or
+      (APosition >= Integer(AGraph.Dimension.Width)) then
+    raise ERangeError.CreateFmt(
+      'sequence position is out of bounds [%d]', [APosition]);
+  if (AStateIndex < 0) or (AStateIndex >= AModel.StateCount) then
+    raise ERangeError.CreateFmt(
+      'sequence state index is out of bounds [%d]', [AStateIndex]);
+
+  LSalt := SequenceKeySalt(AModel);
+  LExpected := SaltedStateGraphValue(LSalt, AStateIndex, AModel);
+  Result := PreparedSequenceStateSatisfiesEntryConstraints(AGraph,
+    APosition, LExpected);
+end;
+
+function SequenceStatesSatisfyEntryConstraints(
+  const AModel: TWfcSequenceModel; const AGraph: TGraph;
+  const AStateIndices: TWfcSequenceStateIndices;
+  out AFalsePosition: Integer): Boolean;
+var
+  I: Integer;
+  LExpected: TGraphValue;
+  LSalt: Integer;
+  LWidth: Integer;
+begin
+  AFalsePosition := -1;
+  RequireAssigned(AModel, AGraph);
+  ValidateGraphShape(AGraph, 'sequence path constraint validation');
+  ValidateAppliedModel(AModel, AGraph,
+    'sequence path constraint validation');
+  LWidth := Integer(AGraph.Dimension.Width);
+  if Length(AStateIndices) <> LWidth then
+    raise EArgumentException.CreateFmt(
+      'sequence path constraint length must equal graph width [%d, %d]',
+      [Length(AStateIndices), LWidth]);
+
+  LSalt := SequenceKeySalt(AModel);
+  for I := 0 to LWidth - 1 do
+  begin
+    if (AStateIndices[I] < 0) or
+        (AStateIndices[I] >= AModel.StateCount) then
+      raise ERangeError.CreateFmt(
+        'sequence state index is out of bounds at position %d [%d]',
+        [I, AStateIndices[I]]);
+    LExpected := SaltedStateGraphValue(LSalt, AStateIndices[I], AModel);
+    if not PreparedSequenceStateSatisfiesEntryConstraints(AGraph,
+        I, LExpected) then
+    begin
+      AFalsePosition := I;
+      Exit(False);
+    end;
+  end;
+  Result := True;
+end;
+
+procedure RequireSequenceProjectionFromTokenPass(
+  const AModel: TWfcSequenceModel; const AGraph: TGraph;
+  const ASourcePass: String);
+var
+  I: Integer;
+  LActivePass: TGraph;
+  LPublicValues: TGraphValues;
+  LProjectedValues: TGraphValues;
+  LSalt: Integer;
+  LSourceGraph: TGraph;
+begin
+  RequireAssigned(AModel, AGraph);
+  if AGraph.Running then
+    raise EWfcSequenceGraph.Create(
+      'sequence pass projection cannot change while the pipeline is running');
+  ValidateGraphShape(AGraph, 'sequence pass projection');
+  ValidateAppliedModel(AModel, AGraph, 'sequence pass projection');
+  LSourceGraph := FindPassGraph(AGraph, ASourcePass,
+    'sequence pass projection');
+  LActivePass := AGraph.PassGraph[AGraph.CurrentPassIndex];
+  if LSourceGraph = LActivePass then
+    raise EWfcSequenceGraph.Create(
+      'sequence pass projection cannot depend on its own pass');
+  LPublicValues := CopyProjectedGraphValues(AModel,
+    'sequence pass projection');
+  LSalt := SequenceKeySalt(AModel);
+
+  SetLength(LProjectedValues, AModel.StateCount);
+  for I := 0 to AModel.StateCount - 1 do
+    LProjectedValues[I] := LPublicValues[
+      AModel.StateEmittedTokenIndexAt(I)];
+  for I := 0 to AModel.StateCount - 1 do
+    AGraph.Rules[SaltedStateGraphValue(LSalt, I, AModel)].RequireFromPass(
+      ASourcePass, LProjectedValues[I]);
+end;
+
+procedure RequireProjectedSequenceFromPassImpl(
+  const ASourceModel: TWfcSequenceModel; const ATargetGraph: TGraph;
+  const ATargetValue: TGraphValue; const ASourcePass: String;
+  const AAllowedPublicTokens: TWfcModelTokens; const APartial: Boolean);
+var
+  I: Integer;
+  J: Integer;
+  LAllowedTokenIndices: array of Integer;
+  LGroup: TGraphRuleGroup;
+  LParentedGroup: TGraph.TParentedGraphRuleGroup;
+  LSalt: Integer;
+  LSourceGraph: TGraph;
+  LSourceValues: TGraphValues;
+  LTargetPass: TGraph;
+  LTerms: TGraphPassMatchTerms;
+begin
+  RequireAssigned(ASourceModel, ATargetGraph);
+  if ATargetGraph.Running then
+    raise EWfcSequenceGraph.Create(
+      'projected sequence requirements cannot change while the pipeline is running');
+  LSourceGraph := FindPassGraph(ATargetGraph, ASourcePass,
+    'projected sequence requirements');
+  ValidateGraphShape(LSourceGraph, 'projected sequence requirements');
+  ValidateAppliedModel(ASourceModel, LSourceGraph,
+    'projected sequence requirements');
+  LTargetPass := ATargetGraph.PassGraph[
+    ATargetGraph.CurrentPassIndex];
+  if (not ATargetGraph.RuleGroups.TryGetValue(ATargetValue, LGroup)) or
+      (not Assigned(LGroup)) or (LGroup.Value <> ATargetValue) or
+      (not (LGroup is TGraph.TParentedGraphRuleGroup)) then
+    raise EArgumentException.CreateFmt(
+      'unknown target graph value "%s"', [ATargetValue]);
+  LParentedGroup := TGraph.TParentedGraphRuleGroup(LGroup);
+  if LParentedGroup.Parent <> LTargetPass then
+    raise EWfcSequenceGraph.Create(
+      'projected sequence target value is owned by another pass');
+  if (Length(AAllowedPublicTokens) = 0) and not APartial then
+    raise EArgumentException.Create(
+      'projected sequence requirements need at least one public token');
+
+  SetLength(LAllowedTokenIndices, Length(AAllowedPublicTokens));
+  for I := 0 to Length(AAllowedPublicTokens) - 1 do
+  begin
+    LAllowedTokenIndices[I] :=
+      ASourceModel.FindPublicToken(AAllowedPublicTokens[I]);
+    if LAllowedTokenIndices[I] < 0 then
+      raise EArgumentException.CreateFmt(
+        'unknown sequence public token [%d]', [I]);
+  end;
+
+  SetLength(LSourceValues, 0);
+  LSalt := SequenceKeySalt(ASourceModel);
+  for I := 0 to ASourceModel.StateCount - 1 do
+    for J := 0 to Length(LAllowedTokenIndices) - 1 do
+      if ASourceModel.StateEmittedTokenIndexAt(I) =
+          LAllowedTokenIndices[J] then
+      begin
+        SetLength(LSourceValues, Length(LSourceValues) + 1);
+        LSourceValues[High(LSourceValues)] :=
+          SaltedStateGraphValue(LSalt, I, ASourceModel);
+        Break;
+      end;
+  if not APartial then LGroup.RequireFromPass(ASourcePass, LSourceValues)
+  else
+  begin
+    SetLength(LTerms, 1);
+    if Length(LSourceValues) = 0 then
+    begin
+      SetLength(LSourceValues, ASourceModel.StateCount);
+      for I := 0 to ASourceModel.StateCount - 1 do
+        LSourceValues[I] := SaltedStateGraphValue(LSalt, I, ASourceModel);
+      LTerms[0] := MakeGraphPassMatchTerm(MakeGraphOffset(0, 0, 0), LSourceValues);
+      LGroup.RequireCountFromPass(ASourcePass, LTerms, 0, 0, gpcmDistinctCells);
+    end
+    else
+    begin
+      LTerms[0] := MakeGraphPassMatchTerm(MakeGraphOffset(0, 0, 0), LSourceValues);
+      LGroup.RequireAnyFromPass(ASourcePass, LTerms);
+    end;
+  end;
+end;
+
+procedure RequireProjectedSequenceFromPass(
+  const ASourceModel: TWfcSequenceModel; const ATargetGraph: TGraph;
+  const ATargetValue: TGraphValue; const ASourcePass: String;
+  const AAllowedPublicTokens: TWfcModelTokens);
+begin
+  RequireProjectedSequenceFromPassImpl(ASourceModel, ATargetGraph,
+    ATargetValue, ASourcePass, AAllowedPublicTokens, False);
+end;
+
+procedure RequirePartialProjectedSequenceFromPass(
+  const ASourceModel: TWfcSequenceModel; const ATargetGraph: TGraph;
+  const ATargetValue: TGraphValue; const ASourcePass: String;
+  const AAllowedPublicTokens: TWfcModelTokens);
+begin
+  RequireProjectedSequenceFromPassImpl(ASourceModel, ATargetGraph,
+    ATargetValue, ASourcePass, AAllowedPublicTokens, True);
+end;
+
+procedure ValidateProjectionDependencyEdge(const ATargetGraph,
+  ASourceGraph: TGraph; const ASourcePass: String);
+var
+  I: Integer;
+  LDependencyIndex: Integer;
+  LNodeGraph: TGraph;
+  LNodeIndex: Integer;
+  LPassCount: Integer;
+  LSeen: TSequenceByteArray;
+  LSourceIndex: Integer;
+  LStack: TSequenceIntegerArray;
+  LStackCount: Integer;
+  LTargetIndex: Integer;
+begin
+  LPassCount := ATargetGraph.TotalPassCount;
+  LTargetIndex := ATargetGraph.CurrentPassIndex;
+  LSourceIndex := ASourceGraph.CurrentPassIndex;
+  if (LTargetIndex < 0) or (LTargetIndex >= LPassCount) or
+      (LSourceIndex < 0) or (LSourceIndex >= LPassCount) then
+    raise EWfcSequenceGraph.Create(
+      'sequence projection map has an invalid pass index');
+  if LSourceIndex = LTargetIndex then
+    raise EWfcSequenceGraph.Create(
+      'sequence projection map cannot depend on its own pass');
+
+  SetLength(LSeen, LPassCount);
+  SetLength(LStack, LPassCount);
+  LStackCount := 1;
+  LStack[0] := LSourceIndex;
+  LSeen[LSourceIndex] := 1;
+  while LStackCount > 0 do
+  begin
+    Dec(LStackCount);
+    LNodeIndex := LStack[LStackCount];
+    if LNodeIndex = LTargetIndex then
+      raise EWfcSequenceGraph.CreateFmt(
+        'sequence projection dependency on pass "%s" would create a cycle',
+        [ASourcePass]);
+    LNodeGraph := ATargetGraph.PassGraph[LNodeIndex];
+    for I := 0 to LNodeGraph.DependencyCount - 1 do
+    begin
+      LDependencyIndex := LNodeGraph.DependencyIndex[I];
+      if (LDependencyIndex < 0) or
+          (LDependencyIndex >= LPassCount) then
+        raise EWfcSequenceGraph.Create(
+          'sequence projection map found a malformed dependency graph');
+      if LSeen[LDependencyIndex] = 0 then
+      begin
+        if LStackCount >= Length(LStack) then
+          raise EWfcSequenceGraph.Create(
+            'sequence projection map found a malformed dependency graph');
+        LStack[LStackCount] := LDependencyIndex;
+        Inc(LStackCount);
+        LSeen[LDependencyIndex] := 1;
+      end;
+    end;
+    LSeen[LNodeIndex] := 2;
+  end;
+end;
+
+procedure PrepareSequenceProjectionMap(
+  const ATargetModel, ASourceModel: TWfcSequenceModel;
+  const ATargetGraph: TGraph; const ASourcePass: String;
+  const ARules: TWfcSequenceProjectionRules;
+  out ATargetSalt: Integer;
+  out ASourceValuesByTarget: TSequenceGraphValueArrays;
+  const AAllowEmpty: Boolean = False);
+var
+  I: Integer;
+  J: Integer;
+  K: Integer;
+  LAllowedSourceIndices: TSequenceIntegerArray;
+  LSeenTargets: TSequenceBooleanArray;
+  LSourceGraph: TGraph;
+  LSourceSalt: Integer;
+  LSourceTokenIndex: Integer;
+  LTargetTokenIndex: Integer;
+begin
+  ATargetSalt := 0;
+  ASourceValuesByTarget := nil;
+  RequireAssigned(ATargetModel, ATargetGraph);
+  RequireAssigned(ASourceModel, ATargetGraph);
+  if ATargetGraph.Running then
+    raise EWfcSequenceGraph.Create(
+      'sequence projection maps cannot change while the pipeline is running');
+
+  ValidateGraphShape(ATargetGraph, 'sequence projection map');
+  ValidateAppliedModel(ATargetModel, ATargetGraph,
+    'sequence projection map target');
+  LSourceGraph := FindPassGraph(ATargetGraph, ASourcePass,
+    'sequence projection map');
+  ValidateGraphShape(LSourceGraph, 'sequence projection map source');
+  ValidateAppliedModel(ASourceModel, LSourceGraph,
+    'sequence projection map source');
+  ValidateProjectionDependencyEdge(ATargetGraph,
+    LSourceGraph, ASourcePass);
+
+  if Length(ARules) <> ATargetModel.PublicTokenCount then
+    raise EArgumentException.CreateFmt(
+      'sequence projection map must cover %d target public tokens',
+      [ATargetModel.PublicTokenCount]);
+
+  SetLength(LSeenTargets, ATargetModel.PublicTokenCount);
+  SetLength(ASourceValuesByTarget, ATargetModel.PublicTokenCount);
+  LSourceSalt := SequenceKeySalt(ASourceModel);
+  for I := 0 to Length(ARules) - 1 do
+  begin
+    LTargetTokenIndex :=
+      ATargetModel.FindPublicToken(ARules[I].TargetToken);
+    if LTargetTokenIndex < 0 then
+      raise EArgumentException.CreateFmt(
+        'unknown target sequence public token in projection rule %d', [I]);
+    if LSeenTargets[LTargetTokenIndex] then
+      raise EArgumentException.CreateFmt(
+        'duplicate target sequence public token in projection rule %d', [I]);
+    LSeenTargets[LTargetTokenIndex] := True;
+
+    if (Length(ARules[I].SourceTokens) = 0) and not AAllowEmpty then
+      raise EArgumentException.CreateFmt(
+        'sequence projection rule %d needs a source alternative', [I]);
+    SetLength(LAllowedSourceIndices,
+      Length(ARules[I].SourceTokens));
+    for J := 0 to Length(ARules[I].SourceTokens) - 1 do
+    begin
+      LSourceTokenIndex :=
+        ASourceModel.FindPublicToken(ARules[I].SourceTokens[J]);
+      if LSourceTokenIndex < 0 then
+        raise EArgumentException.CreateFmt(
+          'unknown source sequence public token in projection rule %d alternative %d',
+          [I, J]);
+      for K := 0 to J - 1 do
+        if LAllowedSourceIndices[K] = LSourceTokenIndex then
+          raise EArgumentException.CreateFmt(
+            'duplicate source sequence public token in projection rule %d alternative %d',
+            [I, J]);
+      LAllowedSourceIndices[J] := LSourceTokenIndex;
+    end;
+
+    SetLength(ASourceValuesByTarget[LTargetTokenIndex], 0);
+    for J := 0 to ASourceModel.StateCount - 1 do
+      for K := 0 to Length(LAllowedSourceIndices) - 1 do
+        if ASourceModel.StateEmittedTokenIndexAt(J) =
+            LAllowedSourceIndices[K] then
+        begin
+          SetLength(ASourceValuesByTarget[LTargetTokenIndex],
+            Length(ASourceValuesByTarget[LTargetTokenIndex]) + 1);
+          ASourceValuesByTarget[LTargetTokenIndex][
+            High(ASourceValuesByTarget[LTargetTokenIndex])] :=
+              SaltedStateGraphValue(LSourceSalt, J, ASourceModel);
+          Break;
+        end;
+  end;
+
+  for I := 0 to ATargetModel.PublicTokenCount - 1 do
+    if not LSeenTargets[I] then
+      raise EArgumentException.CreateFmt(
+        'sequence projection map is missing target public token %d', [I]);
+
+  ATargetSalt := SequenceKeySalt(ATargetModel);
+end;
+
+procedure ValidateSequenceProjectionMapFromPass(
+  const ATargetModel, ASourceModel: TWfcSequenceModel;
+  const ATargetGraph: TGraph; const ASourcePass: String;
+  const ARules: TWfcSequenceProjectionRules);
+var
+  LSourceValuesByTarget: TSequenceGraphValueArrays;
+  LTargetSalt: Integer;
+begin
+  PrepareSequenceProjectionMap(ATargetModel, ASourceModel,
+    ATargetGraph, ASourcePass, ARules, LTargetSalt,
+    LSourceValuesByTarget);
+end;
+
+procedure RequireSequenceProjectionMapFromPass(
+  const ATargetModel, ASourceModel: TWfcSequenceModel;
+  const ATargetGraph: TGraph; const ASourcePass: String;
+  const ARules: TWfcSequenceProjectionRules);
+var
+  I: Integer;
+  LGroup: TGraphRuleGroup;
+  LSourceValuesByTarget: TSequenceGraphValueArrays;
+  LTargetSalt: Integer;
+  LTargetTokenIndex: Integer;
+begin
+  PrepareSequenceProjectionMap(ATargetModel, ASourceModel,
+    ATargetGraph, ASourcePass, ARules, LTargetSalt,
+    LSourceValuesByTarget);
+
+  { Preparation checks the dependency edge, applied identities, groups, and
+    values before the first requirement is added. }
+  for I := 0 to ATargetModel.StateCount - 1 do
+  begin
+    LTargetTokenIndex :=
+      ATargetModel.StateEmittedTokenIndexAt(I);
+    LGroup := ATargetGraph.Rules[
+      SaltedStateGraphValue(LTargetSalt, I, ATargetModel)];
+    LGroup.RequireFromPass(ASourcePass,
+      LSourceValuesByTarget[LTargetTokenIndex]);
+  end;
+end;
+
+procedure PrepareSequenceProjectionBindings(
+  const ATargetModel: TWfcSequenceModel; const ATargetGraph: TGraph;
+  const ABindings: TWfcSequenceProjectionBindings;
+  out ATargetSalt: Integer;
+  out APrepared: TPreparedSequenceProjectionBindings;
+  const AAllowEmpty: Boolean = False);
+var
+  I: Integer;
+  J: Integer;
+  LBindingCount: SizeInt;
+  LTargetSalt: Integer;
+begin
+  ATargetSalt := 0;
+  APrepared := nil;
+  LBindingCount := Length(ABindings);
+  if LBindingCount = 0 then
+    raise EArgumentException.Create(
+      'sequence projection bundle needs at least one source binding');
+  if (LBindingCount < 0) or
+      ((LBindingCount and (not SizeInt(High(Integer)))) <> 0) then
+    raise ERangeError.Create(
+      'sequence projection bundle has too many source bindings');
+
+  { Check source identity before any expensive map expansion. Pass labels are
+    unique in TGraph, so label equality is also provider-pass equality. }
+  for I := 0 to Integer(LBindingCount) - 1 do
+    for J := 0 to I - 1 do
+      if ABindings[I].SourcePass = ABindings[J].SourcePass then
+        raise EArgumentException.CreateFmt(
+          'sequence projection bundle repeats source pass "%s" [%d, %d]',
+          [ABindings[I].SourcePass, J, I]);
+
+  SetLength(APrepared, Integer(LBindingCount));
+  for I := 0 to Integer(LBindingCount) - 1 do
+  begin
+    APrepared[I].SourcePass := ABindings[I].SourcePass;
+    PrepareSequenceProjectionMap(ATargetModel,
+      ABindings[I].SourceModel, ATargetGraph,
+      ABindings[I].SourcePass, ABindings[I].Rules,
+      LTargetSalt, APrepared[I].SourceValuesByTarget, AAllowEmpty);
+    if AAllowEmpty then
+    begin
+      SetLength(APrepared[I].AllSourceValues, ABindings[I].SourceModel.StateCount);
+      for J := 0 to ABindings[I].SourceModel.StateCount - 1 do
+        APrepared[I].AllSourceValues[J] := SaltedStateGraphValue(
+          SequenceKeySalt(ABindings[I].SourceModel), J, ABindings[I].SourceModel);
+    end;
+    if I = 0 then
+      ATargetSalt := LTargetSalt
+    else if LTargetSalt <> ATargetSalt then
+      raise EWfcSequenceGraph.Create(
+        'sequence projection bundle target identity changed during preflight');
+  end;
+end;
+
+procedure ValidateSequenceProjectionMapsFromPasses(
+  const ATargetModel: TWfcSequenceModel; const ATargetGraph: TGraph;
+  const ABindings: TWfcSequenceProjectionBindings);
+var
+  LPrepared: TPreparedSequenceProjectionBindings;
+  LTargetSalt: Integer;
+begin
+  PrepareSequenceProjectionBindings(ATargetModel, ATargetGraph,
+    ABindings, LTargetSalt, LPrepared);
+end;
+
+procedure RequireSequenceProjectionMapsFromPasses(
+  const ATargetModel: TWfcSequenceModel; const ATargetGraph: TGraph;
+  const ABindings: TWfcSequenceProjectionBindings);
+var
+  I: Integer;
+  J: Integer;
+  LGroup: TGraphRuleGroup;
+  LPrepared: TPreparedSequenceProjectionBindings;
+  LTargetSalt: Integer;
+  LTargetTokenIndex: Integer;
+begin
+  PrepareSequenceProjectionBindings(ATargetModel, ATargetGraph,
+    ABindings, LTargetSalt, LPrepared);
+
+  { All identities, maps, source labels, and dependency edges are valid before
+    the first semantic requirement is attached. }
+  for I := 0 to Length(LPrepared) - 1 do
+    for J := 0 to ATargetModel.StateCount - 1 do
+    begin
+      LTargetTokenIndex :=
+        ATargetModel.StateEmittedTokenIndexAt(J);
+      LGroup := ATargetGraph.Rules[
+        SaltedStateGraphValue(LTargetSalt, J, ATargetModel)];
+      LGroup.RequireFromPass(LPrepared[I].SourcePass,
+        LPrepared[I].SourceValuesByTarget[LTargetTokenIndex]);
+    end;
+end;
+
+procedure ValidateSequencePartialProjectionMapsFromPasses(
+  const ATargetModel: TWfcSequenceModel; const ATargetGraph: TGraph;
+  const ABindings: TWfcSequenceProjectionBindings);
+var P: TPreparedSequenceProjectionBindings; Salt: Integer;
+begin
+  PrepareSequenceProjectionBindings(ATargetModel, ATargetGraph, ABindings,
+    Salt, P, True);
+end;
+
+procedure RequireSequencePartialProjectionMapsFromPasses(
+  const ATargetModel: TWfcSequenceModel; const ATargetGraph: TGraph;
+  const ABindings: TWfcSequenceProjectionBindings);
+var
+  P: TPreparedSequenceProjectionBindings;
+  Salt, I, J, TokenIndex: Integer;
+  Terms: TGraphPassMatchTerms;
+  Group: TGraphRuleGroup;
+begin
+  PrepareSequenceProjectionBindings(ATargetModel, ATargetGraph, ABindings,
+    Salt, P, True);
+  SetLength(Terms, 1);
+  for I := 0 to High(P) do
+    for J := 0 to ATargetModel.StateCount - 1 do
+    begin
+      TokenIndex := ATargetModel.StateEmittedTokenIndexAt(J);
+      Group := ATargetGraph.Rules[SaltedStateGraphValue(Salt, J, ATargetModel)];
+      if Length(P[I].SourceValuesByTarget[TokenIndex]) = 0 then
+      begin
+        Terms[0] := MakeGraphPassMatchTerm(MakeGraphOffset(0, 0, 0),
+          P[I].AllSourceValues);
+        Group.RequireCountFromPass(P[I].SourcePass, Terms, 0, 0,
+          gpcmDistinctCells);
+      end
+      else
+      begin
+        Terms[0] := MakeGraphPassMatchTerm(MakeGraphOffset(0, 0, 0),
+          P[I].SourceValuesByTarget[TokenIndex]);
+        Group.RequireAnyFromPass(P[I].SourcePass, Terms);
+      end;
+    end;
+end;
+
+procedure InitializeReport(
+  out AReport: TWfcSequenceGraphValidationReport);
+begin
+  AReport := Default(TWfcSequenceGraphValidationReport);
+  AReport.Issue.Position := -1;
+  AReport.Issue.RelatedPosition := -1;
+  AReport.Issue.StateIndex := -1;
+  AReport.Issue.RelatedStateIndex := -1;
+end;
+
+function InvalidReport(var AReport: TWfcSequenceGraphValidationReport;
+  const AKind: TWfcSequenceGraphIssueKind): Boolean;
+begin
+  AReport.Valid := False;
+  AReport.Issue.Kind := AKind;
+  Result := False;
+end;
+
+procedure CheckedReportIncrement(var AValue: Integer);
+begin
+  if AValue < High(Integer) then
+    Inc(AValue);
+end;
+
+function ValidateSequenceStatePath(const AModel: TWfcSequenceModel;
+  const AStateIndices: TWfcSequenceStateIndices;
+  const ABoundary: TWfcModelBoundary;
+  out AReport: TWfcSequenceGraphValidationReport): Boolean;
+var
+  LBoundaryOrdinal: Integer;
+  LExtent: TWfcSequenceExtent;
+begin
+  LBoundaryOrdinal := Ord(ABoundary);
+  if (LBoundaryOrdinal <> Ord(wmbOpen)) and
+      (LBoundaryOrdinal <> Ord(wmbWrap)) then
+  begin
+    if not Assigned(AModel) then
+      raise EArgumentNilException.Create('sequence model cannot be nil');
+    InitializeReport(AReport);
+    Exit(InvalidReport(AReport, wsgikGraphShape));
+  end;
+  if ABoundary = wmbWrap then
+    LExtent := wseWrap
+  else
+    LExtent := wseWhole;
+  Result := ValidateSequenceStatePath(AModel, AStateIndices,
+    LExtent, AReport);
+end;
+
+function ValidateSequenceStatePath(const AModel: TWfcSequenceModel;
+  const AStateIndices: TWfcSequenceStateIndices;
+  const AExtent: TWfcSequenceExtent;
+  out AReport: TWfcSequenceGraphValidationReport): Boolean;
+var
+  I: Integer;
+  LCount: Integer;
+  LLength: SizeInt;
+  LNextPosition: Integer;
+  LState: Integer;
+begin
+  if not Assigned(AModel) then
+    raise EArgumentNilException.Create('sequence model cannot be nil');
+  InitializeReport(AReport);
+  LLength := Length(AStateIndices);
+  if (LLength < 1) or
+      ((LLength and (not SizeInt(High(Integer)))) <> 0) then
+    Exit(InvalidReport(AReport, wsgikGraphShape));
+  LCount := Integer(LLength);
+  if not SequenceExtentIsValid(AExtent) then
+    Exit(InvalidReport(AReport, wsgikGraphShape));
+
+  for I := 0 to LCount - 1 do
+  begin
+    LState := AStateIndices[I];
+    if (LState < 0) or (LState >= AModel.StateCount) then
+    begin
+      AReport.Issue.Position := I;
+      AReport.Issue.StateIndex := LState;
+      Exit(InvalidReport(AReport, wsgikStateIndex));
+    end;
+    CheckedReportIncrement(AReport.CheckedStates);
+    if ((AExtent = wseWrap) or
+        ((I = 0) and (AExtent in [wseSuffix, wseFragment]))) and
+        StateHasBos(AModel, LState) then
+    begin
+      AReport.Issue.Position := I;
+      AReport.Issue.StateIndex := LState;
+      Exit(InvalidReport(AReport, wsgikBoundaryState));
+    end;
+  end;
+
+  if (AExtent in [wseWhole, wsePrefix]) and
+      (AModel.StartCountAt(AStateIndices[0]) < 1) then
+  begin
+    AReport.Issue.Position := 0;
+    AReport.Issue.StateIndex := AStateIndices[0];
+    Exit(InvalidReport(AReport, wsgikStartState));
+  end;
+  for I := 0 to LCount - 1 do
+  begin
+    LNextPosition := I + 1;
+    if LNextPosition = LCount then
+    begin
+      if AExtent <> wseWrap then
+        Break;
+      LNextPosition := 0;
+    end;
+    CheckedReportIncrement(AReport.CheckedTransitions);
+    if not AModel.StatesCompatible(AStateIndices[I],
+        AStateIndices[LNextPosition]) then
+    begin
+      AReport.Issue.Position := I;
+      AReport.Issue.RelatedPosition := LNextPosition;
+      AReport.Issue.StateIndex := AStateIndices[I];
+      AReport.Issue.RelatedStateIndex :=
+        AStateIndices[LNextPosition];
+      Exit(InvalidReport(AReport, wsgikTransition));
+    end;
+  end;
+  if (AExtent in [wseWhole, wseSuffix]) and
+      (AModel.EndCountAt(AStateIndices[LCount - 1]) < 1) then
+  begin
+    AReport.Issue.Position := LCount - 1;
+    AReport.Issue.StateIndex := AStateIndices[LCount - 1];
+    Exit(InvalidReport(AReport, wsgikEndState));
+  end;
+  AReport.Valid := True;
+  AReport.Issue.Kind := wsgikNone;
+  Result := True;
+end;
+
+function ValidateSequenceSegmentStatePath(const AModel: TWfcSequenceModel;
+  const AStateIndices: TWfcSequenceStateIndices;
+  const ABoundary: TWfcSequenceSegmentBoundary;
+  out AReport: TWfcSequenceGraphValidationReport): Boolean;
+var
+  I, LCount, LState: Integer;
+  LLength: SizeInt;
+begin
+  if not Assigned(AModel) then
+    raise EArgumentNilException.Create('sequence model cannot be nil');
+  InitializeReport(AReport);
+  LLength := Length(AStateIndices);
+  if (LLength < 1) or
+      ((LLength and (not SizeInt(High(Integer)))) <> 0) or
+      not SegmentBoundaryIsValid(AModel, ABoundary) then
+    Exit(InvalidReport(AReport, wsgikGraphShape));
+  LCount := Integer(LLength);
+  for I := 0 to LCount - 1 do
+  begin
+    LState := AStateIndices[I];
+    if (LState < 0) or (LState >= AModel.StateCount) then
+    begin
+      AReport.Issue.Position := I;
+      AReport.Issue.StateIndex := LState;
+      Exit(InvalidReport(AReport, wsgikStateIndex));
+    end;
+    CheckedReportIncrement(AReport.CheckedStates);
+  end;
+  if ABoundary.HasPrevious then
+  begin
+    CheckedReportIncrement(AReport.CheckedTransitions);
+    if not AModel.StatesCompatible(ABoundary.PreviousState,
+      AStateIndices[0]) then
+    begin
+      AReport.Issue.Position := -1;
+      AReport.Issue.RelatedPosition := 0;
+      AReport.Issue.StateIndex := ABoundary.PreviousState;
+      AReport.Issue.RelatedStateIndex := AStateIndices[0];
+      Exit(InvalidReport(AReport, wsgikTransition));
+    end;
+  end
+  else if AModel.StartCountAt(AStateIndices[0]) < 1 then
+  begin
+    AReport.Issue.Position := 0;
+    AReport.Issue.StateIndex := AStateIndices[0];
+    Exit(InvalidReport(AReport, wsgikStartState));
+  end;
+  for I := 1 to LCount - 1 do
+  begin
+    CheckedReportIncrement(AReport.CheckedTransitions);
+    if not AModel.StatesCompatible(AStateIndices[I - 1], AStateIndices[I]) then
+    begin
+      AReport.Issue.Position := I - 1;
+      AReport.Issue.RelatedPosition := I;
+      AReport.Issue.StateIndex := AStateIndices[I - 1];
+      AReport.Issue.RelatedStateIndex := AStateIndices[I];
+      Exit(InvalidReport(AReport, wsgikTransition));
+    end;
+  end;
+  if ABoundary.RequireObservedEnd and
+    (AModel.EndCountAt(AStateIndices[LCount - 1]) < 1) then
+  begin
+    AReport.Issue.Position := LCount - 1;
+    AReport.Issue.StateIndex := AStateIndices[LCount - 1];
+    Exit(InvalidReport(AReport, wsgikEndState));
+  end;
+  AReport.Valid := True;
+  AReport.Issue.Kind := wsgikNone;
+  Result := True;
+end;
+
+function FindStateValue(const AModel: TWfcSequenceModel;
+  const AValue: TGraphValue): Integer;
+var
+  LSalt: Integer;
+begin
+  LSalt := SequenceKeySalt(AModel);
+  for Result := 0 to AModel.StateCount - 1 do
+    if SaltedStateGraphValue(LSalt, Result, AModel) = AValue then
+      Exit;
+  Result := -1;
+end;
+
+function CaptureSolvedSequence(const AModel: TWfcSequenceModel;
+  const AGraph: TGraph; out ASequence: TWfcGeneratedSequence;
+  out AReport: TWfcSequenceGraphValidationReport): Boolean;
+var
+  LExtent: TWfcSequenceExtent;
+begin
+  if Assigned(AGraph) and AGraph.WrapNeighbors then
+    LExtent := wseWrap
+  else
+    LExtent := wseWhole;
+  Result := CaptureSolvedSequence(AModel, AGraph, LExtent,
+    ASequence, AReport);
+end;
+
+function CaptureSolvedSequence(const AModel: TWfcSequenceModel;
+  const AGraph: TGraph; const AExtent: TWfcSequenceExtent;
+  out ASequence: TWfcGeneratedSequence;
+  out AReport: TWfcSequenceGraphValidationReport): Boolean;
+var
+  I: Integer;
+  LEntry: TGraphEntry;
+  LSequence: TWfcGeneratedSequence;
+  LState: Integer;
+  LWidth: Integer;
+begin
+  RequireAssigned(AModel, AGraph);
+  ASequence := Default(TWfcGeneratedSequence);
+  LSequence := Default(TWfcGeneratedSequence);
+  InitializeReport(AReport);
+  if (AGraph.Dimension.Width = 0) or
+      (AGraph.Dimension.Width > TGraphCoordinate(High(Integer))) or
+      (AGraph.Dimension.Height <> 1) or
+      (AGraph.Dimension.Depth <> 1) then
+    Exit(InvalidReport(AReport, wsgikGraphShape));
+  if not AppliedModelMatches(AModel, AGraph) then
+    Exit(InvalidReport(AReport, wsgikModelIdentity));
+  if (not SequenceExtentIsValid(AExtent)) or
+      (AGraph.WrapNeighbors <> (AExtent = wseWrap)) then
+    Exit(InvalidReport(AReport, wsgikGraphShape));
+
+  LWidth := Integer(AGraph.Dimension.Width);
+  if AGraph.WrapNeighbors then
+    LSequence.Boundary := wmbWrap
+  else
+    LSequence.Boundary := wmbOpen;
+  LSequence.Extent := AExtent;
+  SetLength(LSequence.StateIndices, LWidth);
+  for I := 0 to LWidth - 1 do
+  begin
+    LEntry := AGraph.Entry[TGraphCoordinate(I), 0, 0];
+    if LEntry.Empty then
+    begin
+      AReport.Issue.Position := I;
+      Exit(InvalidReport(AReport, wsgikEmptyCell));
+    end;
+    LState := FindStateValue(AModel, LEntry.Value);
+    if LState < 0 then
+    begin
+      AReport.Issue.Position := I;
+      Exit(InvalidReport(AReport, wsgikUnknownStateKey));
+    end;
+    LSequence.StateIndices[I] := LState;
+  end;
+  if not ValidateSequenceStatePath(AModel, LSequence.StateIndices,
+      AExtent, AReport) then
+    Exit(False);
+  LSequence.Tokens := AModel.ProjectStateIndices(LSequence.StateIndices);
+  ASequence := LSequence;
+  Result := True;
+end;
+
+function CaptureSolvedSequenceSegment(const AModel: TWfcSequenceModel;
+  const AGraph: TGraph; const ABoundary: TWfcSequenceSegmentBoundary;
+  out ASequence: TWfcGeneratedSequenceSegment;
+  out AReport: TWfcSequenceGraphValidationReport): Boolean;
+var
+  I, LState, LWidth: Integer;
+  LEntry: TGraphEntry;
+  LSequence: TWfcGeneratedSequenceSegment;
+begin
+  RequireAssigned(AModel, AGraph);
+  ASequence := Default(TWfcGeneratedSequenceSegment);
+  LSequence := Default(TWfcGeneratedSequenceSegment);
+  InitializeReport(AReport);
+  if (AGraph.Dimension.Width = 0) or
+      (AGraph.Dimension.Width > TGraphCoordinate(High(Integer))) or
+      (AGraph.Dimension.Height <> 1) or (AGraph.Dimension.Depth <> 1) or
+      AGraph.WrapNeighbors or not SegmentBoundaryIsValid(AModel, ABoundary) then
+    Exit(InvalidReport(AReport, wsgikGraphShape));
+  if not AppliedModelMatches(AModel, AGraph) then
+    Exit(InvalidReport(AReport, wsgikModelIdentity));
+  LWidth := Integer(AGraph.Dimension.Width);
+  SetLength(LSequence.StateIndices, LWidth);
+  LSequence.Boundary := ABoundary;
+  for I := 0 to LWidth - 1 do
+  begin
+    LEntry := AGraph.Entry[TGraphCoordinate(I), 0, 0];
+    if LEntry.Empty then
+    begin
+      AReport.Issue.Position := I;
+      Exit(InvalidReport(AReport, wsgikEmptyCell));
+    end;
+    LState := FindStateValue(AModel, LEntry.Value);
+    if LState < 0 then
+    begin
+      AReport.Issue.Position := I;
+      Exit(InvalidReport(AReport, wsgikUnknownStateKey));
+    end;
+    LSequence.StateIndices[I] := LState;
+  end;
+  if not ValidateSequenceSegmentStatePath(AModel, LSequence.StateIndices,
+      ABoundary, AReport) then Exit(False);
+  LSequence.Tokens := AModel.ProjectStateIndices(LSequence.StateIndices);
+  ASequence := LSequence;
+  Result := True;
+end;
+
+function DescribeSequenceGraphIssue(
+  const AIssue: TWfcSequenceGraphIssue): String;
+begin
+  Result := 'unknown sequence graph issue';
+  case AIssue.Kind of
+    wsgikNone:
+      Result := 'no sequence graph issue';
+    wsgikGraphShape:
+      Result := 'sequence graph shape or boundary is invalid';
+    wsgikModelIdentity:
+      Result := 'graph pass does not contain the matching sequence model';
+    wsgikEmptyCell:
+      Result := Format('sequence position %d is empty', [AIssue.Position]);
+    wsgikUnknownStateKey:
+      Result := Format('sequence position %d has an unknown latent key',
+        [AIssue.Position]);
+    wsgikStateIndex:
+      Result := Format('sequence position %d has invalid state %d',
+        [AIssue.Position, AIssue.StateIndex]);
+    wsgikBoundaryState:
+      Result := Format(
+        'sequence position %d contains a BOS-bearing state ' +
+        'forbidden by its extent',
+        [AIssue.Position]);
+    wsgikStartState:
+      Result := Format('sequence state %d was not observed at a start',
+        [AIssue.StateIndex]);
+    wsgikEndState:
+      Result := Format('sequence state %d was not observed at an end',
+        [AIssue.StateIndex]);
+    wsgikTransition:
+      Result := Format('sequence states %d and %d do not overlap',
+        [AIssue.StateIndex, AIssue.RelatedStateIndex]);
+  end;
+end;
+
+end.

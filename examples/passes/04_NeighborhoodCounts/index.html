@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Exact count-range constraints between Pascal WFC passes.">
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="counts.css">
+  <title>WFC Count Constraint Lab</title>
+</head>
+<body data-state="loading" data-self-test="not-requested" data-output-key="">
+  <header>
+    <p class="eyebrow">WFC / PASS LAB 04</p>
+    <h1>More than “any.”</h1>
+    <p class="lede">A market needs a specific amount of road access, not just one nearby road.
+      Compose exact lower and upper bounds across earlier passes.</p>
+    <div class="pipeline" aria-label="Pass dependencies">
+      <span>01 Terrain</span><span>→</span><span>02 Roads</span><span>→</span><span>03 Market</span>
+    </div>
+    <p class="small">Terrain also feeds the market directly: its eight-cell water ring has a separate upper bound.</p>
+  </header>
+  <main>
+    <section class="controls" aria-labelledby="controls-heading">
+      <div class="section-title"><p class="eyebrow">01 / EXPERIMENT</p><h2 id="controls-heading">Choose the rule</h2></div>
+      <label class="preset">Fixture
+        <select id="preset">
+          <option value="two">Exactly two roads · solved</option>
+          <option value="lower">One road · below the minimum</option>
+          <option value="upper">Three roads · above the maximum</option>
+          <option value="flood">Two wet neighbors · second-provider failure</option>
+          <option value="repair">One free road cell · repair the provider</option>
+          <option value="alias">Wrapped 2 × 1 · two directions, one cell</option>
+        </select>
+      </label>
+      <div class="fields">
+        <label>Seed<input id="seed" value="0" inputmode="numeric" autocomplete="off"></label>
+        <label>Minimum roads<input id="minimum" type="number" min="0" max="4" value="2"></label>
+        <label>Maximum roads<input id="maximum" type="number" min="0" max="4" value="2"></label>
+        <label>Maximum wet cells<input id="water-maximum" type="number" min="0" max="8" value="1"></label>
+        <label class="mode">Road count means
+          <select id="mode"><option value="cells">Distinct provider cells</option><option value="terms">Matching offset terms</option></select>
+        </label>
+        <label class="check"><input id="wrap" type="checkbox"> Wrap the grid</label>
+      </div>
+      <div class="actions"><button id="generate" type="button">Generate once</button><button id="repair" type="button" class="secondary">Repair roads → market</button></div>
+      <p class="small">Repair reuses the locked terrain and reopens only roads and market.
+        Caller locks are never relaxed. Search budgets: 64 local backtracks and 16 pass backtracks.</p>
+    </section>
+    <section class="inputs" aria-labelledby="inputs-heading">
+      <div class="section-title"><p class="eyebrow">02 / CALLER INPUTS</p><h2 id="inputs-heading">Pin the world</h2></div>
+      <p id="grid-note" class="small"></p>
+      <div class="input-columns">
+        <div><h3>Terrain</h3><p class="small">Click: land ↔ water</p><div id="input-terrain" class="grid" aria-label="Terrain input cells"></div></div>
+        <div><h3>Road locks</h3><p class="small">Click: empty → road → auto</p><div id="input-roads" class="grid" aria-label="Road input cells"></div></div>
+      </div>
+      <p class="legend"><span>L land</span><span>W water</span><span>R road</span><span>. empty</span><span>? solver chooses</span></p>
+      <p class="small">The market itself is locked on empty land. Water cannot carry a road.
+        Empty and out-of-bounds samples do not match; a zero-count rule is not proof that a boundary exists.</p>
+    </section>
+    <section class="results" aria-labelledby="results-heading">
+      <div class="section-title"><p class="eyebrow">03 / ATOMIC RESULT</p><h2 id="results-heading">Every pass must agree</h2></div>
+      <p id="status" role="status" aria-live="polite">Loading the Pascal program…</p>
+      <p id="detail" class="small"></p>
+      <div class="output-columns">
+        <div><h3>Terrain</h3><div id="output-terrain" class="grid" aria-label="Committed terrain"></div></div>
+        <div><h3>Roads</h3><div id="output-roads" class="grid" aria-label="Committed roads"></div></div>
+        <div><h3>Market</h3><div id="output-market" class="grid" aria-label="Committed market"></div></div>
+      </div>
+      <p class="small">Only a successful, independently checked transaction appears here.
+        Failed or edited attempts clear all generated presentation; input locks remain visible above.</p>
+    </section>
+    <section class="explanation" aria-labelledby="semantics-heading">
+      <p class="eyebrow">THE WRAP TEST</p><h2 id="semantics-heading">Directions are not always different places.</h2>
+      <p>In the 2 × 1 wrapped fixture, east and west both reach the same road.
+        Matching offset terms counts two successes. Distinct provider cells counts one.
+        Choose the meaning explicitly; the solver will not guess.</p>
+      <p>These rules read completed earlier passes. They are not a global quota over the current pass,
+        a soft preference, or an automatic search for a minimal repair region.</p>
+    </section>
+  </main>
+  <footer>Pascal source → pas2js → browser DOM · Project-owned constraints, validation, and FPC hosting · MIT</footer>
+  <script src="BrowserNeighborhoodCounts.js"></script>
+  <script>rtl.run();</script>
+</body>
+</html>

@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Dependency-free WFC training, solving, inspection, and artifact workbench compiled from Pascal with pas2js.">
+  <title>WFC Training Studio</title>
+  <link rel="stylesheet" href="trainingstudio.css">
+</head>
+<body data-state="loading" data-profile="" data-self-test="not-requested"
+  data-source-signature="" data-training-signature="" data-recipe-signature=""
+  data-result-signature="" data-result-status="none"
+  data-output-count="0" data-cell-count="0" data-output-depth="0"
+  data-pass-count="0" data-lock-count="0"
+  data-source-invalidation="not-run" data-run-invalidation="not-run"
+  data-contradiction="not-run" data-recovery="not-run"
+  data-preset-sweep="not-run" data-import-race="not-run"
+  data-volume-dimensions="not-run" data-volume-lock="not-run"
+  data-volume-contradiction="not-run" data-volume-recovery="not-run">
+  <header class="masthead">
+    <div>
+      <p class="eyebrow">WFC / LEARNING LAB 05</p>
+      <h1>Training Studio</h1>
+      <p class="lede">Edit a bounded 1D, 2D, or 3D corpus, learn a portable recipe, constrain its public output, and export every replay artifact.</p>
+    </div>
+    <div class="flow" aria-label="Training workflow">
+      <span>source</span><i aria-hidden="true">→</i><span>model</span>
+      <i aria-hidden="true">→</i><span>recipe</span>
+      <i aria-hidden="true">→</i><span>run</span>
+      <i aria-hidden="true">→</i><span>result</span>
+    </div>
+  </header>
+
+  <main>
+    <section class="source-panel" aria-labelledby="source-heading">
+      <div class="section-heading">
+        <div><p class="step">01 / SOURCE</p><h2 id="source-heading">Editable training corpus</h2></div>
+        <div class="toolbar compact-toolbar">
+          <label><span>Preset</span><select id="preset-select" aria-label="Training preset"></select></label>
+          <button id="load-preset-button" type="button">Load preset</button>
+          <label class="file-button">Import .wfclearn<input id="source-file-input" type="file" accept=".wfclearn,text/plain"></label>
+        </div>
+      </div>
+      <textarea id="source-input" class="source-editor" rows="22"
+        aria-label="Canonical wfclearn source" autocomplete="off"
+        autocapitalize="off" spellcheck="false"></textarea>
+      <div class="toolbar source-actions">
+        <button id="train-button" class="primary" type="button">Train recipe</button>
+        <a id="download-source-link" class="button-link disabled" aria-disabled="true">Download source</a>
+        <span class="hint">LF-only canonical text · interactive limit enforced before training</span>
+      </div>
+
+      <details class="raw-import">
+        <summary>Convert one raw Unicode-scalar sample</summary>
+        <p>Every Unicode scalar—including spaces and line breaks—becomes one token. Metadata is explicit and is never inferred. Browser text fields use LF line endings; use canonical token records for exact CR or CRLF input.</p>
+        <div class="raw-fields">
+          <label><span>Document name</span><input id="raw-name-input" value="raw-text"></label>
+          <label><span>Sample name</span><input id="raw-sample-name-input" value="raw-input"></label>
+          <label><span>License declaration</span><input id="raw-license-input" placeholder="required · never inferred"></label>
+          <label><span>Source description</span><input id="raw-source-input" placeholder="required"></label>
+          <label><span>Sequence order</span><input id="raw-order-input" type="number" min="1" max="64" value="2"></label>
+        </div>
+        <label><span>Raw text</span><textarea id="raw-text-input" rows="5" maxlength="2048" spellcheck="false"></textarea></label>
+        <button id="convert-raw-button" type="button">Replace source with scalar training document</button>
+      </details>
+    </section>
+
+    <aside class="status-panel" aria-label="Workspace status">
+      <div class="status-line"><span class="status-light" aria-hidden="true"></span><div><small>Workspace</small><strong id="status" aria-live="polite">Loading Pascal runtime…</strong></div></div>
+      <dl class="metrics">
+        <div><dt>Profile</dt><dd id="profile-output">—</dd></div>
+        <div><dt>Samples</dt><dd id="sample-count">0</dd></div>
+        <div><dt>Source tokens</dt><dd id="source-token-count">0</dd></div>
+        <div><dt>Locks</dt><dd id="lock-count">0</dd></div>
+        <div class="wide"><dt>Training signature</dt><dd id="training-signature">—</dd></div>
+        <div class="wide"><dt>Recipe signature</dt><dd id="recipe-signature">—</dd></div>
+        <div class="wide"><dt>Result signature</dt><dd id="result-signature">—</dd></div>
+      </dl>
+      <p id="status-detail">No derived artifact is current.</p>
+    </aside>
+
+    <section class="run-panel" aria-labelledby="run-heading">
+      <div class="section-heading">
+        <div><p class="step">02 / RUN</p><h2 id="run-heading">Bounded solve</h2></div>
+        <button id="solve-button" class="primary" type="button">Configure &amp; solve</button>
+      </div>
+      <div class="run-fields">
+        <label><span>Width</span><input id="width-input" type="number" min="1" value="4"></label>
+        <label><span>Height</span><input id="height-input" type="number" min="1" value="4"></label>
+        <label><span>Depth</span><input id="depth-input" type="number" min="1" value="1"></label>
+        <label><span>Seed</span><input id="seed-input" inputmode="text" value="0" autocomplete="off"></label>
+        <label><span>Strategy</span><select id="strategy-select"><option value="one-way">one-way</option><option value="negotiated">negotiated</option></select></label>
+        <label><span>Local backtracks</span><input id="backtracks-input" type="number" min="0" max="4096" value="1024"></label>
+        <label><span>Pass backtracks</span><input id="pass-backtracks-input" type="number" min="0" max="64" value="0"></label>
+        <label class="check-field"><input id="trace-input" type="checkbox"><span>Capture causal evidence</span></label>
+      </div>
+
+      <div class="lock-editor">
+        <div>
+          <h3>Public output locks</h3>
+          <p>Click a solved cell to copy its XYZ coordinate, then choose any public token.</p>
+        </div>
+        <div class="lock-fields">
+          <label><span>X</span><input id="lock-x-input" type="number" min="0" value="0"></label>
+          <label><span>Y</span><input id="lock-y-input" type="number" min="0" value="0"></label>
+          <label><span>Z</span><input id="lock-z-input" type="number" min="0" value="0"></label>
+          <label class="token-field"><span>Token</span><select id="lock-token-select"></select></label>
+          <button id="add-lock-button" type="button">Add / replace</button>
+        </div>
+        <select id="lock-list" class="lock-list" size="4" aria-label="Configured public locks"></select>
+        <div class="toolbar">
+          <button id="remove-lock-button" type="button">Remove selected</button>
+          <button id="clear-locks-button" type="button">Clear locks</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="result-panel" aria-labelledby="result-heading">
+      <div class="section-heading">
+        <div><p class="step">03 / RESULT</p><h2 id="result-heading">Public output</h2></div>
+        <strong id="result-status" class="result-chip">not run</strong>
+      </div>
+      <div id="output-grid" class="output-grid" role="grid" aria-label="Solved public output by Z slice"></div>
+      <p id="output-placeholder" class="placeholder">Train and solve to inspect public cells.</p>
+      <div class="reports">
+        <div><h3>Passes and terminal outcomes</h3><pre id="pass-report">No recipe trained.</pre></div>
+        <div><h3>Failure evidence</h3><pre id="failure-report">No terminal result.</pre></div>
+      </div>
+    </section>
+
+    <section class="artifact-panel" aria-labelledby="artifact-heading">
+      <div class="section-heading">
+        <div><p class="step">04 / EXPORT</p><h2 id="artifact-heading">Canonical artifacts</h2></div>
+        <div class="toolbar compact-toolbar">
+          <label><span>Artifact</span>
+            <select id="artifact-select">
+              <option value="source">source .wfclearn</option>
+              <option value="model">standalone model</option>
+              <option value="recipe">pipeline recipe</option>
+              <option value="run">run request</option>
+              <option value="result">terminal result</option>
+            </select>
+          </label>
+          <a id="download-artifact-link" class="button-link disabled" aria-disabled="true">Download selected</a>
+        </div>
+      </div>
+      <textarea id="artifact-output" class="artifact-output" rows="15" readonly
+        aria-label="Selected canonical artifact" spellcheck="false"></textarea>
+      <p id="artifact-status" class="hint">Select a current artifact to inspect or download.</p>
+    </section>
+  </main>
+
+  <footer>
+    <span>Pascal source → pas2js → browser DOM</span>
+    <span>Repository units + standard RTL only · no CDN · no runtime network calls</span>
+  </footer>
+  <script src="BrowserTrainingStudio.js"></script>
+  <script>
+    window.addEventListener('load', function () {
+      rtl.run();
+    });
+  </script>
+</body>
+</html>

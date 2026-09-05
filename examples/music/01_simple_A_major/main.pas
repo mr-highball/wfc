@@ -28,259 +28,54 @@ unit main;
 interface
 
 uses
-  Classes,
-  SysUtils,
-  Forms,
-  Controls,
-  Graphics,
-  Dialogs, ExtCtrls, StdCtrls, ComCtrls, Spin,
-  wfc,
-  Audio,
-  Piano,
-  Music,
-  Wave;
+  SysUtils, wfc, wfc_music, wfc_music_audio, wfc_music_audio_stream;
 
 type
-
-
-  { TSimpleMusicForm }
-  (*
-    an example showing how we can use a commonly used scale (A Major)
-    to generate a simple musical track and can also be used as a base class
-    for other music demos
-  *)
-  TSimpleMusicForm = class(TForm)
-    btn_stop: TButton;
-    btn_play: TButton;
-    btn_generate: TButton;
-    memo_notes: TMemo;
-    pnl_main: TPanel;
-    pnl_piano: TPanel;
-    pnl_ctrls: TPanel;
-    edit_note_count: TSpinEdit;
-    timer_audio: TTimer;
-    track_piano_size: TTrackBar;
-    procedure btn_generateClick(Sender: TObject);
-    procedure btn_playClick(Sender: TObject);
-    procedure btn_stopClick(Sender: TObject);
-    procedure FormCreate(Sender: TObject);
-    procedure FormDestroy(Sender: TObject);
-    procedure timer_audioTimer(Sender: TObject);
-    procedure track_piano_sizeChange(Sender: TObject);
+  { The original fluent A-major constraints, without a presentation backend.
+    Descendants override InitWFC to explore another authored note grammar. }
+  TSimpleMusic = class
   strict private
-    FPiano: TPianoKeyboard;
-    FRecorder: TWaveRecorder;
-    FTempo : Double;
-    FMouseDown: Boolean;
-    FDownKey: Integer;
-    FGraph : TGraph;
-
-    {$Region shameless_soundshop_copy_paste}
-    procedure InitPiano;
-    procedure PianoKeyToggle(Sender: TObject; Key: Integer; Down: Boolean);
-    procedure PianoMouseDown(Sender: TObject; Button: TMouseButton;
-      Shift: TShiftState; X, Y: Integer);
-    procedure PianoMouseMove(Sender: TObject; Shift: TShiftState; X, Y: Integer);
-    procedure PianoMouseUp(Sender: TObject; Button: TMouseButton;
-      Shift: TShiftState; X, Y: Integer);
-    {$EndRegion}
+    FGraph: TGraph;
+    FNoteCount: Integer;
   protected
-    type
-
-      { TPianoGraph }
-      (*
-        specialized graph to start at the beginning bar
-      *)
-      TPianoGraph = class(TGraph)
-      strict protected
-        procedure DoGetStartCoord(out X, Y: UInt64); override;
-      public
-      end;
-  protected
-    (*
-      responsible for initializing the wfc graph and can
-      be overridden in children if a different behavior is desired
-    *)
-    procedure InitWFC(const AGraph : TGraph); virtual;
-
-    (*
-      can be overridden to add notes differently then the default way
-    *)
-    procedure DoAddMusicNotes(const AMusic : TPianoMusic); virtual;
+    procedure InitWFC(const AGraph: TGraph); virtual;
+    function NotePitch(const ANote: String): Integer; virtual;
+    property NoteCount: Integer read FNoteCount;
   public
-
-    (*
-      uses wfc to generate music
-    *)
-    procedure GenerateMusic;
-
-    (*
-      after generate has been called, this will play music on the piano
-    *)
-    procedure PlayMusic;
-
-    (*
-      stops the currently playing music
-    *)
-    procedure StopMusic;
-
-    constructor Create(TheOwner: TComponent); override;
+    constructor Create;
+    destructor Destroy; override;
+    function GenerateMusic(const ACount, ATempoMicroseconds: Integer;
+      const ASeed: TGraphSeed): TWfcMusicScore;
   end;
 
-var
-  SimpleMusicForm: TSimpleMusicForm;
+{ Bounded-memory PCM/RF64 output for the study's single-voice, constant-tempo,
+  twelve-tone note scores; other score shapes fail before writing sink bytes.
+  The complete note graph/score is still resident. No preview-duration or
+  arbitrary note-count cap is applied. }
+procedure RenderSimpleMusicWave(const AScore: TWfcMusicScore;
+  const ASink: TWfcMusicAudioByteSink;
+  const AOptions: TWfcMusicAudioOptions);
 
 implementation
+
 uses
-  StrUtils;
+  wfc_music_sequence, wfc_music_ensemble, wfc_music_ensemble_audio;
 
-{$R *.lfm}
-
-function CountOccurences( const SubText: string;
-                          const Text: string): Integer;
+constructor TSimpleMusic.Create;
 begin
-  Result := Pos(SubText, Text);
-  if Result > 0 then
-    Result := (Length(Text) - Length(StringReplace(Text, SubText, '', [rfReplaceAll]))) div  Length(subtext);
+  inherited Create;
+  FGraph := TGraph.Create;
 end;
 
-{ TSimpleMusicForm.TPianoGraph }
-
-procedure TSimpleMusicForm.TPianoGraph.DoGetStartCoord(out X, Y: UInt64);
-begin
-  //always start at the beginning note for our piano demo
-  X := 0;
-  Y := 0;
-end;
-
-{ TSimpleMusicForm }
-
-procedure TSimpleMusicForm.FormCreate(Sender: TObject);
-begin
-  InitPiano;
-  FGraph := TPianoGraph.Create;
-  //InitWFC(FGraph);
-end;
-
-procedure TSimpleMusicForm.FormDestroy(Sender: TObject);
+destructor TSimpleMusic.Destroy;
 begin
   FGraph.Free;
+  inherited Destroy;
 end;
 
-procedure TSimpleMusicForm.timer_audioTimer(Sender: TObject);
-const
-  TimeOffset = 0.1;
-var
-  LTime: Double;
+procedure TSimpleMusic.InitWFC(const AGraph: TGraph);
 begin
-  LTime := AudioTime;
-  FPiano.Music.Play(LTime + TimeOffset);
-  if FPiano.Music.Stopped then
-    StopMusic;
-end;
-
-procedure TSimpleMusicForm.track_piano_sizeChange(Sender: TObject);
-begin
-  //there may be a better way to get the piano visual control to scale
-  //but to avoid any more digging, here's a simple slider which will use
-  //the scale factor to update the size
-  FPiano.ScaleFactor := track_piano_size.Position / 100;
-end;
-
-procedure TSimpleMusicForm.btn_generateClick(Sender: TObject);
-begin
-  GenerateMusic;
-end;
-
-procedure TSimpleMusicForm.btn_playClick(Sender: TObject);
-begin
-  PlayMusic;
-end;
-
-procedure TSimpleMusicForm.btn_stopClick(Sender: TObject);
-begin
-  StopMusic;
-end;
-
-procedure TSimpleMusicForm.InitPiano;
-begin
-  //initialize the settings for a piano to show on screen
-  AudioInit;
-  FTempo := 1;
-  FPiano := TPianoKeyboard.Create(Self);
-  FPiano.Parent := pnl_piano;
-  FPiano.Align := alClient;
-  FPiano.SetMargin(Rect(0, 1, 0, 0));
-  FPiano.ScaleFactor := 0.35;
-  FPiano.OnKeyToggle := PianoKeyToggle;
-  FPiano.OnMouseDown := PianoMouseDown;
-  FPiano.OnMouseMove := PianoMouseMove;
-  FPiano.OnMouseUp := PianoMouseUp;
-  FPiano.Music.Overhang := 0.1;
-  FPiano.ShowRoll := True;
-  FPiano.SetMargin(Classes.Rect(0, 1000, 0, 10));
-  FRecorder := TWaveRecorder.Create;
-end;
-
-procedure TSimpleMusicForm.PianoKeyToggle(Sender: TObject; Key: Integer; Down: Boolean);
-begin
-  //here's where we actually play with the piano via user inputs
-  if Down then
-    AudioVoice(Key, FPiano.KeyToFrequency(Key), FPiano.Music.Velocity, FPiano.Music.Time)
-  else
-    AudioVoice(Key, 0, 0);
-end;
-
-procedure TSimpleMusicForm.PianoMouseDown(Sender: TObject; Button: TMouseButton;
-  Shift: TShiftState; X, Y: Integer);
-begin
-  if Button = mbLeft then
-  begin
-    FMouseDown := True;
-    FDownKey := FPiano.KeyFromPoint(X, Y);
-    FPiano.Key[FDownKey] := True;
-  end;
-end;
-
-procedure TSimpleMusicForm.PianoMouseMove(Sender: TObject; Shift: TShiftState; X,
-  Y: Integer);
-var
-  I: Integer;
-begin
-  if FMouseDown then
-  begin
-    I := FPiano.KeyFromPoint(X, Y);
-    if I <> FDownKey then
-    begin
-      FPiano.Key[FDownKey] := False;
-      FDownKey := I;
-      FPiano.Key[FDownKey] := True;
-    end;
-  end;
-end;
-
-procedure TSimpleMusicForm.PianoMouseUp(Sender: TObject; Button: TMouseButton;
-  Shift: TShiftState; X, Y: Integer);
-begin
-  if (Button = mbLeft) and FMouseDown then
-  begin
-    FPiano.Key[FDownKey] := False;
-    FDownKey := -1;
-    FMouseDown := False;
-  end;
-end;
-
-procedure TSimpleMusicForm.InitWFC(const AGraph: TGraph);
-begin
-  (*
-    below we'll setup the A Major scale and use 6 bars (4/4) in the width direction
-    and use the Y direction to manage the note and the duration of the note
-    + will denote a higher octave than the base note.
-
-    Lastly, our constraints will simply allow us to play the scale so each note
-    must come after it's prior note on the scale
-  *)
-  AGraph.Reshape({width = notes} edit_note_count.Value, {height = 0-note/1-duration?} 1, {depth} 1); //todo - should be use height to hold the duration? or would this be better for implementing the passes idea? for now use 1 dimension or use Z?
+  AGraph.Reshape(NoteCount, 1, 1);
   AGraph.WrapNeighbors := False;
   AGraph.AddValue('A').NewRule([gdEast], 'B').NewRule([gdWest], 'A+');
   AGraph.AddValue('B').NewRule([gdEast], 'C#');
@@ -292,87 +87,118 @@ begin
   AGraph.AddValue('A+').NewRule([gdEast], 'A');
 end;
 
-procedure TSimpleMusicForm.DoAddMusicNotes(const AMusic: TPianoMusic);
-var
-  LLine: String;
-  I, LNote: Integer;
+function TSimpleMusic.NotePitch(const ANote: String): Integer;
+const Names: array[0..11] of String =
+  ('A','A#','B','C','C#','D','D#','E','F','F#','G','G#');
+var I, LOctaves: Integer; LName: String;
 begin
-  //check the memo for the notes and handle all possbilities including octaves
-  for I := 0 to Pred(memo_notes.Lines.Count) do
+  LName := ANote; LOctaves := 0;
+  while (Length(LName) > 0) and (LName[Length(LName)] = '+') do
   begin
-    LLine := memo_notes.Lines[I];
-    LLine := ReplaceStr(LLine, '+', '');
-
-    if LLine = 'A' then
-      LNote := noteA
-    else if LLine = 'A#' then
-      LNote := noteAsharp
-    else if LLine = 'B' then
-      LNote := noteB
-    else if LLine = 'C' then
-      LNote := noteC
-    else if LLine = 'C#' then
-      LNote := noteCsharp
-    else if LLine = 'D' then
-      LNote := noteD
-    else if LLine = 'D#' then
-      LNote := noteDsharp
-    else if LLine = 'E' then
-      LNote := noteE
-    else if LLine = 'F' then
-      LNote := noteF
-    else if LLine = 'F#' then
-      LNote := noteFsharp
-    else if LLine = 'G' then
-      LNote := noteG
-    else if LLine = 'G#' then
-      LNote := noteGsharp;
-
-    LLine := memo_notes.Lines[I];
-
-    //notes are just integers, and 12 notes until a octave, so use + signs for this
-    LNote := LNote + (CountOccurences('+', LLine) * 12);
-
-    AMusic.Add(LNote, I, 1); //todo - hard coded duration needs changing
+    Inc(LOctaves); Delete(LName, Length(LName), 1);
+    if LOctaves > 5 then raise ERangeError.Create('note exceeds MIDI pitch range');
   end;
+  for I := 0 to High(Names) do
+    if LName = Names[I] then
+    begin
+      //The original study starts its authored octave at A = 220 Hz (MIDI 57).
+      Result := 57 + I + 12 * LOctaves;
+      if Result > 127 then raise ERangeError.Create('note exceeds MIDI pitch range');
+      Exit;
+    end;
+  raise EConvertError.Create('unknown authored note: ' + ANote);
 end;
 
-procedure TSimpleMusicForm.GenerateMusic;
+function TSimpleMusic.GenerateMusic(const ACount, ATempoMicroseconds: Integer;
+  const ASeed: TGraphSeed): TWfcMusicScore;
 var
   I: Integer;
+  LOptions: TGraphSolveOptions;
+  LReport: TGraphSolveReport;
+  LTracks: TWfcMusicTracks;
+  LVoices: TWfcMusicVoices;
+  LMeters: TWfcMusicMeterChanges;
+  LTempos: TWfcMusicTempoChanges;
+  LSpans: TWfcMusicSpanEvents;
+  LTones: TWfcMusicTones;
 begin
-  memo_notes.Clear;
+  Result := nil;
+  if ACount < 1 then raise ERangeError.Create('note count must be positive');
+  if ATempoMicroseconds < 1 then
+    raise ERangeError.Create('microseconds per quarter must be positive');
+  FNoteCount := ACount;
   FGraph.Reset;
+  FGraph.Seed := ASeed;
   InitWFC(FGraph);
-  FGraph.Run;
-
-  //for now we will just add the note to the memo control
-  for I := 0 to Pred(FGraph.Dimension.Width) do
-    memo_notes.Lines.Add(FGraph[I, 0, 0].Value);
+  LOptions := DefaultGraphSolveOptions;
+  if not FGraph.TrySolve(LOptions, LReport) then
+    raise EWfcMusic.CreateFmt('note constraints failed in pass %d',
+      [LReport.FailedPassIndex]);
+  SetLength(LTracks, 1); LTracks[0] := MakeWfcMusicTrack('study', 'Authored note study');
+  SetLength(LVoices, 1); LVoices[0] := MakeWfcMusicVoice(0, 'melody');
+  //One quarter per measure permits every positive requested note count.
+  SetLength(LMeters, 1); LMeters[0] := MakeWfcMusicMeterChange(0, 1, 4);
+  SetLength(LTempos, 1); LTempos[0] := MakeWfcMusicTempoChange(0, ATempoMicroseconds);
+  SetLength(LSpans, ACount); SetLength(LTones, 1);
+  for I := 0 to ACount - 1 do
+  begin
+    LTones[0] := MakeWfcMusicTone(NotePitch(FGraph.Entry[I, 0, 0].Value), 96);
+    LSpans[I] := MakeWfcMusicSound(0, I, 1, LTones);
+  end;
+  //One exact tick per quarter avoids multiplying the requested note count.
+  Result := TWfcMusicScore.Create(1, 12, ACount, LTracks, LVoices,
+    LMeters, LTempos, LSpans);
 end;
 
-procedure TSimpleMusicForm.PlayMusic;
+procedure RenderSimpleMusicWave(const AScore: TWfcMusicScore;
+  const ASink: TWfcMusicAudioByteSink;
+  const AOptions: TWfcMusicAudioOptions);
+var
+  I: Integer;
+  LClock: TWfcMusicEnsembleAudioClock;
+  LRenderer: TWfcMusicEnsembleAudioRenderer;
+  LWave: TWfcMusicWaveStream;
+  LCapacities: TWfcMusicEnsembleAudioVoiceCapacities;
+  LFrame: TWfcMusicEnsembleFrame;
+  LSpan: TWfcMusicSpanEvent;
+  LSamples: TWfcMusicPcm16Samples;
 begin
-  AudioReset;
-  FPiano.Music.Clear;
-  FPiano.Reset;
-  DoAddMusicNotes(FPiano.Music);
-  timer_audio.Enabled := True;
-end;
-
-procedure TSimpleMusicForm.StopMusic;
-begin
-  //soundshop uses a timer to play the music, so we mimic this and enable here
-  timer_audio.Enabled := False;
-  FPiano.Reset;
-end;
-
-constructor TSimpleMusicForm.Create(TheOwner: TComponent);
-begin
-  inherited Create(TheOwner);
-  btn_generate.OnClick := btn_generateClick();
-  btn_play.OnClick := btn_playClick();
-  btn_stop.OnClick := btn_stopClick();
+  if not Assigned(AScore) or not Assigned(ASink) then
+    raise EArgumentNilException.Create('score and WAVE sink must be assigned');
+  if (AScore.VoiceCount <> 1) or (AScore.TempoCount <> 1) or
+    (AScore.StepsPerOctave <> 12) then
+    raise EArgumentException.Create('simple music renderer needs one voice, one tempo and twelve-tone pitches');
+  for I := 0 to AScore.SpanCount - 1 do
+  begin
+    LSpan := AScore.SpanAt(I);
+    if LSpan.Kind <> wmskNote then
+      raise EArgumentException.Create('simple music renderer needs note-only spans');
+  end;
+  LClock := Default(TWfcMusicEnsembleAudioClock);
+  AdvanceWfcMusicEnsembleAudioClock(LClock, AScore.LengthTicks,
+    AScore.TempoAt(0).MicrosecondsPerQuarter, AScore.TicksPerQuarter, AOptions.SampleRate);
+  SetLength(LCapacities, 1); LCapacities[0] := 1;
+  SetLength(LFrame.Voices, 1);
+  LRenderer := TWfcMusicEnsembleAudioRenderer.Create(AOptions,
+    AScore.TicksPerQuarter, LCapacities);
+  try
+    LWave := TWfcMusicWaveStream.Create(ASink, AOptions.SampleRate, LClock.FrameCount);
+    try
+      for I := 0 to AScore.SpanCount - 1 do
+      begin
+        LSpan := AScore.SpanAt(I);
+        LFrame.Voices[0] := MakeWfcMusicVoiceCell(wmcaAttack, LSpan.Tones);
+        LRenderer.AdmitFrame(LFrame, LSpan.DurationTicks,
+          AScore.TempoAt(0).MicrosecondsPerQuarter);
+        while LRenderer.ReadSamples(WFC_MUSIC_ENSEMBLE_AUDIO_BLOCK_FRAMES, LSamples) do
+          LWave.AppendSamples(LSamples);
+      end;
+      LRenderer.EndInput;
+      while LRenderer.ReadSamples(WFC_MUSIC_ENSEMBLE_AUDIO_BLOCK_FRAMES, LSamples) do
+        LWave.AppendSamples(LSamples);
+      LWave.Finish;
+    finally LWave.Free; end;
+  finally LRenderer.Free; end;
 end;
 
 end.

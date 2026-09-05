@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="A dependency-free Pascal showcase for streamed music from independently learned voices and shared harmony witnesses.">
+  <title>Voice Studio</title>
+  <link rel="stylesheet" href="voicestudio.css">
+</head>
+<body data-self-test="not-requested"
+  data-voice-state="loading" data-voice-midi-plan="none"
+  data-voice-stream-self-test="not-requested"
+  data-voice-stream-release="not-run">
+  <header class="masthead">
+    <div>
+      <p class="eyebrow">WFC / MUSIC LAB 07</p>
+      <h1>Voice Studio</h1>
+      <p class="lede">Shared harmony + rhythm → independently learned bass, chord, and upper voices.</p>
+    </div>
+    <p class="format-note">Three role-specific temporal models · exact harmony witnesses<br>120 BPM · eighth-note cells · deterministic replay</p>
+  </header>
+
+  <main>
+    <section class="panel controls" aria-labelledby="plan-heading">
+      <div class="heading-row">
+        <div><p class="step">01 / PLAN</p><h2 id="plan-heading">Choose duration and search</h2></div>
+        <span class="chip">bounded working segment</span>
+      </div>
+      <div class="fields">
+        <label><span>Seconds</span><input id="voice-seconds" inputmode="decimal" value="8" autocomplete="off"></label>
+        <label><span>Seed</span><input id="voice-seed" inputmode="numeric" value="1" autocomplete="off"></label>
+        <label><span>Segment cells</span><input id="voice-segment" type="number" min="1" step="1" value="5"></label>
+        <label><span>Local backtracks</span><input id="voice-backtracks" type="number" min="0" step="1" value="1024"></label>
+        <label><span>Pass backtracks</span><input id="voice-pass-backtracks" type="number" min="0" step="1" value="64"></label>
+        <label class="check"><input id="voice-trace" type="checkbox"><span>Capture traces</span></label>
+      </div>
+      <p id="voice-plan" class="plan-copy">Loading exact duration plan…</p>
+      <p class="bounded">Duration has no demo minute ceiling. Decimal input rounds upward to the 0.25-second musical cell; exact numeric and WAVE/MIDI format capacities still apply. Search allowances bound work counts, not wall time.</p>
+      <div class="actions">
+        <button id="voice-save-wave" class="primary" type="button">Save streamed WAVE</button>
+        <button id="voice-plan-midi" type="button">Plan MIDI</button>
+        <button id="voice-save-midi" type="button" disabled>Save planned MIDI</button>
+        <button id="voice-cancel" class="danger" type="button" disabled>Cancel</button>
+      </div>
+      <p class="save-note">WAVE generation and MIDI replay write one bounded block at a time—never a whole-song browser Blob. MIDI planning finishes before the separate Save click so the track length is known before a picker opens. Browser replacement remains your Save As choice.</p>
+    </section>
+
+    <aside class="panel status" aria-label="Voice Studio status">
+      <div class="status-line"><span class="lamp" aria-hidden="true"></span><div><small>Transaction</small><strong id="voice-status" aria-live="polite">Loading Pascal runtime…</strong></div></div>
+      <progress id="voice-progress" max="1" value="0"></progress>
+      <p id="voice-progress-text">Idle</p>
+      <p id="voice-metrics">No transaction has generated output.</p>
+    </aside>
+
+    <section class="panel current full" aria-labelledby="current-heading">
+      <div class="heading-row">
+        <div><p class="step">02 / LATEST CELL</p><h2 id="current-heading">Independent roles, shared proof</h2></div>
+        <span id="voice-cell-novelty" class="chip">Waiting</span>
+      </div>
+      <p id="voice-cell-position" class="position">No generated cell yet.</p>
+      <div class="lineage">
+        <article><small>Harmony provider</small><strong id="voice-harmony">—</strong></article>
+        <article><small>Rhythm provider</small><strong id="voice-rhythm">—</strong></article>
+      </div>
+      <div class="voices">
+        <article class="bass"><small>Bass · 48–57 · one tone</small><strong id="voice-bass">—</strong></article>
+        <article class="chord"><small>Chord · 60–69 · up to two tones</small><strong id="voice-chord">—</strong></article>
+        <article class="upper"><small>Upper · 72–81 · one tone</small><strong id="voice-upper">—</strong></article>
+      </div>
+      <div class="witness"><small>Exact pitch-class coverage · deterministic lowest matching role (not sole ownership)</small><strong id="voice-coverage">—</strong></div>
+      <p class="bounded">“Novel recombination” means this ordered vertical pitch collection appeared in neither authored excerpt. It does not claim a new note, rhythm, or style. Each role still follows its own learned temporal states, ranges, holds, and configured inter-role gaps.</p>
+    </section>
+
+    <section class="panel native full" aria-labelledby="native-heading">
+      <div class="heading-row"><div><p class="step">03 / REPLAY</p><h2 id="native-heading">Equivalent native commands</h2></div></div>
+      <pre id="voice-fallback">Loading…</pre>
+      <p>Native output uses an exclusive new sibling and never replaces an existing path. Browser output uses the picker’s user-mediated replacement policy. Both publish only after complete count/replay checks.</p>
+    </section>
+  </main>
+
+  <footer>
+    <span>Project-authored MIT example · project-owned triangle preview timbre</span>
+    <span>No external libraries, samples, or hand-maintained JavaScript runtime</span>
+  </footer>
+  <script src="BrowserVoiceStudio.js"></script>
+  <script>rtl.run();</script>
+</body>
+</html>

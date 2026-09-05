@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Interactive three-pass WFC world workbench compiled from Pascal with pas2js.">
+  <title>WFC 2D Pass Workbench</title>
+  <link rel="stylesheet" href="browserworld.css">
+</head>
+<body data-state="loading" data-signature="" data-self-test="not-requested">
+  <header class="app-header">
+    <div>
+      <p class="eyebrow">WFC / PASS LAB 02</p>
+      <h1>2D Pass Workbench</h1>
+    </div>
+    <div class="model-chip" aria-label="World model version 1">
+      <span>model</span>
+      <strong>v1</strong>
+    </div>
+  </header>
+
+  <main class="workbench">
+    <section class="command-deck" aria-labelledby="generation-heading">
+      <div class="section-heading">
+        <span class="index">01</span>
+        <div>
+          <h2 id="generation-heading">Generation</h2>
+          <p>Change the seed or topology, then solve all three passes atomically.</p>
+        </div>
+      </div>
+
+      <div class="generation-controls">
+        <label class="field seed-field" for="seed-input">
+          <span>Seed</span>
+          <input id="seed-input" type="text" inputmode="text"
+            autocomplete="off" spellcheck="false" value="1297110833"
+            aria-describedby="seed-hint">
+          <small id="seed-hint">decimal, <code>$hex</code>, or <code>0xhex</code></small>
+        </label>
+
+        <label class="switch-field" for="wrap-input">
+          <input id="wrap-input" type="checkbox">
+          <span class="switch-track" aria-hidden="true"></span>
+          <span>
+            <strong>Wrap edges</strong>
+            <small>join opposite boundaries</small>
+          </span>
+        </label>
+
+        <div class="button-cluster" aria-label="Generation actions">
+          <button id="generate-button" class="button primary" type="button">
+            Generate
+          </button>
+          <button id="next-seed-button" class="button" type="button">
+            Next seed
+          </button>
+          <button id="reset-showcase-button" class="button quiet" type="button">
+            Reset showcase
+          </button>
+        </div>
+      </div>
+
+      <div class="run-monitor">
+        <div>
+          <span class="monitor-label">Pipeline state</span>
+          <p id="status" class="status" aria-live="polite">Loading Pascal runtime…</p>
+        </div>
+        <div class="signature-block">
+          <span class="monitor-label">Portable signature</span>
+          <code id="signature">—</code>
+        </div>
+      </div>
+    </section>
+
+    <section class="map-stage" aria-labelledby="passes-heading">
+      <div class="section-heading compact">
+        <span class="index">02</span>
+        <div>
+          <h2 id="passes-heading">Synchronized passes</h2>
+          <p>Select a cell on any canvas to inspect the same coordinate everywhere.</p>
+        </div>
+      </div>
+
+      <div class="map-grid">
+        <article class="map-card terrain-card">
+          <header>
+            <div>
+              <span class="pass-number">pass 00</span>
+              <h3>Terrain</h3>
+            </div>
+            <span class="pass-role">foundation</span>
+          </header>
+          <div class="canvas-frame">
+            <canvas id="terrain-canvas" width="640" height="280"
+              tabindex="0" aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight"
+              aria-label="Terrain pass. Click a cell or use arrow keys to move the selected coordinate.">
+              Terrain grid. Use the coordinate controls to inspect cells when
+              canvas rendering is unavailable.
+            </canvas>
+          </div>
+          <ul class="legend" aria-label="Terrain legend">
+            <li><span class="swatch water">~</span> water</li>
+            <li><span class="swatch land">.</span> land</li>
+            <li><span class="swatch mountain">^</span> mountain</li>
+          </ul>
+        </article>
+
+        <article class="map-card biome-card">
+          <header>
+            <div>
+              <span class="pass-number">pass 01</span>
+              <h3>Biome</h3>
+            </div>
+            <span class="pass-role">terrain refinement</span>
+          </header>
+          <div class="canvas-frame">
+            <canvas id="biome-canvas" width="640" height="280"
+              tabindex="0" aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight"
+              aria-label="Biome pass. Click a cell or use arrow keys to move the selected coordinate.">
+              Biome grid. Use the coordinate controls to inspect cells when
+              canvas rendering is unavailable.
+            </canvas>
+          </div>
+          <ul class="legend" aria-label="Biome legend">
+            <li><span class="swatch ocean">O</span> ocean</li>
+            <li><span class="swatch shore">s</span> shore</li>
+            <li><span class="swatch plains">p</span> plains</li>
+            <li><span class="swatch woodland">w</span> woodland</li>
+            <li><span class="swatch alpine">a</span> alpine</li>
+          </ul>
+        </article>
+
+        <article class="map-card foliage-card">
+          <header>
+            <div>
+              <span class="pass-number">pass 02</span>
+              <h3>Foliage</h3>
+            </div>
+            <span class="pass-role">biome refinement</span>
+          </header>
+          <div class="canvas-frame">
+            <canvas id="foliage-canvas" width="640" height="280"
+              tabindex="0" aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight"
+              aria-label="Foliage pass. Click a cell or use arrow keys to move the selected coordinate.">
+              Foliage grid. Use the coordinate controls to inspect cells when
+              canvas rendering is unavailable.
+            </canvas>
+          </div>
+          <ul class="legend" aria-label="Foliage legend">
+            <li><span class="swatch none">-</span> none</li>
+            <li><span class="swatch reeds">r</span> reeds</li>
+            <li><span class="swatch grass">g</span> grass</li>
+            <li><span class="swatch tree">T</span> tree</li>
+            <li><span class="swatch pine">P</span> pine</li>
+          </ul>
+        </article>
+      </div>
+    </section>
+
+    <aside class="inspector" aria-labelledby="inspector-heading">
+      <div class="section-heading compact">
+        <span class="index">03</span>
+        <div>
+          <h2 id="inspector-heading">Cell constraint</h2>
+          <p>Pin a typed value, observe failure, then release it and replay.</p>
+        </div>
+      </div>
+
+      <div class="coordinate-grid">
+        <label class="field" for="selected-x">
+          <span>X coordinate</span>
+          <input id="selected-x" type="number" min="0" max="31" value="0">
+        </label>
+        <label class="field" for="selected-y">
+          <span>Y coordinate</span>
+          <input id="selected-y" type="number" min="0" max="13" value="0">
+        </label>
+      </div>
+
+      <label class="field" for="lock-layer">
+        <span>Layer</span>
+        <select id="lock-layer">
+          <option value="terrain">terrain</option>
+          <option value="biome">biome</option>
+          <option value="foliage">foliage</option>
+        </select>
+      </label>
+
+      <label class="field" for="lock-value">
+        <span>Value</span>
+        <select id="lock-value">
+          <option value="water">water</option>
+          <option value="land">land</option>
+          <option value="mountain">mountain</option>
+        </select>
+      </label>
+
+      <div class="button-cluster vertical" aria-label="Cell lock actions">
+        <button id="lock-button" class="button primary" type="button">
+          Lock &amp; solve
+        </button>
+        <button id="unlock-button" class="button" type="button">
+          Unlock &amp; solve
+        </button>
+        <button id="clear-locks-button" class="button danger" type="button">
+          Clear all locks
+        </button>
+      </div>
+
+      <section class="diagnostics" aria-labelledby="diagnostics-heading">
+        <h3 id="diagnostics-heading">Diagnostics</h3>
+        <div>
+          <span class="monitor-label">Independent validation</span>
+          <p id="validation">Waiting for the first solve.</p>
+        </div>
+        <div>
+          <span class="monitor-label">Solver report</span>
+          <pre id="solver-report">No report yet.</pre>
+        </div>
+      </section>
+    </aside>
+  </main>
+
+  <footer class="app-footer">
+    <span>Pascal source → pas2js → browser canvas</span>
+    <span>Left click selects · typed controls edit</span>
+  </footer>
+
+  <script src="BrowserWorld.js"></script>
+  <script>
+    window.addEventListener('load', function () {
+      rtl.run();
+    });
+  </script>
+</body>
+</html>

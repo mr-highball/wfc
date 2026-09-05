@@ -1,0 +1,16 @@
+/build.sh text eol=lf
+/build-browser*.sh text eol=lf
+/test-browser-tests.sh text eol=lf
+/test/fixtures/pipeline-cli/*.wfcpipeline text eol=lf
+/test/fixtures/pipeline-cli/*.wfcrun text eol=lf
+/test/fixtures/pipeline-cli/*.wfcresult text eol=lf
+/examples/2D/05_LearnedPatternWorld/pipeline/*.wfcpipeline text eol=lf
+/examples/2D/05_LearnedPatternWorld/pipeline/*.wfcrun text eol=lf
+/examples/2D/05_LearnedPatternWorld/pipeline/*.wfcresult text eol=lf
+/test/wfc_pipeline_cli_process_test.sh text eol=lf
+/test/wfc_learn_cli_process_test.sh text eol=lf
+/examples/learning/04_TrainingDocuments/*.wfclearn text eol=lf
+/examples/learning/04_TrainingDocuments/*.wfcpipeline text eol=lf
+/examples/learning/04_TrainingDocuments/*.wfcrun text eol=lf
+/examples/learning/04_TrainingDocuments/*.wfcresult text eol=lf
+/examples/learning/04_TrainingDocuments/*.model text eol=lf

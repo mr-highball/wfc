@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="A dependency-free Pascal showcase for deterministic three-voice music generation, repair, inspection, and export.">
+  <title>Ensemble Studio</title>
+  <link rel="stylesheet" href="ensemblestudio.css">
+</head>
+<body data-state="loading" data-self-test="not-requested"
+  data-seed="" data-bars="0" data-cell-count="0" data-voice-count="0"
+  data-result-status="none" data-composition-signature=""
+  data-score-signature="" data-midi-signature="" data-wave-signature=""
+  data-midi-bytes="0" data-midi-status="none" data-wave-bytes="0" data-audio-ready="false"
+  data-audio-play-events="0" data-new-session-invalidation="not-run"
+  data-run-invalidation="not-run" data-failure-clears-output="not-run"
+  data-selective-regeneration="not-run" data-recovery="not-run"
+  data-stream-state="loading" data-stream-self-test="not-requested"
+  data-stream-written-frames="0" data-stream-written-bytes="0"
+  data-stream-seam-holds="0" data-stream-actual-seconds=""
+  data-stream-cancel="not-run" data-stream-stale="not-run"
+  data-stream-write-failure="not-run" data-stream-commit="not-run"
+  data-stream-release="not-run" data-midi-stream-self-test="not-requested"
+  data-midi-stream-release="not-run" data-midi-stream-plan-state="none"
+  data-midi-stream-written-bytes="0">
+  <header class="masthead">
+    <div>
+      <p class="eyebrow">WFC / MUSIC LAB 06</p>
+      <h1>Ensemble Studio</h1>
+      <p class="lede">Build held bass, chord accompaniment, and an upper line through visible harmony + rhythm → ensemble lineage.</p>
+    </div>
+    <p class="format-note">Three ordered voices · eighth-note grid · 4/4 · 120 BPM<br>Deterministic project-owned structural preview, not instrument realism.</p>
+  </header>
+
+  <main>
+    <section class="panel session-panel" aria-labelledby="session-heading">
+      <div class="section-heading">
+        <div><p class="step">01 / SESSION</p><h2 id="session-heading">Choose the score extent</h2></div>
+        <div class="session-actions">
+          <label><span>Seed</span><input id="seed-input" inputmode="text" value="0" autocomplete="off"></label>
+          <label><span>Bars</span><input id="bars-input" type="number" min="1" step="1" value="2" autocomplete="off"></label>
+          <button id="new-session-button" type="button">New session</button>
+          <button id="generate-button" class="primary" type="button">Generate</button>
+        </div>
+      </div>
+      <p id="session-summary" class="session-summary">2 bars → 16 cells → 4 seconds at the fixed showcase tempo.</p>
+      <div class="generation-fields">
+        <label><span>Strategy</span>
+          <select id="strategy-select"><option value="negotiated">negotiated</option><option value="one-way">one-way</option></select>
+        </label>
+        <label><span>Regeneration scope</span>
+          <select id="scope-select">
+            <option value="full">full ensemble</option>
+            <option value="harmony">harmony + dependents</option>
+            <option value="rhythm">rhythm + ensemble</option>
+            <option value="ensemble">ensemble only</option>
+          </select>
+        </label>
+        <label><span>Local backtracks</span><input id="backtracks-input" type="number" min="0" step="1" value="256"></label>
+        <label><span>Pass backtracks</span><input id="pass-backtracks-input" type="number" min="0" step="1" value="16"></label>
+        <label class="check-field"><input id="trace-input" type="checkbox"><span>Capture trace</span></label>
+      </div>
+      <p class="bounded-claim">Bars select score length; no arbitrary minute ceiling is imposed. Allocation and search grow with the requested grid, and numeric/storage limits still apply. Search allowances bound work counts, not wall time.</p>
+    </section>
+
+    <aside class="panel status-panel" aria-label="Ensemble workspace status">
+      <div class="status-line"><span class="status-light" aria-hidden="true"></span><div><small>Workspace</small><strong id="status" aria-live="polite">Loading Pascal runtime…</strong></div></div>
+      <dl class="metrics">
+        <div><dt>Session</dt><dd id="session-output">—</dd></div>
+        <div><dt>Status</dt><dd id="result-status">not run</dd></div>
+        <div><dt>Strategy</dt><dd id="strategy-output">—</dd></div>
+        <div><dt>Scope</dt><dd id="scope-output">—</dd></div>
+        <div><dt>Local backtracks</dt><dd id="local-backtracks-output">0</dd></div>
+        <div><dt>Pass backtracks</dt><dd id="pass-backtracks-output">0</dd></div>
+        <div><dt>Passes executed</dt><dd id="pass-count-output">0</dd></div>
+        <div><dt>Locks</dt><dd id="lock-count-output">0</dd></div>
+        <div class="wide"><dt>Composition signature</dt><dd id="composition-signature">—</dd></div>
+      </dl>
+      <p id="status-detail">Start a session to establish seed and score extent.</p>
+    </aside>
+
+    <section class="panel lineage-panel full" aria-labelledby="lineage-heading">
+      <div class="section-heading">
+        <div><p class="step">02 / PASS LINEAGE</p><h2 id="lineage-heading">Public provider and ensemble cells</h2></div>
+        <span class="scroll-hint">each lane scrolls horizontally</span>
+      </div>
+      <div class="lineage-row">
+        <div class="lane-name"><strong>Harmony</strong><span>exact sounding pitch-class set</span></div>
+        <div class="cell-scroller"><div id="harmony-grid" class="token-grid" aria-label="Harmony cells"></div></div>
+      </div>
+      <div class="lineage-row">
+        <div class="lane-name"><strong>Rhythm</strong><span>ordered action vector for all voices</span></div>
+        <div class="cell-scroller"><div id="rhythm-grid" class="token-grid" aria-label="Rhythm cells"></div></div>
+      </div>
+      <div class="lineage-row">
+        <div class="lane-name"><strong>Ensemble</strong><span>complete attack / hold / rest frame</span></div>
+        <div class="cell-scroller"><div id="ensemble-grid" class="token-grid" aria-label="Ensemble cells"></div></div>
+      </div>
+      <p id="display-window-note" class="bounded-claim" hidden></p>
+      <p id="lineage-placeholder" class="placeholder">Generate to inspect public pass output.</p>
+    </section>
+
+    <section class="panel score-panel full" aria-labelledby="score-heading">
+      <div class="section-heading">
+        <div><p class="step">03 / SCORE VIEW</p><h2 id="score-heading">Three-voice piano lanes</h2></div>
+        <div class="voice-legend"><span class="attack-key">attack</span><span class="hold-key">hold</span><span class="rest-key">rest</span></div>
+      </div>
+      <div class="voice-row">
+        <div class="lane-name"><strong>Held bass</strong><span>voice 0</span></div>
+        <div class="cell-scroller"><div id="bass-grid" class="voice-grid" aria-label="Held bass score cells"></div></div>
+      </div>
+      <div class="voice-row">
+        <div class="lane-name"><strong>Chords</strong><span>voice 1</span></div>
+        <div class="cell-scroller"><div id="chords-grid" class="voice-grid" aria-label="Chord accompaniment score cells"></div></div>
+      </div>
+      <div class="voice-row">
+        <div class="lane-name"><strong>Upper line</strong><span>voice 2</span></div>
+        <div class="cell-scroller"><div id="upper-grid" class="voice-grid" aria-label="Upper line score cells"></div></div>
+      </div>
+      <p id="score-placeholder" class="placeholder">No score cells are current.</p>
+    </section>
+
+    <section class="panel locks-panel full" aria-labelledby="locks-heading">
+      <div class="section-heading">
+        <div><p class="step">04 / CONSTRAINTS</p><h2 id="locks-heading">Public token locks</h2></div>
+        <button id="clear-locks-button" type="button">Clear all locks</button>
+      </div>
+      <div class="lock-fields">
+        <label><span>Layer</span>
+          <select id="lock-layer-select"><option value="harmony">harmony</option><option value="rhythm">rhythm</option><option value="ensemble">ensemble</option></select>
+        </label>
+        <label><span>Cell</span><input id="lock-cell-input" type="number" min="0" step="1" value="0"></label>
+        <label class="token-field"><span>Public token</span><select id="lock-token-select"></select></label>
+        <button id="add-lock-button" type="button">Add / replace lock</button>
+      </div>
+      <select id="lock-list" class="lock-list" size="5" aria-label="Configured public locks"></select>
+      <button id="remove-lock-button" type="button">Remove selected lock</button>
+      <p class="bounded-claim">Locks constrain public cells exactly. Editing a lock invalidates current score and media immediately while retaining a baseline for an explicit repair.</p>
+    </section>
+
+    <section class="panel reports-panel full" aria-labelledby="reports-heading">
+      <div class="section-heading"><div><p class="step">05 / REPORT</p><h2 id="reports-heading">Attempt and repair evidence</h2></div></div>
+      <div class="reports">
+        <div><h3>Requested / active scope</h3><pre id="scope-report">No generation attempt.</pre></div>
+        <div><h3>Pass outcomes</h3><pre id="pass-report">No generation attempt.</pre></div>
+        <div><h3>Terminal status</h3><pre id="failure-report">No terminal failure.</pre></div>
+      </div>
+    </section>
+
+    <section class="panel preview-panel full" aria-labelledby="preview-heading">
+      <div class="section-heading">
+        <div><p class="step">06 / ARTIFACTS</p><h2 id="preview-heading">Exact score, MIDI, and short preview</h2></div>
+        <strong id="audio-status" class="audio-chip">no preview</strong>
+      </div>
+      <div class="audio-block">
+        <div class="preview-controls">
+          <button id="render-preview-button" type="button">Build short WAV preview</button>
+          <audio id="preview-audio" controls preload="none" aria-label="Generated structural WAV preview"></audio>
+        </div>
+        <p id="audio-detail">WAV uses the project’s deterministic mono PCM16 preview timbre. Scores beyond the adapter’s documented preview limit remain valid score/MIDI results; their preview is disabled, never clipped.</p>
+      </div>
+      <div class="download-grid">
+        <a id="download-score-link" class="button-link disabled" aria-disabled="true">Score text</a>
+        <a id="download-midi-link" class="button-link disabled" aria-disabled="true">MIDI</a>
+        <a id="download-wav-link" class="button-link disabled" aria-disabled="true">Short WAV preview</a>
+      </div>
+      <label class="artifact-inspector"><span>Canonical score text</span><textarea id="artifact-output" rows="14" readonly spellcheck="false"></textarea></label>
+    </section>
+
+    <section class="panel stream-panel full" aria-labelledby="stream-heading">
+      <div class="section-heading">
+        <div><p class="step">07 / CONTINUOUS STREAM</p><h2 id="stream-heading">Generate long-form ensemble WAVE or MIDI by bounded blocks</h2></div>
+        <strong id="stream-status" class="audio-chip" aria-live="polite">loading stream controls</strong>
+      </div>
+      <div class="stream-fields">
+        <label><span>Requested seconds</span><input id="stream-seconds-input" inputmode="decimal" value="6.125" autocomplete="off"></label>
+        <label><span>Working segment cells</span><input id="stream-segment-cells-input" type="number" min="1" step="1" value="5"></label>
+        <label><span>Local backtracks</span><input id="stream-backtracks-input" type="number" min="0" step="1" value="256"></label>
+        <label><span>Pass backtracks</span><input id="stream-pass-backtracks-input" type="number" min="0" step="1" value="16"></label>
+        <label class="check-field"><input id="stream-trace-input" type="checkbox"><span>Capture trace</span></label>
+      </div>
+      <p id="stream-plan" class="stream-plan">Preparing duration preflight…</p>
+      <div class="stream-actions">
+        <button id="stream-start-button" class="primary" type="button">Stream WAVE with Save As</button>
+        <button id="stream-midi-plan-button" type="button">Plan MIDI</button>
+        <button id="stream-midi-save-button" type="button" disabled>Save planned MIDI</button>
+        <button id="stream-cancel-button" type="button" disabled>Cancel pending stream</button>
+        <progress id="stream-progress" max="1" value="0" aria-label="Streaming output progress"></progress>
+      </div>
+      <p id="stream-detail" class="bounded-claim">No stream save is active.</p>
+      <p class="bounded-claim">This generates a fresh composition using the current seed and stream settings. It does not export the finite score above or transfer that editor's locks and repair scope.</p>
+      <p class="bounded-claim">Requested time is rounded up only to the next eighth-note cell at 120 BPM, and the actual duration is shown before a destination is chosen. There is no minute policy ceiling; exact numeric, WAVE/RF64, MIDI, storage, and search constraints still apply. Five-cell working segments deliberately cross held bass and chord boundaries. WAVE generation, synthesis, and saving retain one bounded segment and one PCM block rather than a whole-song audio buffer.</p>
+      <p class="bounded-claim"><strong>MIDI is an explicit two-pass transaction:</strong> Plan MIDI first counts the complete deterministic format-0 track without opening a picker or retaining frames. A later user click on Save planned MIDI chooses a destination, regenerates the same frame stream, writes one block at a time, and closes only after its tick, byte, event, and generation fingerprints match the plan.</p>
+      <p class="bounded-claim"><strong>Browser file contract:</strong> Save As is controlled by the browser and may replace a file that you select. This differs from the native renderer, which requires a new path and atomically refuses replacement. Cancellation or failure before browser close never claims a completed stream.</p>
+      <pre id="stream-fallback" class="stream-fallback">A native fallback command will appear after input validation.</pre>
+    </section>
+  </main>
+
+  <footer>Dependency-free Pascal · canonical project formats · no external samples or synthesis libraries</footer>
+  <script src="BrowserEnsembleStudio.js"></script>
+  <script>rtl.run();</script>
+</body>
+</html>

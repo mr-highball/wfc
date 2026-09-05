@@ -10,9 +10,21 @@
 *)
 program SimpleTiledWorld;
 uses
-  math,
+  SysUtils,
   crt, //colors for console
   wfc; //library code
+
+procedure SetTileColor(const AValue: TGraphValue);
+begin
+  if AValue = 'L' then
+    TextColor(Green)
+  else if AValue = 'S' then
+    TextColor(Cyan)
+  else if AValue = 'C' then
+    TextColor(Yellow)
+  else if AValue = 'M' then
+    TextColor(Brown);
+end;
 
 procedure RenderWorld(const AWorld : TGraph);
 var
@@ -27,30 +39,11 @@ begin
     begin
       LVal := AWorld[X, Y, 0].Value;
 
-      if LVal = 'L' then
-        TextColor(Green)
-      else if LVal = 'S' then
-        TextColor(Cyan)
-      else if LVal = 'C' then
-        TextColor(Yellow)
-      else if LVal = 'M' then
-        TextColor(Brown);
-
+      SetTileColor(LVal);
       Write(LVal);
     end;
     WriteLn('');
   end;
-end;
-
-(*
-  the rules we have in place allow for invalid board states, so we could
-  either fix the rules to handle all cases, or provide a default with this
-*)
-procedure InvalidHandler(const AGraph : TGraph; const AEntry : TGraphEntry;
-  var AValue : TGraphValue);
-begin
-  //just use land or sea when no other solution
-  AValue := TArray<String>.Create('L', 'S')[RandomRange(0, 2)];
 end;
 
 var
@@ -58,35 +51,28 @@ var
 begin
   LWorld := TGraph.Create;
   try
+    //An optional decimal or Pascal-style hexadecimal seed replays a world.
+    if ParamCount > 0 then
+      LWorld.Seed := TGraphSeed(StrToQWord(ParamStr(1)));
+
     //set our shape to be 2D and size it appropriately for the console window
     LWorld.Reshape({width} 80, {height} 25, {depth} 1);
     //LWorld.WrapNeighbors := False;
 
-    LWorld.InvalidStateCallback := InvalidHandler;
-
-    //"coast" can have "sea" to the right (east)
-    //and "land" to the left (west)
+    //Define a complete symmetric adjacency model. Every tile has at least one
+    //self-compatible state, so impossible boards are reported rather than
+    //hidden by an invalid-state fallback that invents a value.
+    LWorld.AddValue('L')
+      .NewRule(AllDirections, ['L', 'C', 'M']);
     LWorld.AddValue('C')
-      .NewRule([gdEast], 'S')
-      .NewRule([gdWest], 'L');
-
-    //"sea" can go next to other sea tile
-    LWorld.Rules['S']
-      .NewRule(AllDirections, 'S');
-
-    //"land" can be next to other land
-    LWorld.Rules['L']
-      .NewRule(AllDirections, 'L');
-
-    //"mountain" isn't really defined on the article even though
-    //the tile is there, so we'll just say it needs be to the west of cost
-    //or west/east of another mountain and east of land
+      .NewRule(AllDirections, ['L', 'C', 'S', 'M']);
+    LWorld.AddValue('S')
+      .NewRule(AllDirections, ['S', 'C']);
     LWorld.AddValue('M')
-      .NewRule([gdEast, gdWest], 'L')
-      .NewRule([gdEast], 'C')
-      .NewRule(AllDirections, 'M');
+      .NewRule(AllDirections, ['M', 'L', 'C']);
 
     //run the graph
+    WriteLn('Seed: ', LWorld.Seed);
     LWorld.Run;
 
     //now call our helper print function to display the world
@@ -95,7 +81,7 @@ begin
     LWorld.Free;
   end;
 
-  //wait for user to close
-  ReadLn;
+  //An explicit seed also acts as a noninteractive native smoke-test mode.
+  if ParamCount = 0 then
+    ReadLn;
 end.
-

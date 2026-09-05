@@ -1,0 +1,794 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  stable:
+    name: Stable FPC 3.2.2 (${{ matrix.platform }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: Linux
+            runner: ubuntu-24.04
+          - platform: macOS
+            runner: macos-15-intel
+          - platform: Windows
+            runner: windows-2025
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: false
+
+      - name: Install stable FPC on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes \
+            fp-compiler-3.2.2 \
+            fp-units-fcl-3.2.2 \
+            fp-utils-3.2.2 \
+            lcl-utils-3.0
+
+      - name: Install stable FPC on macOS
+        if: runner.os == 'macOS'
+        shell: bash
+        run: brew install fpc
+
+      - name: Install stable FPC on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $uri = 'https://downloads.freepascal.org/fpc/dist/3.2.2/i386-win32/fpc-3.2.2.i386-win32.exe'
+          $installer = Join-Path $env:RUNNER_TEMP 'fpc-3.2.2.i386-win32.exe'
+          $expectedHash = '7ec78b1790ecac7685f440b17f9e03865bc09846b7c068a9270c4d37704b5ac8'
+          $installDirectory = 'C:\FPC\3.2.2'
+          $fpcDirectory = Join-Path $installDirectory 'bin/i386-win32'
+          $fpcPath = Join-Path $fpcDirectory 'fpc.exe'
+
+          Invoke-WebRequest -Uri $uri -OutFile $installer
+          $actualHash = (Get-FileHash $installer -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actualHash -ne $expectedHash) {
+            throw "FPC installer checksum mismatch: $actualHash"
+          }
+
+          $process = Start-Process $installer -Wait -PassThru -WindowStyle Hidden -ArgumentList @(
+            '/SP-'
+            '/VERYSILENT'
+            '/SUPPRESSMSGBOXES'
+            '/NORESTART'
+            "/DIR=$installDirectory"
+          )
+          if ($process.ExitCode -ne 0) {
+            throw "FPC installer exited with code $($process.ExitCode)."
+          }
+          if (-not (Test-Path -LiteralPath $fpcPath)) {
+            throw "FPC was not installed at $fpcPath."
+          }
+
+          $fpcDirectory | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          "FPC=$fpcPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Verify stable FPC version
+        if: runner.os != 'Windows'
+        shell: bash
+        run: test "$(fpc -iV)" = '3.2.2'
+
+      - name: Verify stable FPC version
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $installedVersion = (& $env:FPC -iV).Trim()
+          if ($installedVersion -ne '3.2.2') {
+            throw "Expected FPC 3.2.2, found $installedVersion."
+          }
+
+      - name: Build and test
+        if: runner.os != 'Windows'
+        shell: bash
+        run: bash ./build.sh
+
+      - name: Build and test
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./build.ps1
+
+      - name: Validate FPM and Lazarus packages
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          mkdir -p \
+            build/fpm/bootstrap/units \
+            build/fpm/bootstrap/bin
+          fpc -B -Mobjfpc -Sa -Cr -Co -Ci \
+            -FUbuild/fpm/bootstrap/units \
+            -FEbuild/fpm/bootstrap/bin \
+            fpmake.pp
+          ./build/fpm/bootstrap/bin/fpmake build \
+            --globalunitdir=/usr/lib/x86_64-linux-gnu/fpc/3.2.2
+          lazbuild -B --no-write-project wfc.lpk
+          lazbuild -B --no-write-project test/wfc_test.lpi
+          ./build/lazarus/test/bin/wfc_test
+          lazbuild -B --no-write-project examples/music/01_simple_A_major/simple_a_major.lpi
+          lazbuild -B --no-write-project examples/music/02_simple_song_riffs/simple_song_riffs.lpi
+          ./build/lazarus/music-studies/bin/simple_a_major --notes 3 --seed 55
+          ./build/lazarus/music-studies/bin/simple_song_riffs --notes 3 --seed 55
+          test -z "$(git status --short)"
+
+  pas2js:
+    name: pas2js 3.3.1 (FPC server and browser)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      PAS2JS_REVISION: fa10c59214cd226c60af465c831d66a7321f0214
+      PAS2JS_SOURCE_SHA256: 5a2ad292c8606b899ba384d81b97e789171a335759b67e338d4a37903dbe18f1
+      FPC_SOURCE_REVISION: a92f381365576b6b64be9eb9b8a2db5b4609d8a5
+      FPC_SOURCE_SHA256: 27b2588f5ddcfa1f3262728d525f7a5ef382cc8d15c717431cc42d2af5197301
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: false
+
+      - name: Set pas2js toolchain directory
+        shell: bash
+        run: printf 'PAS2JS_ROOT=%s/wfc-pas2js\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
+
+      - name: Restore pinned pas2js toolchain
+        id: pas2js-cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ${{ env.PAS2JS_ROOT }}
+          key: pas2js-${{ runner.os }}-${{ runner.arch }}-fpc-3.2.2-${{ env.PAS2JS_REVISION }}-${{ env.FPC_SOURCE_REVISION }}-v1
+
+      - name: Build pinned pas2js toolchain
+        if: steps.pas2js-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes \
+            fp-compiler-3.2.2 \
+            fp-units-fcl-3.2.2 \
+            fp-utils-3.2.2
+
+          build_root="$(mktemp -d)"
+          trap 'rm -rf "$build_root"' EXIT
+          pas2js_archive="$build_root/pas2js.tar.gz"
+          fpc_archive="$build_root/fpc-source.tar.gz"
+          pas2js_source="$build_root/pas2js"
+
+          curl --fail --location --retry 3 \
+            --output "$pas2js_archive" \
+            "https://gitlab.com/freepascal.org/fpc/pas2js/-/archive/$PAS2JS_REVISION/pas2js-$PAS2JS_REVISION.tar.gz"
+          curl --fail --location --retry 3 \
+            --output "$fpc_archive" \
+            "https://gitlab.com/freepascal.org/fpc/source/-/archive/$FPC_SOURCE_REVISION/source-$FPC_SOURCE_REVISION.tar.gz"
+          printf '%s  %s\n' "$PAS2JS_SOURCE_SHA256" "$pas2js_archive" |
+            sha256sum --check -
+          printf '%s  %s\n' "$FPC_SOURCE_SHA256" "$fpc_archive" |
+            sha256sum --check -
+
+          mkdir -p "$pas2js_source/compiler"
+          tar -xzf "$pas2js_archive" \
+            --strip-components=1 --directory "$pas2js_source"
+          tar -xzf "$fpc_archive" \
+            --strip-components=1 --directory "$pas2js_source/compiler"
+          make -C "$pas2js_source" clean all
+
+          test ! -e "$PAS2JS_ROOT"
+          mkdir -p \
+            "$PAS2JS_ROOT/bin/x86_64-linux" \
+            "$PAS2JS_ROOT/compiler/utils/pas2js"
+          cp \
+            "$pas2js_source/bin/x86_64-linux/pas2js" \
+            "$pas2js_source/bin/x86_64-linux/pas2js.cfg" \
+            "$PAS2JS_ROOT/bin/x86_64-linux/"
+          cp -a "$pas2js_source/packages" "$PAS2JS_ROOT/"
+          cp -a \
+            "$pas2js_source/compiler/utils/pas2js/dist" \
+            "$PAS2JS_ROOT/compiler/utils/pas2js/"
+
+      - name: Verify pinned toolchain
+        shell: bash
+        run: |
+          pas2js="$PAS2JS_ROOT/bin/x86_64-linux/pas2js"
+          test -x "$pas2js"
+          test "$("$pas2js" -iV)" = '3.3.1'
+          "$pas2js" -iW
+
+      - name: Build FPC development tools and browser conformance
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes fp-compiler-3.2.2 fp-units-fcl-3.2.2 fp-utils-3.2.2
+          mkdir -p build/native/bin build/native/tools-units
+          for tool in wfc_serve wfc_browser_check; do
+            fpc -B -Mdelphi -Sa -Cr -Co -Ci -Futools \
+              -FUbuild/native/tools-units -FEbuild/native/bin "tools/$tool.lpr"
+          done
+          PAS2JS="$PAS2JS_ROOT/bin/x86_64-linux/pas2js" bash ./build-browser-tests.sh
+          bash ./test-browser-tests.sh
+
+      - name: Build browser Ensemble Studio
+        shell: bash
+        run: |
+          # Its shared controller event path runs in browser conformance above.
+          PAS2JS="$PAS2JS_ROOT/bin/x86_64-linux/pas2js" bash ./build-browser-ensemble.sh
+
+      - name: Build browser Voice Studio
+        shell: bash
+        run: |
+          PAS2JS="$PAS2JS_ROOT/bin/x86_64-linux/pas2js" bash ./build-browser-voices.sh
+
+      - name: Verify Connected Routes in the real demo-entry matrix
+        shell: bash
+        run: |
+          # The maintained runner above loads all ten actual index pages.
+          # Require its connectivity-specific repair/rollback checks as well
+          # as a compiled standalone bundle; a synthetic fixture is not enough.
+          PAS2JS="$PAS2JS_ROOT/bin/x86_64-linux/pas2js" bash ./build-browser-connectivity.sh
+          ./build/native/bin/wfc_browser_check \
+            --dom build/browser/tests/results/wfc_browser_demo_entries_test.dom \
+            --expect 'data-demo-entries-self-test=passed' \
+            --expect 'data-demo-entries-count=10' \
+            --expect 'data-demo-entry-connectivity=passed' \
+            --expect 'data-demo-entry-terraces=passed'
+
+      - name: Build and self-test browser text passes
+        shell: bash
+        run: |
+          pas2js="$PAS2JS_ROOT/bin/x86_64-linux/pas2js"
+          PAS2JS="$pas2js" bash ./build-browser-text.sh
+
+          chrome=''
+          for candidate in google-chrome google-chrome-stable chromium chromium-browser; do
+            if command -v "$candidate" >/dev/null 2>&1; then
+              chrome=$(command -v "$candidate")
+              break
+            fi
+          done
+          if [ -z "$chrome" ]; then
+            echo 'No supported Chrome or Chromium executable was found.' >&2
+            exit 1
+          fi
+
+          server_log=$(mktemp)
+          chrome_log=$(mktemp)
+          dom_file=$(mktemp)
+          profile_directory=$(mktemp -d)
+          server_pid=''
+          cleanup() {
+            if [ -n "$server_pid" ]; then
+              kill "$server_pid" 2>/dev/null || true
+              wait "$server_pid" 2>/dev/null || true
+            fi
+            rm -f -- "$server_log" "$chrome_log" "$dom_file"
+            if [ -n "$profile_directory" ] && [ -d "$profile_directory" ]; then
+              rm -rf -- "$profile_directory"
+            fi
+          }
+          trap cleanup EXIT
+
+          ./build/native/bin/wfc_serve --port 4175 \
+            --root build/browser/text-passes/www \
+            >"$server_log" 2>&1 &
+          server_pid=$!
+
+          server_ready=false
+          for _ in $(seq 1 50); do
+            if curl --fail --silent \
+                http://127.0.0.1:4175/index.html >/dev/null 2>&1; then
+              server_ready=true
+              break
+            fi
+            if ! kill -0 "$server_pid" 2>/dev/null; then
+              cat "$server_log" >&2
+              exit 1
+            fi
+            sleep 0.2
+          done
+          if [ "$server_ready" != true ]; then
+            cat "$server_log" >&2
+            echo 'Timed out waiting for the browser text HTTP server.' >&2
+            exit 1
+          fi
+
+          if ! timeout 30s "$chrome" \
+              --headless \
+              --disable-gpu \
+              --disable-dev-shm-usage \
+              --no-default-browser-check \
+              --no-first-run \
+              --user-data-dir="$profile_directory" \
+              --virtual-time-budget=15000 \
+              --dump-dom \
+              'http://127.0.0.1:4175/index.html?selftest=1' \
+              >"$dom_file" 2>"$chrome_log"; then
+            cat "$chrome_log" >&2
+            cat "$server_log" >&2
+            exit 1
+          fi
+
+          ./build/native/bin/wfc_browser_check --dom "$dom_file" \
+            --expect 'data-state=solved' \
+            --expect 'data-self-test=passed' \
+            --expect 'data-signature=1:69ABA6CE' \
+            --expect 'data-output-signature=1:69ABA6CE' \
+            --expect 'data-pass-count=3' \
+            --expect 'data-trace-hash=2412171679' \
+            --expect 'data-output=A sun rises brightly!'
+
+      - name: Build and self-test browser Training Studio
+        shell: bash
+        run: |
+          pas2js="$PAS2JS_ROOT/bin/x86_64-linux/pas2js"
+          PAS2JS="$pas2js" bash ./build-browser-training.sh
+
+          chrome=''
+          for candidate in google-chrome google-chrome-stable chromium chromium-browser; do
+            if command -v "$candidate" >/dev/null 2>&1; then
+              chrome=$(command -v "$candidate")
+              break
+            fi
+          done
+          if [ -z "$chrome" ]; then
+            echo 'No supported Chrome or Chromium executable was found.' >&2
+            exit 1
+          fi
+
+          server_log=$(mktemp)
+          chrome_log=$(mktemp)
+          dom_file=$(mktemp)
+          profile_directory=$(mktemp -d)
+          server_pid=''
+          cleanup() {
+            if [ -n "$server_pid" ]; then
+              kill "$server_pid" 2>/dev/null || true
+              wait "$server_pid" 2>/dev/null || true
+            fi
+            rm -f -- "$server_log" "$chrome_log" "$dom_file"
+            if [ -n "$profile_directory" ] && [ -d "$profile_directory" ]; then
+              rm -rf -- "$profile_directory"
+            fi
+          }
+          trap cleanup EXIT
+
+          ./build/native/bin/wfc_serve --port 4176 \
+            --root build/browser/training/www \
+            >"$server_log" 2>&1 &
+          server_pid=$!
+
+          server_ready=false
+          for _ in $(seq 1 50); do
+            if curl --fail --silent \
+                http://127.0.0.1:4176/index.html >/dev/null 2>&1; then
+              server_ready=true
+              break
+            fi
+            if ! kill -0 "$server_pid" 2>/dev/null; then
+              cat "$server_log" >&2
+              exit 1
+            fi
+            sleep 0.2
+          done
+          if [ "$server_ready" != true ]; then
+            cat "$server_log" >&2
+            echo 'Timed out waiting for the browser training HTTP server.' >&2
+            exit 1
+          fi
+
+          if ! timeout 30s "$chrome" \
+              --headless \
+              --disable-gpu \
+              --disable-dev-shm-usage \
+              --no-default-browser-check \
+              --no-first-run \
+              --user-data-dir="$profile_directory" \
+              --virtual-time-budget=15000 \
+              --dump-dom \
+              'http://127.0.0.1:4176/index.html?selftest=1' \
+              >"$dom_file" 2>"$chrome_log"; then
+            cat "$chrome_log" >&2
+            cat "$server_log" >&2
+            exit 1
+          fi
+
+          ./build/native/bin/wfc_browser_check --dom "$dom_file" \
+            --expect 'data-state=solved' \
+            --expect 'data-self-test=passed' \
+            --expect 'data-source-signature=0FA2C5EA' \
+            --expect 'data-recipe-signature=DBCBA621' \
+            --expect 'data-result-signature=947C4AFD' \
+            --expect 'data-cell-count=16' \
+            --expect 'data-source-invalidation=passed' \
+            --expect 'data-run-invalidation=passed' \
+            --expect 'data-contradiction=passed' \
+            --expect 'data-recovery=passed' \
+            --expect 'data-preset-sweep=passed' \
+            --expect 'data-import-race=passed'
+
+      - name: Build and self-test browser Music Studio
+        shell: bash
+        run: |
+          pas2js="$PAS2JS_ROOT/bin/x86_64-linux/pas2js"
+          PAS2JS="$pas2js" bash ./build-browser-music.sh
+
+          chrome=''
+          for candidate in google-chrome google-chrome-stable chromium chromium-browser; do
+            if command -v "$candidate" >/dev/null 2>&1; then
+              chrome=$(command -v "$candidate")
+              break
+            fi
+          done
+          if [ -z "$chrome" ]; then
+            echo 'No supported Chrome or Chromium executable was found.' >&2
+            exit 1
+          fi
+
+          server_log=$(mktemp)
+          chrome_log=$(mktemp)
+          dom_file=$(mktemp)
+          profile_directory=$(mktemp -d)
+          server_pid=''
+          cleanup() {
+            if [ -n "$server_pid" ]; then
+              kill "$server_pid" 2>/dev/null || true
+              wait "$server_pid" 2>/dev/null || true
+            fi
+            rm -f -- "$server_log" "$chrome_log" "$dom_file"
+            if [ -n "$profile_directory" ] && [ -d "$profile_directory" ]; then
+              rm -rf -- "$profile_directory"
+            fi
+          }
+          trap cleanup EXIT
+
+          ./build/native/bin/wfc_serve --port 4177 \
+            --root build/browser/music/www \
+            >"$server_log" 2>&1 &
+          server_pid=$!
+
+          server_ready=false
+          for _ in $(seq 1 50); do
+            if curl --fail --silent \
+                http://127.0.0.1:4177/index.html >/dev/null 2>&1; then
+              server_ready=true
+              break
+            fi
+            if ! kill -0 "$server_pid" 2>/dev/null; then
+              cat "$server_log" >&2
+              exit 1
+            fi
+            sleep 0.2
+          done
+          if [ "$server_ready" != true ]; then
+            cat "$server_log" >&2
+            echo 'Timed out waiting for the browser music HTTP server.' >&2
+            exit 1
+          fi
+
+          if ! timeout 30s "$chrome" \
+              --headless \
+              --disable-gpu \
+              --disable-dev-shm-usage \
+              --no-default-browser-check \
+              --no-first-run \
+              --user-data-dir="$profile_directory" \
+              --virtual-time-budget=15000 \
+              --dump-dom \
+              'http://127.0.0.1:4177/index.html?selftest=1' \
+              >"$dom_file" 2>"$chrome_log"; then
+            cat "$chrome_log" >&2
+            cat "$server_log" >&2
+            exit 1
+          fi
+
+          ./build/native/bin/wfc_browser_check --dom "$dom_file" \
+            --expect 'data-state=solved' \
+            --expect 'data-self-test=passed' \
+            --expect 'data-seed=0' \
+            --expect 'data-composition-signature=216F6EBB' \
+            --expect 'data-result-status=solved' \
+            --expect 'data-score-signature=4167E7E5' \
+            --expect 'data-midi-signature=86E4DCA3' \
+            --expect 'data-wave-signature=64679FF8' \
+            --expect 'data-strategy=negotiated' \
+            --expect 'data-scope=full' \
+            --expect 'data-cell-count=16' \
+            --expect 'data-lock-count=0' \
+            --expect 'data-pass-count=3' \
+            --expect 'data-midi-bytes=123' \
+            --expect 'data-wav-bytes=352844' \
+            --expect 'data-arrangement-test=passed' \
+            --expect 'data-arrangement-4-frames=176400' \
+            --expect 'data-arrangement-6-frames=264600' \
+            --expect 'data-arrangement-180-frames=7938000' \
+            --expect 'data-arrangement-cancel=passed' \
+            --expect 'data-arrangement-stale=passed' \
+            --expect 'data-arrangement-write-failure=passed' \
+            --expect 'data-arrangement-commit=passed' \
+            --expect 'data-new-session-invalidation=passed' \
+            --expect 'data-run-invalidation=passed' \
+            --expect 'data-failure-clears-output=passed' \
+            --expect 'data-motif-lock=passed' \
+            --expect 'data-selective-regeneration=passed' \
+            --expect 'data-recovery=passed' \
+            --expect 'data-audio-ready=true' \
+            --expect 'data-audio-play-events=0'
+
+      - name: Build and self-test browser world
+        shell: bash
+        run: |
+          pas2js="$PAS2JS_ROOT/bin/x86_64-linux/pas2js"
+          PAS2JS="$pas2js" bash ./build-browser.sh
+
+          chrome=''
+          for candidate in google-chrome google-chrome-stable chromium chromium-browser; do
+            if command -v "$candidate" >/dev/null 2>&1; then
+              chrome=$(command -v "$candidate")
+              break
+            fi
+          done
+          if [ -z "$chrome" ]; then
+            echo 'No supported Chrome or Chromium executable was found.' >&2
+            exit 1
+          fi
+
+          server_log=$(mktemp)
+          chrome_log=$(mktemp)
+          dom_file=$(mktemp)
+          profile_directory=$(mktemp -d)
+          server_pid=''
+          cleanup() {
+            if [ -n "$server_pid" ]; then
+              kill "$server_pid" 2>/dev/null || true
+              wait "$server_pid" 2>/dev/null || true
+            fi
+            rm -f -- "$server_log" "$chrome_log" "$dom_file"
+            if [ -n "$profile_directory" ] && [ -d "$profile_directory" ]; then
+              rm -rf -- "$profile_directory"
+            fi
+          }
+          trap cleanup EXIT
+
+          ./build/native/bin/wfc_serve --port 4173 \
+            --root build/browser/world2d/www \
+            >"$server_log" 2>&1 &
+          server_pid=$!
+
+          server_ready=false
+          for _ in $(seq 1 50); do
+            if curl --fail --silent \
+                http://127.0.0.1:4173/index.html >/dev/null 2>&1; then
+              server_ready=true
+              break
+            fi
+            if ! kill -0 "$server_pid" 2>/dev/null; then
+              cat "$server_log" >&2
+              exit 1
+            fi
+            sleep 0.2
+          done
+          if [ "$server_ready" != true ]; then
+            cat "$server_log" >&2
+            echo 'Timed out waiting for the browser demo HTTP server.' >&2
+            exit 1
+          fi
+
+          if ! timeout 30s "$chrome" \
+              --headless \
+              --disable-gpu \
+              --disable-dev-shm-usage \
+              --no-default-browser-check \
+              --no-first-run \
+              --user-data-dir="$profile_directory" \
+              --virtual-time-budget=15000 \
+              --dump-dom \
+              'http://127.0.0.1:4173/index.html?selftest=1' \
+              >"$dom_file" 2>"$chrome_log"; then
+            cat "$chrome_log" >&2
+            cat "$server_log" >&2
+            exit 1
+          fi
+
+          ./build/native/bin/wfc_browser_check --dom "$dom_file" \
+            --expect 'data-state=solved' \
+            --expect 'data-self-test=passed' \
+            --expect 'data-signature=1:5B0DD75D:08022AF1:A40D0955'
+
+      - name: Build and self-test browser Building 3D
+        shell: bash
+        run: |
+          pas2js="$PAS2JS_ROOT/bin/x86_64-linux/pas2js"
+          PAS2JS="$pas2js" bash ./build-browser-building3d.sh
+
+          chrome=''
+          for candidate in google-chrome google-chrome-stable chromium chromium-browser; do
+            if command -v "$candidate" >/dev/null 2>&1; then
+              chrome=$(command -v "$candidate")
+              break
+            fi
+          done
+          if [ -z "$chrome" ]; then
+            echo 'No supported Chrome or Chromium executable was found.' >&2
+            exit 1
+          fi
+
+          server_log=$(mktemp)
+          chrome_log=$(mktemp)
+          dom_file=$(mktemp)
+          profile_directory=$(mktemp -d)
+          server_pid=''
+          cleanup() {
+            if [ -n "$server_pid" ]; then
+              kill "$server_pid" 2>/dev/null || true
+              wait "$server_pid" 2>/dev/null || true
+            fi
+            rm -f -- "$server_log" "$chrome_log" "$dom_file"
+            if [ -n "$profile_directory" ] && [ -d "$profile_directory" ]; then
+              rm -rf -- "$profile_directory"
+            fi
+          }
+          trap cleanup EXIT
+
+          ./build/native/bin/wfc_serve --port 4174 \
+            --root build/browser/building3d/www \
+            >"$server_log" 2>&1 &
+          server_pid=$!
+
+          server_ready=false
+          for _ in $(seq 1 50); do
+            if curl --fail --silent \
+                http://127.0.0.1:4174/index.html >/dev/null 2>&1; then
+              server_ready=true
+              break
+            fi
+            if ! kill -0 "$server_pid" 2>/dev/null; then
+              cat "$server_log" >&2
+              exit 1
+            fi
+            sleep 0.2
+          done
+          if [ "$server_ready" != true ]; then
+            cat "$server_log" >&2
+            echo 'Timed out waiting for the Building 3D browser server.' >&2
+            exit 1
+          fi
+
+          if ! timeout 30s "$chrome" \
+              --headless \
+              --disable-gpu \
+              --disable-dev-shm-usage \
+              --no-default-browser-check \
+              --no-first-run \
+              --user-data-dir="$profile_directory" \
+              --virtual-time-budget=15000 \
+              --dump-dom \
+              'http://127.0.0.1:4174/index.html?selftest=1' \
+              >"$dom_file" 2>"$chrome_log"; then
+            cat "$chrome_log" >&2
+            cat "$server_log" >&2
+            exit 1
+          fi
+
+          ./build/native/bin/wfc_browser_check --dom "$dom_file" \
+            --expect 'data-state=solved' \
+            --expect 'data-self-test=passed' \
+            --expect 'data-signature=1:F1EF0EB6' \
+            --expect 'data-view-signature=AC7290C0' \
+            --expect 'data-face-count=140'
+
+      - name: Build and self-test browser Neighborhood Counts
+        shell: bash
+        run: |
+          PAS2JS="$PAS2JS_ROOT/bin/x86_64-linux/pas2js" bash ./build-browser-counts.sh
+          chrome=''
+          for candidate in google-chrome google-chrome-stable chromium chromium-browser; do
+            if command -v "$candidate" >/dev/null 2>&1; then
+              chrome=$(command -v "$candidate")
+              break
+            fi
+          done
+          if [ -z "$chrome" ]; then
+            echo 'No supported Chrome or Chromium executable was found.' >&2
+            exit 1
+          fi
+
+          server_log=$(mktemp)
+          chrome_log=$(mktemp)
+          dom_file=$(mktemp)
+          profile_directory=$(mktemp -d)
+          server_pid=''
+          cleanup() {
+            if [ -n "$server_pid" ]; then
+              kill "$server_pid" 2>/dev/null || true
+              wait "$server_pid" 2>/dev/null || true
+            fi
+            rm -f -- "$server_log" "$chrome_log" "$dom_file"
+            if [ -n "$profile_directory" ] && [ -d "$profile_directory" ]; then
+              rm -rf -- "$profile_directory"
+            fi
+          }
+          trap cleanup EXIT
+          ./build/native/bin/wfc_serve --port 4176 \
+            --root build/browser/counts/www >"$server_log" 2>&1 &
+          server_pid=$!
+          server_ready=false
+          for _ in $(seq 1 50); do
+            if ! kill -0 "$server_pid" 2>/dev/null; then
+              cat "$server_log" >&2
+              exit 1
+            fi
+            bound=false
+            while IFS= read -r line; do
+              [ "$line" != 'WFC static server: http://127.0.0.1:4176/' ] || bound=true
+            done <"$server_log"
+            if [ "$bound" = true ] && curl --max-time 2 --fail --silent \
+                http://127.0.0.1:4176/index.html >/dev/null 2>&1; then
+              kill -0 "$server_pid" 2>/dev/null || exit 1
+              server_ready=true
+              break
+            fi
+            sleep 0.2
+          done
+          if [ "$server_ready" != true ]; then
+            cat "$server_log" >&2
+            echo 'Timed out waiting for the Neighborhood Counts HTTP server.' >&2
+            exit 1
+          fi
+          if ! timeout 30s "$chrome" --headless --disable-gpu \
+              --disable-dev-shm-usage --no-default-browser-check --no-first-run \
+              --user-data-dir="$profile_directory" --virtual-time-budget=15000 \
+              --dump-dom 'http://127.0.0.1:4176/index.html?selftest=1' \
+              >"$dom_file" 2>"$chrome_log"; then
+            cat "$chrome_log" >&2
+            cat "$server_log" >&2
+            exit 1
+          fi
+          ./build/native/bin/wfc_browser_check --dom "$dom_file" \
+            --expect 'data-state=solved' \
+            --expect 'data-self-test=passed' \
+            --expect 'data-output-key=LLLLLLLLL/.R.R...../....M....' \
+            --expect 'data-lower=passed' \
+            --expect 'data-upper=passed' \
+            --expect 'data-alias=passed' \
+            --expect 'data-repair=passed' \
+            --expect 'data-flood=passed' \
+            --expect 'data-invalidation=passed'
+
+  development:
+    name: Development FPC (official trunk image)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: false
+
+      - name: Build and test with current FPC trunk
+        shell: bash
+        run: |
+          docker pull freepascal/fpc:trunk-bookworm-full
+          docker image inspect \
+            --format 'FPC trunk image: {{index .RepoDigests 0}}' \
+            freepascal/fpc:trunk-bookworm-full
+          docker run --rm freepascal/fpc:trunk-bookworm-full fpc -iW
+          docker run --rm \
+            --user "$(id -u):$(id -g)" \
+            --volume "$GITHUB_WORKSPACE:/workspace" \
+            --workdir /workspace \
+            freepascal/fpc:trunk-bookworm-full \
+            bash ./build.sh

@@ -1,0 +1,340 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CONFIG>
+  <Package Version="4">
+    <Name Value="wfc_package"/>
+    <Type Value="RunTimeOnly"/>
+    <AutoUpdate Value="Manually"/>
+    <Author Value="mr-highball"/>
+    <CompilerOptions>
+      <Version Value="11"/>
+      <SearchPaths>
+        <OtherUnitFiles Value="src"/>
+        <UnitOutputDirectory Value="build/lazarus/package/$(TargetCPU)-$(TargetOS)"/>
+      </SearchPaths>
+    </CompilerOptions>
+    <Description Value="Wave Function Collapse, multi-pass generation, and pattern learning library"/>
+    <License Value="MIT"/>
+    <Version Minor="1"/>
+    <Files Count="78">
+      <Item1>
+        <Filename Value="wfc_package.pas"/>
+        <Type Value="Main Unit"/>
+        <UnitName Value="wfc_package"/>
+      </Item1>
+      <Item2>
+        <Filename Value="src/wfc_solver_reference.pas"/>
+        <UnitName Value="wfc_solver_reference"/>
+      </Item2>
+      <Item3>
+        <Filename Value="src/wfc.pas"/>
+        <UnitName Value="wfc"/>
+      </Item3>
+      <Item4>
+        <Filename Value="src/wfc_trace.pas"/>
+        <UnitName Value="wfc_trace"/>
+      </Item4>
+      <Item5>
+        <Filename Value="src/wfc_model.pas"/>
+        <UnitName Value="wfc_model"/>
+      </Item5>
+      <Item6>
+        <Filename Value="src/wfc_learn.pas"/>
+        <UnitName Value="wfc_learn"/>
+      </Item6>
+      <Item7>
+        <Filename Value="src/wfc_model_text.pas"/>
+        <UnitName Value="wfc_model_text"/>
+      </Item7>
+      <Item8>
+        <Filename Value="src/wfc_world2d.pas"/>
+        <UnitName Value="wfc_world2d"/>
+      </Item8>
+      <Item9>
+        <Filename Value="src/wfc_world2d_validate.pas"/>
+        <UnitName Value="wfc_world2d_validate"/>
+      </Item9>
+      <Item10>
+        <Filename Value="src/wfc_text_codec.pas"/>
+        <UnitName Value="wfc_text_codec"/>
+      </Item10>
+      <Item11>
+        <Filename Value="src/wfc_pattern2d.pas"/>
+        <UnitName Value="wfc_pattern2d"/>
+      </Item11>
+      <Item12>
+        <Filename Value="src/wfc_pattern2d_learn.pas"/>
+        <UnitName Value="wfc_pattern2d_learn"/>
+      </Item12>
+      <Item13>
+        <Filename Value="src/wfc_pattern2d_text.pas"/>
+        <UnitName Value="wfc_pattern2d_text"/>
+      </Item13>
+      <Item14>
+        <Filename Value="src/wfc_world2d_settlement.pas"/>
+        <UnitName Value="wfc_world2d_settlement"/>
+      </Item14>
+      <Item15>
+        <Filename Value="src/wfc_world2d_settlement_validate.pas"/>
+        <UnitName Value="wfc_world2d_settlement_validate"/>
+      </Item15>
+      <Item16>
+        <Filename Value="src/wfc_sequence.pas"/>
+        <UnitName Value="wfc_sequence"/>
+      </Item16>
+      <Item17>
+        <Filename Value="src/wfc_sequence_learn.pas"/>
+        <UnitName Value="wfc_sequence_learn"/>
+      </Item17>
+      <Item18>
+        <Filename Value="src/wfc_sequence_graph.pas"/>
+        <UnitName Value="wfc_sequence_graph"/>
+      </Item18>
+      <Item19>
+        <Filename Value="src/wfc_sequence_text.pas"/>
+        <UnitName Value="wfc_sequence_text"/>
+      </Item19>
+      <Item20>
+        <Filename Value="src/wfc_music.pas"/>
+        <UnitName Value="wfc_music"/>
+      </Item20>
+      <Item21>
+        <Filename Value="src/wfc_music_sequence.pas"/>
+        <UnitName Value="wfc_music_sequence"/>
+      </Item21>
+      <Item22>
+        <Filename Value="src/wfc_music_graph.pas"/>
+        <UnitName Value="wfc_music_graph"/>
+      </Item22>
+      <Item23>
+        <Filename Value="src/wfc_music_text.pas"/>
+        <UnitName Value="wfc_music_text"/>
+      </Item23>
+      <Item24>
+        <Filename Value="src/wfc_midi_smf.pas"/>
+        <UnitName Value="wfc_midi_smf"/>
+      </Item24>
+      <Item25>
+        <Filename Value="src/wfc_music_midi.pas"/>
+        <UnitName Value="wfc_music_midi"/>
+      </Item25>
+      <Item26>
+        <Filename Value="src/wfc_voxel3d.pas"/>
+        <UnitName Value="wfc_voxel3d"/>
+      </Item26>
+      <Item27>
+        <Filename Value="src/wfc_voxel3d_validate.pas"/>
+        <UnitName Value="wfc_voxel3d_validate"/>
+      </Item27>
+      <Item28>
+        <Filename Value="src/wfc_voxel3d_mesh.pas"/>
+        <UnitName Value="wfc_voxel3d_mesh"/>
+      </Item28>
+      <Item29>
+        <Filename Value="src/wfc_voxel3d_passes.pas"/>
+        <UnitName Value="wfc_voxel3d_passes"/>
+      </Item29>
+      <Item30>
+        <Filename Value="src/wfc_building3d.pas"/>
+        <UnitName Value="wfc_building3d"/>
+      </Item30>
+      <Item31>
+        <Filename Value="src/wfc_building3d_validate.pas"/>
+        <UnitName Value="wfc_building3d_validate"/>
+      </Item31>
+      <Item32>
+        <Filename Value="src/wfc_voxel3d_isometric.pas"/>
+        <UnitName Value="wfc_voxel3d_isometric"/>
+      </Item32>
+      <Item33>
+        <Filename Value="src/wfc_voxel3d_svg.pas"/>
+        <UnitName Value="wfc_voxel3d_svg"/>
+      </Item33>
+      <Item34>
+        <Filename Value="src/wfc_building3d_view.pas"/>
+        <UnitName Value="wfc_building3d_view"/>
+      </Item34>
+      <Item35>
+        <Filename Value="src/wfc_sequence_analyze.pas"/>
+        <UnitName Value="wfc_sequence_analyze"/>
+      </Item35>
+      <Item36>
+        <Filename Value="src/wfc_text_tokenize.pas"/>
+        <UnitName Value="wfc_text_tokenize"/>
+      </Item36>
+      <Item37>
+        <Filename Value="src/wfc_text_complete.pas"/>
+        <UnitName Value="wfc_text_complete"/>
+      </Item37>
+      <Item38>
+        <Filename Value="src/wfc_text_passes.pas"/>
+        <UnitName Value="wfc_text_passes"/>
+      </Item38>
+      <Item39>
+        <Filename Value="src/wfc_music_passes.pas"/>
+        <UnitName Value="wfc_music_passes"/>
+      </Item39>
+      <Item40>
+        <Filename Value="src/wfc_music_passes_text.pas"/>
+        <UnitName Value="wfc_music_passes_text"/>
+      </Item40>
+      <Item41>
+        <Filename Value="src/wfc_pattern2d_graph.pas"/>
+        <UnitName Value="wfc_pattern2d_graph"/>
+      </Item41>
+      <Item42>
+        <Filename Value="src/wfc_rule_model.pas"/>
+        <UnitName Value="wfc_rule_model"/>
+      </Item42>
+      <Item43>
+        <Filename Value="src/wfc_rule_text.pas"/>
+        <UnitName Value="wfc_rule_text"/>
+      </Item43>
+      <Item44>
+        <Filename Value="src/wfc_pipeline_model.pas"/>
+        <UnitName Value="wfc_pipeline_model"/>
+      </Item44>
+      <Item45>
+        <Filename Value="src/wfc_pipeline_text.pas"/>
+        <UnitName Value="wfc_pipeline_text"/>
+      </Item45>
+      <Item46>
+        <Filename Value="src/wfc_token_lookup.pas"/>
+        <UnitName Value="wfc_token_lookup"/>
+      </Item46>
+      <Item47>
+        <Filename Value="src/wfc_pipeline_compile.pas"/>
+        <UnitName Value="wfc_pipeline_compile"/>
+      </Item47>
+      <Item48>
+        <Filename Value="src/wfc_pipeline_run.pas"/>
+        <UnitName Value="wfc_pipeline_run"/>
+      </Item48>
+      <Item49>
+        <Filename Value="src/wfc_pipeline_run_text.pas"/>
+        <UnitName Value="wfc_pipeline_run_text"/>
+      </Item49>
+      <Item50>
+        <Filename Value="src/wfc_pipeline_result.pas"/>
+        <UnitName Value="wfc_pipeline_result"/>
+      </Item50>
+      <Item51>
+        <Filename Value="src/wfc_pipeline_result_text.pas"/>
+        <UnitName Value="wfc_pipeline_result_text"/>
+      </Item51>
+      <Item52>
+        <Filename Value="src/wfc_pipeline_runtime.pas"/>
+        <UnitName Value="wfc_pipeline_runtime"/>
+      </Item52>
+      <Item53>
+        <Filename Value="src/wfc_training.pas"/>
+        <UnitName Value="wfc_training"/>
+      </Item53>
+      <Item54>
+        <Filename Value="src/wfc_training_text.pas"/>
+        <UnitName Value="wfc_training_text"/>
+      </Item54>
+      <Item55>
+        <Filename Value="src/wfc_text_training.pas"/>
+        <UnitName Value="wfc_text_training"/>
+      </Item55>
+      <Item56>
+        <Filename Value="src/wfc_training_workspace.pas"/>
+        <UnitName Value="wfc_training_workspace"/>
+      </Item56>
+      <Item57>
+        <Filename Value="src/wfc_music_audio.pas"/>
+        <UnitName Value="wfc_music_audio"/>
+      </Item57>
+      <Item58>
+        <Filename Value="src/wfc_music_audio_stream.pas"/>
+        <UnitName Value="wfc_music_audio_stream"/>
+      </Item58>
+      <Item59>
+        <Filename Value="src/wfc_music_arrangement.pas"/>
+        <UnitName Value="wfc_music_arrangement"/>
+      </Item59>
+      <Item60>
+        <Filename Value="src/wfc_music_midi_import.pas"/>
+        <UnitName Value="wfc_music_midi_import"/>
+      </Item60>
+      <Item61>
+        <Filename Value="src/wfc_music_training.pas"/>
+        <UnitName Value="wfc_music_training"/>
+      </Item61>
+      <Item62>
+        <Filename Value="src/wfc_timing.pas"/>
+        <UnitName Value="wfc_timing"/>
+      </Item62>
+      <Item63>
+        <Filename Value="src/wfc_music_ensemble.pas"/>
+        <UnitName Value="wfc_music_ensemble"/>
+      </Item63>
+      <Item64>
+        <Filename Value="src/wfc_music_ensemble_graph.pas"/>
+        <UnitName Value="wfc_music_ensemble_graph"/>
+      </Item64>
+      <Item65>
+        <Filename Value="src/wfc_music_ensemble_passes.pas"/>
+        <UnitName Value="wfc_music_ensemble_passes"/>
+      </Item65>
+      <Item66>
+        <Filename Value="src/wfc_music_ensemble_training.pas"/>
+        <UnitName Value="wfc_music_ensemble_training"/>
+      </Item66>
+      <Item67>
+        <Filename Value="src/wfc_music_ensemble_stream.pas"/>
+        <UnitName Value="wfc_music_ensemble_stream"/>
+      </Item67>
+      <Item68>
+        <Filename Value="src/wfc_music_ensemble_audio.pas"/>
+        <UnitName Value="wfc_music_ensemble_audio"/>
+      </Item68>
+      <Item69>
+        <Filename Value="src/wfc_midi_stream.pas"/>
+        <UnitName Value="wfc_midi_stream"/>
+      </Item69>
+      <Item70>
+        <Filename Value="src/wfc_music_ensemble_midi.pas"/>
+        <UnitName Value="wfc_music_ensemble_midi"/>
+      </Item70>
+      <Item71>
+        <Filename Value="src/wfc_music_voices_graph.pas"/>
+        <UnitName Value="wfc_music_voices_graph"/>
+      </Item71>
+      <Item72>
+        <Filename Value="src/wfc_music_voices_training.pas"/>
+        <UnitName Value="wfc_music_voices_training"/>
+      </Item72>
+      <Item73>
+        <Filename Value="src/wfc_music_voices_stream.pas"/>
+        <UnitName Value="wfc_music_voices_stream"/>
+      </Item73>
+      <Item74>
+        <Filename Value="src/wfc_connectivity_reference.pas"/>
+        <UnitName Value="wfc_connectivity_reference"/>
+      </Item74>
+      <Item75>
+        <Filename Value="src/wfc_learn3d.pas"/>
+        <UnitName Value="wfc_learn3d"/>
+      </Item75>
+      <Item76>
+        <Filename Value="src/wfc_terraces3d.pas"/>
+        <UnitName Value="wfc_terraces3d"/>
+      </Item76>
+      <Item77>
+        <Filename Value="src/wfc_terraces3d_view.pas"/>
+        <UnitName Value="wfc_terraces3d_view"/>
+      </Item77>
+      <Item78>
+        <Filename Value="src/wfc_trace_stream.pas"/>
+        <UnitName Value="wfc_trace_stream"/>
+      </Item78>
+    </Files>
+    <UsageOptions>
+      <UnitPath Value="$(PkgOutDir)"/>
+    </UsageOptions>
+    <PublishOptions>
+      <Version Value="2"/>
+    </PublishOptions>
+  </Package>
+</CONFIG>

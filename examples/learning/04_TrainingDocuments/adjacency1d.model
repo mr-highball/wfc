@@ -1,0 +1,17 @@
+wfcm=2
+rank=1
+samples=2
+s=0,4,1
+s=1,4,1
+boundary=wrap
+symmetry=none
+directions=E,W
+values=2
+v=0,4,A
+v=1,4,B
+relations=4
+r=E,0,1,4
+r=E,1,0,4
+r=W,0,1,4
+r=W,1,0,4
+end

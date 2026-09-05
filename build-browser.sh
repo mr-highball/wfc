@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+
+set -u
+set -o pipefail
+
+repository_root=$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+compiler=${PAS2JS:-pas2js}
+source_directory="$repository_root/src"
+common_directory="$repository_root/examples/2D/common"
+browser_directory="$repository_root/examples/2D/02_BrowserWorld"
+browser_source="$browser_directory/BrowserWorld.lpr"
+browser_html="$browser_directory/index.html"
+browser_css="$browser_directory/browserworld.css"
+output_directory="$repository_root/build/browser/world2d"
+unit_output_directory="$output_directory/units"
+web_output_directory="$output_directory/www"
+staged_javascript="$web_output_directory/BrowserWorld.js"
+
+for required_file in "$browser_source" "$browser_html" "$browser_css"; do
+  if test ! -f "$required_file"; then
+    printf 'Required browser demo file was not found: %s\n' \
+      "$required_file" >&2
+    exit 1
+  fi
+done
+
+mkdir -p -- "$unit_output_directory" "$web_output_directory" || exit $?
+
+compiler_source_directory=$source_directory
+compiler_common_directory=$common_directory
+compiler_browser_directory=$browser_directory
+compiler_browser_source=$browser_source
+compiler_unit_output_directory=$unit_output_directory
+compiler_web_output_directory=$web_output_directory
+host_system=$(uname -s)
+case "$host_system" in
+  CYGWIN*|MINGW*|MSYS*)
+    compiler_source_directory=$(cygpath -m "$source_directory") || exit $?
+    compiler_common_directory=$(cygpath -m "$common_directory") || exit $?
+    compiler_browser_directory=$(cygpath -m "$browser_directory") || exit $?
+    compiler_browser_source=$(cygpath -m "$browser_source") || exit $?
+    compiler_unit_output_directory=$(cygpath -m "$unit_output_directory") || exit $?
+    compiler_web_output_directory=$(cygpath -m "$web_output_directory") || exit $?
+    export MSYS2_ARG_CONV_EXCL='*'
+    ;;
+esac
+
+# Never mistake an artifact from an earlier build for the current compiler's
+# output.
+rm -f -- "$staged_javascript" || exit $?
+
+printf "Building the browser world with '%s'.\n" "$compiler"
+"$compiler" "$@" \
+  -B \
+  -Tbrowser \
+  -Mdelphi \
+  -Jc \
+  -Jirtl.js \
+  "-Fu$compiler_source_directory" \
+  "-Fu$compiler_common_directory" \
+  "-Fu$compiler_browser_directory" \
+  "-FU$compiler_unit_output_directory" \
+  "-FE$compiler_web_output_directory" \
+  "$compiler_browser_source" || exit $?
+
+if test ! -s "$staged_javascript"; then
+  printf 'pas2js did not produce %s\n' "$staged_javascript" >&2
+  exit 1
+fi
+
+cp -- "$browser_html" "$browser_css" "$web_output_directory/" || exit $?
+for staged_asset in \
+  "$web_output_directory/index.html" \
+  "$web_output_directory/browserworld.css"; do
+  if test ! -s "$staged_asset"; then
+    printf 'Staged browser asset is empty: %s\n' "$staged_asset" >&2
+    exit 1
+  fi
+done
+
+printf "Browser world staged in '%s'.\n" "$web_output_directory"
