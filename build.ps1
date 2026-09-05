@@ -239,6 +239,46 @@ $countDemoName = if ($env:OS -eq 'Windows_NT') { 'NeighborhoodCounts.exe' } else
 & (Join-Path $binaryOutputDirectory $countDemoName) --selftest
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+$connectivityDemoDirectory = Join-Path $repositoryRoot `
+  'examples/passes/06_ConnectedRoutes'
+foreach ($connectivityTestName in @(
+    'wfc_connectivity_reference_test', 'wfc_connectivity_test',
+    'wfc_connectivity_trace_test', 'wfc_connectivity_demo_test')) {
+  Write-Host "Building and running '$connectivityTestName'."
+  & $Compiler @CompilerOptions -B -Mdelphi -Sa -Cr -Co -Ci `
+    "-Fu$sourceDirectory" "-Fu$toolsDirectory" "-Fu$connectivityDemoDirectory" `
+    "-FU$unitOutputDirectory" "-FE$binaryOutputDirectory" `
+    (Join-Path $repositoryRoot "test/$connectivityTestName.lpr")
+  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+  $connectivityTestExecutable = if ($env:OS -eq 'Windows_NT') {
+    "$connectivityTestName.exe"
+  } else { $connectivityTestName }
+  & (Join-Path $binaryOutputDirectory $connectivityTestExecutable)
+  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+}
+
+Write-Host 'Building and checking Connected Routes and native export transactions.'
+foreach ($connectivitySource in @(
+    (Join-Path $connectivityDemoDirectory 'ConnectedRoutes.lpr'),
+    (Join-Path $repositoryRoot 'test/wfc_connectivity_process_test.lpr'))) {
+  & $Compiler @CompilerOptions -B -Mdelphi -Sa -Cr -Co -Ci `
+    "-Fu$sourceDirectory" "-Fu$toolsDirectory" "-Fu$connectivityDemoDirectory" `
+    "-FU$unitOutputDirectory" "-FE$binaryOutputDirectory" $connectivitySource
+  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+}
+$connectivityDemoName = if ($env:OS -eq 'Windows_NT') {
+  'ConnectedRoutes.exe'
+} else { 'ConnectedRoutes' }
+$connectivityProcessTestName = if ($env:OS -eq 'Windows_NT') {
+  'wfc_connectivity_process_test.exe'
+} else { 'wfc_connectivity_process_test' }
+$connectivityDemoExecutable = Join-Path $binaryOutputDirectory $connectivityDemoName
+& $connectivityDemoExecutable --selftest
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+& (Join-Path $binaryOutputDirectory $connectivityProcessTestName) `
+  $connectivityDemoExecutable $binaryOutputDirectory
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
 $restartDemoDirectory = Join-Path $repositoryRoot `
   'examples/passes/05_DeterministicRestarts'
 foreach ($restartTestName in @(

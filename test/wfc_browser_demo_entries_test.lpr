@@ -29,7 +29,7 @@ program wfc_browser_demo_entries_test;
 uses SysUtils, JS, Web, wfc_browser_test_host;
 
 const
-  DEMO_COUNT = 8;
+  DEMO_COUNT = 9;
   PAGE_TIMEOUT_MS = 15000;
   POLL_INTERVAL_MS = 25;
 
@@ -99,11 +99,13 @@ begin
   FDemos[6].Bundle := 'BrowserEnsembleStudio.js'; FDemos[6].Stylesheet := 'ensemblestudio.css';
   FDemos[7].Name := 'voices';
   FDemos[7].Bundle := 'BrowserVoiceStudio.js'; FDemos[7].Stylesheet := 'voicestudio.css';
+  FDemos[8].Name := 'connectivity';
+  FDemos[8].Bundle := 'BrowserConnectedRoutes.js'; FDemos[8].Stylesheet := 'connectedroutes.css';
 
   for I := 0 to DEMO_COUNT - 1 do
   begin
     Expect(I, 'data-self-test', 'passed');
-    if I < 7 then Expect(I, 'data-state', 'solved');
+    if I <> 7 then Expect(I, 'data-state', 'solved');
   end;
   { Preserve the six standalone hosted marker maps, not just their generic
     success flags. These requests load actual staged HTML/CSS/compiled entry
@@ -186,6 +188,13 @@ begin
   Expect(7, 'data-voice-state', 'ready');
   Expect(7, 'data-voice-stream-self-test', 'passed');
   Expect(7, 'data-voice-stream-release', 'passed');
+  Expect(8, 'data-case', 'circulation');
+  Expect(8, 'data-signature', '9F2CC7A4');
+  Expect(8, 'data-town-repair', 'passed');
+  Expect(8, 'data-town-rollback', 'passed');
+  Expect(8, 'data-circulation', 'passed');
+  Expect(8, 'data-circulation-repair', 'passed');
+  Expect(8, 'data-invalidation', 'passed');
 end;
 
 constructor TDemoEntries.Create;
@@ -205,7 +214,7 @@ begin
     provisional generic marker on the first task; only our dedicated marker
     can certify completion of all awaited real pages. }
   document.body.setAttribute('data-self-test', 'pending');
-  WriteLn('Real browser demo entries: eight sequential staged index pages');
+  WriteLn('Real browser demo entries: nine sequential staged index pages');
   OpenNext;
 end;
 
@@ -243,9 +252,11 @@ end;
 function TDemoEntries.ResourceState(out AMessage: String): Integer;
 var Entries: TJSArray; I: Integer; Entry: TJSObject;
   Name, BundleUrl, StyleUrl: String; Status: JSValue;
-  HasBundle, HasStyle: Boolean;
+  HasBundle, HasStyle, HasLoadedStyle: Boolean;
+  Sheets: TJSStyleSheetList; Sheet: TJSStyleSheet;
 begin
   Result := 0; AMessage := ''; HasBundle := False; HasStyle := False;
+  HasLoadedStyle := False;
   BundleUrl := TJSURL.new(FDemos[FIndex].Bundle, FExpectedUrl).href;
   StyleUrl := TJSURL.new(FDemos[FIndex].Stylesheet, FExpectedUrl).href;
   Entries := TJSArray(FFrame.contentWindow.performance.getEntriesByType('resource'));
@@ -265,8 +276,25 @@ begin
     if Name = BundleUrl then HasBundle := True;
     if Name = StyleUrl then HasStyle := True;
   end;
+  { A resource timing entry proves a request, not a successful load. Some
+    hosts do not expose responseStatus, so a missing CSS file can otherwise
+    pass with all application markers intact. Require the named same-origin
+    stylesheet to have a real, nonempty parsed rule list as well. }
+  Sheets := FFrame.contentDocument.styleSheets;
+  for I := 0 to Sheets.length - 1 do
+  begin
+    Sheet := Sheets.item(I);
+    if Sheet.href <> StyleUrl then Continue;
+    if TJSCSSStyleSheet(Sheet).cssRules.length > 0 then
+      HasLoadedStyle := True;
+  end;
   if not HasBundle then AMessage := 'main compiled entry request missing: ' + FDemos[FIndex].Bundle
   else if not HasStyle then AMessage := 'main stylesheet request missing: ' + FDemos[FIndex].Stylesheet
+  else if not HasLoadedStyle then
+  begin
+    AMessage := 'main stylesheet has no loaded rules: ' + FDemos[FIndex].Stylesheet;
+    if FFrame.contentDocument.readyState = 'complete' then Result := -1;
+  end
   else Result := 1;
 end;
 

@@ -20,7 +20,7 @@ for source in test/*_test.lpr; do
   name="${source##*/}"
   name="${name%.lpr}"
   if [[ -n "${WFC_BROWSER_TEST:-}" && "$name" != "$WFC_BROWSER_TEST" ]]; then continue; fi
-  case "$name" in wfc_browser_dom_test|wfc_serve_test|wfc_music_render_process_test|wfc_music_ensemble_render_process_test|wfc_music_ensemble_midi_render_process_test|wfc_music_voices_render_process_test) continue ;; esac
+  case "$name" in wfc_browser_dom_test|wfc_serve_test|wfc_music_render_process_test|wfc_music_ensemble_render_process_test|wfc_music_ensemble_midi_render_process_test|wfc_music_voices_render_process_test|wfc_connectivity_process_test) continue ;; esac
   sources+=("$name")
   for extension in html js; do
     [[ -f "$web/$name.$extension" ]] || missing+=("$web/$name.$extension")
@@ -86,10 +86,10 @@ for name in "${sources[@]}"; do
   mkdir -p "$profile"
   timeout_marker="$results/$name.timeout"
   : >"$timeout_marker"
-  # Eight real entry pages retain their individual virtual-time allowances;
+  # Nine real entry pages retain their individual virtual-time allowances;
   # this program still uses the unchanged 60-second process watchdog below.
   virtual_time_budget=15000
-  if [[ "$name" == wfc_browser_demo_entries_test ]]; then virtual_time_budget=125000; fi
+  if [[ "$name" == wfc_browser_demo_entries_test ]]; then virtual_time_budget=140000; fi
   "$chrome" --headless --disable-gpu --disable-dev-shm-usage \
     --no-first-run --no-default-browser-check --user-data-dir="$profile" \
     --virtual-time-budget="$virtual_time_budget" --dump-dom \
@@ -123,6 +123,7 @@ for name in "${sources[@]}"; do
   checker_args=(--dom "$results/$name.dom" --expect data-self-test=passed)
   if [[ "$name" == wfc_browser_demo_entries_test ]]; then
     checker_args+=(--expect data-demo-entries-self-test=passed)
+    checker_args+=(--expect data-demo-entries-count=9)
   fi
   if [[ "$name" == wfc_music_ensemble_stream_demo_test ]]; then
     # Awaited file transactions have their own application completion signal.

@@ -27,6 +27,8 @@ unit wfc_solver_reference;
 
 interface
 
+uses wfc_connectivity_reference;
+
 (*
   This is the string-free implementation kernel used by wfc.TGraph.TrySolve.
   Its declarations are installed so the wfc unit can be built by package
@@ -38,9 +40,17 @@ const
   WFC_REFERENCE_DIRECTION_COUNT = 6;
 
 type
-  TReferenceIntegerArray = array of Integer;
+  TReferenceIntegerArray = wfc_connectivity_reference.TReferenceIntegerArray;
   TReferenceAssignments = array of TReferenceIntegerArray;
-  TReferenceByteArray = array of Byte;
+  TReferenceByteArray = wfc_connectivity_reference.TReferenceByteArray;
+  TReferenceConnectivityValueProfile =
+    wfc_connectivity_reference.TReferenceConnectivityValueProfile;
+  TReferenceConnectivityValueProfiles =
+    wfc_connectivity_reference.TReferenceConnectivityValueProfiles;
+  TReferenceConnectivityConstraint =
+    wfc_connectivity_reference.TReferenceConnectivityConstraint;
+  TReferenceConnectivityConstraints =
+    wfc_connectivity_reference.TReferenceConnectivityConstraints;
 
   TReferenceContradictionKind = (
     rckNone,
@@ -53,7 +63,8 @@ type
     //A complete otherwise-valid assignment matched one of the caller's
     //exact full-assignment exclusions. Keep this distinct from model failure
     //so a pass-level coordinator can distinguish exhausted choice frames.
-    rckExcludedAssignment
+    rckExcludedAssignment,
+    rckConnectivity
   );
 
   TReferenceContradictionKindArray =
@@ -70,6 +81,7 @@ type
     EntryIndex: Integer;
     NeighborIndex: Integer;
     Direction: Integer;
+    ConstraintIndex: Integer;
   end;
 
   //Tracing is deliberately numeric and pass-agnostic. The public graph
@@ -94,7 +106,8 @@ type
     rtckRequiredSupport,
     rtckBacktrack,
     rtckFinalValidation,
-    rtckExcludedAssignment
+    rtckExcludedAssignment,
+    rtckConnectivity
   );
 
   TReferenceTraceEvent = record
@@ -109,6 +122,7 @@ type
     DecisionDepth: Integer;
     DomainCountBefore: Integer;
     DomainCountAfter: Integer;
+    ConstraintIndex: Integer;
   end;
 
   TReferenceTraceEvents = array of TReferenceTraceEvent;
@@ -148,12 +162,16 @@ type
     RequiredValues: TReferenceByteArray;
     RequiredSupport: TReferenceByteArray;
     InitialAllowed: TReferenceByteArray;
+    //Legacy initial-domain classifications; rckConnectivity is reserved for
+    //the analyzer so no caller can manufacture a missing descriptor ordinal.
     InitialFailureKinds: TReferenceContradictionKindArray;
     LockedValues: TReferenceIntegerArray;
     CellOrder: TReferenceIntegerArray;
     //Each row is indexed by cell and contains an exact value index. Rows are
     //hard global exclusions, not partial masks or hash-based approximations.
     ExcludedAssignments: TReferenceAssignments;
+    //Independent AND clauses. Empty retains the historical search and trace.
+    Connectivity: TReferenceConnectivityConstraints;
   end;
 
 function SolveReferenceModel(const AModel: TReferenceModel;
@@ -221,6 +239,7 @@ type
     FLastChangeEventId: Integer;
     FLastContradictionEventId: Integer;
     FTraceCount: Integer;
+    FConnectivity: TReferenceConnectivityAnalyzers;
 
     function DomainIndex(const ACell, AValue: Integer): Integer; inline;
     function RelationIndex(const ADirection, ACurrentValue,
@@ -232,7 +251,7 @@ type
       const ACauseKind: TReferenceTraceCauseKind;
       const ACauseEventId, AEntryIndex, AValueIndex, ANeighborIndex,
       ADirection, ADecisionDepth, ADomainCountBefore,
-      ADomainCountAfter: Integer): Integer;
+      ADomainCountAfter: Integer; const AConstraintIndex: Integer = -1): Integer;
     function CurrentDecisionDepth: Integer;
     function LastEntryChange(const ACell: Integer): Integer;
     function LatestNeighborChange(const ACell: Integer): Integer;
@@ -242,11 +261,12 @@ type
     procedure RecordContradiction(const AKind: TReferenceContradictionKind;
       const ACauseKind: TReferenceTraceCauseKind;
       const AEntryIndex, ANeighborIndex, ADirection,
-      ACauseEventId: Integer);
+      ACauseEventId: Integer; const AConstraintIndex: Integer = -1);
     procedure EnsureTrailCapacity;
     function RemoveCandidate(const ACell, AValue: Integer;
       const ACauseKind: TReferenceTraceCauseKind;
-      const ACauseEventId, ANeighborIndex, ADirection: Integer): Boolean;
+      const ACauseEventId, ANeighborIndex, ADirection: Integer;
+      const AConstraintIndex: Integer = -1): Boolean;
     procedure RestoreTrail(const AMark, ABacktrackEventId: Integer);
     procedure ResetQueue;
     procedure Enqueue(const ACell: Integer);
@@ -255,6 +275,7 @@ type
     function InitializeDomains: Boolean;
     function ReviseArc(const ACell, ADirection: Integer): Boolean;
     function ReviseRequired(const ACell: Integer): Boolean;
+    function ReviseConnectivity: Boolean;
     function Propagate: Boolean;
     function FindDecisionCell: Integer;
     procedure EnsureFrameCapacity;
@@ -272,6 +293,7 @@ type
       const AMaxBacktracks: Integer;
       const ACaptureTrace: Boolean;
       const ARandomIndex: TReferenceRandomIndex);
+    destructor Destroy; override;
     function Execute(out AAssignment: TReferenceIntegerArray;
       out AReport: TReferenceSolveReport): Boolean;
   end;
@@ -309,6 +331,10 @@ var
   LRelationCount: Integer;
   LSeen: TReferenceByteArray;
 begin
+  //An opt-in connectivity model also guards exact browser integers before
+  //the legacy matrix-size arithmetic or any descriptor-driven allocation.
+  ValidateReferenceConnectivity(AModel.CellCount, AModel.ValueCount,
+    AModel.Connectivity);
   if AModel.CellCount < 0 then
     raise ERangeError.Create('reference model cell count cannot be negative');
   if AModel.ValueCount < 0 then
@@ -341,6 +367,43 @@ begin
     'LockedValues');
   RequireLength(Length(AModel.CellOrder), AModel.CellCount,
     'CellOrder');
+
+  for I := 0 to High(AModel.InitialFailureKinds) do
+    if AModel.InitialFailureKinds[I] = rckConnectivity then
+      raise EInvalidOperation.Create(
+        'connectivity failure classification is reserved for descriptor analysis');
+
+  if Length(AModel.Connectivity) <> 0 then
+  begin
+    for I := 0 to High(AModel.Neighbors) do
+      RequireReferenceConnectivityInteger(AModel.Neighbors[I], -1,
+        AModel.CellCount - 1, 'connectivity model neighbor');
+    for I := 0 to High(AModel.LockedValues) do
+      RequireReferenceConnectivityInteger(AModel.LockedValues[I], -1,
+        AModel.ValueCount - 1, 'connectivity model lock');
+    for I := 0 to High(AModel.CellOrder) do
+      RequireReferenceConnectivityInteger(AModel.CellOrder[I], 0,
+        AModel.CellCount - 1, 'connectivity model cell order');
+    for I := 0 to High(AModel.Compatibility) do
+      RequireReferenceConnectivityInteger(AModel.Compatibility[I], 0, 255,
+        'connectivity compatibility byte');
+    for I := 0 to High(AModel.InitialAllowed) do
+      RequireReferenceConnectivityInteger(AModel.InitialAllowed[I], 0, 255,
+        'connectivity domain byte');
+    for I := 0 to High(AModel.RequiredValues) do
+      RequireReferenceConnectivityInteger(AModel.RequiredValues[I], 0, 255,
+        'connectivity local-required byte');
+    for I := 0 to High(AModel.RequiredSupport) do
+      RequireReferenceConnectivityInteger(AModel.RequiredSupport[I], 0, 255,
+        'connectivity local-support byte');
+    for I := 0 to High(AModel.ValueWeights) do
+      RequireReferenceConnectivityInteger(AModel.ValueWeights[I], 1,
+        High(Integer), 'connectivity value weight');
+    for I := 0 to High(AModel.ExcludedAssignments) do
+      for J := 0 to High(AModel.ExcludedAssignments[I]) do
+        RequireReferenceConnectivityInteger(AModel.ExcludedAssignments[I][J],
+          0, AModel.ValueCount - 1, 'connectivity excluded value');
+  end;
 
   for I := 0 to High(AModel.ExcludedAssignments) do
   begin
@@ -414,12 +477,25 @@ constructor TReferenceSolver.Create(const AModel: TReferenceModel;
   const AMaxBacktracks: Integer;
   const ACaptureTrace: Boolean;
   const ARandomIndex: TReferenceRandomIndex);
+var I: Integer;
 begin
   inherited Create;
   FModel := AModel;
   FMaxBacktracks := AMaxBacktracks;
   FCaptureTrace := ACaptureTrace;
   FRandomIndex := ARandomIndex;
+  SetLength(FConnectivity, Length(FModel.Connectivity));
+  for I := 0 to High(FConnectivity) do
+    FConnectivity[I] := TReferenceConnectivityAnalyzer.Create(FModel.CellCount,
+      FModel.ValueCount, FModel.Neighbors, FModel.Compatibility,
+      FModel.Connectivity[I]);
+end;
+
+destructor TReferenceSolver.Destroy;
+var I: Integer;
+begin
+  for I := 0 to High(FConnectivity) do FConnectivity[I].Free;
+  inherited Destroy;
 end;
 
 function TReferenceSolver.DomainIndex(const ACell,
@@ -566,7 +642,7 @@ function TReferenceSolver.AppendTraceEvent(
   const ACauseKind: TReferenceTraceCauseKind;
   const ACauseEventId, AEntryIndex, AValueIndex, ANeighborIndex,
   ADirection, ADecisionDepth, ADomainCountBefore,
-  ADomainCountAfter: Integer): Integer;
+  ADomainCountAfter: Integer; const AConstraintIndex: Integer): Integer;
 var
   LCapacity: Integer;
   LEvent: TReferenceTraceEvent;
@@ -600,6 +676,7 @@ begin
   LEvent.DecisionDepth := ADecisionDepth;
   LEvent.DomainCountBefore := ADomainCountBefore;
   LEvent.DomainCountAfter := ADomainCountAfter;
+  LEvent.ConstraintIndex := AConstraintIndex;
   FReport.Trace[Result] := LEvent;
   Inc(FTraceCount);
 end;
@@ -657,22 +734,23 @@ procedure TReferenceSolver.RecordContradiction(
   const AKind: TReferenceContradictionKind;
   const ACauseKind: TReferenceTraceCauseKind;
   const AEntryIndex, ANeighborIndex, ADirection,
-  ACauseEventId: Integer);
+  ACauseEventId: Integer; const AConstraintIndex: Integer);
 begin
   IncrementCounter(FReport.Contradictions);
   FReport.Contradiction.Kind := AKind;
   FReport.Contradiction.EntryIndex := AEntryIndex;
   FReport.Contradiction.NeighborIndex := ANeighborIndex;
   FReport.Contradiction.Direction := ADirection;
+  FReport.Contradiction.ConstraintIndex := AConstraintIndex;
   if (AEntryIndex >= 0) and (AEntryIndex < Length(FDomainCounts)) then
     FLastContradictionEventId := AppendTraceEvent(rtekContradiction,
       ACauseKind, ACauseEventId, AEntryIndex, -1, ANeighborIndex,
       ADirection, CurrentDecisionDepth,
-      FDomainCounts[AEntryIndex], FDomainCounts[AEntryIndex])
+      FDomainCounts[AEntryIndex], FDomainCounts[AEntryIndex], AConstraintIndex)
   else
     FLastContradictionEventId := AppendTraceEvent(rtekContradiction,
       ACauseKind, ACauseEventId, -1, -1, ANeighborIndex,
-      ADirection, CurrentDecisionDepth, 0, 0);
+      ADirection, CurrentDecisionDepth, 0, 0, AConstraintIndex);
 end;
 
 procedure TReferenceSolver.EnsureTrailCapacity;
@@ -693,7 +771,8 @@ end;
 
 function TReferenceSolver.RemoveCandidate(const ACell, AValue: Integer;
   const ACauseKind: TReferenceTraceCauseKind;
-  const ACauseEventId, ANeighborIndex, ADirection: Integer): Boolean;
+  const ACauseEventId, ANeighborIndex, ADirection: Integer;
+  const AConstraintIndex: Integer): Boolean;
 var
   LBefore: Integer;
   LEventId: Integer;
@@ -712,11 +791,11 @@ begin
   Dec(FDomainWeightSums[ACell], FValueWeights[AValue]);
   FDomainWeightLogSums[ACell] := FDomainWeightLogSums[ACell]
     - FValueWeightLogTerms[AValue];
-  if ACauseKind in [rtckAdjacency, rtckRequiredSupport] then
+  if ACauseKind in [rtckAdjacency, rtckRequiredSupport, rtckConnectivity] then
     IncrementCounter(FReport.Propagations);
   LEventId := AppendTraceEvent(rtekCandidateRemoved, ACauseKind,
     ACauseEventId, ACell, AValue, ANeighborIndex, ADirection,
-    CurrentDecisionDepth, LBefore, FDomainCounts[ACell]);
+    CurrentDecisionDepth, LBefore, FDomainCounts[ACell], AConstraintIndex);
   if LEventId >= 0 then
   begin
     FLastEntryChange[ACell] := LEventId;
@@ -1031,6 +1110,39 @@ begin
   Result := True;
 end;
 
+function TReferenceSolver.ReviseConnectivity: Boolean;
+var I, C, V: Integer;
+  Analysis: TReferenceConnectivityAnalysis;
+  Analyzer: TReferenceConnectivityAnalyzer;
+begin
+  for I := 0 to High(FConnectivity) do
+  begin
+    Analyzer := FConnectivity[I];
+    Analyzer.Analyze(FDomains, Analysis);
+    if Analysis.FailureCell >= 0 then
+    begin
+      RecordContradiction(rckConnectivity, rtckConnectivity,
+        Analysis.FailureCell, -1, -1, FLastChangeEventId, I);
+      Exit(False);
+    end;
+    for C := 0 to FModel.CellCount - 1 do
+    begin
+      for V := 0 to FModel.ValueCount - 1 do
+        if ((Analysis.ForceParticipation[C] <> 0) and
+          not Analyzer.Participates(V)) or
+          ((Analysis.Reachable[C] = 0) and Analyzer.RequiresConnection(V)) then
+          RemoveCandidate(C, V, rtckConnectivity, FLastChangeEventId, -1, -1, I);
+      if FDomainCounts[C] = 0 then
+      begin
+        RecordContradiction(rckConnectivity, rtckConnectivity, C,
+          -1, -1, LastEntryChange(C), I);
+        Exit(False);
+      end;
+    end;
+  end;
+  Result := True;
+end;
+
 function TReferenceSolver.Propagate: Boolean;
 var
   LArc: Integer;
@@ -1039,18 +1151,23 @@ var
   LIncomingIndex: Integer;
   LSourceCell: Integer;
 begin
-  while Dequeue(LChangedCell) do
-    for LIncomingIndex := FIncomingStarts[LChangedCell]
-      to Pred(FIncomingStarts[LChangedCell + 1]) do
-    begin
-      LArc := FIncomingArcs[LIncomingIndex];
-      LSourceCell := LArc div WFC_REFERENCE_DIRECTION_COUNT;
-      LDirection := LArc mod WFC_REFERENCE_DIRECTION_COUNT;
-      if not ReviseArc(LSourceCell, LDirection) then
-        Exit(False);
-      if not ReviseRequired(LSourceCell) then
-        Exit(False);
-    end;
+  repeat
+    while Dequeue(LChangedCell) do
+      for LIncomingIndex := FIncomingStarts[LChangedCell]
+        to Pred(FIncomingStarts[LChangedCell + 1]) do
+      begin
+        LArc := FIncomingArcs[LIncomingIndex];
+        LSourceCell := LArc div WFC_REFERENCE_DIRECTION_COUNT;
+        LDirection := LArc mod WFC_REFERENCE_DIRECTION_COUNT;
+        if not ReviseArc(LSourceCell, LDirection) then
+          Exit(False);
+        if not ReviseRequired(LSourceCell) then
+          Exit(False);
+      end;
+    //No persistent component state is trailed: rebuild from restored domains
+    //after each branch. Connectivity deletions re-enter the ordinary queue.
+    if (Length(FConnectivity) <> 0) and not ReviseConnectivity then Exit(False);
+  until FQueueCount = 0;
   Result := True;
 end;
 
@@ -1118,16 +1235,20 @@ var
   LDecisionEventId: Integer;
   LFrame: TReferenceDecisionFrame;
   LValue: Integer;
+  LConstraintIndex: Integer;
 begin
   LFrame := FFrames[AFrameIndex];
   LChosen := LFrame.Alternatives[LFrame.NextAlternative];
   Inc(LFrame.NextAlternative);
   FFrames[AFrameIndex] := LFrame;
   IncrementCounter(FReport.Decisions);
+  LConstraintIndex := -1;
+  if TraceCauseKindAt(ACauseEventId) = rtckConnectivity then
+    LConstraintIndex := FReport.Trace[ACauseEventId].ConstraintIndex;
   LDecisionEventId := AppendTraceEvent(rtekDecision,
     TraceCauseKindAt(ACauseEventId), ACauseEventId,
     LFrame.CellIndex, LChosen, -1, -1, AFrameIndex,
-    FDomainCounts[LFrame.CellIndex], FDomainCounts[LFrame.CellIndex]);
+    FDomainCounts[LFrame.CellIndex], FDomainCounts[LFrame.CellIndex], LConstraintIndex);
 
   for LValue := 0 to Pred(FModel.ValueCount) do
     if (LValue <> LChosen)
@@ -1260,11 +1381,14 @@ var
   LOrderIndex: Integer;
   LSupported: Boolean;
   LValue: Integer;
+  LConstraint: Integer;
+  LFailureCell: Integer;
 begin
   AContradiction.Kind := rckNone;
   AContradiction.EntryIndex := -1;
   AContradiction.NeighborIndex := -1;
   AContradiction.Direction := -1;
+  AContradiction.ConstraintIndex := -1;
   if Length(AAssignment) <> FModel.CellCount then
     Exit(False);
 
@@ -1331,6 +1455,15 @@ begin
       end;
     end;
   end;
+  for LConstraint := 0 to High(FConnectivity) do
+    if not FConnectivity[LConstraint].ValidateComplete(AAssignment,
+      LFailureCell) then
+    begin
+      AContradiction.Kind := rckConnectivity;
+      AContradiction.EntryIndex := LFailureCell;
+      AContradiction.ConstraintIndex := LConstraint;
+      Exit(False);
+    end;
   Result := True;
 end;
 
@@ -1382,6 +1515,7 @@ begin
   FReport.Contradiction.EntryIndex := -1;
   FReport.Contradiction.NeighborIndex := -1;
   FReport.Contradiction.Direction := -1;
+  FReport.Contradiction.ConstraintIndex := -1;
   FReport.Trace := nil;
   FTraceCount := 0;
 
@@ -1439,6 +1573,21 @@ begin
     ExtractAssignment(AAssignment);
     if not ValidateAssignment(AAssignment, LFinalContradiction) then
     begin
+      if LFinalContradiction.Kind = rckConnectivity then
+      begin
+        RecordContradiction(rckConnectivity, rtckConnectivity,
+          LFinalContradiction.EntryIndex, -1, -1, FLastChangeEventId,
+          LFinalContradiction.ConstraintIndex);
+        AAssignment := nil;
+        LRecovery := Recover;
+        case LRecovery of
+          rrRetry: Continue;
+          rrLimit: FReport.Status := rssBacktrackLimit;
+          rrExhausted: FReport.Status := rssContradiction;
+        end;
+        PublishReport(AReport);
+        Exit(False);
+      end;
       RecordContradiction(rckFinalValidation, rtckFinalValidation,
         LFinalContradiction.EntryIndex,
         LFinalContradiction.NeighborIndex,
@@ -1481,6 +1630,7 @@ begin
     FReport.Contradiction.EntryIndex := -1;
     FReport.Contradiction.NeighborIndex := -1;
     FReport.Contradiction.Direction := -1;
+    FReport.Contradiction.ConstraintIndex := -1;
     LSolvedEntry := -1;
     LSolvedDomainCount := -1;
     if (FLastChangeEventId >= 0)

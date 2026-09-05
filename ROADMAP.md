@@ -380,8 +380,16 @@ ranges and explicit wrapped-alias semantics. The
 [Neighborhood Counts workbench](examples/passes/04_NeighborhoodCounts/README.md)
 composes terrain, roads, and a market probe, contrasts matching offsets with
 distinct cells, and demonstrates selective road repair without changing
-terrain. This is not yet a global cardinality propagator or connectivity
-solver; those remain separate domain-level research questions.
+terrain. Counts are not a global cardinality or connectivity propagator.
+The separate [Rooted Connectivity v1](docs/connectivity.md) primitive now adds
+reciprocal-port possible-graph pruning, mandatory cut participation, exact
+search-time validation, and reversible domains. Its two spatial demo cases
+exercise roads and multi-floor circulation; existing settlement/voxel model
+versions retain their earlier semantics. Portable recipe encoding, stronger
+port-specific filtering, chunk-boundary summaries, and global cardinality
+remain future work. The [research record](docs/research/rooted-connectivity-v1.md)
+states the soundness argument and finite oracle scope without a generalized
+arc-consistency or relative-performance claim.
 
 The first packaged domain fixture proves the sequential subset with terrain →
 biome → foliage. The selective-settlement fixture expands that proof to
@@ -747,6 +755,10 @@ API. Promising research areas include:
   caller-chosen descendant closure used by Selective Negotiation v1;
 - soft constraints and objective functions alongside hard constraints;
 - explanation graphs and minimal contradiction sets;
+- a versioned trace representation for noncontiguous pass events when a final
+  domain validator rejects an earlier active pass after later passes staged;
+  Trace v1's single-slice metadata cannot represent that suffix even though
+  rollback and event hashing remain correct (see [traces](docs/traces.md));
 - streaming and chunk-boundary reconciliation for large or infinite worlds;
 - minimal-change counterfactual search beyond dependency-closure regeneration;
 - constraint transfer between representations, such as rhythm influencing a

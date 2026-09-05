@@ -75,6 +75,7 @@ begin
   Result.DecisionDepth := 0;
   Result.DomainCountBefore := 0;
   Result.DomainCountAfter := 0;
+  Result.ConstraintIndex := -1;
 end;
 
 procedure SetValueEvent(var AEvent: TGraphTraceEvent;

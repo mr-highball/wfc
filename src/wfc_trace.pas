@@ -60,7 +60,8 @@ type
     gtvikDomainCount,
     gtvikEventFields,
     gtvikPassSlice,
-    gtvikTerminalEvent
+    gtvikTerminalEvent,
+    gtvikConstraintIndex
   );
 
   TGraphTraceValidationIssue = record
@@ -187,6 +188,7 @@ begin
     gtckTransaction: Result := 'transaction';
     gtckExactAssignmentExclusion:
       Result := 'exact-assignment-exclusion';
+    gtckConnectivity: Result := 'connectivity';
   else
     Result := 'unknown-cause-' + IntToStr(Ord(AKind));
   end;
@@ -234,6 +236,7 @@ begin
     gtvikEventFields: Result := 'event-fields';
     gtvikPassSlice: Result := 'pass-slice';
     gtvikTerminalEvent: Result := 'terminal-event';
+    gtvikConstraintIndex: Result := 'constraint-index';
   else
     Result := 'unknown-validation-issue-' + IntToStr(Ord(AKind));
   end;
@@ -491,6 +494,8 @@ begin
     ' depth=' + IntToStr(AEvent.DecisionDepth) +
     ' domain=' + IntToStr(AEvent.DomainCountBefore) + '->' +
       IntToStr(AEvent.DomainCountAfter);
+  if AEvent.CauseKind = gtckConnectivity then
+    Result := Result + ' connectivity=' + IntToStr(AEvent.ConstraintIndex);
 end;
 
 procedure InitializeValidation(out AValidation: TGraphTraceValidationReport);
@@ -574,6 +579,7 @@ var
   LPassCount: Integer;
   LSliceEnd: Integer;
   LValues: TTraceGraphValueArrays;
+  LConstraintCounts: TGraphPassIndices;
 begin
   InitializeValidation(AValidation);
   if not Assigned(AGraph) then
@@ -600,8 +606,12 @@ begin
     Exit(InvalidTrace(AValidation, gtvikMissingTrace, -1, -1));
 
   SetLength(LValues, LPassCount);
+  SetLength(LConstraintCounts, LPassCount);
   for I := 0 to LPassCount - 1 do
+  begin
     LValues[I] := AGraph.PassGraph[I].CopyRegisteredValues;
+    LConstraintCounts[I] := Length(AGraph.PassGraph[I].CopyConnectivityConstraints);
+  end;
 
   for I := 0 to Length(AReport.Trace) - 1 do
   begin
@@ -635,6 +645,26 @@ begin
         (LEvent.EntryIndex >= LEntryCount) then
       Exit(InvalidTrace(AValidation, gtvikEntryIndex, I,
         LEvent.PassIndex));
+
+    if LEvent.CauseKind = gtckConnectivity then
+    begin
+      if (LEvent.PassIndex < 0) or not ((LEvent.ConstraintIndex >= 0)
+        and (LEvent.ConstraintIndex < LConstraintCounts[LEvent.PassIndex])) then
+        Exit(InvalidTrace(AValidation, gtvikConstraintIndex, I, LEvent.PassIndex));
+      {$IFDEF PAS2JS}
+      if LEvent.ConstraintIndex <> Trunc(LEvent.ConstraintIndex) then
+        Exit(InvalidTrace(AValidation, gtvikConstraintIndex, I, LEvent.PassIndex));
+      {$ENDIF}
+      if not (LEvent.Kind in [gtekDecision, gtekCandidateRemoved,
+        gtekContradiction]) or LEvent.HasDirection
+        or (LEvent.NeighborIndex <> -1) or (LEvent.DependencyPassIndex <> -1) then
+        Exit(InvalidTrace(AValidation, gtvikEventFields, I, LEvent.PassIndex));
+      if (LEvent.CauseEventId >= 0) and
+        (AReport.Trace[LEvent.CauseEventId].PassIndex <> LEvent.PassIndex) then
+        Exit(InvalidTrace(AValidation, gtvikCausalLink, I, LEvent.PassIndex));
+    end
+    else if LEvent.ConstraintIndex <> -1 then
+      Exit(InvalidTrace(AValidation, gtvikConstraintIndex, I, LEvent.PassIndex));
     if (LEvent.NeighborIndex < -1) or
         (LEvent.NeighborIndex >= LEntryCount) then
       Exit(InvalidTrace(AValidation, gtvikNeighborIndex, I,
@@ -708,8 +738,9 @@ begin
 
     if EventRequiresEntry(LEvent.Kind)
       and not ((LEvent.Kind = gtekContradiction)
-        and (LEvent.CauseKind =
-          gtckExactAssignmentExclusion)) then
+        and ((LEvent.CauseKind = gtckExactAssignmentExclusion)
+          or ((LEvent.CauseKind = gtckFinalValidation)
+            and (LEvent.EntryIndex = -1)))) then
     begin
       if LEvent.EntryIndex < 0 then
         Exit(InvalidTrace(AValidation, gtvikEventFields, I,
@@ -780,6 +811,8 @@ begin
         end
         else if (LEvent.CauseKind <>
               AReport.Trace[LEvent.CauseEventId].CauseKind) or
+            (LEvent.ConstraintIndex <>
+              AReport.Trace[LEvent.CauseEventId].ConstraintIndex) or
             (AReport.Trace[LEvent.CauseEventId].PassIndex <>
               LEvent.PassIndex) or
             (AReport.Trace[LEvent.CauseEventId].EntryIndex <>
@@ -789,7 +822,7 @@ begin
       gtekCandidateRemoved:
         begin
           if not (LEvent.CauseKind in [gtckDecision, gtckAdjacency,
-              gtckRequiredSupport]) then
+              gtckRequiredSupport, gtckConnectivity]) then
             Exit(InvalidTrace(AValidation, gtvikCausalLink, I,
               LEvent.PassIndex));
           if (LEvent.CauseKind = gtckDecision) and

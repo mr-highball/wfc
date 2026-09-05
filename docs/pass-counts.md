@@ -1,5 +1,9 @@
 # Finite cross-pass count constraints
 
+For paths between arbitrary cells in one pass, use the separate
+[rooted port connectivity](connectivity.md) propagator. Local counts do not
+imply global reachability.
+
 `RequireCountFromPass` adds an inclusive count range over a caller-defined
 neighborhood in an earlier provider pass. It can express requirements such as
 "exactly two nearby roads", "at most one flooded neighbor", or "no occupied

@@ -9,13 +9,14 @@ if [[ -f "$checker.exe" ]]; then checker="$checker.exe"; fi
 mkdir -p build/browser/tests/units build/browser/tests/www
 for source in test/*_test.lpr; do
   name="$(basename -- "$source" .lpr)"
-  case "$name" in wfc_browser_dom_test|wfc_serve_test|wfc_music_render_process_test|wfc_music_ensemble_render_process_test|wfc_music_ensemble_midi_render_process_test|wfc_music_voices_render_process_test) continue ;; esac
+  case "$name" in wfc_browser_dom_test|wfc_serve_test|wfc_music_render_process_test|wfc_music_ensemble_render_process_test|wfc_music_ensemble_midi_render_process_test|wfc_music_voices_render_process_test|wfc_connectivity_process_test) continue ;; esac
   "$compiler" -B -Tbrowser -Mdelphi -Jc -Jirtl.js -Fusrc -Futools \
     -Fuexamples/2D/common -Fuexamples/3D/common \
     -Fuexamples/2D/05_LearnedPatternWorld \
     -Fuexamples/learning/05_TrainingStudio -Fuexamples/music/05_MusicStudio \
     -Fuexamples/passes/04_NeighborhoodCounts \
     -Fuexamples/passes/05_DeterministicRestarts \
+    -Fuexamples/passes/06_ConnectedRoutes \
     -Fuexamples/music/06_EnsembleStudio \
     -Fuexamples/music/07_VoiceStudio \
     -FUbuild/browser/tests/units -FEbuild/browser/tests/www "$source"
@@ -33,7 +34,8 @@ for specification in \
   'music|build-browser-music|BrowserMusicStudio.js|musicstudio.css' \
   'counts|build-browser-counts|BrowserNeighborhoodCounts.js|counts.css' \
   'ensemble|build-browser-ensemble|BrowserEnsembleStudio.js|ensemblestudio.css' \
-  'voices|build-browser-voices|BrowserVoiceStudio.js|voicestudio.css'
+  'voices|build-browser-voices|BrowserVoiceStudio.js|voicestudio.css' \
+  'connectivity|build-browser-connectivity|BrowserConnectedRoutes.js|connectedroutes.css'
 do
   IFS='|' read -r demo script javascript stylesheet <<< "$specification"
   PAS2JS="$compiler" bash "$repository_root/$script.sh"
@@ -43,4 +45,4 @@ do
   cp -- "$entry_source/index.html" "$entry_source/$javascript" \
     "$entry_source/$stylesheet" "$entry_target/"
 done
-echo 'Pascal browser conformance and eight actual demo entries staged under build/browser/tests/www.'
+echo 'Pascal browser conformance and nine actual demo entries staged under build/browser/tests/www.'

@@ -76,6 +76,9 @@ const
   //Identifies opt-in finite cross-pass counting with an explicit alias mode.
   //Existing graph, solver, pipeline, and trace replay remain unchanged.
   WFC_PASS_COUNT_VERSION = 1;
+  //Opt-in rooted, reciprocal-port connectivity. Unconstrained models retain
+  //their existing solver, random-stream, and trace replay.
+  WFC_GRAPH_CONNECTIVITY_VERSION = 1;
   //Identifies the public causal-trace event schema. Trace capture is opt-in,
   //so adding this observability surface does not change solver replay.
   WFC_TRACE_VERSION = 1;
@@ -101,6 +104,7 @@ type
     Y : TGraphCoordinate;
     Z : TGraphCoordinate;
   end;
+  TGraphPositions = array of TGraphPosition;
 
   //Signed finite displacement from a consumer cell to a provider-pass cell.
   //Keeping offsets independent of unsigned graph coordinates makes bounded
@@ -127,6 +131,21 @@ type
   //all posible "directions" to move from a single point on the graph
   TGraphDirection = (gdNorth, gdEast, gdSouth, gdWest, gdUp, gdDown);
   TGraphDirections = set of TGraphDirection;
+
+  TGraphConnectivityValue = record
+    Value: TGraphValue;
+    Openings: TGraphDirections;
+    RequiredByValue: Boolean;
+  end;
+  TGraphConnectivityValues = array of TGraphConnectivityValue;
+  TGraphConnectivityConstraint = record
+    LabelText: String;
+    Root: TGraphPosition;
+    RequiredPositions: TGraphPositions;
+    Values: TGraphConnectivityValues;
+    RequireAllParticipants: Boolean;
+  end;
+  TGraphConnectivityConstraints = array of TGraphConnectivityConstraint;
 
   //gpmLegacy preserves the original hybrid contract: a defined pass solves a
   //fresh layer, while a later definitionless pass copies its predecessor.
@@ -174,6 +193,8 @@ type
       const AX, AY, AZ: TGraphCoordinate);
     procedure RestoreValueState(const AValue: TGraphValue;
       const AEmpty, AGenerated: Boolean);
+    procedure RestoreNeighborState(const ADirection: TGraphDirection;
+      const ANeighbor: TGraphEntry);
     procedure SetGeneratedValue(const AValue: TGraphValue);
   strict protected
     (*
@@ -398,7 +419,8 @@ type
     gckFinalValidation,
     gckPassDependency,
     gckEntryDomain,
-    gckExcludedAssignment
+    gckExcludedAssignment,
+    gckConnectivity
   );
 
   TGraphSolveOptions = record
@@ -418,6 +440,8 @@ type
     HasDirection: Boolean;
     Direction: TGraphDirection;
     DependencyPassIndex: Integer;
+    //Pass-local copied connectivity descriptor ordinal, or -1 otherwise.
+    ConstraintIndex: Integer;
   end;
 
   //Trace events describe the complete attempted transaction, including
@@ -448,7 +472,8 @@ type
     gtckBacktrack,
     gtckFinalValidation,
     gtckTransaction,
-    gtckExactAssignmentExclusion
+    gtckExactAssignmentExclusion,
+    gtckConnectivity
   );
 
   TGraphTraceSignature = Cardinal;
@@ -473,6 +498,7 @@ type
     DecisionDepth: Integer;
     DomainCountBefore: Integer;
     DomainCountAfter: Integer;
+    ConstraintIndex: Integer;
   end;
 
   TGraphTraceEvents = array of TGraphTraceEvent;
@@ -732,6 +758,7 @@ type
     FPassMode: TGraphPassMode;
     FPassDependencies: TPassDependencies;
     FTransformSourceIndex: Integer;
+    FConnectivity: TGraphConnectivityConstraints;
 
     function AddUInt32(const A, B: Cardinal): Cardinal;
     function MultiplyUInt32(const A, B: Cardinal): Cardinal;
@@ -838,6 +865,8 @@ type
     procedure ValidateAssignedEntry(const AEntry: TGraphEntry;
       const Z, APrevZ: TGraphCoordinate);
     procedure ValidateDimensions(const AWidth, AHeight,
+      ADepth: TGraphCoordinate);
+    procedure ValidateConnectivityShape(const AWidth, AHeight,
       ADepth: TGraphCoordinate);
   strict protected
     function DoCreateEntry: TGraphEntry; virtual;
@@ -992,6 +1021,16 @@ type
     //independently of the private deterministic value registry.
     function CopyRegisteredValues: TGraphValues;
 
+    //Pass-local AND constraints, supported by the TrySolve family (not Run).
+    //Definitions are deep-copied: profiles use AddValue order, fixed terminals
+    //use flattened cell order with duplicates removed. Identical labeled
+    //registration is idempotent; remove then require to change a definition.
+    function RequireConnectivity(
+      const AConstraint: TGraphConnectivityConstraint): TGraph;
+    function RemoveConnectivity(const ALabel: String): TGraph;
+    function ClearConnectivity: TGraph;
+    function CopyConnectivityConstraints: TGraphConnectivityConstraints;
+
     //Caller-owned pass-local initial domains.  SetAllowedValues canonicalizes
     //the supplied set to AddValue order; an assigned empty set is an explicit
     //contradiction and is distinct from ClearAllowedValues.
@@ -1135,6 +1174,14 @@ var
 
   function MakeGraphOffset(const ADeltaX, ADeltaY,
     ADeltaZ: Integer): TGraphOffset;
+  function MakeGraphConnectivityValue(const AValue: TGraphValue;
+    const AOpenings: TGraphDirections;
+    const ARequiredByValue: Boolean = False): TGraphConnectivityValue;
+  function MakeGraphConnectivityConstraint(const ALabel: String;
+    const ARoot: TGraphPosition; const ARequiredPositions: TGraphPositions;
+    const AValues: TGraphConnectivityValues;
+    const ARequireAllParticipants: Boolean = False):
+    TGraphConnectivityConstraint;
   function MakeGraphPassMatchTerm(const AOffset: TGraphOffset;
     const AValue: TGraphValue): TGraphPassMatchTerm; overload;
   function MakeGraphPassMatchTerm(const AOffset: TGraphOffset;
@@ -1250,6 +1297,76 @@ begin
   SetLength(Result, Length(AValues));
   for I := 0 to High(AValues) do
     Result[I] := AValues[I];
+end;
+
+function MakeGraphConnectivityValue(const AValue: TGraphValue;
+  const AOpenings: TGraphDirections;
+  const ARequiredByValue: Boolean): TGraphConnectivityValue;
+begin
+  Result.Value := AValue;
+  Result.Openings := AOpenings;
+  Result.RequiredByValue := ARequiredByValue;
+end;
+
+function MakeGraphConnectivityConstraint(const ALabel: String;
+  const ARoot: TGraphPosition; const ARequiredPositions: TGraphPositions;
+  const AValues: TGraphConnectivityValues;
+  const ARequireAllParticipants: Boolean): TGraphConnectivityConstraint;
+begin
+  Result.LabelText := ALabel;
+  Result.Root := ARoot;
+  Result.RequiredPositions := Copy(ARequiredPositions, 0,
+    Length(ARequiredPositions));
+  Result.Values := Copy(AValues, 0, Length(AValues));
+  Result.RequireAllParticipants := ARequireAllParticipants;
+end;
+
+procedure CheckConnectivityPosition(const APosition: TGraphPosition;
+  const AWidth, AHeight, ADepth: TGraphCoordinate);
+
+  procedure CheckAxis(const AValue, ASize: TGraphCoordinate);
+  begin
+    if not ((AValue >= 0) and (AValue < ASize)
+      and (AValue <= TGraphCoordinate(High(Integer)))) then
+      raise ERangeError.Create('connectivity::position is outside the graph');
+    {$IFDEF PAS2JS}
+    if AValue <> Trunc(AValue) then
+      raise ERangeError.Create('connectivity::coordinates must be exact integers');
+    {$ENDIF}
+  end;
+begin
+  CheckAxis(APosition.X, AWidth);
+  CheckAxis(APosition.Y, AHeight);
+  CheckAxis(APosition.Z, ADepth);
+end;
+
+function GraphPositionsEqual(const ALeft, ARight: TGraphPosition): Boolean;
+begin
+  Result := (ALeft.X = ARight.X) and (ALeft.Y = ARight.Y)
+    and (ALeft.Z = ARight.Z);
+end;
+
+function GraphConnectivityEqual(const ALeft,
+  ARight: TGraphConnectivityConstraint): Boolean;
+var
+  I: Integer;
+begin
+  Result := False;
+  if (ALeft.LabelText <> ARight.LabelText)
+    or not GraphPositionsEqual(ALeft.Root, ARight.Root)
+    or (ALeft.RequireAllParticipants <> ARight.RequireAllParticipants)
+    or (Length(ALeft.Values) <> Length(ARight.Values))
+    or (Length(ALeft.RequiredPositions) <> Length(ARight.RequiredPositions)) then
+    Exit;
+  for I := 0 to High(ALeft.Values) do
+    if (ALeft.Values[I].Value <> ARight.Values[I].Value)
+      or (ALeft.Values[I].Openings <> ARight.Values[I].Openings)
+      or (ALeft.Values[I].RequiredByValue <> ARight.Values[I].RequiredByValue) then
+      Exit;
+  for I := 0 to High(ALeft.RequiredPositions) do
+    if not GraphPositionsEqual(ALeft.RequiredPositions[I],
+      ARight.RequiredPositions[I]) then Exit;
+  Result := True;
 end;
 
 function GraphOffsetsEqual(const ALeft,
@@ -1638,6 +1755,11 @@ begin
   GraphTraceHashInteger(AHash, AEvent.DecisionDepth);
   GraphTraceHashInteger(AHash, AEvent.DomainCountBefore);
   GraphTraceHashInteger(AHash, AEvent.DomainCountAfter);
+  if AEvent.CauseKind = gtckConnectivity then
+  begin
+    GraphTraceHashCardinal(AHash, WFC_GRAPH_CONNECTIVITY_VERSION);
+    GraphTraceHashInteger(AHash, AEvent.ConstraintIndex);
+  end;
 end;
 
 function CalculateGraphTraceHash(
@@ -1703,6 +1825,11 @@ var
       Cardinal(Ord(ASolve.Contradiction.Direction)));
     GraphTraceHashInteger(Result,
       ASolve.Contradiction.DependencyPassIndex);
+    if ASolve.Contradiction.Kind = gckConnectivity then
+    begin
+      GraphTraceHashCardinal(Result, WFC_GRAPH_CONNECTIVITY_VERSION);
+      GraphTraceHashInteger(Result, ASolve.Contradiction.ConstraintIndex);
+    end;
     GraphTraceHashCardinal(Result, Cardinal(Length(ASolve.Passes)));
     for K := 0 to High(ASolve.Passes) do
     begin
@@ -2735,6 +2862,13 @@ begin
   FVal := AValue;
   FEmpty := AEmpty;
   FGenerated := AGenerated;
+end;
+
+procedure TGraphEntry.RestoreNeighborState(const ADirection: TGraphDirection;
+  const ANeighbor: TGraphEntry);
+begin
+  //Transaction rollback must not invoke the hooks that changed the model.
+  FNeighbors[Ord(ADirection)] := ANeighbor;
 end;
 
 procedure TGraphEntry.SetValue(const AValue: TGraphValue);
@@ -4075,6 +4209,162 @@ begin
     Result[I] := FValues[I];
 end;
 
+function TGraph.RequireConnectivity(
+  const AConstraint: TGraphConnectivityConstraint): TGraph;
+var
+  LGraph: TGraph;
+  LCanonical: TGraphConnectivityConstraint;
+  LMarked: array of Byte;
+  LDirections: TGraphDirections;
+  LDirection: TGraphDirection;
+  I, J, K, LCount: Integer;
+begin
+  Result := Self;
+  if Running then
+    raise EInvalidOperation.Create(
+      'RequireConnectivity::cannot change constraints while running');
+  LGraph := GetActivePassGraph;
+  if AConstraint.LabelText = '' then
+    raise EArgumentException.Create('RequireConnectivity::label cannot be empty');
+  if (AConstraint.RequireAllParticipants <> False)
+    and (AConstraint.RequireAllParticipants <> True) then
+    raise ERangeError.Create('RequireConnectivity::all-participants flag must be Boolean');
+  {$IFNDEF PAS2JS}
+  if Ord(AConstraint.RequireAllParticipants) > 1 then
+    raise ERangeError.Create('RequireConnectivity::all-participants flag must be Boolean');
+  {$ENDIF}
+  CheckConnectivityPosition(AConstraint.Root, LGraph.FDimension.Width,
+    LGraph.FDimension.Height, LGraph.FDimension.Depth);
+  if Length(AConstraint.Values) = 0 then
+    raise EArgumentException.Create('RequireConnectivity::participating profiles are required');
+  for I := 0 to High(AConstraint.Values) do
+  begin
+    if (AConstraint.Values[I].Value = TGraphValue.Empty)
+      or not ContainsGraphValue(LGraph.FValues, AConstraint.Values[I].Value) then
+      raise EArgumentException.CreateFmt(
+        'RequireConnectivity::unknown participating value "%s"',
+        [AConstraint.Values[I].Value]);
+    for J := 0 to I - 1 do
+      if AConstraint.Values[J].Value = AConstraint.Values[I].Value then
+        raise EArgumentException.Create('RequireConnectivity::duplicate value profile');
+    if (AConstraint.Values[I].RequiredByValue <> False)
+      and (AConstraint.Values[I].RequiredByValue <> True) then
+      raise ERangeError.Create('RequireConnectivity::required-by-value flag must be Boolean');
+    {$IFNDEF PAS2JS}
+    if Ord(AConstraint.Values[I].RequiredByValue) > 1 then
+      raise ERangeError.Create('RequireConnectivity::required-by-value flag must be Boolean');
+    {$ENDIF}
+    LDirections := [];
+    for LDirection := Low(TGraphDirection) to High(TGraphDirection) do
+      if LDirection in AConstraint.Values[I].Openings then
+        Include(LDirections, LDirection);
+    if LDirections <> AConstraint.Values[I].Openings then
+      raise ERangeError.Create('RequireConnectivity::invalid opening direction');
+  end;
+  for I := 0 to High(AConstraint.RequiredPositions) do
+    CheckConnectivityPosition(AConstraint.RequiredPositions[I],
+      LGraph.FDimension.Width, LGraph.FDimension.Height, LGraph.FDimension.Depth);
+
+  LCanonical := MakeGraphConnectivityConstraint(AConstraint.LabelText,
+    AConstraint.Root, nil, nil, AConstraint.RequireAllParticipants);
+  SetLength(LCanonical.Values, Length(AConstraint.Values));
+  K := 0;
+  for I := 0 to High(LGraph.FValues) do
+    for J := 0 to High(AConstraint.Values) do
+      if LGraph.FValues[I] = AConstraint.Values[J].Value then
+      begin
+        LCanonical.Values[K] := AConstraint.Values[J];
+        //Native sets are values; pas2js sets use copy-on-write semantics.
+        Inc(K);
+        Break;
+      end;
+  SetLength(LMarked, LGraph.FEntries.Count);
+  LCount := 0;
+  for I := 0 to High(AConstraint.RequiredPositions) do
+  begin
+    K := LGraph.CoordToIndex(AConstraint.RequiredPositions[I].X,
+      AConstraint.RequiredPositions[I].Y, AConstraint.RequiredPositions[I].Z);
+    if LMarked[K] = 0 then
+    begin
+      LMarked[K] := 1;
+      Inc(LCount);
+    end;
+  end;
+  SetLength(LCanonical.RequiredPositions, LCount);
+  K := 0;
+  for I := 0 to High(LMarked) do
+    if LMarked[I] <> 0 then
+    begin
+      LCanonical.RequiredPositions[K] := LGraph.FEntries[I].Position;
+      Inc(K);
+    end;
+  for I := 0 to High(LGraph.FConnectivity) do
+    if LGraph.FConnectivity[I].LabelText = LCanonical.LabelText then
+    begin
+      if not GraphConnectivityEqual(LGraph.FConnectivity[I], LCanonical) then
+        raise EInvalidOperation.Create(
+          'RequireConnectivity::label already has a different definition; remove it first');
+      Exit;
+    end;
+  SetLength(LGraph.FConnectivity, Length(LGraph.FConnectivity) + 1);
+  LGraph.FConnectivity[High(LGraph.FConnectivity)] := LCanonical;
+end;
+
+function TGraph.RemoveConnectivity(const ALabel: String): TGraph;
+var
+  LGraph: TGraph;
+  I, J: Integer;
+begin
+  Result := Self;
+  if Running then
+    raise EInvalidOperation.Create('RemoveConnectivity::cannot change constraints while running');
+  LGraph := GetActivePassGraph;
+  for I := 0 to High(LGraph.FConnectivity) do
+    if LGraph.FConnectivity[I].LabelText = ALabel then
+    begin
+      for J := I to High(LGraph.FConnectivity) - 1 do
+        LGraph.FConnectivity[J] := LGraph.FConnectivity[J + 1];
+      SetLength(LGraph.FConnectivity, Length(LGraph.FConnectivity) - 1);
+      Exit;
+    end;
+end;
+
+function TGraph.ClearConnectivity: TGraph;
+begin
+  Result := Self;
+  if Running then
+    raise EInvalidOperation.Create('ClearConnectivity::cannot change constraints while running');
+  GetActivePassGraph.FConnectivity := nil;
+end;
+
+function TGraph.CopyConnectivityConstraints: TGraphConnectivityConstraints;
+var
+  LGraph: TGraph;
+  I: Integer;
+begin
+  LGraph := GetActivePassGraph;
+  Result := nil;
+  SetLength(Result, Length(LGraph.FConnectivity));
+  for I := 0 to High(Result) do
+    with LGraph.FConnectivity[I] do
+      Result[I] := MakeGraphConnectivityConstraint(LabelText, Root,
+        RequiredPositions, Values, RequireAllParticipants);
+end;
+
+procedure TGraph.ValidateConnectivityShape(const AWidth, AHeight,
+  ADepth: TGraphCoordinate);
+var
+  I, J: Integer;
+begin
+  for I := 0 to High(FConnectivity) do
+  begin
+    CheckConnectivityPosition(FConnectivity[I].Root, AWidth, AHeight, ADepth);
+    for J := 0 to High(FConnectivity[I].RequiredPositions) do
+      CheckConnectivityPosition(FConnectivity[I].RequiredPositions[J],
+        AWidth, AHeight, ADepth);
+  end;
+end;
+
 procedure TGraph.ValidateCurrentEntryDomains(const AOperation: String);
 var
   I: Integer;
@@ -4763,6 +5053,9 @@ begin
       'Reshape::cannot reshape the pass pipeline while it is running');
   EnsureInitialPass;
   ValidateDimensions(AWidth, AHeight, ADepth);
+
+  for I := 0 to Pred(FPasses.Count) do
+    FPasses[I].ValidateConnectivityShape(AWidth, AHeight, ADepth);
 
   SetLength(LEntries, FPasses.Count);
   SetLength(LPlanes, FPasses.Count);
@@ -5666,6 +5959,9 @@ type
   end;
   TEntryStates = array of TEntryState;
   TPassEntryStates = array of TEntryStates;
+  TEntryNeighborState = array[TGraphDirection] of TGraphEntry;
+  TEntryNeighborStates = array of TEntryNeighborState;
+  TPassNeighborStates = array of TEntryNeighborStates;
 var
   LAssignment: TReferenceIntegerArray;
   LCommitted: Boolean;
@@ -5691,6 +5987,7 @@ var
   LRootRandomState: TRandomState;
   LSavedPassIndex: Integer;
   LSnapshots: TPassEntryStates;
+  LNeighborSnapshots: TPassNeighborStates;
   LStaged: TGraphValueMatrix;
   LTraceCauseEventId: Integer;
   LTraceCount: Integer;
@@ -5744,6 +6041,7 @@ var
     Result.DecisionDepth := 0;
     Result.DomainCountBefore := 0;
     Result.DomainCountAfter := 0;
+    Result.ConstraintIndex := -1;
   end;
 
   function AppendTraceEvent(
@@ -5826,6 +6124,7 @@ var
     AReport.Contradiction.HasDirection := False;
     AReport.Contradiction.Direction := gdNorth;
     AReport.Contradiction.DependencyPassIndex := -1;
+    AReport.Contradiction.ConstraintIndex := -1;
     SetLength(AReport.ExecutionOrder, 0);
     SetLength(AReport.Passes, FPasses.Count);
     AReport.TraceCaptured := AOptions.CaptureTrace;
@@ -5967,6 +6266,119 @@ var
       * AValueCount) + ANeighborValue;
   end;
 
+  function ValidateStagedConnectivity(const AGraph: TGraph;
+    const AValues: TGraphValues; out AConstraintIndex,
+    AEntryIndex: Integer): Boolean;
+  var
+    C, I, J, LRoot, LCell, LNext, LHead, LTail: Integer;
+    LValueIndices, LProfiles, LQueue: TReferenceIntegerArray;
+    LReached, LRequired: TReferenceByteArray;
+    LConstraint: TGraphConnectivityConstraint;
+    LDirection, LInverse: TGraphDirection;
+    LNeighbor: TGraphEntry;
+    LUnusedRequired: Boolean;
+  begin
+    //Independent public-value BFS: neither the analyzer's possible graph nor
+    //its complete checker is used to guard the compiler/solver boundary.
+    AConstraintIndex := -1;
+    AEntryIndex := -1;
+    Result := True;
+    if Length(AGraph.FConnectivity) = 0 then Exit;
+    ValidateDefinedModel(AGraph);
+    AGraph.ValidateConnectivityShape(AGraph.FDimension.Width,
+      AGraph.FDimension.Height, AGraph.FDimension.Depth);
+    if Length(AValues) <> AGraph.FEntries.Count then
+      raise EInvalidOperation.Create('TrySolve::connectivity assignment shape mismatch');
+    //Use the same malformed-neighbor policy for reused providers as for a
+    //fresh numeric compile, even when a foreign link has no open port.
+    for I := 0 to Pred(AGraph.FEntries.Count) do
+      for LDirection := Low(TGraphDirection) to High(TGraphDirection) do
+      begin
+        LNeighbor := AGraph.FEntries[I][LDirection];
+        if not Assigned(LNeighbor) then Continue;
+        LNext := LNeighbor.Index;
+        if (LNext < 0) or (LNext >= AGraph.FEntries.Count)
+          or (AGraph.FEntries[LNext] <> LNeighbor) then
+          raise EInvalidOperation.CreateFmt(
+            'TrySolve::pass %d entry %d has an external neighbor',
+            [AGraph.FPassIndex, I]);
+      end;
+    SetLength(LValueIndices, Length(AValues));
+    SetLength(LProfiles, Length(AValues));
+    SetLength(LQueue, Length(AValues));
+    SetLength(LReached, Length(AValues));
+    SetLength(LRequired, Length(AValues));
+    for I := 0 to High(AValues) do
+      LValueIndices[I] := FindValueIndex(AGraph, AValues[I]);
+    for C := 0 to High(AGraph.FConnectivity) do
+    begin
+      LConstraint := AGraph.FConnectivity[C];
+      LRoot := AGraph.CoordToIndex(LConstraint.Root.X,
+        LConstraint.Root.Y, LConstraint.Root.Z);
+      for I := 0 to High(AValues) do
+      begin
+        LReached[I] := 0;
+        LRequired[I] := 0;
+        LProfiles[I] := -1;
+        for J := 0 to High(LConstraint.Values) do
+          if AValues[I] = LConstraint.Values[J].Value then
+          begin
+            LProfiles[I] := J;
+            if LConstraint.RequireAllParticipants
+              or LConstraint.Values[J].RequiredByValue then
+              LRequired[I] := 1;
+            Break;
+          end;
+      end;
+      LRequired[LRoot] := 1;
+      for J := 0 to High(LConstraint.RequiredPositions) do
+        with LConstraint.RequiredPositions[J] do
+          LRequired[AGraph.CoordToIndex(X, Y, Z)] := 1;
+      LHead := 0;
+      LTail := 0;
+      if LProfiles[LRoot] >= 0 then
+      begin
+        LQueue[LTail] := LRoot;
+        Inc(LTail);
+        LReached[LRoot] := 1;
+      end;
+      while LHead < LTail do
+      begin
+        LCell := LQueue[LHead];
+        Inc(LHead);
+        for LDirection := Low(TGraphDirection) to High(TGraphDirection) do
+        begin
+          if not (LDirection in LConstraint.Values[LProfiles[LCell]].Openings) then
+            Continue;
+          LNeighbor := AGraph.FEntries[LCell][LDirection];
+          if not Assigned(LNeighbor) then Continue;
+          LNext := LNeighbor.Index;
+          if (LNext < 0) or (LNext >= Length(AValues)) then Continue;
+          if AGraph.FEntries[LNext] <> LNeighbor then Continue;
+          if (LReached[LNext] <> 0) or (LProfiles[LNext] < 0) then Continue;
+          LInverse := InverseOfDir(LDirection);
+          if LNeighbor[LInverse] <> AGraph.FEntries[LCell] then Continue;
+          if not (LInverse in LConstraint.Values[LProfiles[LNext]].Openings) then
+            Continue;
+          if not RuleAllows(AGraph, LValueIndices[LNext], LDirection,
+            LValueIndices[LCell], LUnusedRequired) then Continue;
+          if not RuleAllows(AGraph, LValueIndices[LCell], LInverse,
+            LValueIndices[LNext], LUnusedRequired) then Continue;
+          LReached[LNext] := 1;
+          LQueue[LTail] := LNext;
+          Inc(LTail);
+        end;
+      end;
+      for I := 0 to High(AValues) do
+        if (LRequired[I] <> 0) and (LReached[I] = 0) then
+        begin
+          AConstraintIndex := C;
+          AEntryIndex := I;
+          Exit(False);
+        end;
+    end;
+  end;
+
   procedure BuildCellOrder(const AGraph: TGraph;
     out AOrder: TReferenceIntegerArray);
   var
@@ -6036,6 +6448,8 @@ var
     LTraceIndex: Integer;
     LValue: Integer;
     LValueFailurePass: Integer;
+    LConnectivityIndex, LProfileIndex, LPositionIndex: Integer;
+    LConnectivity: TGraphConnectivityConstraint;
 
     function RequirementMatches(
       const ARequirementIndex: Integer): Boolean;
@@ -6146,6 +6560,37 @@ var
       SetLength(AInitialTraceDependencyPasses, 0);
     end;
     BuildCellOrder(AGraph, AModel.CellOrder);
+
+    AGraph.ValidateConnectivityShape(AGraph.FDimension.Width,
+      AGraph.FDimension.Height, AGraph.FDimension.Depth);
+    SetLength(AModel.Connectivity, Length(AGraph.FConnectivity));
+    for LConnectivityIndex := 0 to High(AGraph.FConnectivity) do
+    begin
+      LConnectivity := AGraph.FConnectivity[LConnectivityIndex];
+      with AModel.Connectivity[LConnectivityIndex] do
+      begin
+        RootCell := AGraph.CoordToIndex(LConnectivity.Root.X,
+          LConnectivity.Root.Y, LConnectivity.Root.Z);
+        RequireAllParticipants := LConnectivity.RequireAllParticipants;
+        SetLength(RequiredCells, Length(LConnectivity.RequiredPositions));
+        for LPositionIndex := 0 to High(RequiredCells) do
+          with LConnectivity.RequiredPositions[LPositionIndex] do
+            RequiredCells[LPositionIndex] := AGraph.CoordToIndex(X, Y, Z);
+        SetLength(Profiles, Length(LConnectivity.Values));
+        for LProfileIndex := 0 to High(Profiles) do
+        begin
+          Profiles[LProfileIndex].ValueIndex := FindValueIndex(AGraph,
+            LConnectivity.Values[LProfileIndex].Value);
+          Profiles[LProfileIndex].RequiredByValue :=
+            LConnectivity.Values[LProfileIndex].RequiredByValue;
+          Profiles[LProfileIndex].Ports := 0;
+          for LDirection := Low(TGraphDirection) to High(TGraphDirection) do
+            if LDirection in LConnectivity.Values[LProfileIndex].Openings then
+              Profiles[LProfileIndex].Ports := Profiles[LProfileIndex].Ports
+                or Byte(1 shl Ord(LDirection));
+        end;
+      end;
+    end;
 
     for LCell := 0 to Pred(AModel.CellCount) do
     begin
@@ -6373,6 +6818,8 @@ var
         Result := gckFinalValidation;
       rckExcludedAssignment:
         Result := gckExcludedAssignment;
+      rckConnectivity:
+        Result := gckConnectivity;
     else
       Result := gckNone;
     end;
@@ -6423,6 +6870,8 @@ var
         Result := gtckFinalValidation;
       rtckExcludedAssignment:
         Result := gtckExactAssignmentExclusion;
+      rtckConnectivity:
+        Result := gtckConnectivity;
     else
       raise ERangeError.Create('TrySolve::invalid reference trace cause');
     end;
@@ -6470,6 +6919,7 @@ var
       LTraceEvent.EntryIndex := LReferenceEvent.EntryIndex;
       LTraceEvent.ValueIndex := LReferenceEvent.ValueIndex;
       LTraceEvent.NeighborIndex := LReferenceEvent.NeighborIndex;
+      LTraceEvent.ConstraintIndex := LReferenceEvent.ConstraintIndex;
       if (LReferenceEvent.Direction >= Ord(Low(TGraphDirection)))
         and (LReferenceEvent.Direction <= Ord(High(TGraphDirection))) then
       begin
@@ -6514,8 +6964,12 @@ var
       if (LReferenceEvent.Kind = rtekDecision)
         and (LTraceEvent.CauseEventId >= 0)
         and (LTraceEvent.CauseEventId < Length(AReport.Trace)) then
+      begin
         LTraceEvent.CauseKind :=
           AReport.Trace[LTraceEvent.CauseEventId].CauseKind;
+        LTraceEvent.ConstraintIndex :=
+          AReport.Trace[LTraceEvent.CauseEventId].ConstraintIndex;
+      end;
 
       //An initialization contradiction inherits the kernel classification of
       //its final removal. That removal may have been refined above from the
@@ -6550,6 +7004,7 @@ var
         LTraceEvent.DecisionDepth := 0;
         LTraceEvent.DomainCountBefore := 0;
         LTraceEvent.DomainCountAfter := 0;
+        LTraceEvent.ConstraintIndex := -1;
       end;
 
       LLocalToGlobal[I] := AppendTraceEvent(LTraceEvent);
@@ -6583,6 +7038,8 @@ var
       AReference.Contradiction.EntryIndex;
     AReport.Contradiction.NeighborIndex :=
       AReference.Contradiction.NeighborIndex;
+    AReport.Contradiction.ConstraintIndex :=
+      AReference.Contradiction.ConstraintIndex;
     AReport.Contradiction.DependencyPassIndex := -1;
     if (AReference.Contradiction.Kind = rckPreviousPass)
       and (AReference.Contradiction.EntryIndex >= 0)
@@ -6608,7 +7065,7 @@ var
   procedure StageExistingPass(const APassIndex: Integer;
     const AGraph: TGraph);
   var
-    I: Integer;
+    I, LConstraint, LFailedEntry: Integer;
   begin
     SetLength(LStaged[APassIndex], AGraph.FEntries.Count);
     for I := 0 to Pred(AGraph.FEntries.Count) do
@@ -6616,6 +7073,11 @@ var
         LStaged[APassIndex][I] := TGraphValue.Empty
       else
         LStaged[APassIndex][I] := AGraph.FEntries[I].Value;
+    if not ValidateStagedConnectivity(AGraph, LStaged[APassIndex],
+      LConstraint, LFailedEntry) then
+      raise EInvalidOperation.CreateFmt(
+        'TrySolve::reused pass %d violates connectivity %d at entry %d; include it in regeneration',
+        [APassIndex, LConstraint, LFailedEntry]);
   end;
 
   function StageDefinitionlessPass(const APassIndex: Integer;
@@ -6697,16 +7159,25 @@ var
   procedure SnapshotEntries;
   var
     I, J: Integer;
+    D: TGraphDirection;
   begin
     SetLength(LSnapshots, FPasses.Count);
+    //Only opt-in constrained layers need topology journaling. Ordinary
+    //models retain their old per-entry snapshot and trace behavior.
+    SetLength(LNeighborSnapshots, FPasses.Count);
     for I := 0 to Pred(FPasses.Count) do
     begin
       SetLength(LSnapshots[I], FPasses[I].FEntries.Count);
+      if Length(FPasses[I].FConnectivity) <> 0 then
+        SetLength(LNeighborSnapshots[I], FPasses[I].FEntries.Count);
       for J := 0 to Pred(FPasses[I].FEntries.Count) do
       begin
         LSnapshots[I][J].Value := FPasses[I].FEntries[J].Value;
         LSnapshots[I][J].Empty := FPasses[I].FEntries[J].Empty;
         LSnapshots[I][J].Generated := FPasses[I].FEntries[J].Generated;
+        if Length(LNeighborSnapshots[I]) <> 0 then
+          for D := Low(TGraphDirection) to High(TGraphDirection) do
+            LNeighborSnapshots[I][J][D] := FPasses[I].FEntries[J][D];
       end;
     end;
   end;
@@ -6714,19 +7185,27 @@ var
   procedure RestoreEntries;
   var
     I, J: Integer;
+    D: TGraphDirection;
   begin
     for I := 0 to High(LSnapshots) do
       for J := 0 to High(LSnapshots[I]) do
+      begin
         FPasses[I].FEntries[J].RestoreValueState(
           LSnapshots[I][J].Value,
           LSnapshots[I][J].Empty,
           LSnapshots[I][J].Generated);
+        if Length(LNeighborSnapshots[I]) <> 0 then
+          for D := Low(TGraphDirection) to High(TGraphDirection) do
+            FPasses[I].FEntries[J].RestoreNeighborState(D,
+              LNeighborSnapshots[I][J][D]);
+      end;
   end;
 
   function CommitStagedEntries(out AFinalValidationPass,
     AFinalValidationEntry: Integer): Boolean;
   var
-    I, J, K: Integer;
+    I, J, K, LConstraint: Integer;
+    D: TGraphDirection;
 
     function MatchesExpectedState(const APassIndex,
       AEntryIndex: Integer): Boolean;
@@ -6787,6 +7266,17 @@ var
         end;
       end;
 
+      for K := 0 to High(LExecutionPlan) do
+      begin
+        I := LExecutionPlan[K];
+        if not ValidateStagedConnectivity(FPasses[I], LStaged[I],
+          LConstraint, AFinalValidationEntry) then
+        begin
+          AFinalValidationPass := I;
+          Exit(False);
+        end;
+      end;
+
       Result := DoValidateCommit(AFinalValidationPass,
         AFinalValidationEntry);
       if not Result then
@@ -6798,9 +7288,27 @@ var
       //publish an unchecked candidate by returning success.
       for I := 0 to Pred(FPasses.Count) do
         for J := 0 to Pred(FPasses[I].FEntries.Count) do
+        begin
           if not MatchesExpectedState(I, J) then
             raise EInvalidOperation.CreateFmt(
               'TrySolve::commit hook mutated pass %d entry %d', [I, J]);
+          if Length(LNeighborSnapshots[I]) <> 0 then
+            for D := Low(TGraphDirection) to High(TGraphDirection) do
+              if FPasses[I].FEntries[J][D] <> LNeighborSnapshots[I][J][D] then
+                raise EInvalidOperation.CreateFmt(
+                  'TrySolve::commit hook mutated connectivity topology in pass %d entry %d',
+                  [I, J]);
+        end;
+      //Legacy public rule arrays remain writable. Recheck live compatibility
+      //after the domain hook too, including preserved providers. Such model
+      //edits are caller side effects, but must not publish a disconnected
+      //candidate merely because its values and neighbor links stayed equal.
+      for I := 0 to Pred(FPasses.Count) do
+        if not ValidateStagedConnectivity(FPasses[I], LStaged[I],
+          LConstraint, AFinalValidationEntry) then
+          raise EInvalidOperation.CreateFmt(
+            'TrySolve::commit hook invalidated connectivity %d in pass %d entry %d',
+            [LConstraint, I, AFinalValidationEntry]);
       Result := True;
     except
       RestoreEntries;
@@ -7296,6 +7804,11 @@ begin
     raise EInvalidOperation.Create('Run::the pass pipeline is already running');
   BuildPassExecutionOrder(LExecutionOrder);
 
+  for I := 0 to Pred(FPasses.Count) do
+    if Length(FPasses[I].FConnectivity) <> 0 then
+      raise EInvalidOperation.Create(
+        'Run::connectivity requires the TrySolve family');
+
   LSavedPassIndex := FCurPassIndex;
   FRunning := True;
   FExecutingPassIndex := -1;
@@ -7435,6 +7948,7 @@ begin
     FEntries.Clear;
     FPlanes.Clear;
     SetLength(FValues, 0);
+    FConnectivity := nil;
   finally
     LNewPass.Free;
     LNewPasses.Free;
@@ -7466,6 +7980,7 @@ begin
   FPassMode := gpmLegacy;
   SetLength(FPassDependencies, 0);
   FTransformSourceIndex := -1;
+  FConnectivity := nil;
 end;
 
 constructor TGraph.CreatePass(const ARoot: TGraph;

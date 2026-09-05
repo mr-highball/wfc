@@ -13,9 +13,9 @@ FPC server hosts them locally.
 **Status:** an expanding 0.x ecosystem, not a finished 1.0 release. The core
 supports deterministic propagation, weighted observation, backtracking,
 transactional pass DAGs, selective regeneration, and bounded pass negotiation.
-Count-range clauses and opt-in deterministic restarts extend those contracts
+Count-range clauses, rooted port connectivity, and opt-in deterministic restarts extend those contracts
 without changing existing replay behavior. Domain libraries, learners,
-portable artifacts, native tools, and eight interactive browser demos are
+portable artifacts, native tools, and nine interactive browser demos are
 implemented and tested. The [roadmap](ROADMAP.md) records the remaining work
 and explicit exit gates.
 
@@ -24,6 +24,7 @@ and explicit exit gates.
 | What you want | Where to start |
 | --- | --- |
 | Understand and author passes | [Pass basics](docs/passes.md), [dependency DAGs](docs/pass-dags.md) |
+| Require connected roads or circulation | [Rooted port connectivity](docs/connectivity.md) |
 | Build and run locally | [Build guide](docs/building.md), [FPC development tools](docs/development-tools.md) |
 | Try an interactive demo | [Demo table below](#demos), [complete examples index](examples/README.md) |
 | Learn models from examples | [Learning](docs/learning.md), [training documents and CLI](docs/training.md) |
@@ -111,6 +112,7 @@ The native and browser hosts share Pascal generation and validation code.
 | Independent musical roles | Learned role vocabularies, novel vertical combinations, collective harmony, streamed WAV/MIDI | [Voice Studio](examples/music/07_VoiceStudio/README.md) |
 | Training | Editable corpora → models → recipes → validated results | [Training Studio](examples/learning/05_TrainingStudio/README.md) |
 | Pass counts | Lower/upper bounds, wrapped aliases, scoped repair | [Neighborhood Counts](examples/passes/04_NeighborhoodCounts/README.md) |
+| Connected routes | Solver-propagated roads and multi-floor circulation, independent BFS, SVG, scoped repair | [Connected Routes](examples/passes/06_ConnectedRoutes/README.md) |
 
 Music Studio accepts user-defined composition duration and streams newly
 solved sections with bounded memory. There is no fixed minute cap; numeric
@@ -161,7 +163,7 @@ The shell equivalents are `bash ./build-browser-music.sh` and
 Set `PAS2JS` to your compiler path when it is not on `PATH`.
 Open `http://127.0.0.1:4177/`; stop the foreground server with Ctrl+C.
 
-The [build guide](docs/building.md) covers all eight browser staging scripts,
+The [build guide](docs/building.md) covers all nine browser staging scripts,
 compiler versions and overrides, package builds, and CI.
 The [development-tool guide](docs/development-tools.md) covers the FPC server,
 browser evidence checker, and browser conformance runner. Generated browser

@@ -68,6 +68,7 @@ pass-scoped:
 - values introduced by `AddValue`, including their positive relative weights;
 - `RuleGroups` and `Rules`;
 - `HasDefinition` and the canonical `CopyRegisteredValues` inspection snapshot;
+- [rooted port connectivity](connectivity.md) definitions and copied inspection snapshots;
 - `Entry[X, Y, Z]`, including the default indexed property;
 - `Planes`;
 - `SelectionCallback`;

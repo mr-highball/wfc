@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Rooted reciprocal-port connectivity across two-dimensional and multi-floor Pascal WFC pass pipelines.">
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="connectedroutes.css">
+  <title>WFC Connected Routes</title>
+</head>
+<body data-state="loading" data-self-test="not-requested" data-case="" data-signature="" data-town-repair="not-run" data-town-rollback="not-run" data-circulation="not-run" data-circulation-repair="not-run" data-invalidation="not-run">
+  <a class="skip-link" href="#workbench">Skip to the workbench</a>
+  <header class="hero shell">
+    <p class="eyebrow">WFC / PASS LAB 06</p>
+    <div class="hero-grid">
+      <div>
+        <h1>Routes that<br>actually connect.</h1>
+        <p class="lede">Local tiles can look right while the network is broken.
+          Add a rooted, reciprocal-port constraint to the routing pass, then repair
+          only that pass and its downstream presentation.</p>
+      </div>
+      <div class="pipeline-card" aria-label="Demonstrated pass pipelines">
+        <div>
+          <span class="pipeline-name">Town / 2D</span>
+          <p class="pipeline"><strong>terrain</strong><b>→</b><strong>roads</strong><b>→</b><strong>housing</strong></p>
+        </div>
+        <div>
+          <span class="pipeline-name">Building / two floors</span>
+          <p class="pipeline"><strong>structure</strong><b>→</b><strong>circulation</strong><b>→</b><strong>features</strong></p>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main id="workbench" class="shell">
+    <section class="controls" aria-labelledby="controls-heading">
+      <div class="section-heading">
+        <p class="eyebrow">01 / MODEL</p>
+        <h2 id="controls-heading">Choose the crossing</h2>
+      </div>
+
+      <div class="fields">
+        <label>Case
+          <select id="case-select">
+            <option value="town" selected>Town · 2D roads</option>
+            <option value="circulation">Circulation · two floors</option>
+          </select>
+        </label>
+        <label>Available portal
+          <select id="portal-select">
+            <option value="first" selected>First crossing</option>
+            <option value="second">Second crossing</option>
+            <option value="both">Both crossings</option>
+            <option value="none">No crossing</option>
+          </select>
+        </label>
+        <label>Seed
+          <input id="seed-input" value="0" inputmode="numeric" autocomplete="off" aria-describedby="seed-note">
+        </label>
+        <label>Local backtracks
+          <input id="backtracks-input" type="number" min="0" step="1" value="4096">
+        </label>
+        <label>Pass backtracks
+          <input id="pass-backtracks-input" type="number" min="0" step="1" value="32">
+        </label>
+      </div>
+
+      <div class="checks">
+        <label class="check"><input id="all-input" type="checkbox" checked>
+          Connect every participating route cell</label>
+        <label class="check"><input id="trace-input" type="checkbox">
+          Capture causal trace diagnostics</label>
+      </div>
+
+      <div class="actions">
+        <button id="generate-button" type="button">Generate baseline</button>
+        <button id="repair-button" type="button" class="secondary" disabled>Repair route descendants</button>
+      </div>
+      <p id="seed-note" class="small">Seed is an unsigned 32-bit integer. Search limits
+        bound explored alternatives; they are not elapsed-time promises.</p>
+    </section>
+
+    <section class="result" aria-labelledby="result-heading">
+      <div class="section-heading result-heading">
+        <div>
+          <p class="eyebrow">02 / ATOMIC RESULT</p>
+          <h2 id="result-heading">One rooted witness</h2>
+        </div>
+        <a id="svg-download" class="button-link disabled" aria-disabled="true">Download SVG</a>
+      </div>
+
+      <div class="status-band">
+        <p id="status" role="status" aria-live="polite">Loading the Pascal program…</p>
+        <p id="detail" class="small">Controls become active after the compiled application starts.</p>
+      </div>
+
+      <dl class="metrics" aria-label="Generation result">
+        <div><dt>Case</dt><dd id="case-output">—</dd></div>
+        <div><dt>Portal</dt><dd id="portal-output">—</dd></div>
+        <div><dt>Result</dt><dd id="result-output">—</dd></div>
+        <div><dt>Witness cells</dt><dd id="witness-output">—</dd></div>
+        <div><dt>Participants</dt><dd id="participants-output">—</dd></div>
+        <div><dt>Pass backtracks</dt><dd id="pass-backtracks-output">—</dd></div>
+        <div class="wide"><dt>Signature</dt><dd id="signature-output">—</dd></div>
+        <div class="wide"><dt>Selective scope</dt><dd id="scope-output">—</dd></div>
+      </dl>
+
+      <div class="map-panel">
+        <div id="map-output" class="map-output" role="region" aria-live="polite" aria-label="Connected route projection"></div>
+        <p class="map-key">Large center letters show actual reciprocal links. Small
+          bottom letters show possible profile ports; an unmatched port is not traversable.</p>
+        <div id="legend-output" class="legend-output" aria-label="Map legend"></div>
+      </div>
+
+      <details class="diagnostics">
+        <summary>Diagnostics</summary>
+        <pre id="diagnostics-output">No solve has run.</pre>
+      </details>
+    </section>
+
+    <section class="preview" aria-labelledby="preview-heading">
+      <div class="section-heading">
+        <p class="eyebrow">03 / PORTABLE EXPORT</p>
+        <h2 id="preview-heading">Checked SVG source</h2>
+      </div>
+      <p class="small">Canonical SVG source appears only after a successful transaction
+        and an independent reciprocal-port traversal of the captured public cells.</p>
+      <div id="svg-preview" class="svg-preview" aria-live="polite">
+        <p>Generate a route to publish its canonical SVG source.</p>
+      </div>
+    </section>
+
+    <section class="semantics" aria-labelledby="semantics-heading">
+      <div class="section-heading">
+        <p class="eyebrow">HOW TO READ THE LAB</p>
+        <h2 id="semantics-heading">Connectivity lives on the routing pass.</h2>
+      </div>
+      <div class="explain-grid">
+        <article>
+          <span>01</span>
+          <h3>Root and terminals</h3>
+          <p>Every required destination must participate and be reachable from the
+            one declared root through reciprocal selected ports.</p>
+        </article>
+        <article>
+          <span>02</span>
+          <h3>All or required only</h3>
+          <p>All-participants mode rejects every disconnected route island. Turn it
+            off to permit optional islands while the root and terminals remain connected.</p>
+        </article>
+        <article>
+          <span>03</span>
+          <h3>Selective repair</h3>
+          <p>Changing a bridge or shaft reopens roads/circulation and their descendants.
+            The upstream terrain or structure baseline is reused unchanged.</p>
+        </article>
+        <article>
+          <span>04</span>
+          <h3>Two-floor projection</h3>
+          <p>The circulation case draws each Z layer as a separate panel. A paired
+            up/down shaft port is the real edge between the two floors.</p>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <footer class="shell">Pascal source → pas2js → browser DOM · Project-owned solver, validator, and FPC hosting · MIT</footer>
+  <script src="BrowserConnectedRoutes.js"></script>
+  <script>rtl.run();</script>
+</body>
+</html>

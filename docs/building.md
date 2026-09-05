@@ -9,7 +9,7 @@ score-export, deterministic PCM/WAVE rendering, Music Studio, synchronized
 polyphonic frames and training, the ensemble pass owner and Ensemble Studio,
 independent voice training/graphs/frontiers and Voice Studio,
 negotiated music variation/result replay, full and selective
-pass negotiation, count-range pass clauses, deterministic whole-transaction
+pass negotiation, count-range pass clauses, rooted port connectivity, deterministic whole-transaction
 restarts and optional diagnostic timing, canonical numeric text primitives, immutable authored-rule
 models, declarative pipeline recipes, recipe-bound run artifacts, the closed
 pipeline compiler/runtime, immutable public result artifacts, strict run/result
@@ -25,7 +25,8 @@ variation, the four-pass learned-pattern world, and writes a checked seed-zero
 Building SVG artifact.
 It does not initialize the optional legacy music submodule or build the
 unfinished Castle Game Engine viewer. The 2D world, three-pass text workbench,
-Building 3D, Training Studio, Music Studio, Ensemble Studio, Voice Studio, and Neighborhood Counts have separate pas2js browser entry
+Building 3D, Training Studio, Music Studio, Ensemble Studio, Voice Studio,
+Neighborhood Counts, and Connected Routes have separate pas2js browser entry
 points described below.
 
 FPC 3.2.2 is the supported stable compiler. The current FPC development
@@ -92,6 +93,8 @@ Both scripts rebuild with assertions and range, overflow, and I/O checks, run
 `wfc_text_test`, `wfc_text_passes_test`, `wfc_negotiation_test`,
 `wfc_selective_negotiation_test`, `wfc_restart_test`, `wfc_timing_test`,
 `wfc_restart_demo_test`, `wfc_pass_count_test`, `wfc_pipeline_count_test`,
+`wfc_connectivity_reference_test`, `wfc_connectivity_test`,
+`wfc_connectivity_trace_test`, `wfc_connectivity_demo_test`,
 `wfc_count_demo_test`, `wfc_voxel3d_test`,
 `wfc_voxel3d_isometric_test`,
 `wfc_voxel3d_svg_test`, `wfc_building3d_test`,
@@ -429,6 +432,17 @@ The browser runner requires `data-stream-self-test=passed`,
 `data-midi-stream-release=passed` on the
 ensemble stream controller test in addition to the synchronous harness marker.
 An unawaited or unfinished file transaction cannot satisfy that gate.
+
+## Connected Routes browser and native hosts
+
+For the spatial connectivity workbench, build
+`build-browser-connectivity.ps1` or `bash ./build-browser-connectivity.sh`
+and serve `build/browser/connectivity/www` with the included FPC server.
+The native gate builds `ConnectedRoutes`, runs its selftest, and exercises
+both 2D and multi-floor SVG exports plus no-replace behavior in
+`wfc_connectivity_process_test`. See its
+[host guide](../examples/passes/06_ConnectedRoutes/README.md) and
+[constraint contract](connectivity.md).
 
 ## Voice Studio browser and native hosts
 

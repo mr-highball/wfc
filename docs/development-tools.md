@@ -52,6 +52,7 @@ authentication gateway, upload service, or general application backend.
 | Ensemble Studio | `build-browser-ensemble` | `build/browser/ensemble/www` |
 | Voice Studio | `build-browser-voices` | `build/browser/voices/www` |
 | Neighborhood Counts | `build-browser-counts` | `build/browser/counts/www` |
+| Connected Routes | `build-browser-connectivity` | `build/browser/connectivity/www` |
 
 Use the `.ps1` entry on Windows or the `.sh` entry in a POSIX shell. Pass
 `-Compiler 'C:/path/to/pas2js.exe'` to PowerShell, or set `PAS2JS` for the shell
@@ -184,11 +185,14 @@ source-derived suite; a focused success does not certify the other programs.
 
 Staging compiles `test/*_test.lpr` for `-Tbrowser`, embeds the matching RTL, and
 uses the FPC checker to create harnesses under `build/browser/tests/www`.
-It also rebuilds all eight demos and copies their three named public assets
+It also rebuilds all nine demos and copies their three named public assets
 into `demo-entries` below that root. `wfc_browser_demo_entries_test` loads the
 actual `index.html?selftest=1` pages in sequential same-origin frames and checks
 their rendered contracts. This catches entry-point/bootstrap problems that
-controller-only fixtures cannot. No external server is required.
+controller-only fixtures cannot. The named main stylesheet must also have
+loaded, parsed CSS rules; a resource request alone is not proof of success
+on browsers that omit HTTP status from resource timing entries. No external
+server is required.
 Native DOM-parser, socket-server, and renderer-process tests are excluded;
 they execute in the native gate. The runner independently derives that same
 current source list, rejects missing HTML or compiled scripts, and ignores stale
@@ -207,15 +211,15 @@ when the synchronous source tests passed.
 The independent-role Voice Studio gate likewise requires
 `data-voice-stream-self-test=passed` and `data-voice-stream-release=passed`.
 Its pending asynchronous save/release tests cannot be replaced by a successful
-transpilation or synchronous harness return. Stage the eighth browser demo
+transpilation or synchronous harness return. Stage the independent-voice demo
 with `build-browser-voices.ps1` or `build-browser-voices.sh`, then serve
 `build/browser/voices/www` using the same FPC server. See
 [Independent Voices](music-voices.md) and the
 [Voice Studio host guide](../examples/music/07_VoiceStudio/README.md).
 
 The actual-page gate additionally requires `data-demo-entries-self-test=passed`
-after all eight pages finish. Each page retains a 15-second virtual deadline;
-this aggregate test receives 125 seconds of accelerated browser virtual time.
+after all nine pages finish. Each page retains a 15-second virtual deadline;
+this aggregate test receives 140 seconds of accelerated browser virtual time.
 Its real process deadline remains 60 seconds, as for every other program.
 Pending/missing page evidence never counts as success. This browser-only test
 does not appear in the native gate.

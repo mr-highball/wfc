@@ -318,6 +318,46 @@ case "$host_system" in
 esac
 "$count_demo_executable" --selftest || exit $?
 
+compiler_connectivity_demo_directory="$compiler_source_directory/../examples/passes/06_ConnectedRoutes"
+for connectivity_test_name in wfc_connectivity_reference_test wfc_connectivity_test wfc_connectivity_trace_test wfc_connectivity_demo_test; do
+  printf "Building and running '%s'.\n" "$connectivity_test_name"
+  "$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
+    "-Fu$compiler_source_directory" "-Fu$compiler_tools_directory" \
+    "-Fu$compiler_connectivity_demo_directory" \
+    "-FU$compiler_unit_output_directory" "-FE$compiler_binary_output_directory" \
+    "$compiler_source_directory/../test/$connectivity_test_name.lpr" || exit $?
+  connectivity_test_executable="$binary_output_directory/$connectivity_test_name"
+  case "$host_system" in
+    CYGWIN*|MINGW*|MSYS*) connectivity_test_executable="${connectivity_test_executable}.exe" ;;
+  esac
+  "$connectivity_test_executable" || exit $?
+done
+
+printf 'Building and checking Connected Routes and native export transactions.\n'
+for connectivity_source in \
+  "$compiler_connectivity_demo_directory/ConnectedRoutes.lpr" \
+  "$compiler_source_directory/../test/wfc_connectivity_process_test.lpr"
+do
+  "$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
+    "-Fu$compiler_source_directory" "-Fu$compiler_tools_directory" \
+    "-Fu$compiler_connectivity_demo_directory" \
+    "-FU$compiler_unit_output_directory" "-FE$compiler_binary_output_directory" \
+    "$connectivity_source" || exit $?
+done
+connectivity_demo_executable="$binary_output_directory/ConnectedRoutes"
+connectivity_runtime_executable="$compiler_binary_output_directory/ConnectedRoutes"
+connectivity_process_test_executable="$binary_output_directory/wfc_connectivity_process_test"
+case "$host_system" in
+  CYGWIN*|MINGW*|MSYS*)
+    connectivity_demo_executable="${connectivity_demo_executable}.exe"
+    connectivity_runtime_executable="${connectivity_runtime_executable}.exe"
+    connectivity_process_test_executable="${connectivity_process_test_executable}.exe"
+    ;;
+esac
+"$connectivity_demo_executable" --selftest || exit $?
+"$connectivity_process_test_executable" "$connectivity_runtime_executable" \
+  "$compiler_binary_output_directory" || exit $?
+
 compiler_restart_demo_directory="$compiler_source_directory/../examples/passes/05_DeterministicRestarts"
 for restart_test_name in wfc_restart_test wfc_timing_test wfc_restart_demo_test; do
   printf "Building the restart suite '%s'.\n" "$restart_test_name"

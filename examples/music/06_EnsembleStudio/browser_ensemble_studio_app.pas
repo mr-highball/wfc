@@ -485,6 +485,7 @@ begin
     gckPassDependency: Result := 'pass-dependency';
     gckEntryDomain: Result := 'entry-domain';
     gckExcludedAssignment: Result := 'excluded-assignment';
+    gckConnectivity: Result := 'connectivity';
   else Result := 'unknown';
   end;
 end;

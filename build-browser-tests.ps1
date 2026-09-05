@@ -18,11 +18,12 @@ $unitPaths = @('src','tools','examples/2D/common','examples/3D/common',
   'examples/2D/05_LearnedPatternWorld','examples/learning/05_TrainingStudio',
   'examples/music/05_MusicStudio','examples/passes/04_NeighborhoodCounts',
   'examples/passes/05_DeterministicRestarts',
+  'examples/passes/06_ConnectedRoutes',
   'examples/music/06_EnsembleStudio','examples/music/07_VoiceStudio') | ForEach-Object {
     '-Fu' + (Join-Path $repositoryRoot $_)
   }
 foreach ($source in Get-ChildItem -LiteralPath (Join-Path $repositoryRoot 'test') -Filter '*_test.lpr') {
-  if ($source.BaseName -in @('wfc_browser_dom_test','wfc_serve_test','wfc_music_render_process_test','wfc_music_ensemble_render_process_test','wfc_music_ensemble_midi_render_process_test','wfc_music_voices_render_process_test')) { continue }
+  if ($source.BaseName -in @('wfc_browser_dom_test','wfc_serve_test','wfc_music_render_process_test','wfc_music_ensemble_render_process_test','wfc_music_ensemble_midi_render_process_test','wfc_music_voices_render_process_test','wfc_connectivity_process_test')) { continue }
   & $Compiler -B -Tbrowser -Mdelphi -Jc '-Jirtl.js' @unitPaths "-FU$units" "-FE$web" $source.FullName
   if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
   $html = Join-Path $web ($source.BaseName + '.html')
@@ -40,7 +41,8 @@ $entryDemos = @(
   @('music', 'build-browser-music', 'BrowserMusicStudio.js', 'musicstudio.css'),
   @('counts', 'build-browser-counts', 'BrowserNeighborhoodCounts.js', 'counts.css'),
   @('ensemble', 'build-browser-ensemble', 'BrowserEnsembleStudio.js', 'ensemblestudio.css'),
-  @('voices', 'build-browser-voices', 'BrowserVoiceStudio.js', 'voicestudio.css')
+  @('voices', 'build-browser-voices', 'BrowserVoiceStudio.js', 'voicestudio.css'),
+  @('connectivity', 'build-browser-connectivity', 'BrowserConnectedRoutes.js', 'connectedroutes.css')
 )
 foreach ($demo in $entryDemos) {
   & (Join-Path $repositoryRoot ($demo[1] + '.ps1')) -Compiler $Compiler
@@ -52,4 +54,4 @@ foreach ($demo in $entryDemos) {
     Copy-Item -LiteralPath (Join-Path $entrySource $asset) -Destination $entryTarget -Force
   }
 }
-Write-Host "Pascal browser conformance and eight actual demo entries staged in '$web'."
+Write-Host "Pascal browser conformance and nine actual demo entries staged in '$web'."

@@ -1175,7 +1175,7 @@ const
   NAMES: array[TGraphContradictionKind] of String = (
     'none', 'empty-domain', 'invalid-lock', 'adjacency', 'previous-pass',
     'required-support', 'final-validation', 'pass-dependency',
-    'entry-domain', 'excluded-assignment');
+    'entry-domain', 'excluded-assignment', 'connectivity');
 begin
   Result := NAMES[AKind];
 end;

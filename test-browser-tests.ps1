@@ -16,7 +16,7 @@ if (-not $Server) { $Server = Join-Path $repositoryRoot 'build/native/bin/wfc_se
 if (-not $Checker) { $Checker = Join-Path $repositoryRoot 'build/native/bin/wfc_browser_check.exe' }
 $web = Join-Path $repositoryRoot 'build/browser/tests/www'
 $results = Join-Path $repositoryRoot 'build/browser/tests/results'
-$nativeOnly = @('wfc_browser_dom_test','wfc_serve_test','wfc_music_render_process_test','wfc_music_ensemble_render_process_test','wfc_music_ensemble_midi_render_process_test','wfc_music_voices_render_process_test')
+$nativeOnly = @('wfc_browser_dom_test','wfc_serve_test','wfc_music_render_process_test','wfc_music_ensemble_render_process_test','wfc_music_ensemble_midi_render_process_test','wfc_music_voices_render_process_test','wfc_connectivity_process_test')
 $sources = @(Get-ChildItem -LiteralPath (Join-Path $repositoryRoot 'test') -Filter '*_test.lpr' |
   Where-Object { $_.BaseName -notin $nativeOnly } | Sort-Object Name)
 if ($TestName) { $sources = @($sources | Where-Object { $_.BaseName -ceq $TestName }) }
@@ -60,9 +60,9 @@ try {
     New-Item -ItemType Directory -Force -Path $profile | Out-Null
     $dom = Join-Path $results ($page.BaseName + '.dom')
     $log = Join-Path $results ($page.BaseName + '.log')
-    # Eight real pages retain their individual 15-second virtual deadlines.
+    # Nine real pages retain their individual 15-second virtual deadlines.
     # The browser process still has the same 60-second real-time deadline.
-    $virtualTimeBudget = if ($page.BaseName -eq 'wfc_browser_demo_entries_test') { 125000 } else { 15000 }
+    $virtualTimeBudget = if ($page.BaseName -eq 'wfc_browser_demo_entries_test') { 140000 } else { 15000 }
     $arguments = @('--headless','--disable-gpu','--disable-dev-shm-usage',
       '--no-first-run','--no-default-browser-check',('--user-data-dir="' + $profile + '"'),
       ("--virtual-time-budget=$virtualTimeBudget"),'--dump-dom',("http://127.0.0.1:$Port/" + $page.Name))
@@ -81,6 +81,7 @@ try {
       $assertions = @('--dom', $dom, '--expect', 'data-self-test=passed')
       if ($page.BaseName -eq 'wfc_browser_demo_entries_test') {
         $assertions += @('--expect', 'data-demo-entries-self-test=passed')
+        $assertions += @('--expect', 'data-demo-entries-count=9')
       }
       if ($page.BaseName -eq 'wfc_music_ensemble_stream_demo_test') {
         # The synchronous harness cannot certify awaited file transactions.

@@ -129,7 +129,8 @@ begin
     and (A.DependencyPassIndex = B.DependencyPassIndex)
     and (A.DecisionDepth = B.DecisionDepth)
     and (A.DomainCountBefore = B.DomainCountBefore)
-    and (A.DomainCountAfter = B.DomainCountAfter);
+    and (A.DomainCountAfter = B.DomainCountAfter)
+    and (A.ConstraintIndex = B.ConstraintIndex);
 end;
 
 function SameTrace(const A, B: TGraphSolveReport): Boolean;

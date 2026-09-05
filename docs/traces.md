@@ -1,5 +1,24 @@
 # causal solve traces
 
+Opt-in [rooted connectivity](connectivity.md) adds `gtckConnectivity` and a
+pass-local `ConstraintIndex`. Ordinary events use `-1`; connectivity events
+use the descriptor's zero-based registration ordinal. Connectivity-derived
+decisions retain that ordinal through their cause link. Only connectivity
+causes extend the trace hash encoding, so unconstrained trace goldens remain
+unchanged. The formatter adds `connectivity=N` and the independent validator
+checks descriptor bounds and causal identity against the producing model.
+
+Known Trace v1 boundary: the pass report describes one contiguous trace slice
+per pass. A custom `DoValidateCommit` that rejects an earlier active pass
+after a later pass has staged produces a noncontiguous failure suffix. The
+solve still reports failure, restores entries/random streams, and hashes the
+event sequence correctly, but `ValidateGraphTrace` rejects that report's
+pass slice. Rejection attributed to the last executed pass is representable.
+Do not reinterpret a failed slice check as a successful solve or reattribute
+a failure to the wrong pass. A versioned multi-span trace representation is
+remaining work; connectivity propagation failures occur inside their pass
+and do not need this late-validation representation.
+
 `TGraph.TrySolve` and `TGraph.TryRegenerateFrom` can capture a deterministic
 causal record of an attempted pass transaction. The trace includes initial
 domain filtering, observations, candidate removals, contradictions, abandoned
