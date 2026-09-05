@@ -90,6 +90,9 @@ const
   //keeps its own versions and portable goldens above.
   WFC_SELECTIVE_NEGOTIATION_ALGORITHM_VERSION = 1;
   WFC_SELECTIVE_NEGOTIATION_HASH_VERSION = 1;
+  //Opt-in whole-transaction restart scheduling and transcript encoding.
+  WFC_RESTART_ALGORITHM_VERSION = 1;
+  WFC_RESTART_HASH_VERSION = 1;
 
 type
 
@@ -550,6 +553,46 @@ type
     TranscriptHash: TGraphTraceSignature;
   end;
 
+  TGraphRestartSchedule = (grschFixed, grschCappedDoubling);
+  TGraphRestartOptions = record
+    //Attempts include the initial solve, followed by at most MaxRestarts.
+    //Valid values are 0..High(Integer)-1, leaving room for the initial slot.
+    MaxRestarts: Integer;
+    //Must be at least the original solve budget; attempt zero is never clipped.
+    //Capped doubling preserves a zero original budget as zero on every attempt.
+    MaxBacktracksPerAttempt: Integer;
+    Schedule: TGraphRestartSchedule;
+    //Diagnostic only: never changes search decisions or transcript identity.
+    MeasureTime: Boolean;
+  end;
+  TGraphRestartStrategy = (grstOneWay, grstNegotiated);
+  TGraphRestartStatus = (grsSolved, grsContradiction, grsRestartLimit,
+    grsPassBacktrackLimit);
+  TGraphRestartAttemptReport = record
+    Index: Integer;
+    Seed: TGraphSeed;
+    MaxBacktracks: Integer;
+    SolveReport: TGraphSolveReport;
+    //Populated only by the negotiated strategy.
+    NegotiationReport: TGraphNegotiationReport;
+    ElapsedMilliseconds: Double;
+    TimingAvailable: Boolean;
+  end;
+  TGraphRestartAttemptReports = array of TGraphRestartAttemptReport;
+  TGraphRestartReport = record
+    BaseSeed: TGraphSeed;
+    Strategy: TGraphRestartStrategy;
+    Status: TGraphRestartStatus;
+    RestartAlgorithmVersion: Integer;
+    Restarts: Integer;
+    //Every attempt, including the terminal one, retains its own trace.
+    Attempts: TGraphRestartAttemptReports;
+    FinalReport: TGraphSolveReport;
+    TranscriptHash: TGraphTraceSignature;
+    ElapsedMilliseconds: Double;
+    TimingAvailable: Boolean;
+  end;
+
   //Selective negotiation keeps its scope identity separate from the nested
   //Pass Negotiation v1 transcript. Requested roots are canonical stable pass
   //indices; active passes are their exact descendant closure in execution
@@ -700,7 +743,9 @@ type
     function AdvanceRandomState(var AState: TRandomState): Cardinal;
     procedure JumpRandomState(var AState: TRandomState);
     procedure BuildPassRandomState(const APassIndex: Integer;
-      out AState: TRandomState);
+      out AState: TRandomState); overload;
+    procedure BuildPassRandomState(const APassIndex: Integer;
+      const AEffectiveSeed: TGraphSeed; out AState: TRandomState); overload;
     procedure EnsureSeedInitialized;
     procedure RewindRandomStates;
     procedure EnsureInitialPass;
@@ -738,13 +783,20 @@ type
     function TryNegotiateInternal(
       const AOptions: TGraphNegotiationOptions;
       const ADirty: TPassSelection; const AOperation: String;
+      const AEffectiveSeed: TGraphSeed;
       out AReport: TGraphNegotiationReport): Boolean;
+    function TryRestartInternal(const AOptions: TGraphNegotiationOptions;
+      const ARestarts: TGraphRestartOptions;
+      const AStrategy: TGraphRestartStrategy;
+      out AReport: TGraphRestartReport): Boolean;
+    function ReadRestartClock(out AValue: Double): Boolean;
     function TrySolveInternal(const AOptions: TGraphSolveOptions;
       const ADirty: TPassSelection;
       out AReport: TGraphSolveReport): Boolean;
     function TrySolveAttempt(const AOptions: TGraphSolveOptions;
       const ADirty: TPassSelection;
       const AExclusions: TPassAssignmentExclusions;
+      const AEffectiveSeed: TGraphSeed;
       out ACompletedChoices: TPassSelection;
       out AAssignments: TValueIndexMatrix;
       out AReport: TGraphSolveReport): Boolean;
@@ -800,6 +852,10 @@ type
     //issue.
     function DoValidateCommit(out AFailedPassIndex,
       AFailedEntryIndex: Integer): Boolean; virtual;
+    //Observational, side-effect-free hook: overrides must not alter graph or
+    //generation inputs. Exceptions and invalid values mean unavailable timing.
+    //A running guard rejects reentrant solves while this hook is called.
+    function DoReadMonotonicMilliseconds(out AValue: Double): Boolean; virtual;
     function PassLabelFromIndex(const AIndex : Integer) : String;
     function DoHandleInvalidState(const AEntry : TGraphEntry) : TGraphValue;
     procedure DoGetStartCoord(out X, Y : TGraphCoordinate); virtual;
@@ -1011,6 +1067,19 @@ type
     function TrySolveNegotiated(const AOptions: TGraphNegotiationOptions;
       out AReport: TGraphNegotiationReport): Boolean;
 
+    //Restarts only a local solver backtrack limit, never a contradiction or
+    //pass-negotiation limit. Public Seed stays the base seed; effective seeds
+    //are recorded in each attempt. Direct winning-seed replay through an
+    //ordinary solve also requires hooks independent of the public base Seed;
+    //whole-policy replay retains that base and has no such restriction.
+    function TrySolveRestarted(const AOptions: TGraphSolveOptions;
+      const ARestarts: TGraphRestartOptions;
+      out AReport: TGraphRestartReport): Boolean;
+    function TrySolveNegotiatedRestarted(
+      const AOptions: TGraphNegotiationOptions;
+      const ARestarts: TGraphRestartOptions;
+      out AReport: TGraphRestartReport): Boolean;
+
     function TryRegenerateFrom(const APass: String;
       const AOptions: TGraphSolveOptions;
       out AReport: TGraphSolveReport): Boolean; overload;
@@ -1079,6 +1148,21 @@ var
   //Returns the stable defaults for the opt-in reference solver.
   function DefaultGraphSolveOptions: TGraphSolveOptions;
   function DefaultGraphNegotiationOptions: TGraphNegotiationOptions;
+  function DefaultGraphRestartOptions: TGraphRestartOptions;
+  function DeriveGraphRestartSeed(const ABase: TGraphSeed;
+    const AIndex: Integer): TGraphSeed;
+  function GraphRestartBacktrackBudget(
+    const AInitialBacktracks, AIndex: Integer;
+    const ARestarts: TGraphRestartOptions): Integer;
+  //Timing fields and MeasureTime are deliberately excluded.
+  function CalculateGraphRestartTranscriptHash(
+    const AOptions: TGraphSolveOptions;
+    const ARestarts: TGraphRestartOptions;
+    const AReport: TGraphRestartReport): TGraphTraceSignature; overload;
+  function CalculateGraphRestartTranscriptHash(
+    const AOptions: TGraphNegotiationOptions;
+    const ARestarts: TGraphRestartOptions;
+    const AReport: TGraphRestartReport): TGraphTraceSignature; overload;
   //Recomputes the portable signature from report metadata and numeric trace
   //events. Returns zero when trace capture is disabled.
   function CalculateGraphTraceHash(
@@ -1097,7 +1181,7 @@ const
 implementation
 
 uses
-  wfc_solver_reference;
+  wfc_solver_reference, wfc_timing;
 
 type
   TGraphTraversalFrame = record
@@ -1412,6 +1496,75 @@ begin
   Result.MaxPassBacktracks := 64;
 end;
 
+function DefaultGraphRestartOptions: TGraphRestartOptions;
+begin
+  Result.MaxRestarts := 0;
+  Result.MaxBacktracksPerAttempt := High(Integer);
+  Result.Schedule := grschFixed;
+  Result.MeasureTime := False;
+end;
+
+function GraphRestartBacktrackBudget(
+  const AInitialBacktracks, AIndex: Integer;
+  const ARestarts: TGraphRestartOptions): Integer;
+var
+  I: Integer;
+begin
+  if (ARestarts.MaxRestarts < 0)
+    or (ARestarts.MaxRestarts = High(Integer)) then
+    raise ERangeError.Create('Restart::invalid maximum restarts');
+  if (Ord(ARestarts.Schedule) < Ord(Low(TGraphRestartSchedule)))
+    or (Ord(ARestarts.Schedule) > Ord(High(TGraphRestartSchedule))) then
+    raise ERangeError.Create('Restart::invalid schedule');
+  if (AInitialBacktracks < 0)
+    or (ARestarts.MaxBacktracksPerAttempt < AInitialBacktracks) then
+    raise ERangeError.Create('Restart::invalid initial backtracks or cap');
+  if (AIndex < 0) or (AIndex > ARestarts.MaxRestarts) then
+    raise ERangeError.Create('Restart::attempt index is outside the policy');
+  Result := AInitialBacktracks;
+  if (ARestarts.Schedule = grschFixed) or (Result = 0) then
+    Exit;
+  I := 0;
+  //At most one iteration per integer bit, even for a very large index.
+  while (I < AIndex) and (Result < ARestarts.MaxBacktracksPerAttempt) do
+  begin
+    if Result > ARestarts.MaxBacktracksPerAttempt - Result then
+      Result := ARestarts.MaxBacktracksPerAttempt
+    else
+      Result := Result + Result;
+    Inc(I);
+  end;
+end;
+
+function DeriveGraphRestartSeed(const ABase: TGraphSeed;
+  const AIndex: Integer): TGraphSeed;
+
+  function MultiplyLow32(const A, B: Cardinal): Cardinal;
+  var
+    LProduct, LHigh: Cardinal;
+  begin
+    LProduct := (A and $FFFF) * (B and $FFFF);
+    LHigh := (LProduct shr 16)
+      + (((A shr 16) * (B and $FFFF)) and $FFFF)
+      + (((B shr 16) * (A and $FFFF)) and $FFFF);
+    Result := ((LHigh and $FFFF) shl 16) or (LProduct and $FFFF);
+  end;
+
+begin
+  if AIndex < 0 then
+    raise ERangeError.Create('Restart::seed index cannot be negative');
+  if AIndex = 0 then
+    Exit(ABase);
+  //The same fmix32 avalanche used by scalar seed expansion, with explicit
+  //low-word multiplication for checked native and browser parity.
+  Result := Cardinal(AIndex);
+  Result := Result xor (Result shr 16);
+  Result := MultiplyLow32(Result, $85EBCA6B);
+  Result := Result xor (Result shr 13);
+  Result := MultiplyLow32(Result, $C2B2AE35);
+  Result := ABase xor Result xor (Result shr 16);
+end;
+
 procedure GraphTraceHashByte(var AHash: TGraphTraceSignature;
   const AValue: Byte);
 {$PUSH}
@@ -1641,6 +1794,72 @@ begin
     GraphTraceHashInteger(Result, AReport.ActivePassIndices[I]);
   GraphTraceHashCardinal(Result,
     CalculateGraphNegotiationTranscriptHash(AOptions, AReport.Search));
+end;
+
+function CalculateGraphRestartTranscriptHash(
+  const AOptions: TGraphNegotiationOptions;
+  const ARestarts: TGraphRestartOptions;
+  const AReport: TGraphRestartReport): TGraphTraceSignature;
+var
+  I: Integer;
+  LOptions: TGraphNegotiationOptions;
+
+  function SolveDigest(const ASolve: TGraphSolveReport): TGraphTraceSignature;
+  var
+    LReport: TGraphNegotiationReport;
+  begin
+    //Reuse the complete numeric solve encoding rather than trusting its
+    //trace digest, which is zero when capture is disabled.
+    LReport := Default(TGraphNegotiationReport);
+    LReport.Seed := ASolve.Seed;
+    LReport.FinalReport := ASolve;
+    Result := CalculateGraphNegotiationTranscriptHash(LOptions, LReport);
+  end;
+
+begin
+  Result := Cardinal(2166136261);
+  GraphTraceHashText(Result, 'wfc-graph-restart');
+  GraphTraceHashCardinal(Result, WFC_RESTART_ALGORITHM_VERSION);
+  GraphTraceHashCardinal(Result, WFC_RESTART_HASH_VERSION);
+  GraphTraceHashInteger(Result, AOptions.SolveOptions.MaxBacktracks);
+  GraphTraceHashByte(Result, Ord(AOptions.SolveOptions.CaptureTrace));
+  GraphTraceHashInteger(Result, AOptions.MaxPassBacktracks);
+  GraphTraceHashInteger(Result, ARestarts.MaxRestarts);
+  GraphTraceHashInteger(Result, ARestarts.MaxBacktracksPerAttempt);
+  GraphTraceHashCardinal(Result, Cardinal(Ord(ARestarts.Schedule)));
+  GraphTraceHashCardinal(Result, AReport.BaseSeed);
+  GraphTraceHashCardinal(Result, Cardinal(Ord(AReport.Strategy)));
+  GraphTraceHashCardinal(Result, Cardinal(Ord(AReport.Status)));
+  GraphTraceHashInteger(Result, AReport.RestartAlgorithmVersion);
+  GraphTraceHashInteger(Result, AReport.Restarts);
+  GraphTraceHashCardinal(Result, Cardinal(Length(AReport.Attempts)));
+  for I := 0 to High(AReport.Attempts) do
+  begin
+    GraphTraceHashInteger(Result, AReport.Attempts[I].Index);
+    GraphTraceHashCardinal(Result, AReport.Attempts[I].Seed);
+    GraphTraceHashInteger(Result, AReport.Attempts[I].MaxBacktracks);
+    LOptions := AOptions;
+    LOptions.SolveOptions.MaxBacktracks := AReport.Attempts[I].MaxBacktracks;
+    GraphTraceHashCardinal(Result, SolveDigest(AReport.Attempts[I].SolveReport));
+    if AReport.Strategy = grstNegotiated then
+      GraphTraceHashCardinal(Result,
+        CalculateGraphNegotiationTranscriptHash(LOptions,
+          AReport.Attempts[I].NegotiationReport));
+  end;
+  LOptions := AOptions;
+  GraphTraceHashCardinal(Result, SolveDigest(AReport.FinalReport));
+end;
+
+function CalculateGraphRestartTranscriptHash(
+  const AOptions: TGraphSolveOptions;
+  const ARestarts: TGraphRestartOptions;
+  const AReport: TGraphRestartReport): TGraphTraceSignature;
+var
+  LOptions: TGraphNegotiationOptions;
+begin
+  LOptions := Default(TGraphNegotiationOptions);
+  LOptions.SolveOptions := AOptions;
+  Result := CalculateGraphRestartTranscriptHash(LOptions, ARestarts, AReport);
 end;
 
 { TGraphRule }
@@ -2706,6 +2925,13 @@ end;
 
 procedure TGraph.BuildPassRandomState(const APassIndex: Integer;
   out AState: TRandomState);
+begin
+  EnsureSeedInitialized;
+  BuildPassRandomState(APassIndex, FSeed, AState);
+end;
+
+procedure TGraph.BuildPassRandomState(const APassIndex: Integer;
+  const AEffectiveSeed: TGraphSeed; out AState: TRandomState);
 var
   I: Integer;
 begin
@@ -2713,8 +2939,7 @@ begin
     raise ERangeError.CreateFmt(
       'BuildPassRandomState::invalid pass index [%d]', [APassIndex]);
 
-  EnsureSeedInitialized;
-  SeedRandomState(FSeed, AState);
+  SeedRandomState(AEffectiveSeed, AState);
   for I := 1 to APassIndex do
     JumpRandomState(AState);
 end;
@@ -3938,6 +4163,41 @@ begin
   Result := True;
 end;
 
+function TGraph.DoReadMonotonicMilliseconds(out AValue: Double): Boolean;
+begin
+  Result := TryReadWfcMonotonicMilliseconds(AValue);
+end;
+
+function TGraph.ReadRestartClock(out AValue: Double): Boolean;
+var
+  LWasRunning: Boolean;
+  LSavedPassIndex: Integer;
+  LSavedPass: String;
+  LZero: Double;
+begin
+  AValue := 0;
+  LWasRunning := FRunning;
+  LSavedPassIndex := FCurPassIndex;
+  LSavedPass := FCurPass;
+  FRunning := True;
+  try
+    try
+      Result := DoReadMonotonicMilliseconds(AValue);
+      if Result then
+        Result := WfcElapsedMilliseconds(AValue, AValue, LZero);
+    except
+      //Timing is diagnostic, including after a successful publication.
+      Result := False;
+    end;
+    if not Result then
+      AValue := 0;
+  finally
+    FCurPassIndex := LSavedPassIndex;
+    FCurPass := LSavedPass;
+    FRunning := LWasRunning;
+  end;
+end;
+
 function TGraph.DoHandleInvalidState(const AEntry: TGraphEntry): TGraphValue;
 var
   LCallbackGraph: TGraph;
@@ -5003,12 +5263,151 @@ begin
   for I := 0 to High(LDirty) do
     LDirty[I] := 1;
   Result := TryNegotiateInternal(AOptions, LDirty,
-    'TrySolveNegotiated', AReport);
+    'TrySolveNegotiated', Seed, AReport);
+end;
+
+function TGraph.TrySolveRestarted(const AOptions: TGraphSolveOptions;
+  const ARestarts: TGraphRestartOptions;
+  out AReport: TGraphRestartReport): Boolean;
+var
+  LOptions: TGraphNegotiationOptions;
+begin
+  if Assigned(FPassRoot) then
+    Exit(FPassRoot.TrySolveRestarted(AOptions, ARestarts, AReport));
+  LOptions := Default(TGraphNegotiationOptions);
+  LOptions.SolveOptions := AOptions;
+  Result := TryRestartInternal(LOptions, ARestarts, grstOneWay, AReport);
+end;
+
+function TGraph.TrySolveNegotiatedRestarted(
+  const AOptions: TGraphNegotiationOptions;
+  const ARestarts: TGraphRestartOptions;
+  out AReport: TGraphRestartReport): Boolean;
+begin
+  if Assigned(FPassRoot) then
+    Exit(FPassRoot.TrySolveNegotiatedRestarted(AOptions, ARestarts, AReport));
+  Result := TryRestartInternal(AOptions, ARestarts, grstNegotiated, AReport);
+end;
+
+function TGraph.TryRestartInternal(const AOptions: TGraphNegotiationOptions;
+  const ARestarts: TGraphRestartOptions;
+  const AStrategy: TGraphRestartStrategy;
+  out AReport: TGraphRestartReport): Boolean;
+var
+  I, LIndex, LBudget: Integer;
+  LOptions: TGraphNegotiationOptions;
+  LDirty, LCompletedChoices: TPassSelection;
+  LAssignments: TValueIndexMatrix;
+  LExclusions: TPassAssignmentExclusions;
+  LStart, LFinish, LAttemptStart, LAttemptFinish: Double;
+  LStartAvailable, LFinishAvailable: Boolean;
+  LAttemptStartAvailable, LAttemptFinishAvailable: Boolean;
+begin
+  //Validate the complete policy before seed capture or pass materialization.
+  LBudget := GraphRestartBacktrackBudget(
+    AOptions.SolveOptions.MaxBacktracks, 0, ARestarts);
+  ValidateNegotiationOptions(AOptions, 'TrySolveRestarted');
+  if (Ord(AStrategy) < Ord(Low(TGraphRestartStrategy)))
+    or (Ord(AStrategy) > Ord(High(TGraphRestartStrategy))) then
+    raise ERangeError.Create('Restart::invalid strategy');
+  if FInitializingPass then
+    raise EInvalidOperation.Create('Restart::cannot solve during pass initialization');
+  if FRunning then
+    raise EInvalidOperation.Create('Restart::the pass pipeline is already running');
+  EnsureInitialPass;
+  SetLength(LDirty, FPasses.Count);
+  for I := 0 to High(LDirty) do
+    LDirty[I] := 1;
+  LExclusions := nil;
+  AReport := Default(TGraphRestartReport);
+  AReport.BaseSeed := Seed;
+  AReport.Strategy := AStrategy;
+  AReport.Status := grsContradiction;
+  AReport.RestartAlgorithmVersion := WFC_RESTART_ALGORITHM_VERSION;
+  LStartAvailable := False;
+  LStart := 0;
+  if ARestarts.MeasureTime then
+    LStartAvailable := ReadRestartClock(LStart);
+  LIndex := 0;
+  while True do
+  begin
+    //Reserve history before invoking a solve that can publish live entries.
+    //Every failed attempt already restores entries, selection, and all RNG
+    //streams, so no SetSeed mutation or outer transaction copy is necessary.
+    SetLength(AReport.Attempts, Succ(LIndex));
+    AReport.Restarts := LIndex;
+    AReport.Attempts[LIndex].Index := LIndex;
+    AReport.Attempts[LIndex].Seed :=
+      DeriveGraphRestartSeed(AReport.BaseSeed, LIndex);
+    if LIndex <> 0 then
+      LBudget := GraphRestartBacktrackBudget(
+        AOptions.SolveOptions.MaxBacktracks, LIndex, ARestarts);
+    AReport.Attempts[LIndex].MaxBacktracks := LBudget;
+    LOptions := AOptions;
+    LOptions.SolveOptions.MaxBacktracks := LBudget;
+    LAttemptStartAvailable := False;
+    LAttemptStart := 0;
+    if ARestarts.MeasureTime then
+      LAttemptStartAvailable := ReadRestartClock(LAttemptStart);
+    if AStrategy = grstNegotiated then
+    begin
+      Result := TryNegotiateInternal(LOptions, LDirty,
+        'TrySolveNegotiatedRestarted', AReport.Attempts[LIndex].Seed,
+        AReport.Attempts[LIndex].NegotiationReport);
+      AReport.Attempts[LIndex].SolveReport :=
+        AReport.Attempts[LIndex].NegotiationReport.FinalReport;
+    end
+    else
+      Result := TrySolveAttempt(LOptions.SolveOptions, LDirty,
+        LExclusions, AReport.Attempts[LIndex].Seed, LCompletedChoices,
+        LAssignments, AReport.Attempts[LIndex].SolveReport);
+    AReport.FinalReport := AReport.Attempts[LIndex].SolveReport;
+    if ARestarts.MeasureTime then
+    begin
+      LAttemptFinishAvailable := ReadRestartClock(LAttemptFinish);
+      if LAttemptStartAvailable and LAttemptFinishAvailable then
+        AReport.Attempts[LIndex].TimingAvailable := WfcElapsedMilliseconds(
+          LAttemptStart, LAttemptFinish,
+          AReport.Attempts[LIndex].ElapsedMilliseconds);
+    end;
+    if Result then
+    begin
+      AReport.Status := grsSolved;
+      Break;
+    end;
+    if (AStrategy = grstNegotiated) and
+      (AReport.Attempts[LIndex].NegotiationReport.Status = gnsPassBacktrackLimit) then
+    begin
+      AReport.Status := grsPassBacktrackLimit;
+      Break;
+    end;
+    if AReport.FinalReport.Status <> gssBacktrackLimit then
+    begin
+      AReport.Status := grsContradiction;
+      Break;
+    end;
+    if LIndex = ARestarts.MaxRestarts then
+    begin
+      AReport.Status := grsRestartLimit;
+      Break;
+    end;
+    Inc(LIndex);
+  end;
+  if ARestarts.MeasureTime then
+  begin
+    LFinishAvailable := ReadRestartClock(LFinish);
+    if LStartAvailable and LFinishAvailable then
+      AReport.TimingAvailable := WfcElapsedMilliseconds(
+        LStart, LFinish, AReport.ElapsedMilliseconds);
+  end;
+  AReport.TranscriptHash := CalculateGraphRestartTranscriptHash(
+    AOptions, ARestarts, AReport);
 end;
 
 function TGraph.TryNegotiateInternal(
   const AOptions: TGraphNegotiationOptions;
   const ADirty: TPassSelection; const AOperation: String;
+  const AEffectiveSeed: TGraphSeed;
   out AReport: TGraphNegotiationReport): Boolean;
 var
   I, J: Integer;
@@ -5061,7 +5460,7 @@ begin
       AOperation + '::pass selection does not match the pipeline');
   AReport := Default(TGraphNegotiationReport);
   AReport.Status := gnsContradiction;
-  AReport.Seed := Seed;
+  AReport.Seed := AEffectiveSeed;
   AReport.NegotiationAlgorithmVersion :=
     WFC_PASS_NEGOTIATION_ALGORITHM_VERSION;
   AReport.PassBacktracks := 0;
@@ -5073,7 +5472,7 @@ begin
   while True do
   begin
     Result := TrySolveAttempt(AOptions.SolveOptions, ADirty,
-      LExclusions, LCompletedChoices, LAssignments,
+      LExclusions, AEffectiveSeed, LCompletedChoices, LAssignments,
       LSolveReport);
     AReport.FinalReport := LSolveReport;
     if Result then
@@ -5230,7 +5629,7 @@ begin
   AReport.RequestedRootIndices := LRequestedRootIndices;
   AReport.ActivePassIndices := LActivePassIndices;
   Result := TryNegotiateInternal(AOptions, LDirty,
-    'TryRegenerateNegotiatedFrom', AReport.Search);
+    'TryRegenerateNegotiatedFrom', Seed, AReport.Search);
   AReport.TranscriptHash :=
     CalculateGraphSelectiveNegotiationTranscriptHash(
       AOptions, AReport);
@@ -5245,13 +5644,14 @@ var
   LExclusions: TPassAssignmentExclusions;
 begin
   LExclusions := nil;
-  Result := TrySolveAttempt(AOptions, ADirty, LExclusions,
+  Result := TrySolveAttempt(AOptions, ADirty, LExclusions, Seed,
     LCompletedChoices, LAssignments, AReport);
 end;
 
 function TGraph.TrySolveAttempt(const AOptions: TGraphSolveOptions;
   const ADirty: TPassSelection;
   const AExclusions: TPassAssignmentExclusions;
+  const AEffectiveSeed: TGraphSeed;
   out ACompletedChoices: TPassSelection;
   out AAssignments: TValueIndexMatrix;
   out AReport: TGraphSolveReport): Boolean;
@@ -5413,7 +5813,7 @@ var
     I: Integer;
   begin
     AReport.Status := gssContradiction;
-    AReport.Seed := Seed;
+    AReport.Seed := AEffectiveSeed;
     AReport.RandomAlgorithmVersion := WFC_RANDOM_ALGORITHM_VERSION;
     AReport.SolverAlgorithmVersion := WFC_SOLVER_ALGORITHM_VERSION;
     AReport.GraphModelVersion := WFC_GRAPH_MODEL_VERSION;
@@ -6475,7 +6875,7 @@ begin
     for I := 0 to Pred(FPasses.Count) do
       if ADirty[I] <> 0 then
       begin
-        BuildPassRandomState(I, FPasses[I].FRandomState);
+        BuildPassRandomState(I, AEffectiveSeed, FPasses[I].FRandomState);
         FPasses[I].FSeed := FSeed;
         FPasses[I].FSeedInitialized := True;
       end;

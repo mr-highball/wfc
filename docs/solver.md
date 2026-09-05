@@ -423,14 +423,19 @@ Shannon observation; graph-model version 1 adds explicit deny-all adjacency
 and caller-owned entry domains; pipeline version 2 adds acyclic dependency
 planning, named same-coordinate and signed-offset requirements, explicit
 finite any-of-neighborhood clauses, pass modes, and selective regeneration.
+The separate count-range extension bounds matching offsets or distinct
+provider cells over an explicit finite stencil; see [pass counts](pass-counts.md).
 Causal Trace v1 adds stable native/pas2js hashes and public inspection and
 validation helpers. Pass Negotiation v1 adds bounded full-pipeline
 chronological search over exact completed pass assignments with a separately
 versioned transcript. Selective Negotiation v1 adds a separately versioned,
 explicit descendant-closed repair horizon around that same search while
-keeping clean passes immutable. Automatic horizon expansion,
-conflict-directed or cell-minimal repair, restart policy, timing data,
+keeping clean passes immutable. The separate [restart coordinator](restarts.md)
+adds deterministic whole-transaction retries after local-budget exhaustion and
+optional diagnostic elapsed timing, leaving ordinary solve reports unchanged.
+Automatic horizon expansion, conflict-directed or cell-minimal repair,
+local-pass or selective restarts,
 interactive stepping, bounded or streaming trace capture, soft constraints,
-implicit radius/count/distance expressions, cyclic repair, richer failed-clause
+inferred neighborhoods and distance expressions, cyclic repair, richer failed-clause
 evidence, and minimal-unsatisfiable-core analysis remain roadmap work rather
 than hidden or partially specified behavior.

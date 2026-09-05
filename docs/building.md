@@ -7,7 +7,8 @@ text completion, three-pass text composition, exact music-score, music
 projection, Standard MIDI File,
 score-export, deterministic PCM/WAVE rendering, Music Studio,
 negotiated music variation/result replay, full and selective
-pass negotiation, canonical numeric text primitives, immutable authored-rule
+pass negotiation, count-range pass clauses, deterministic whole-transaction
+restarts and optional diagnostic timing, canonical numeric text primitives, immutable authored-rule
 models, declarative pipeline recipes, recipe-bound run artifacts, the closed
 pipeline compiler/runtime, immutable public result artifacts, strict run/result
 codecs, the recipe validator and pipeline runner applications, the canonical
@@ -22,7 +23,7 @@ variation, the four-pass learned-pattern world, and writes a checked seed-zero
 Building SVG artifact.
 It does not initialize the optional legacy music submodule or build the
 unfinished Castle Game Engine viewer. The 2D world, three-pass text workbench,
-Building 3D, Training Studio, and Music Studio have separate pas2js browser entry
+Building 3D, Training Studio, Music Studio, and Neighborhood Counts have separate pas2js browser entry
 points described below.
 
 FPC 3.2.2 is the supported stable compiler. The current FPC development
@@ -87,7 +88,9 @@ Both scripts rebuild with assertions and range, overflow, and I/O checks, run
 `wfc_learn_test`, `wfc_pattern2d_test`, `wfc_pattern2d_passes_test`,
 `wfc_sequence_test`,
 `wfc_text_test`, `wfc_text_passes_test`, `wfc_negotiation_test`,
-`wfc_selective_negotiation_test`, `wfc_voxel3d_test`,
+`wfc_selective_negotiation_test`, `wfc_restart_test`, `wfc_timing_test`,
+`wfc_restart_demo_test`, `wfc_pass_count_test`, `wfc_pipeline_count_test`,
+`wfc_count_demo_test`, `wfc_voxel3d_test`,
 `wfc_voxel3d_isometric_test`,
 `wfc_voxel3d_svg_test`, `wfc_building3d_test`,
 `wfc_building3d_view_test`, `wfc_midi_smf_test`,
@@ -114,7 +117,11 @@ dependency self-check, causal-trace inspector, bounded pass-negotiation proof,
 negotiated descendant repair, anchored text completion, three-pass text
 composition, negotiated music variation, the learned-pattern world, and
 depth-three Building 3D pipeline, all five Training Studio presets, and the
-Music Studio generation/repair/audio self-test. The 32-case Music Studio form
+Music Studio generation/repair/audio self-test. The Deterministic Restarts
+console host checks four policies, exact transcripts, independently sampled
+outputs, and failed-attempt rollback; its shared helper also runs in the
+portable browser conformance suite. See [restarts and timing](restarts.md).
+The 32-case Music Studio form
 probe is compared with its checked-in raw CSV;
 the FPC server also runs live HTTP integration checks, and the native
 `MusicStudioRender` process suite exercises requested durations, frame counts,

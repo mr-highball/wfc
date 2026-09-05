@@ -9,6 +9,7 @@ the [roadmap](../ROADMAP.md).
 | Music Studio | [music/05_MusicStudio](music/05_MusicStudio/README.md) | Native FPC, pas2js/browser | Original training phrases, public locks, selective negotiated repair, piano roll, project-owned PCM/WAV synthesis, user-initiated browser playback, and exact score/MIDI/WAV exports without a third-party runtime. |
 | Spatial pass constraints | `passes/01_SpatialDependencies/SpatialDependencies.lpr` | Native FPC | Solves terrain before settlement and foliage, checks exact-offset AND clauses plus finite any-neighbor OR clauses, contrasts bounded and wrapped edges, rejects an out-of-bounds probe, and replays portable signatures using only repository units and the standard RTL. |
 | Neighborhood counts | [passes/04_NeighborhoodCounts](passes/04_NeighborhoodCounts/README.md) | Native FPC, pas2js/browser | Composes terrain and roads into a local market probe with lower/upper count ranges, explicit matching-offset versus distinct-cell modes, flood rejection, bounded selective road repair, and stale-output invalidation. |
+| Deterministic restarts | [passes/05_DeterministicRestarts](passes/05_DeterministicRestarts/README.md) | Native FPC; shared browser conformance | Checks complete ordinary and negotiated attempts, effective seeds, fixed/capped-doubling budgets, rollback, independently sampled outputs, and replay transcripts. Optional timing is diagnostic only. |
 | Causal trace inspector | `passes/02_TraceInspector/TraceInspector.lpr` | Native FPC | Captures and validates a deterministic terrain -> settlement -> foliage transaction, prints its portable trace hash, pass slices, and all 27 events, then follows a rejected foliage candidate back to its settlement provider event. The host emits the same event stream using only repository units and the standard RTL. |
 | Bounded pass negotiation | `passes/03_PassNegotiation/PassNegotiation.lpr` | Native FPC | Proves ordinary one-way staging fails for `marsh`, then excludes that exact provider assignment and reopens terrain to commit `meadow|cottage` in two deterministic rounds. The host enforces the same counters and transcript using only repository units and the standard RTL. |
 | Multi-pass 2D world | `2D/01_MultiPassWorld/MultiPassWorld.lpr` | Native FPC | Uses the reusable 2D units, solves terrain → biome → foliage atomically, independently validates every cell/relation, and prints matching portable signatures without external dependencies. |
@@ -128,6 +129,13 @@ build/pass-negotiation/native/bin/PassNegotiation
 See the [pass-negotiation guide](passes/03_PassNegotiation/README.md) for the
 exact excluded assignment, bounded chronological behavior, portable goldens,
 and fail-fast self-check.
+
+The [Deterministic Restarts example](passes/05_DeterministicRestarts/README.md)
+adds a checked console host over one portable helper. Run
+`build/native/bin/RestartPolicies --selftest` after the native gate, or
+`--timing` for optional elapsed diagnostics. Its policies keep budget
+exhaustion distinct from terminal contradictions; they do not assert that
+restarts outperform a larger uninterrupted search.
 
 The standard Building 3D host uses a thin native entry point over the
 same depth-three Pascal demonstration unit:

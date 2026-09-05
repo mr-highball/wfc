@@ -318,6 +318,31 @@ case "$host_system" in
 esac
 "$count_demo_executable" --selftest || exit $?
 
+compiler_restart_demo_directory="$compiler_source_directory/../examples/passes/05_DeterministicRestarts"
+for restart_test_name in wfc_restart_test wfc_timing_test wfc_restart_demo_test; do
+  printf "Building the restart suite '%s'.\n" "$restart_test_name"
+  "$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
+    "-Fu$compiler_source_directory" "-Fu$compiler_restart_demo_directory" \
+    "-FU$compiler_unit_output_directory" "-FE$compiler_binary_output_directory" \
+    "$compiler_source_directory/../test/$restart_test_name.lpr" || exit $?
+  restart_test_executable="$binary_output_directory/$restart_test_name"
+  case "$host_system" in
+    CYGWIN*|MINGW*|MSYS*) restart_test_executable="${restart_test_executable}.exe" ;;
+  esac
+  printf "Running '%s'.\n" "$restart_test_executable"
+  "$restart_test_executable" || exit $?
+done
+printf 'Building and checking Deterministic Restarts.\n'
+"$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
+  "-Fu$compiler_source_directory" "-Fu$compiler_restart_demo_directory" \
+  "-FU$compiler_unit_output_directory" "-FE$compiler_binary_output_directory" \
+  "$compiler_restart_demo_directory/RestartPolicies.lpr" || exit $?
+restart_demo_executable="$binary_output_directory/RestartPolicies"
+case "$host_system" in
+  CYGWIN*|MINGW*|MSYS*) restart_demo_executable="${restart_demo_executable}.exe" ;;
+esac
+"$restart_demo_executable" --selftest || exit $?
+
 printf "Building the 2D ecosystem conformance suite.\n"
 "$compiler" "$@" \
   -B \

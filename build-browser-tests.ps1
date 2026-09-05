@@ -16,7 +16,10 @@ $web = Join-Path $outputRoot 'www'
 New-Item -ItemType Directory -Force -Path $units, $web | Out-Null
 $unitPaths = @('src','tools','examples/2D/common','examples/3D/common',
   'examples/2D/05_LearnedPatternWorld','examples/learning/05_TrainingStudio',
-  'examples/music/05_MusicStudio','examples/passes/04_NeighborhoodCounts') | ForEach-Object { '-Fu' + (Join-Path $repositoryRoot $_) }
+  'examples/music/05_MusicStudio','examples/passes/04_NeighborhoodCounts',
+  'examples/passes/05_DeterministicRestarts') | ForEach-Object {
+    '-Fu' + (Join-Path $repositoryRoot $_)
+  }
 foreach ($source in Get-ChildItem -LiteralPath (Join-Path $repositoryRoot 'test') -Filter '*_test.lpr') {
   if ($source.BaseName -in @('wfc_browser_dom_test','wfc_serve_test','wfc_music_render_process_test')) { continue }
   & $Compiler -B -Tbrowser -Mdelphi -Jc '-Jirtl.js' @unitPaths "-FU$units" "-FE$web" $source.FullName

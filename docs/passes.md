@@ -510,8 +510,10 @@ research work rather than implied properties.
 A failed legacy `Run` restores pass selection but is not a transaction over
 generated cell values. `TrySolve` and `TryRegenerateFrom` are transactional.
 The version-2 reference solver has a stable opt-in trace hash and a checked
-console inspector. It still has no restart policy or timing data. Trace v1 also
-does not provide interactive stepping, live domain snapshots, complete
+console inspector. The separate [restart coordinator](restarts.md) adds
+whole-transaction budget-limited retries and optional elapsed timing; it does
+not change ordinary or selective solving. Trace v1 still does not provide
+interactive stepping, live domain snapshots, complete
 failed-clause/minimal-core explanations, an event cap, or streaming capture.
 
 ## native FPC and pas2js
@@ -519,9 +521,11 @@ failed-clause/minimal-core explanations, an event cap, or streaming capture.
 The pass implementation and public callback types are written for both native
 FPC and pas2js. The same `TGraph`, `SwitchToPass`, `PassGraph`, `ForEachPass`,
 `DependsOn`, `TransformFrom`, `Run`, `TrySolve`, `TrySolveNegotiated`,
+`TrySolveRestarted`, `TrySolveNegotiatedRestarted`,
 `TryRegenerateFrom`, `TryRegenerateNegotiatedFrom`,
 `RequirePrevious`, `RequireFromPass`, `RequireFromPassAt`, and
-`RequireAnyFromPass` calls are used on both targets. `CaptureTrace`, portable
+`RequireAnyFromPass`, and `RequireCountFromPass` calls are used on both targets.
+`CaptureTrace`, portable
 trace hashes, full and selective negotiation transcript hashes, per-pass slices, and the
 `wfc_trace` query/validation helpers have matching native FPC and pas2js
 fixtures as well.

@@ -10,6 +10,13 @@ The full-pipeline `TrySolveNegotiated` path uses the same streams and adds a
 separately versioned chronological attempt transcript. Its replay contract is
 defined in [bounded pass negotiation](pass-negotiation.md).
 
+The opt-in [restart coordinator](restarts.md) keeps `Graph.Seed` as the caller's
+base identity and derives a separate effective seed for every whole-transaction
+attempt. It retries only local backtrack-limit exhaustion. Save the base seed,
+restart algorithm version, schedule, and budgets to replay the entire attempt
+history. Attempt reports name their effective seeds; optional elapsed timings
+are diagnostic and are deliberately excluded from deterministic identity.
+
 ```pascal
 var
   LGraph: TGraph;
@@ -61,13 +68,17 @@ A complete replay identity consists of:
   `WFC_SELECTIVE_NEGOTIATION_HASH_VERSION`, canonical requested-root indices,
   and the active descendant closure when using
   `TryRegenerateNegotiatedFrom`;
+- `WFC_RESTART_ALGORITHM_VERSION`, `WFC_RESTART_HASH_VERSION`, restart count
+  limit, budget schedule and cap, and the ordinary or negotiated attempt
+  options when using `TrySolveRestarted` or `TrySolveNegotiatedRestarted`;
 - `Seed`;
 - graph dimensions, wrapping, and run mode;
 - pass creation order;
 - values and rules in their original construction order, plus canonical
   pass-local weights for `TrySolve`;
 - caller locks and other model input; and
-- deterministic custom callback configuration for the legacy `Run` path.
+- deterministic custom hook and callback configuration, including legacy
+  `Run` callbacks and reference commit validators.
 
 Pass labels are not part of random-stream identity. Renaming a pass preserves
 its stream because the stable zero-based pass index is used instead. Appending

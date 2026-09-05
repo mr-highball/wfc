@@ -1,422 +1,181 @@
 # WFC
 
-WFC is a constraint-driven generation library written in Pascal for Free
-Pascal Compiler (FPC) and pas2js. It models user-defined values on a 2D or 3D
-graph, applies directional constraints, and supports dependency-planned passes
-whose rules and results remain separate.
+Constraint-driven generation in Pascal, for Free Pascal Compiler (FPC) and
+pas2js. Describe values, their allowed relationships, and the layers that
+depend on them. Generate terrain, then roads, housing, and foliage—or apply
+the same principle to structures, music, text, and other discrete designs.
 
-The pass system is the larger idea: generate terrain first, then foliage,
-roads, housing, or any other layer while constraining each stage from the
-result before it. The same approach can be specialized for world generation,
-modular 3D structures, music, text, and other discrete design problems.
+The original fluent API remains the center of the project. The portable
+implementation uses project-owned Pascal and the applicable compiler RTL;
+browser demos run compiled Pascal using standard browser APIs. The included
+FPC server hosts them locally.
 
-> **Project status:** the original API and greedy traversal solver remain
-> available. The opt-in reference solver now provides fixed-point propagation,
-> deterministic weighted Shannon-entropy observation, bounded backtracking,
-> explicit deny-all adjacency, caller-owned per-cell domains, structured
-> contradiction reports, atomic dependency-DAG pipelines, named cross-pass
-> constraints, selective descendant regeneration, and separately versioned
-> bounded whole-assignment pass negotiation on native FPC and pas2js. The
-> ordinary one-way solver retains its replay contract; negotiated solving keeps
-> one atomic Trace-v1 report per round and commits only final success. Selective
-> Negotiation v1 now restricts that search to canonical requested roots and
-> their exact descendant closure while preserving clean layers and random
-> streams. The first
-> specialized ecosystem now includes independently
-> validated terrain → biome → foliage and six-layer settlement worlds with
-> portable signatures; the former also has an interactive browser presentation
-> compiled from the same Pascal model. Deterministic training primitives learn cardinal
-> constraints and raw weights from ordered heterogeneous 1D/2D corpora, merge
-> compatible models, apply immutable results to a graph, and round-trip them
-> through a strict canonical text format. A second learner extracts weighted
-> overlapping 2D footprints, compiles exact structural overlap, captures
-> latent assignments, and independently validates projected token grids
-> through canonical `wfcp=1` artifacts. Pattern-Projected Pass Composition v1
-> now materializes wrapped pattern contributions as an exact public-token pass,
-> keeps learned weights solely on the latent layer, and validates the complete
-> representation boundary before atomic commit. The sequence foundation learns
-> bounded order-N models from pretokenized UTF-8 corpora, derives structural
-> suffix/prefix recombination, applies whole/prefix/suffix/fragment or derived
-> wrapped graph domains, composes latent and public-token passes in either
-> direction, and round-trips strict canonical `wfcs=1` artifacts. The text
-> foundation adds project-owned Unicode-scalar tokenization, atomic prefix,
-> suffix, mask, and locked-span constraints, exact globally feasible token
-> domains, anchored infill, prefix-only continuation, and independent text
-> validation on native FPC. Text Pass Composition v1 adds a
-> persistent structure -> lexical -> punctuation owner, atomic multi-source
-> projection maps, exact surface fragments, independent cross-layer
-> validation, sanitized public traces, selective regeneration, and one shared
-> native/browser fixture. Music Foundation v1 adds an exact
-> integer score IR, canonical melody/rhythm/harmony cells, two-source latent
-> pass projection, strict `wfcmusic=1` score text, a project-owned SMF
-> format-0/1 codec, and a format-0 score exporter. Its portable three-pass
-> example runs on native FPC without a playback dependency.
-> Music Negotiated Variation v1 promotes that path into a reusable persistent
-> harmony -> rhythm -> melody owner with public-token constraints and motif
-> locks, immutable validated compositions, ordinary and bounded negotiated
-> full/selective regeneration, portable public signatures, and strict
-> `wfcmusicpass=1` result replay.
-> Portable Recipe Foundation v1 adds an immutable rank-1/2/3 authored-rule
-> model with explicit denials and required directions, strict `wfcrules=1`
-> text, and an immutable `wfcpipeline=1` recipe that owns canonical model,
-> rules, pattern, and sequence resources. Recipes validate version pins,
-> topology, pass visibility, the complete dependency DAG, typed projection
-> bridges, public vocabularies, provenance, and signed-offset token
-> requirements before any runtime graph exists.
-> Portable Pipeline Execution v1 compiles those recipes into fresh transactional
-> graphs, resolves caller locks and domains through transform aliases, and runs
-> deterministic one-way or bounded negotiated solves. Strict canonical
-> `wfcpipeline-run=1` and `wfcpipeline-result=1` artifacts preserve provenance,
-> options, reports, public layers, and failed outcomes across native FPC and
-> pas2js. Runtime v2 lowers public Pattern2D and Sequence locks and
-> domains back into bounded private source domains while retaining bridge-v1
-> forward-only replay. Shared Pascal application units power a recipe validator and a
-> headless recipe-plus-run executor; their native hosts contain only
-> bounded file, standard-stream, and process plumbing.
-> Portable Training v1 adds editable pretokenized `wfclearn=1` corpora and a
-> shared native learner host for cardinal, pattern, and sequence models.
-> Generated executable recipes retain source/license labels and ordered sample
-> fingerprints; four checked bundles cover source through solved output.
-> Training Studio adds a shared editable-workspace owner, an explicit
-> Unicode-scalar raw-text bridge, and a pas2js workbench for training, seeded
-> solving, public locks, failure inspection, and artifact export. Its native
-> demonstrations independently check five matching presets.
-> Pipeline v2 adds exact signed-offset and finite any-of-neighborhood reads
-> across staged provider passes. Causal Trace v1 adds opt-in chronological
-> decision/removal/backtrack evidence, provider-pass cause links, per-pass
-> slices, portable versioned hashes, structural validation/query helpers, and
-> a shared native/pas2js console inspector. Voxel Foundation v1 adds immutable
-> rotation-aware prototypes, explicit six-face socket compatibility, vertical
-> support, captured scenes, independent validation, and renderer-neutral
-> integer surface meshes. Building 3D v1 now composes a full depth-aware
-> footprint -> structure -> envelope/roof -> props DAG through checked public
-> prototype maps, validates the result independently, and runs the same
-> textual/mesh demonstration on native FPC. Its project-owned
-> presentation layer adds immutable four-pass face lineage, fixed-integer
-> four-yaw isometric commands, stable painter ordering and hit testing,
-> deterministic native SVG, and an interactive pas2js/Canvas2D workbench with
-> an exact seeded browser fixture.
+**Status:** an expanding 0.x ecosystem, not a finished 1.0 release. The core
+supports deterministic propagation, weighted observation, backtracking,
+transactional pass DAGs, selective regeneration, and bounded pass negotiation.
+Count-range clauses and opt-in deterministic restarts extend those contracts
+without changing existing replay behavior. Domain libraries, learners,
+portable artifacts, native tools, and six interactive browser demos are
+implemented and tested. The [roadmap](ROADMAP.md) records the remaining work
+and explicit exit gates.
 
-## Features
+## Start here
 
-- 2D and 3D graph topology with optional wrapped boundaries
-- fluent rules over caller-defined string values
-- compatibility-preserving wildcard rules plus explicit directional deny-all
-- caller-owned, pass-local per-cell domains with canonical value ordering
-- required directional rules and selection/invalid-state callbacks
-- stable, labeled, zero-based passes with isolated values, rules, and outputs
-- deterministic dependency-DAG execution with stable creation-index tie breaks
-- explicit legacy, overlay, and transform pass modes
-- named same-coordinate, exact-offset, and finite any-of-neighborhood
-  cross-pass constraints with selective descendant-only regeneration
-- inclusive cross-pass count ranges with explicit matching-offset or
-  distinct-provider-cell modes, zero-count absence, and portable recipes
-- transactional full and selective solves with selected-pass restoration
-- compatibility-preserving empty-pass copying and previous-pass constraints
-- explicit pipeline seeds with stable, independent per-pass random streams
-- an opt-in propagating solver with positive relative weights, deterministic
-  fixed-point Shannon entropy, exact unit-weight MRV compatibility, and bounded
-  backtracking
-- atomic staging, independent validation, and structured execution reports
-- opt-in bounded chronological negotiation over exact completed pass
-  assignments, with distinct local/pass budgets and atomic rounds
-- versioned negotiation attempt transcripts with copied exact exclusions,
-  portable hashes, and matching native/pas2js fixtures
-- separately versioned selective negotiation over an explicit descendant-closed
-  repair horizon, with canonical scope arrays and clean-pass/RNG preservation
-- opt-in causal traces covering caller filters, decisions, propagation,
-  contradictions, backtracking, pass staging/skipping, and pipeline commit or
-  rollback
-- versioned portable trace hashes, per-pass event slices, public query and
-  validation helpers, and matching native/pas2js trace fixtures
-- typed 2D terrain/biome/foliage and selective-settlement libraries with
-  independent semantic checkers
-- versioned, fixed-token 2D layer signatures shared by native FPC and pas2js
-- matching seeded golden fixtures on native FPC
-- an interactive browser world with synchronized layers, locks, and a seeded
-  headless-browser conformance fixture
-- immutable, versioned one-layer model data shared by native FPC and pas2js
-- deterministic first-seen learning for ordered heterogeneous tokenized 1D/2D
-  corpora with independent open or wrapped boundaries and explicit D4
-  augmentation
-- checked deterministic merging of compatible learned models without inventing
-  cross-sample seam relations
-- strict canonical `.wfcm` text with UTF-8 percent encoding and byte-exact
-  decode/re-encode validation
-- immutable rank-1/2/3 hand-authored local rules with positive weights,
-  legacy wildcards, explicit deny-all directions, required support, exact
-  reciprocal closure, fresh-pass adaptation, and strict `wfcrules=1` text
-- immutable `wfcpipeline=1` recipes with owned canonical typed resources,
-  closed adapter and bridge kinds, explicit acyclic dependencies, static
-  public vocabularies, provenance, version pins, fixed resource/complexity
-  limits, and exact decode/re-encode validation
-- fresh transactional compilation of portable recipes, including typed
-  resource adapters, materializing projection bridges, public requirements,
-  independent commit validators, and definition-surface verification
-- immutable `wfcpipeline-run=1` invocations and `wfcpipeline-result=1` outcomes
-  with strict canonical text, complete provenance, deterministic replay,
-  structured failures, public-only layers, and fixed allocation/encoding limits
-- transform-alias-aware public locks and domains with exact intersection,
-  deterministic bridge-v2 inverse lowering into private Pattern2D and Sequence
-  states, pre-publication conflict detection, and project-owned bounded lookup,
-  sorting, and intersection shared by native FPC and pas2js
-- a committed LearnedPatternWorld recipe/run/result bundle that constrains the
-  private learned terrain model exclusively through eight public bridge-v2
-  locks and reproduces all three established seed-zero public layer hashes
-- dependency-free recipe-validation and headless-execution application units
-  with thin native command-line hosts and documented exit contracts
-- deterministic overlapping 2D pattern extraction with heterogeneous corpora,
-  open/wrapped sources, square-footprint D4 augmentation, structural
-  compatibility, explicit latent-to-token projection, and strict `.wfcp`
-  replay artifacts
-- wrapped same-shape pattern-to-public pass composition with one exact clause
-  per footprint coordinate, unit-weight public values, independent commit-time
-  validation, and a reusable two-pass owner
-- deterministic bounded sequence learning with typed BOS history, raw counts,
-  order-N latent states, structural suffix/prefix recombination, explicit
-  public-token projection, and strict canonical `wfcs=1` artifacts
-- whole, prefix, suffix, fragment, and cycle sequence extents with atomic bulk
-  token masks and exact forward/backward public-domain analysis
-- project-owned Unicode-scalar tokenization across native UTF-8 and pas2js
-  UTF-16, caller-defined tokenizer learning, anchored text infill, deterministic
-  prefix continuation, and independent token/text validation
-- a reusable three-pass text owner with stable structure, lexical, and
-  punctuation layers; direct two-provider surface constraints; exact versioned
-  fragments; public-token causal traces; atomic failure/recovery; and an
-  interactive pas2js workbench
-- atomic N-source sequence projection bundles with complete preflight, OR
-  alternatives inside each provider map, and AND semantics across providers
-- immutable exact music scores with complete per-voice timelines and exact
-  meter-boundary validation
-- strict `wm1` melody, `wr1` rhythm, and `wh1` harmony cells with lossless
-  aligned monophonic projection and rebuild
-- rhythm + harmony -> melody pass composition through public-token maps over
-  private latent sequence states
-- a reusable persistent music-pass owner with public motif locks, atomic
-  ordinary regeneration, bounded full/selective negotiated repair, independent
-  validation, immutable score capture, and portable public signatures
-- strict canonical `wfcmusic=1` score text, a project-owned SMF format-0/1
-  byte codec, and deterministic format-0 score export
-- strict canonical `wfcmusicpass=1` public composition results with no latent
-  graph keys or external runtime dependency
-- project-owned fixed-point PCM16 synthesis and canonical RIFF/WAVE export,
-  shared by native FPC and pas2js with matching byte identities
-- an interactive Music Studio with public motif/cell locks, selective
-  negotiated repair, a piano roll, stale-output invalidation, and browser
-  playback; native hosts export the same score, MIDI, and WAV
-- [immutable voxel kits](docs/voxel3d.md) with deterministic yaw variants,
-  explicit socket relations, support-aware six-direction graph compilation,
-  portable scene signatures, independent connectivity validation, and integer
-  quad meshes
-- [multi-pass Building 3D](docs/building3d.md) with typed 3D massing
-  blueprints, private-key-safe voxel projection maps, target-yaw spatial
-  clauses, supported structure, facade/roof and prop overlays, independent
-  validation, selective regeneration, and matching native/pas2js output
-- immutable Building presentation modes with complete public same-cell pass
-  lineage and exact structure/prop mesh composition
-- project-owned signed fixed-subcell isometric commands with checked integer
-  projection, four camera yaws, explicit stable painter sorting, reverse hit
-  testing, auto-fitted bounds, and portable view signatures
-- deterministic native SVG with public polygon metadata and an interactive
-  pas2js Canvas2D Building workbench with seed, selective-regeneration, view,
-  Z-clip, picking, and lineage controls
-- iterative traversal without a graph-sized call stack
-- extension hooks for custom graph and entry behavior
-- one Pascal core for native FPC and pas2js
+| What you want | Where to start |
+| --- | --- |
+| Understand and author passes | [Pass basics](docs/passes.md), [dependency DAGs](docs/pass-dags.md) |
+| Build and run locally | [Build guide](docs/building.md), [FPC development tools](docs/development-tools.md) |
+| Try an interactive demo | [Demo table below](#demos), [complete examples index](examples/README.md) |
+| Learn models from examples | [Learning](docs/learning.md), [training documents and CLI](docs/training.md) |
+| Save and replay a pipeline | [Portable recipes, runs, and results](docs/pipeline-artifacts.md) |
+| Extend or evaluate the system | [Roadmap](ROADMAP.md), [research records](docs/research/pass-negotiation-v1.md) |
 
-## Basic use
+## A small pass-based program
+
+This program generates land/water, then chooses a compatible foliage value
+at every coordinate. Each pass owns its own values and rules; foliage reads
+terrain through an explicit named requirement.
 
 ```pascal
-uses
-  SysUtils,
-  wfc;
+program TwoPasses;
+
+{$mode delphi}{$H+}
+
+uses SysUtils, wfc;
 
 var
   Graph: TGraph;
   Options: TGraphSolveOptions;
   Report: TGraphSolveReport;
 begin
-  Graph := TGraph.Create.Reshape(5, 5, 1);
+  Graph := TGraph.Create;
   try
-    Graph.AddValue('A')
-      .NewRule(AllDirections, ['A', 'B']);
+    Graph.Seed := 42;
+    Graph.Reshape(16, 12, 1);
+    Graph.WrapNeighbors := False;
 
-    Graph.AddValue('C')
-      .NewRule([gdNorth, gdSouth], ['A', 'B']);
+    Graph.CurrentPass := 'terrain';
+    Graph.PassMode := gpmOverlay;
+    Graph.AddValue('land');
+    Graph.AddValue('water');
+
+    Graph.SwitchToPass('foliage');
+    Graph.PassMode := gpmOverlay;
+    Graph.AddValue('grass').RequireFromPass('terrain', 'land');
+    Graph.AddValue('reeds').RequireFromPass('terrain', 'water');
 
     Options := DefaultGraphSolveOptions;
     if not Graph.TrySolve(Options, Report) then
       raise Exception.CreateFmt('WFC failed in pass %d',
         [Report.FailedPassIndex]);
+
+    WriteLn(Graph.PassGraph[0].Entry[0, 0, 0].Value);
+    WriteLn(Graph.PassGraph[1].Entry[0, 0, 0].Value);
   finally
     Graph.Free;
   end;
-end;
+end.
 ```
 
-For a complete terrain-to-foliage pipeline, including `SwitchToPass`,
-`PassGraph`, and `RequirePrevious`, see [pass-system semantics](docs/passes.md).
-For dependency roles, pass modes, `RequireFromPassAt`,
-`RequireAnyFromPass`, boundary behavior, topological execution, and selective
-regeneration, see [pass DAGs](docs/pass-dags.md).
-For inclusive neighborhood counts, zero-count absence, explicit wrapped-alias
-modes, and portable count recipes, see [finite pass counts](docs/pass-counts.md)
-and the [Neighborhood Counts workbench](examples/passes/04_NeighborhoodCounts/README.md).
-For the reference algorithm, atomicity contract, reports, and exact constraint
-semantics, see the [reference solver](docs/solver.md).
-For full-pipeline chronological reopening, separate local and pass budgets,
-attempt reports, exact assignment exclusions, replay, and current complexity
-limits, see [bounded pass negotiation](docs/pass-negotiation.md).
-For bounded negotiation inside an explicit descendant closure, canonical root
-and active arrays, clean-pass ownership, outer transcript identity, and the
-non-minimal repair boundary, see
-[selective pass negotiation](docs/selective-negotiation.md).
-The self-checking
-[negotiated-repair example](examples/2D/04_NegotiatedRepair/README.md)
-contrasts a too-narrow leaf horizon with a successful provider-root repair on
-native FPC.
-For `CaptureTrace`, event/cause semantics, per-pass slices, stable hashes,
-query/validation helpers, current limits, and the console inspector, see
-[causal solve traces](docs/traces.md).
-For exact replay behavior, callback requirements, and algorithm versioning,
-see [deterministic generation](docs/determinism.md).
-For the reusable world model, typed locks, validator, signatures, and console
-and browser demonstrations, see the [2D ecosystem](docs/world2d.md).
-For learned frequencies and adjacency, immutable model data, graph adaptation,
-the `.wfcm` format, and exact replay inputs, see
-[model learning and priming](docs/learning.md).
+Save this as `TwoPasses.lpr`. Once the native build below has created its
+output directories, compile it with
+`fpc -Mdelphi -Fusrc -FUbuild/native/units -FEbuild/native/bin TwoPasses.lpr`.
+The [build guide](docs/building.md) also covers isolated builds, FPM, and the
+runtime-only Lazarus package.
 
-To train without writing a Pascal program, start with the editable
-[training documents and wfc-learn](docs/training.md) workflow and its
-[four replayable examples](examples/learning/04_TrainingDocuments/README.md).
-The [Training Studio](examples/learning/05_TrainingStudio/README.md) adds an
-interactive browser workflow over the same Pascal owner, with explicit
-stale-artifact invalidation and raw-text import.
-For hand-authored rank-1/2/3 rules, declarative multi-resource pipeline recipes,
-run/result artifacts, runtime alias semantics, and the portable command-line
-contracts, see [portable pipeline artifacts](docs/pipeline-artifacts.md).
-For multi-cell extraction, structural overlap, latent assignment, projection,
-independent validation, and the `.wfcp` format, see
-[overlapping 2D patterns](docs/patterns.md).
-The self-checking
-[learned-pattern world](examples/2D/05_LearnedPatternWorld/README.md) connects
-that latent model to public terrain, foliage, and structure in one four-pass
-native/pas2js pipeline and now includes canonical recipe, run, and result
-artifacts driven through public terrain locks; its exact hypothesis and
-nonclaims are in the
-[Pattern-Projected Pass Composition v1 record](docs/research/pattern-projected-passes-v1.md).
-For bounded order-N learning, typed BOS boundaries, open and derived wrapped
-generation, pass projection, and canonical `wfcs=1` text, see
-[sequence models](docs/sequences.md).
-For Unicode-scalar learning, exact token-domain analysis, prefix/suffix and
-interior locks, deterministic infill, the three-pass text owner and browser
-workbench, validation, and current non-LLM scope, see
-[text constraint completion](docs/text.md).
-For the exact score model, fixed-quantum cells, music pass projection,
-public motif locks and negotiated variation, `wfcmusic=1` and
-`wfcmusicpass=1`, Standard MIDI Files, and the optional playback boundary, see the
-[music foundation](docs/music.md).
+Directional rules express same-layer adjacency. Named requirements can read
+the same coordinate, a signed offset, any matching declared neighbor, or an
+inclusive [count range](docs/pass-counts.md). Explicit modes distinguish
+matching offsets from distinct provider cells when wrapped offsets alias.
 
-For audible output and an interactive composition/repair workflow, start with
-[Music Studio](examples/music/05_MusicStudio/README.md) and the
-[Music Audio API](docs/music-audio.md). The standard path uses project-owned
-Pascal synthesis and original training phrases, with no playback library or
-sample-pack dependency.
-For user-defined composition duration, bounded-memory section generation,
-and full-length streamed WAVE/RF64 export, see
-[music arrangements](docs/music-arrangement.md). For explicit-policy MIDI
-score import and caller-selected training excerpts, see
-[music import and training](docs/music-import.md).
-For the reusable footprint-to-props building owner, voxel pass bridge,
-validation, capture, signatures, immutable graphical commands, native SVG,
-and depth-three browser workbench, see
-[Building 3D](docs/building3d.md).
+Ordinary solving follows `prepare → solve → validate → commit`. A failed
+reference transaction restores its previous entries and random streams.
+[Selective regeneration](docs/pass-dags.md) reopens an explicit descendant
+closure; [negotiation](docs/pass-negotiation.md) may revisit complete upstream
+assignments within a separate budget. [Restarts](docs/restarts.md) retry local
+backtrack exhaustion with versioned effective seeds. None implies a global
+optimum, minimal edit, or a proof that every budget-limited model is impossible.
 
-## Build and test
+## Demos
 
-Run the checked native build and conformance suite from the repository root:
+Every standard demo uses repository code and licensed source material.
+The native and browser hosts share Pascal generation and validation code.
+
+| Domain | Native presentation | Interactive pas2js demo |
+| --- | --- | --- |
+| 2D worlds | Typed terrain, biome, foliage; settlement and repair examples | [2D Pass Workbench](examples/2D/02_BrowserWorld/README.md) |
+| 3D buildings | Validated multi-floor geometry and deterministic SVG | [Building 3D](examples/3D/03_BrowserBuilding/README.md) |
+| Text | Structure → lexical → punctuation composition | [Text Pass Workbench](examples/text/03_PassComposition/README.md) |
+| Music | Score, MIDI, WAV, streamed arrangements, import/training tools | [Music Studio](examples/music/05_MusicStudio/README.md) |
+| Training | Editable corpora → models → recipes → validated results | [Training Studio](examples/learning/05_TrainingStudio/README.md) |
+| Pass counts | Lower/upper bounds, wrapped aliases, scoped repair | [Neighborhood Counts](examples/passes/04_NeighborhoodCounts/README.md) |
+
+Music Studio accepts user-defined composition duration and streams newly
+solved sections with bounded memory. There is no fixed minute cap; numeric
+capacity, storage, and local search constraints still apply. Its current
+arranger remains monophonic. See [arrangements](docs/music-arrangement.md)
+and [MIDI import and selected-excerpt training](docs/music-import.md).
+
+The [examples index](examples/README.md) includes exact commands, fixtures,
+additional console experiments, and the status of isolated legacy demos.
+
+## Build, test, and host
+
+Run the checked native build and conformance suite:
 
 ```powershell
 .\build.ps1
 ```
 
 ```bash
-./build.sh
+bash ./build.sh
 ```
 
-Both entry points compile with checked FPC options, keep all output under
-`build/`, run the core, 2D ecosystem, selective-settlement, radius-one
-learning, overlapping-pattern, pattern-pass composition, sequence,
-text-completion, text-pass, authored-rule and portable pipeline recipe,
-compile, run, result, runtime, validator, runner, and training artifacts,
-score/cell, music-graph, music-pass, music-result-codec, SMF, score-to-MIDI,
-voxel, Building 3D, and
-causal-trace, pass-negotiation, selective-negotiation, and core/portable/demo
-count-constraint suites,
-smoke-test the portable console examples—including the bounded/wrapped spatial
-dependency, causal-trace inspector, bounded pass-negotiation proof, negotiated
-2D repair, anchored text infill, three-pass text composition, negotiated music
-variation, learned-pattern four-pass world, and depth-three building
-proofs—compile and smoke-test the native portable command-line hosts, check
-real-process training/validation/replay against exact fixtures, compile the
-fixed-integer isometric, SVG, and Building-view suites, write a deterministic
-seed-zero Building SVG, and preserve failure exit codes.
-The repository also includes an FPM package, a runtime-only Lazarus package,
-and the same conformance sources for pas2js. Separate `build-browser.ps1`
-and `build-browser.sh` entry points stage the interactive 2D world;
-`build-browser-text.ps1` and `build-browser-text.sh` stage the text pass
-workbench; and `build-browser-building3d.ps1` and
-`build-browser-building3d.sh` stage the Building workbench. None of the
-staging entry points commits generated JavaScript. The additional
-`build-browser-training.ps1` and `build-browser-training.sh` entry points
-stage Training Studio with editable corpora, raw-text import, and artifact
-exports; its native presets use the same workspace.
-`build-browser-counts.ps1` and `build-browser-counts.sh` stage the finite
-neighborhood workbench; its shared native host is smoke-tested with
-`NeighborhoodCounts --selftest`.
-See [building and testing](docs/building.md) for compiler overrides, package
-commands, output paths, and pas2js setup. The
-[Building graphical guide](examples/3D/03_BrowserBuilding/README.md) records
-its native command, controls, and seed-zero pipeline `1:F1EF0EB6`, view
-`AC7290C0`, `140`-face browser contract.
+Both scripts preserve nonzero failure exits and place build output under
+`build/`. The maintained gate covers the core, domain validators, learners,
+artifact codecs, native tools, and console demonstrations. Portable
+conformance sources also compile and execute in real browsers.
 
-The core, specialized units, conformance suites, portable examples—including
-the pass-composed and negotiated-variation music examples—and building-kit
-console need no submodule.
-Only the two legacy music playback experiments require Lazarus/LCL, SDL2, and
-the optional GPL-3.0 SoundShop submodule; they are isolated from the
-dependency-free MIT build path. See the [examples index](examples/README.md)
-for exact status and commands.
+For example, build and host Music Studio using the included FPC server:
 
-The portable foundation is project-owned Pascal. Whenever a capability can
-reasonably be implemented here instead of adding a library, the project
-implements and maintains its own FPC/pas2js version; when that choice is
-debatable, project-owned Pascal is the default. Core and runtime units depend
-only on repository units and the applicable standard FPC/pas2js RTL. Engines,
-native window systems, and media backends may be optional edge adapters, and
-development tools may assist builds, tests, conversion, or inspection, but
-none may leak into
-core/runtime APIs or define canonical algorithms, models, artifacts,
-validation, or replay behavior.
-The complete admission rules and optional-adapter boundary are recorded in the
-[dependency policy](docs/dependencies.md).
+```powershell
+.\build-browser-music.ps1 -Compiler 'C:/path/to/pas2js.exe'
+.\build\native\bin\wfc_serve.exe --root build/browser/music/www --port 4177
+```
 
-## Direction
+The shell equivalents are `bash ./build-browser-music.sh` and
+`build/native/bin/wfc_serve --root build/browser/music/www --port 4177`.
+Set `PAS2JS` to your compiler path when it is not on `PATH`.
+Open `http://127.0.0.1:4177/`; stop the foreground server with Ctrl+C.
 
-The [roadmap](ROADMAP.md) covers the remaining reference-solver work, richer
-pass composition, conflict-directed and partial-nogood negotiation research,
-interactive trace stepping and domain views, richer failed-clause/minimal-core
-explanations, trace streaming, higher-dimensional and
-cross-pass learning, richer validation and inspection tools,
-2D/3D/music/text ecosystems, pas2js
-playgrounds, reproducible research, documentation, and release provenance.
-Current examples are indexed under [examples](examples/README.md).
+The [build guide](docs/building.md) covers all six browser staging scripts,
+compiler versions and overrides, package builds, and CI.
+The [development-tool guide](docs/development-tools.md) covers the FPC server,
+browser evidence checker, and browser conformance runner. Generated browser
+code is build output, not a second hand-maintained implementation.
+
+## Framework guides
+
+| Area | Contracts and APIs |
+| --- | --- |
+| Solver and replay | [Reference solver](docs/solver.md), [determinism](docs/determinism.md), [restarts and timing](docs/restarts.md) |
+| Pass composition and diagnosis | [DAGs](docs/pass-dags.md), [counts](docs/pass-counts.md), [negotiation](docs/pass-negotiation.md), [selective negotiation](docs/selective-negotiation.md), [causal traces](docs/traces.md) |
+| Learned representations | [Cardinal models](docs/learning.md), [overlapping patterns](docs/patterns.md), [sequences](docs/sequences.md), [training](docs/training.md) |
+| Spatial domains | [2D worlds](docs/world2d.md), [voxels](docs/voxel3d.md), [Building 3D](docs/building3d.md) |
+| Music and text | [Exact music model](docs/music.md), [audio](docs/music-audio.md), [arrangements](docs/music-arrangement.md), [import](docs/music-import.md), [text completion](docs/text.md) |
+| Portable workflow | [Pipeline artifacts and tools](docs/pipeline-artifacts.md), [dependency policy](docs/dependencies.md) |
+
+The remaining work includes richer polyphonic/harmonic generation, larger
+spatial topologies, interactive domain/trace inspection, stronger repair
+strategies, more importers, and complete release/provenance tooling.
+Research claims must have reproducible fixtures and counterexamples; the
+current pass-negotiation baseline does not claim greater efficiency than an
+equivalent flattened model.
 
 ## License
 
-WFC is released under the [MIT License](LICENSE).
-
-**Tip jar**
-
-- BTC: `bc1q55qh7xptfgkp087sfr5ppfkqe2jpaa59s8u2lz`
-- LTC: `LPbvTsFDZ6EdaLRhsvwbxcSfeUv1eZWGP6`
+Project-authored source is under the [MIT license](LICENSE). The standard
+runtime and demos use project-owned implementations and the applicable
+compiler RTL. External engines and legacy media adapters remain optional,
+isolated, and subject to their own licenses; see the
+[dependency policy](docs/dependencies.md) and [examples index](examples/README.md).

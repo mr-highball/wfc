@@ -239,6 +239,65 @@ $countDemoName = if ($env:OS -eq 'Windows_NT') { 'NeighborhoodCounts.exe' } else
 & (Join-Path $binaryOutputDirectory $countDemoName) --selftest
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+$restartDemoDirectory = Join-Path $repositoryRoot `
+  'examples/passes/05_DeterministicRestarts'
+foreach ($restartTestName in @(
+    'wfc_restart_test',
+    'wfc_timing_test',
+    'wfc_restart_demo_test')) {
+  $restartTestArguments = @(
+    $CompilerOptions
+    '-B'
+    '-Mdelphi'
+    '-Sa'
+    '-Cr'
+    '-Co'
+    '-Ci'
+    "-Fu$sourceDirectory"
+    "-Fu$restartDemoDirectory"
+    "-FU$unitOutputDirectory"
+    "-FE$binaryOutputDirectory"
+    (Join-Path $repositoryRoot "test/$restartTestName.lpr")
+  )
+  Write-Host "Building the restart suite '$restartTestName'."
+  & $Compiler @restartTestArguments
+  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+  $restartTestExecutableName = if ($env:OS -eq 'Windows_NT') {
+    "$restartTestName.exe"
+  } else {
+    $restartTestName
+  }
+  $restartTestExecutable = Join-Path $binaryOutputDirectory `
+    $restartTestExecutableName
+  Write-Host "Running '$restartTestExecutable'."
+  & $restartTestExecutable
+  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+}
+$restartDemoArguments = @(
+  $CompilerOptions
+  '-B'
+  '-Mdelphi'
+  '-Sa'
+  '-Cr'
+  '-Co'
+  '-Ci'
+  "-Fu$sourceDirectory"
+  "-Fu$restartDemoDirectory"
+  "-FU$unitOutputDirectory"
+  "-FE$binaryOutputDirectory"
+  (Join-Path $restartDemoDirectory 'RestartPolicies.lpr')
+)
+Write-Host 'Building and checking Deterministic Restarts.'
+& $Compiler @restartDemoArguments
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+$restartDemoName = if ($env:OS -eq 'Windows_NT') {
+  'RestartPolicies.exe'
+} else {
+  'RestartPolicies'
+}
+& (Join-Path $binaryOutputDirectory $restartDemoName) --selftest
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
 $worldTestCompilerArguments = @(
   $CompilerOptions
   '-B'

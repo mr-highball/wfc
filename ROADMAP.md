@@ -38,6 +38,10 @@ The repository already contains the beginnings of the ecosystem:
   propagation, deterministic fixed-point weighted Shannon entropy, an exact
   unit-weight minimum-domain path, bounded chronological backtracking,
   independent final validation, and structured per-pass reports;
+- opt-in [whole-transaction restart policies](docs/restarts.md) for ordinary
+  and negotiated solving, with deterministic effective seeds, fixed or capped
+  doubling of local budgets, unchanged caller seed identity, separate attempt
+  transcripts, and optional diagnostic elapsed timing;
 - atomic reference-solver staging across full and selectively regenerated pass
   closures, including locks, named dependencies, definitionless-pass behavior,
   skipped-layer preservation, and rollback on any failed descendant;
@@ -171,16 +175,17 @@ The repository already contains the beginnings of the ecosystem:
 It is not yet the finished system described above:
 
 - the version-2 reference solver now supports scale-canonical integer weights,
-  explicit zero-support adjacency, and caller-owned per-cell domains, but
-  deterministic restarts, timing, more scalable domain representations,
-  richer failed-clause/minimal-core explanations, interactive stepping, and
-  bounded or streaming trace capture remain to be built;
+  explicit zero-support adjacency, and caller-owned per-cell domains. Separate
+  whole-transaction restart policies add local-budget recovery and elapsed
+  timing, but more scalable domain representations, local-pass or selectively
+  scoped restart policies, richer failed-clause/minimal-core explanations,
+  interactive stepping, and bounded or streaming trace capture remain;
 - pass DAGs, named overlay layers, same-coordinate and exact signed-offset
   requirements, finite any-of-neighborhood reads, selective regeneration, and
   structured dependency diagnostics are now operational; sequence maps now
   provide atomic N-source bridges between unlike public vocabularies, and the
   first bounded acyclic full and selectively scoped backward-negotiation
-  baselines now exist; implicit radius/count/distance expressions, automatic
+  baselines now exist; inferred neighborhoods and distance expressions, automatic
   or minimal repair-horizon selection, conflict-directed or cyclic repair, and
   general cross-representation projection schemas beyond the exact wrapped
   pattern and sequence adapters remain to be designed;
@@ -295,9 +300,15 @@ integer weights, deterministic Q16 Shannon observation with an exact
 unit-weight minimum-remaining-values path, locks, bounded backtracking,
 structured contradictions, independent validation, atomic pass staging,
 explicit deny-all directions, and pass-local caller domain masks.
-Phase 1 stays open until deterministic restarts and timing satisfy the remaining
-exit-gate work below. Causal Trace v1 now satisfies the native/pas2js stable
-trace-hash parity portion.
+The opt-in restart coordinator retries only local backtrack-limit exhaustion,
+using fixed or capped-doubling budgets and separately versioned seed derivation.
+Its attempt-zero contract preserves ordinary and negotiated replay; diagnostic
+elapsed timing never influences search or portable hashes. This supplies the
+restart/timing path without changing the existing solve-options record.
+Causal Trace v1 supplies the native/pas2js stable trace-hash parity contract.
+Phase completion still requires the full exit-gate evidence below; local-pass
+restarts, selective restart horizons, and wall-clock cancellation are not
+implied by this whole-transaction feature.
 
 ### Deliverables
 
@@ -641,8 +652,9 @@ harmonies meet the selected model's constraints, semantic score/MIDI
 round-trips are tested, native and web agree on the event list, audio
 presentations consume the same validated result, and the standard demo has no
 required GPL dependency. Foundation v1, Negotiated Variation v1, and Music
-Studio satisfy important parts of this gate, including a browser UI and
-portable audible output, but not the importer or polyphonic/harmonic breadth.
+Studio satisfy important parts of this gate, including a browser UI, portable
+audible output, and explicit-policy semantic MIDI import, but not the full
+polyphonic/harmonic breadth or expressive-performance learning.
 
 ### Text and sequences
 

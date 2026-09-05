@@ -25,6 +25,7 @@ begin
       PathDelim + '$(target)');
     P.SourcePath.Add('src');
     P.Targets.AddUnit('wfc_solver_reference.pas');
+    P.Targets.AddUnit('wfc_timing.pas');
     P.Targets.AddUnit('wfc.pas');
     P.Targets.AddUnit('wfc_trace.pas');
     P.Targets.AddUnit('wfc_model.pas');

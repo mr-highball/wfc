@@ -8,7 +8,8 @@ unit wfc_package;
 interface
 
 uses
-  wfc_solver_reference, wfc, wfc_trace, wfc_model, wfc_learn, wfc_model_text,
+  wfc_solver_reference, wfc_timing, wfc, wfc_trace, wfc_model, wfc_learn,
+  wfc_model_text,
   wfc_world2d, wfc_world2d_validate, wfc_text_codec, wfc_pattern2d,
   wfc_pattern2d_learn, wfc_pattern2d_text, wfc_world2d_settlement,
   wfc_world2d_settlement_validate, wfc_sequence, wfc_sequence_learn,
