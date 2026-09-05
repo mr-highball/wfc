@@ -21,7 +21,8 @@ uses
   wfc_pattern2d_graph, wfc_rule_model, wfc_rule_text, wfc_pipeline_model,
   wfc_pipeline_text, wfc_token_lookup, wfc_pipeline_compile, wfc_pipeline_run,
   wfc_pipeline_run_text, wfc_pipeline_result, wfc_pipeline_result_text,
-  wfc_pipeline_runtime, wfc_training, wfc_training_text;
+  wfc_pipeline_runtime, wfc_training, wfc_training_text,
+  wfc_text_training, wfc_training_workspace;
 
 implementation
 

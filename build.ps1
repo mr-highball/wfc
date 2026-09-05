@@ -65,6 +65,8 @@ $artifactTestSources = @(
   (Join-Path $repositoryRoot 'test/wfc_validate_app_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_run_app_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_training_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_text_training_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_training_workspace_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_training_text_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_learn_app_test.lpr')
   (Join-Path $repositoryRoot `
@@ -131,6 +133,8 @@ $buildingCommonDirectory = Join-Path $repositoryRoot 'examples/3D/common'
 $buildingSvgSource = Join-Path $repositoryRoot `
   'examples/3D/03_BrowserBuilding/Building3DSvg.lpr'
 $worldCommonDirectory = Join-Path $repositoryRoot 'examples/2D/common'
+$trainingStudioExampleDirectory = Join-Path $repositoryRoot `
+  'examples/learning/05_TrainingStudio'
 $unitOutputDirectory = Join-Path $repositoryRoot 'build/native/units'
 $binaryOutputDirectory = Join-Path $repositoryRoot 'build/native/bin'
 
@@ -736,6 +740,7 @@ foreach ($artifactTestSource in $artifactTestSources) {
     "-Fu$sourceDirectory"
     "-Fu$toolsDirectory"
     "-Fu$learnedPatternWorldExampleDirectory"
+    "-Fu$trainingStudioExampleDirectory"
     "-FU$unitOutputDirectory"
     "-FE$binaryOutputDirectory"
     $artifactTestSource
@@ -1499,4 +1504,16 @@ $buildingSvgOutput = Join-Path $binaryOutputDirectory `
   'building3d-seed-zero.svg'
 Write-Host "Smoke testing '$buildingSvgExecutable' with seed 0."
 & $buildingSvgExecutable 0 $buildingSvgOutput | Out-Null
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+Write-Host 'Building and checking all five Training Studio presets.'
+& $Compiler @CompilerOptions -B -Mdelphi -Sa -Cr -Co -Ci `
+  "-Fu$sourceDirectory" "-Fu$trainingStudioExampleDirectory" `
+  "-FU$unitOutputDirectory" "-FE$binaryOutputDirectory" `
+  (Join-Path $trainingStudioExampleDirectory 'TrainingStudio.lpr')
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+$trainingStudioExecutableName = if ($env:OS -eq 'Windows_NT') {
+  'TrainingStudio.exe'
+} else { 'TrainingStudio' }
+& (Join-Path $binaryOutputDirectory $trainingStudioExecutableName) --selftest
 exit $LASTEXITCODE

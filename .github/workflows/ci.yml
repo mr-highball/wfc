@@ -430,12 +430,15 @@ jobs:
             wfc_validate_app_test \
             wfc_run_app_test \
             wfc_training_test \
+            wfc_text_training_test \
+            wfc_training_workspace_test \
             wfc_training_text_test \
             wfc_learn_app_test \
             wfc_learned_pattern_world_bundle_test
           do
             "$pas2js" -B -Tnodejs -Mdelphi -Fusrc -Futools \
               -Fuexamples/2D/05_LearnedPatternWorld \
+              -Fuexamples/learning/05_TrainingStudio \
               -FU"$artifact_test_units" -FE"$artifact_test_bin" \
               "test/$artifact_test.lpr"
             node "$artifact_test_bin/$artifact_test.js"
@@ -457,6 +460,12 @@ jobs:
             node "$artifact_test_bin/wfc_learn_node.js" -- \
             node "$artifact_test_bin/wfc_validate_node.js" -- \
             node "$artifact_test_bin/wfc_run_node.js"
+
+          "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
+            -Fuexamples/learning/05_TrainingStudio \
+            -FU"$artifact_test_units" -FE"$artifact_test_bin" \
+            examples/learning/05_TrainingStudio/TrainingStudioNode.lpr
+          node "$artifact_test_bin/TrainingStudioNode.js" --selftest
 
           "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
             -FU"$example_units" -FE"$example_bin" \
@@ -658,6 +667,122 @@ jobs:
               'data-pass-count': '3',
               'data-trace-hash': '2412171679',
               'data-output': 'A sun rises brightly!',
+          }
+          if parser.attributes is None:
+              raise SystemExit('Rendered DOM has no body element.')
+          for name, value in expected.items():
+              actual = parser.attributes.get(name)
+              if actual != value:
+                  raise SystemExit(
+                      f'Expected body {name}={value!r}, found {actual!r}.')
+          PY
+
+      - name: Build and self-test browser Training Studio
+        shell: bash
+        run: |
+          pas2js="$PAS2JS_ROOT/bin/x86_64-linux/pas2js"
+          PAS2JS="$pas2js" bash ./build-browser-training.sh
+
+          chrome=''
+          for candidate in google-chrome google-chrome-stable chromium chromium-browser; do
+            if command -v "$candidate" >/dev/null 2>&1; then
+              chrome=$(command -v "$candidate")
+              break
+            fi
+          done
+          if [ -z "$chrome" ]; then
+            echo 'No supported Chrome or Chromium executable was found.' >&2
+            exit 1
+          fi
+
+          server_log=$(mktemp)
+          chrome_log=$(mktemp)
+          dom_file=$(mktemp)
+          profile_directory=$(mktemp -d)
+          server_pid=''
+          cleanup() {
+            if [ -n "$server_pid" ]; then
+              kill "$server_pid" 2>/dev/null || true
+              wait "$server_pid" 2>/dev/null || true
+            fi
+            rm -f -- "$server_log" "$chrome_log" "$dom_file"
+            if [ -n "$profile_directory" ] && [ -d "$profile_directory" ]; then
+              rm -rf -- "$profile_directory"
+            fi
+          }
+          trap cleanup EXIT
+
+          python3 -m http.server 4176 \
+            --bind 127.0.0.1 \
+            --directory build/browser/training/www \
+            >"$server_log" 2>&1 &
+          server_pid=$!
+
+          server_ready=false
+          for _ in $(seq 1 50); do
+            if curl --fail --silent \
+                http://127.0.0.1:4176/index.html >/dev/null 2>&1; then
+              server_ready=true
+              break
+            fi
+            if ! kill -0 "$server_pid" 2>/dev/null; then
+              cat "$server_log" >&2
+              exit 1
+            fi
+            sleep 0.2
+          done
+          if [ "$server_ready" != true ]; then
+            cat "$server_log" >&2
+            echo 'Timed out waiting for the browser training HTTP server.' >&2
+            exit 1
+          fi
+
+          if ! timeout 30s "$chrome" \
+              --headless \
+              --disable-gpu \
+              --disable-dev-shm-usage \
+              --no-default-browser-check \
+              --no-first-run \
+              --user-data-dir="$profile_directory" \
+              --virtual-time-budget=15000 \
+              --dump-dom \
+              'http://127.0.0.1:4176/index.html?selftest=1' \
+              >"$dom_file" 2>"$chrome_log"; then
+            cat "$chrome_log" >&2
+            cat "$server_log" >&2
+            exit 1
+          fi
+
+          python3 - "$dom_file" <<'PY'
+          import sys
+          from html.parser import HTMLParser
+
+          class BodyParser(HTMLParser):
+              def __init__(self):
+                  super().__init__()
+                  self.attributes = None
+
+              def handle_starttag(self, tag, attributes):
+                  if tag.lower() == 'body' and self.attributes is None:
+                      self.attributes = dict(attributes)
+
+          with open(sys.argv[1], encoding='utf-8') as source:
+              parser = BodyParser()
+              parser.feed(source.read())
+
+          expected = {
+              'data-state': 'solved',
+              'data-self-test': 'passed',
+              'data-source-signature': '0FA2C5EA',
+              'data-recipe-signature': 'DBCBA621',
+              'data-result-signature': '947C4AFD',
+              'data-cell-count': '16',
+              'data-source-invalidation': 'passed',
+              'data-run-invalidation': 'passed',
+              'data-contradiction': 'passed',
+              'data-recovery': 'passed',
+              'data-preset-sweep': 'passed',
+              'data-import-race': 'passed',
           }
           if parser.attributes is None:
               raise SystemExit('Rendered DOM has no body element.')

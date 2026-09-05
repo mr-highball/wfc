@@ -77,6 +77,10 @@ modular 3D structures, music, text, and other discrete design problems.
 > shared native/Node learner host for cardinal, pattern, and sequence models.
 > Generated executable recipes retain source/license labels and ordered sample
 > fingerprints; four checked bundles cover source through solved output.
+> Training Studio adds a shared editable-workspace owner, an explicit
+> Unicode-scalar raw-text bridge, and a pas2js workbench for training, seeded
+> solving, public locks, failure inspection, and artifact export. Its native
+> and Node demonstrations independently check five matching presets.
 > Pipeline v2 adds exact signed-offset and finite any-of-neighborhood reads
 > across staged provider passes. Causal Trace v1 adds opt-in chronological
 > decision/removal/backtrack evidence, provider-pass cause links, per-pass
@@ -275,6 +279,9 @@ the `.wfcm` format, and exact replay inputs, see
 To train without writing a Pascal program, start with the editable
 [training documents and wfc-learn](docs/training.md) workflow and its
 [four replayable examples](examples/learning/04_TrainingDocuments/README.md).
+The [Training Studio](examples/learning/05_TrainingStudio/README.md) adds an
+interactive browser workflow over the same Pascal owner, with explicit
+stale-artifact invalidation and raw-text import.
 For hand-authored rank-1/2/3 rules, declarative multi-resource pipeline recipes,
 run/result artifacts, runtime alias semantics, and the portable command-line
 contracts, see [portable pipeline artifacts](docs/pipeline-artifacts.md).
@@ -338,7 +345,10 @@ and `build-browser.sh` entry points stage the interactive 2D world;
 `build-browser-text.ps1` and `build-browser-text.sh` stage the text pass
 workbench; and `build-browser-building3d.ps1` and
 `build-browser-building3d.sh` stage the Building workbench. None of the
-staging entry points commits generated JavaScript.
+staging entry points commits generated JavaScript. The additional
+`build-browser-training.ps1` and `build-browser-training.sh` entry points
+stage Training Studio with editable corpora, raw-text import, and artifact
+exports; its native/Node presets use the same workspace.
 See [building and testing](docs/building.md) for compiler overrides, package
 commands, output paths, and pas2js setup. The
 [Building graphical guide](examples/3D/03_BrowserBuilding/README.md) records

@@ -47,6 +47,9 @@ pipeline_runtime_test_source="$repository_root/test/wfc_pipeline_runtime_test.lp
 validate_app_test_source="$repository_root/test/wfc_validate_app_test.lpr"
 run_app_test_source="$repository_root/test/wfc_run_app_test.lpr"
 training_test_source="$repository_root/test/wfc_training_test.lpr"
+text_training_test_source="$repository_root/test/wfc_text_training_test.lpr"
+training_workspace_test_source="$repository_root/test/wfc_training_workspace_test.lpr"
+training_studio_directory="$repository_root/examples/learning/05_TrainingStudio"
 training_text_test_source="$repository_root/test/wfc_training_text_test.lpr"
 learn_app_test_source="$repository_root/test/wfc_learn_app_test.lpr"
 training_fixture_directory="$repository_root/examples/learning/04_TrainingDocuments"
@@ -130,6 +133,9 @@ compiler_pipeline_runtime_test_source=$pipeline_runtime_test_source
 compiler_validate_app_test_source=$validate_app_test_source
 compiler_run_app_test_source=$run_app_test_source
 compiler_training_test_source=$training_test_source
+compiler_text_training_test_source=$text_training_test_source
+compiler_training_workspace_test_source=$training_workspace_test_source
+compiler_training_studio_directory=$training_studio_directory
 compiler_training_text_test_source=$training_text_test_source
 compiler_learn_app_test_source=$learn_app_test_source
 compiler_training_fixture_directory=$training_fixture_directory
@@ -212,6 +218,9 @@ case "$host_system" in
     compiler_validate_app_test_source=$(cygpath -m "$validate_app_test_source") || exit $?
     compiler_run_app_test_source=$(cygpath -m "$run_app_test_source") || exit $?
     compiler_training_test_source=$(cygpath -m "$training_test_source") || exit $?
+    compiler_text_training_test_source=$(cygpath -m "$text_training_test_source") || exit $?
+    compiler_training_workspace_test_source=$(cygpath -m "$training_workspace_test_source") || exit $?
+    compiler_training_studio_directory=$(cygpath -m "$training_studio_directory") || exit $?
     compiler_training_text_test_source=$(cygpath -m "$training_text_test_source") || exit $?
     compiler_learn_app_test_source=$(cygpath -m "$learn_app_test_source") || exit $?
     compiler_training_fixture_directory=$(cygpath -m "$training_fixture_directory") || exit $?
@@ -628,6 +637,8 @@ for compiler_artifact_suite in \
   "$compiler_validate_app_test_source" \
   "$compiler_run_app_test_source" \
   "$compiler_training_test_source" \
+  "$compiler_text_training_test_source" \
+  "$compiler_training_workspace_test_source" \
   "$compiler_training_text_test_source" \
   "$compiler_learn_app_test_source" \
   "$compiler_learned_pattern_world_bundle_test_source"
@@ -645,6 +656,7 @@ do
     "-Fu$compiler_source_directory" \
     "-Fu$compiler_tools_directory" \
     "-Fu$compiler_learned_pattern_world_example_directory" \
+    "-Fu$compiler_training_studio_directory" \
     "-FU$compiler_unit_output_directory" \
     "-FE$compiler_binary_output_directory" \
     "$compiler_artifact_suite" || exit $?
@@ -1119,3 +1131,14 @@ case "$host_system" in
 esac
 printf "Smoke testing '%s' with seed 0.\n" "$building_svg_executable"
 "$building_svg_executable" 0 "$building_svg_runtime_output" >/dev/null || exit $?
+
+printf 'Building and checking all five Training Studio presets.\n'
+"$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
+  "-Fu$compiler_source_directory" "-Fu$compiler_training_studio_directory" \
+  "-FU$compiler_unit_output_directory" "-FE$compiler_binary_output_directory" \
+  "$compiler_training_studio_directory/TrainingStudio.lpr" || exit $?
+training_studio_executable="$binary_output_directory/TrainingStudio"
+case "$host_system" in
+  CYGWIN*|MINGW*|MSYS*) training_studio_executable="${training_studio_executable}.exe" ;;
+esac
+"$training_studio_executable" --selftest || exit $?

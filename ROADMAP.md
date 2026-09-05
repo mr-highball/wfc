@@ -145,6 +145,11 @@ The repository already contains the beginnings of the ecosystem:
   models and executable recipes with source/license and per-sample identity;
   four checked source/model/recipe/run/result bundles and real-process
   file/stdin conformance cover the complete bounded workflow;
+- a shared editable training workspace with strict source/run/result
+  invalidation, detached outputs, explicit interactive resource policy, and
+  a project-owned Unicode-scalar raw-text import bridge; Training Studio
+  connects those APIs to a pas2js corpus/lock/export workbench and five
+  independently validated native/Node presets;
 - stack-safe iterative traversal of large planes while preserving the legacy
   solver's north/east/south/west depth-first order;
 - checked one-command native build gates, an FPM package, a runtime-only
@@ -195,8 +200,8 @@ It is not yet the finished system described above:
   sequences with explicit projection; Unicode-scalar text tokenization and
   exact completion domains now sit above that sequence layer, while a
   project-owned versioned word-boundary table, wrapped sequence training, 3D
-  neighborhoods, structured multi-license provenance, media/text import and
-  browser training tools, artifact-family
+  neighborhoods, structured multi-license provenance, media import and
+  word-oriented text import, larger/background browser training, artifact-family
   lint, and general inspection tools remain;
 - the hosted CI definition is present, but its first remote run still needs to
   be observed before the Phase 0 exit gate is claimed complete;
@@ -454,6 +459,11 @@ shared `wfc-learn` application. It preserves sample boundaries, explicit
 options, source/license labels and content fingerprints while exporting
 cardinal, overlapping-pattern, or whole-sequence recipes. Four bundled corpora
 replay exact source-to-result artifacts on native FPC and pas2js/Node.
+Training Studio now connects editable corpora and explicit Unicode-scalar raw
+text to that workflow through one reusable invalidation-aware workspace, five
+native/Node presets, and a browser lock/inspection/export workbench. Its
+interactive envelope is bounded and synchronous; raw media/voxel/music
+extraction, larger background jobs, and general recipe authoring remain open.
 Word-boundary tables, wrapped sequence training, higher-dimensional extraction,
 broader artifact lint/inspection, and the complete exit gate remain open.
 

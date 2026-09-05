@@ -231,7 +231,9 @@ stdout, stderr classification, file/stdin parity, all four artifacts, and
 replay results. The supplied checkerboards and phrase outputs are also
 independently asserted by the core tests and pipeline validators.
 
-This workflow deliberately starts with pretokenized corpora. Raw-text file
-tokenization, image/tile and voxel imports, musical-event extraction,
-per-sample structured multi-license metadata, training browser controls,
-and general batch orchestration remain separate work.
+The CLI deliberately starts with pretokenized corpora. The complementary
+[Training Studio](training-studio.md) now adds explicit Unicode-scalar
+raw-text import and browser training/locking/export controls over a shared
+Pascal workspace. Raw-text file orchestration in the CLI, image/tile and
+voxel imports, musical-event extraction, per-sample structured multi-license
+metadata, and general batch orchestration remain separate work.

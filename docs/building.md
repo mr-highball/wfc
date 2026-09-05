@@ -98,6 +98,7 @@ Both scripts rebuild with assertions and range, overflow, and I/O checks, run
 `wfc_pipeline_result_text_test`, `wfc_pipeline_runtime_test`,
 `wfc_token_lookup_test`, `wfc_validate_app_test`, `wfc_run_app_test`,
 `wfc_training_test`, `wfc_training_text_test`, `wfc_learn_app_test`,
+`wfc_text_training_test`, `wfc_training_workspace_test`,
 `wfc_learned_pattern_world_bundle_test`,
 `wfc_trace_reference_test`,
 `wfc_trace_test`, and `wfc_trace_utility_test`, then compile and smoke-test the
@@ -105,7 +106,7 @@ portable console examples with seed `0`, including the bounded/wrapped spatial
 dependency self-check, causal-trace inspector, bounded pass-negotiation proof,
 negotiated descendant repair, anchored text completion, three-pass text
 composition, negotiated music variation, the learned-pattern world, and
-depth-three Building 3D pipeline;
+depth-three Building 3D pipeline, and all five Training Studio presets;
 the multi-pass and
 selective-settlement worlds also run with their default seeds. Finally, the
 native `Building3DSvg` host generates and validates
@@ -345,10 +346,12 @@ for artifact_test in wfc_text_codec_test wfc_rule_model_test \
   wfc_pipeline_result_text_test wfc_pipeline_runtime_test \
   wfc_token_lookup_test wfc_validate_app_test wfc_run_app_test \
   wfc_training_test wfc_training_text_test wfc_learn_app_test \
+  wfc_text_training_test wfc_training_workspace_test \
   wfc_learned_pattern_world_bundle_test
 do
   pas2js -B -Tnodejs -Mdelphi -Fusrc -Futools \
     -Fuexamples/2D/05_LearnedPatternWorld \
+    -Fuexamples/learning/05_TrainingStudio \
     -FUbuild/pas2js/artifact-units -FEbuild/pas2js/artifact \
     "test/${artifact_test}.lpr"
   node "build/pas2js/artifact/${artifact_test}.js"
@@ -685,6 +688,30 @@ Serve that directory and append `?selftest=1`; success is reported by
 host and full graphical contract are documented in
 [`docs/building3d.md`](building3d.md).
 
+## pas2js browser Training Studio
+
+The Training Studio uses the shared corpus, training, workspace, and replay
+units. Build and stage its static browser host with:
+
+```powershell
+.\build-browser-training.ps1 -Compiler 'C:\path\to\pas2js.exe'
+```
+
+```bash
+PAS2JS=/opt/pas2js/bin/pas2js bash ./build-browser-training.sh
+```
+
+Serve `build/browser/training/www` and append `?selftest=1`. The test exercises
+all five presets, source/run invalidation, public-token locks, contradiction
+recovery, and stale-import rejection. The final overlapping-checkerboard
+fixture must report `data-state="solved"`, `data-self-test="passed"`,
+`data-source-signature="0FA2C5EA"`, `data-recipe-signature="DBCBA621"`,
+`data-result-signature="947C4AFD"`, and `data-cell-count="16"`.
+See [the Studio guide](training-studio.md) for the editing workflow and the
+bounded synchronous execution policy.
+
+## Hosted pas2js gate
+
 The hosted pas2js gate uses exact official upstream pas2js and FPC-source
 revisions, verifies both source-archive SHA-256 digests, and caches the resulting
 3.3.1 toolchain. It runs every portable conformance source, including the voxel
@@ -701,9 +728,7 @@ their default seeds under Node.js 22.23.2. The two Node pipeline hosts also run
 the same exact 18-case process suite as the native hosts, using both the small
 CLI fixture set and the learned-pattern-world bundle. The gate then builds
 the Node training host and runs the same 25-case training process suite
-against all four bundled training documents. It also builds
-all three browser
-targets,
+against all four bundled training documents. It also builds all four browser targets,
 serves each staged site, and checks their exact body-state contracts in
 headless Chrome. A pinned development compiler is used
 because the official 3.2.0 binary release cannot resolve the suite's portable
@@ -718,7 +743,8 @@ clean. A separate Linux lane runs the complete core, pipeline-artifact,
 token-lookup, recipe-validator, pipeline-runner, 2D, voxel-3D, Building 3D,
 learning, sequence, music, pass-composition, causal-trace, full-negotiation,
 and selective-negotiation pas2js/Node.js gate, including the negotiated-repair
-host, plus all three real browser self-tests in headless Chrome. A canary runs
+host, the text-training/workspace suites and five Studio presets, plus all
+four real browser self-tests in headless Chrome. A canary runs
 against the current official FPC development image and records the image digest
 and compiler revision in the job log. Submodules are deliberately disabled for
 every gate.
