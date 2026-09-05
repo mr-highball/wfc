@@ -26,7 +26,7 @@ program wfc_music_render_process_test;
 {$mode delphi}{$H+}
 
 uses
-  Classes, SysUtils, Process;
+  Classes, SysUtils, Process, wfc_process_test_support;
 
 var
   Checks: Integer;
@@ -70,7 +70,7 @@ begin
       AProcess.WaitOnExit(5000);
       raise Exception.Create('render process-test deadline exceeded');
     end;
-  Result := AProcess.ExitStatus;
+  Result := WfcProcessExitCode(AProcess);
 end;
 
 procedure Render(const AExecutable, ASeconds, ASeed,

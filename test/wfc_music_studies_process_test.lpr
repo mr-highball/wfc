@@ -29,7 +29,8 @@ uses
   Classes,
   SysUtils,
   Process,
-  wfc_midi_smf;
+  wfc_midi_smf, wfc_process_test_support
+  {$IFDEF UNIX}, BaseUnix{$ENDIF};
 
 var
   Checks: Integer;
@@ -87,7 +88,7 @@ begin
     Sleep(5);
   until False;
   ReadAvailable(AProcess, AText);
-  Result := AProcess.ExitStatus;
+  Result := WfcProcessExitCode(AProcess);
 end;
 
 procedure ReleaseChild(const AProcess: TProcess);
@@ -323,12 +324,43 @@ begin
     DirectorySeparator + 'file.wav', '--notes', '2'], 1);
 end;
 
+procedure TestProcessExitCodes;
+const Codes: array[0..4] of Integer = (0, 1, 2, 70, 255);
+var
+  I: Integer;
+  {$IFDEF UNIX}
+  Child: TProcess;
+  Text: String;
+  Rejected: Boolean;
+  {$ENDIF}
+begin
+  for I := 0 to High(Codes) do
+    Invoke(ParamStr(0), ['--test-child-exit', IntToStr(Codes[I])], Codes[I]);
+  {$IFDEF UNIX}
+  Child := StartChild(ParamStr(0), ['--test-child-signal']);
+  try
+    Text := '';
+    Rejected := False;
+    try
+      FinishChild(Child, Text);
+    except
+      on E: EWfcProcessAbnormalExit do
+        Rejected := Pos('signal ' + IntToStr(SIGKILL), E.Message) > 0;
+    end;
+    Check(Rejected, 'a signal-killed child cannot masquerade as exit zero');
+  finally
+    ReleaseChild(Child);
+  end;
+  {$ENDIF}
+end;
+
 procedure Main;
 var Base, ScaleExecutable, RiffExecutable: String;
 begin
   if ParamCount <> 3 then
     raise Exception.Create(
       'usage: wfc_music_studies_process_test SCALE RIFF ARTIFACT-DIRECTORY');
+  TestProcessExitCodes;
   ScaleExecutable := ExpandFileName(ParamStr(1));
   RiffExecutable := ExpandFileName(ParamStr(2));
   Check(FileExists(ScaleExecutable) and FileExists(RiffExecutable),
@@ -344,6 +376,16 @@ begin
 end;
 
 begin
+  if (ParamCount = 2) and (ParamStr(1) = '--test-child-exit') then
+    Halt(StrToInt(ParamStr(2)));
+  {$IFDEF UNIX}
+  if (ParamCount = 1) and (ParamStr(1) = '--test-child-signal') then
+  begin
+    // Only this isolated child is signalled; SIGKILL cannot be intercepted.
+    fpKill(fpGetPid, SIGKILL);
+    Halt(99);
+  end;
+  {$ENDIF}
   try
     Main;
     WriteLn('Music study process tests passed: ', Checks);

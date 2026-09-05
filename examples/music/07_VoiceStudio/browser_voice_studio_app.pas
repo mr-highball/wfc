@@ -965,6 +965,8 @@ begin
 end;
 
 procedure TVoiceStudioBrowserApplication.Run;
+var
+  LMutationHandler: TJSEventHandler;
 begin
   document.body.setAttribute('data-self-test', 'not-requested');
   document.body.setAttribute('data-voice-stream-self-test', 'not-requested');
@@ -997,8 +999,9 @@ begin
   FMidiPlanButton.onclick := @HandleMidiPlan;
   FMidiSaveButton.onclick := @HandleMidiSave;
   FCancelButton.onclick := @HandleCancel;
-  document.addEventListener('input', @HandleMutation, True);
-  document.addEventListener('change', @HandleMutation, True);
+  LMutationHandler := @HandleMutation;
+  document.addEventListener('input', LMutationHandler, True);
+  document.addEventListener('change', LMutationHandler, True);
   FBound := True;
   ClearMidiPlan;
   SetBusy(False);

@@ -28,7 +28,7 @@ program wfc_music_voices_render_process_test;
 uses
   Classes,
   SysUtils,
-  Process,
+  Process, wfc_process_test_support,
   wfc_midi_smf,
   wfc_midi_stream;
 
@@ -88,7 +88,7 @@ begin
     Sleep(5);
   until False;
   ReadAvailable(AProcess, AText);
-  Result := AProcess.ExitStatus;
+  Result := WfcProcessExitCode(AProcess);
 end;
 
 procedure ReleaseChild(const AProcess: TProcess);

@@ -28,7 +28,7 @@ program wfc_connectivity_process_test;
 uses
   Classes,
   SysUtils,
-  Process;
+  Process, wfc_process_test_support;
 
 var
   Checks: Integer;
@@ -89,7 +89,7 @@ begin
     Sleep(5);
   until False;
   ReadAvailable(AProcess, AText);
-  Result := AProcess.ExitStatus;
+  Result := WfcProcessExitCode(AProcess);
 end;
 
 procedure ReleaseChild(const AProcess: TProcess);

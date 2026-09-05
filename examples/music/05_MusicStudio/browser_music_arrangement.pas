@@ -876,6 +876,8 @@ begin
 end;
 
 procedure TBrowserMusicArrangement.Run;
+var
+  LMutationHandler: TJSEventHandler;
 begin
   if FReleased or FBound then Exit;
   FDuration := TJSHTMLInputElement(RequireElement('arrangement-seconds'));
@@ -890,9 +892,10 @@ begin
   FFallback := RequireElement('arrangement-fallback');
   FStart.onclick := @HandleStart;
   FCancel.onclick := @HandleCancel;
-  document.addEventListener('input', @HandleMutation, True);
-  document.addEventListener('change', @HandleMutation, True);
-  document.addEventListener('click', @HandleMutation, True);
+  LMutationHandler := @HandleMutation;
+  document.addEventListener('input', LMutationHandler, True);
+  document.addEventListener('change', LMutationHandler, True);
+  document.addEventListener('click', LMutationHandler, True);
   FBound := True;
   SetBusy(False);
   RefreshFallback;

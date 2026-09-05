@@ -26,7 +26,7 @@ program wfc_music_ensemble_render_process_test;
 {$mode delphi}{$H+}
 
 uses
-  Classes, SysUtils, Process, wfc_atomic_new_file,
+  Classes, SysUtils, Process, wfc_process_test_support, wfc_atomic_new_file,
   wfc_music_audio, wfc_music_audio_stream
   {$IFDEF UNIX}, BaseUnix{$ENDIF};
 
@@ -115,7 +115,7 @@ begin
     Sleep(5);
   until False;
   ReadAvailable(AProcess, AText);
-  Result := AProcess.ExitStatus;
+  Result := WfcProcessExitCode(AProcess);
 end;
 
 procedure ReleaseChild(const AProcess: TProcess);

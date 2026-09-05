@@ -1593,6 +1593,8 @@ begin
 end;
 
 procedure TBrowserEnsembleStreamController.Run;
+var
+  LMutationHandler: TJSEventHandler;
 begin
   FSeed := TJSHTMLInputElement(RequireElement('seed-input'));
   FSeconds := TJSHTMLInputElement(RequireElement('stream-seconds-input'));
@@ -1618,9 +1620,10 @@ begin
   FMidiPlanButton.onclick := @HandleMidiPlan;
   FMidiSaveButton.onclick := @HandleMidiSave;
   FCancel.onclick := @HandleCancel;
-  document.addEventListener('input', @HandleMutation, True);
-  document.addEventListener('change', @HandleMutation, True);
-  document.addEventListener('click', @HandleMutation, True);
+  LMutationHandler := @HandleMutation;
+  document.addEventListener('input', LMutationHandler, True);
+  document.addEventListener('change', LMutationHandler, True);
+  document.addEventListener('click', LMutationHandler, True);
   FBound := True;
   ClearMidiPlan;
   SetBusy(False);
