@@ -106,6 +106,8 @@ Both scripts rebuild with assertions and range, overflow, and I/O checks, run
 `wfc_music_ensemble_demo_test`,
 `wfc_sequence_segment_test`, `wfc_music_ensemble_stream_test`,
 `wfc_music_ensemble_audio_test`, `wfc_music_ensemble_stream_demo_test`,
+`wfc_midi_stream_test`, `wfc_music_ensemble_midi_test`,
+`wfc_music_ensemble_midi_stream_demo_test`,
 `wfc_browser_dom_test`, `wfc_serve_test`,
 `wfc_text_codec_test`, `wfc_rule_model_test`,
 `wfc_rule_text_test`, `wfc_pipeline_model_test`, `wfc_pipeline_text_test`,
@@ -408,13 +410,21 @@ the included FPC server. Its shared Pascal helper and controller event path are
 also exercised by portable browser conformance.
 
 The native gate builds `EnsembleStudio` and runs `--selftest`, then checks the
-streaming `EnsembleStudioRender` host with native process tests. The
+streaming `EnsembleStudioRender` and two-pass `EnsembleStudioMidiRender` hosts
+with native process tests. The
 [example guide](../examples/music/06_EnsembleStudio/README.md) describes controls,
 native exports, user-defined score lengths, and the separate bounded audio
 preview. [The ensemble contract](music-ensemble.md) specifies voice continuity,
 training selections, exact versus allowed harmony, and transaction behavior.
 The separate [streaming contract](music-ensemble-stream.md) describes bounded
 local generation, sustained voices, incremental PCM, and exact length accounting.
+The [MIDI streaming contract](music-midi-stream.md) adds bounded event counting
+and deterministic forward-only replay, with transport-specific duration bounds.
+The browser runner requires `data-stream-self-test=passed`,
+`data-stream-release=passed`, `data-midi-stream-self-test=passed`, and
+`data-midi-stream-release=passed` on the
+ensemble stream controller test in addition to the synchronous harness marker.
+An unawaited or unfinished file transaction cannot satisfy that gate.
 
 ## Neighborhood Counts browser workbench
 

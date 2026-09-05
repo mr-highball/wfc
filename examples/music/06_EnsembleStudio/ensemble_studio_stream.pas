@@ -57,6 +57,13 @@ type
     CaptureTrace: Boolean;
   end;
 
+  TEnsembleStudioFramePlan = record
+    RequestedText: String;
+    RequestedTicks: TWfcMusicArrangementWide;
+    ActualTicks: TWfcMusicArrangementWide;
+    CellCount: TWfcMusicArrangementWide;
+  end;
+
   TEnsembleStudioStreamPlan = record
     RequestedText: String;
     RequestedTicks: TWfcMusicArrangementWide;
@@ -65,17 +72,15 @@ type
     ExpectedFrames: TWfcMusicEnsembleAudioCount;
   end;
 
-  { Owns the authored models, incremental generator, one current segment, and
-    the stateful PCM renderer. Each successful pull returns caller-owned PCM
-    for at most WFC_MUSIC_ENSEMBLE_AUDIO_BLOCK_FRAMES frames. No PCM or score
-    storage grows with total duration. }
-  TEnsembleStudioPcmStream = class
+  { Transport-neutral deterministic frame source. It owns the authored models,
+    generator, and at most one current segment. Each produced frame is detached
+    for the caller; no frame timeline grows with total duration. }
+  TEnsembleStudioFrameStream = class
   strict private
-    FPlan: TEnsembleStudioStreamPlan;
+    FPlan: TEnsembleStudioFramePlan;
     FOptions: TEnsembleStudioStreamOptions;
     FModels: TWfcMusicEnsembleModels;
     FGenerator: TWfcMusicEnsembleStream;
-    FRenderer: TWfcMusicEnsembleAudioRenderer;
     FSegment: TWfcMusicEnsembleSegment;
     FFrames: TWfcMusicEnsembleFrames;
     FFrameIndex: Integer;
@@ -88,8 +93,48 @@ type
     procedure ClearSegment;
     procedure Fail(const AMessage: String);
     function GetProducedTicks: TWfcMusicArrangementWide;
+  public
+    constructor Create(const APlan: TEnsembleStudioFramePlan;
+      const AOptions: TEnsembleStudioStreamOptions);
+    destructor Destroy; override;
+    function NextFrame(out AFrame: TWfcMusicEnsembleFrame):
+      TWfcMusicArrangementStep;
+    procedure Cancel;
+    property Plan: TEnsembleStudioFramePlan read FPlan;
+    property Options: TEnsembleStudioStreamOptions read FOptions;
+    property Status: TWfcMusicArrangementStatus read FStatus;
+    property Failure: String read FFailure;
+    property ProducedTicks: TWfcMusicArrangementWide read GetProducedTicks;
+    property SegmentsProduced: TWfcMusicArrangementWide read FSegmentsProduced;
+    property SeamHoldCount: TWfcMusicArrangementWide read FSeamHoldCount;
+    property LastSegmentSignature: Cardinal read FLastSegmentSignature;
+    property LastNegotiationStatus: TGraphNegotiationStatus
+      read FLastNegotiationStatus;
+    property LastTranscriptHash: TGraphTraceSignature
+      read FLastTranscriptHash;
+  end;
+
+  { Composes the transport-neutral frame source with the stateful PCM renderer.
+    Each successful pull returns caller-owned PCM for at most
+    WFC_MUSIC_ENSEMBLE_AUDIO_BLOCK_FRAMES frames. No PCM or score storage grows
+    with total duration. }
+  TEnsembleStudioPcmStream = class
+  strict private
+    FPlan: TEnsembleStudioStreamPlan;
+    FOptions: TEnsembleStudioStreamOptions;
+    FFrameStream: TEnsembleStudioFrameStream;
+    FRenderer: TWfcMusicEnsembleAudioRenderer;
+    FStatus: TWfcMusicArrangementStatus;
+    FFailure: String;
+    procedure Fail(const AMessage: String);
+    function GetProducedTicks: TWfcMusicArrangementWide;
+    function GetSegmentsProduced: TWfcMusicArrangementWide;
+    function GetSeamHoldCount: TWfcMusicArrangementWide;
     function GetRenderedFrames: TWfcMusicEnsembleAudioCount;
     function GetEmittedFrames: TWfcMusicEnsembleAudioCount;
+    function GetLastSegmentSignature: Cardinal;
+    function GetLastNegotiationStatus: TGraphNegotiationStatus;
+    function GetLastTranscriptHash: TGraphTraceSignature;
   public
     constructor Create(const APlan: TEnsembleStudioStreamPlan;
       const AOptions: TEnsembleStudioStreamOptions);
@@ -102,18 +147,20 @@ type
     property Status: TWfcMusicArrangementStatus read FStatus;
     property Failure: String read FFailure;
     property ProducedTicks: TWfcMusicArrangementWide read GetProducedTicks;
-    property SegmentsProduced: TWfcMusicArrangementWide read FSegmentsProduced;
-    property SeamHoldCount: TWfcMusicArrangementWide read FSeamHoldCount;
+    property SegmentsProduced: TWfcMusicArrangementWide read GetSegmentsProduced;
+    property SeamHoldCount: TWfcMusicArrangementWide read GetSeamHoldCount;
     property RenderedFrames: TWfcMusicEnsembleAudioCount read GetRenderedFrames;
     property EmittedFrames: TWfcMusicEnsembleAudioCount read GetEmittedFrames;
-    property LastSegmentSignature: Cardinal read FLastSegmentSignature;
+    property LastSegmentSignature: Cardinal read GetLastSegmentSignature;
     property LastNegotiationStatus: TGraphNegotiationStatus
-      read FLastNegotiationStatus;
+      read GetLastNegotiationStatus;
     property LastTranscriptHash: TGraphTraceSignature
-      read FLastTranscriptHash;
+      read GetLastTranscriptHash;
   end;
 
 function DefaultEnsembleStudioStreamOptions: TEnsembleStudioStreamOptions;
+function PlanEnsembleStudioFrames(
+  const ASeconds: String): TEnsembleStudioFramePlan;
 function PlanEnsembleStudioStream(
   const ASeconds: String): TEnsembleStudioStreamPlan;
 function EnsembleStudioStreamSecondsText(
@@ -144,15 +191,15 @@ begin
   Result.MaxPassBacktracks := 16;
 end;
 
-function PlanEnsembleStudioStream(
-  const ASeconds: String): TEnsembleStudioStreamPlan;
+function PlanEnsembleStudioFrames(
+  const ASeconds: String): TEnsembleStudioFramePlan;
 var
   I, D, FractionDigits, FractionStart, ProductDigit, Carry: Integer;
   Whole, Extra: TWfcMusicArrangementWide;
   HasWholeDigit, HasFractionRemainder, InFraction: Boolean;
   LText: String;
 begin
-  Result := Default(TEnsembleStudioStreamPlan);
+  Result := Default(TEnsembleStudioFramePlan);
   LText := Trim(ASeconds);
   if LText = '' then StreamError('duration seconds are required');
   Whole := 0;
@@ -211,6 +258,19 @@ begin
   Result.ActualTicks := ResolveWfcMusicArrangementTicks(
     Result.RequestedTicks, ENSEMBLE_STUDIO_STREAM_QUANTUM, wmarCeilToCell);
   Result.CellCount := Result.ActualTicks div ENSEMBLE_STUDIO_STREAM_QUANTUM;
+  Result.RequestedText := LText;
+end;
+
+function PlanEnsembleStudioStream(
+  const ASeconds: String): TEnsembleStudioStreamPlan;
+var
+  LFrames: TEnsembleStudioFramePlan;
+begin
+  LFrames := PlanEnsembleStudioFrames(ASeconds);
+  Result.RequestedText := LFrames.RequestedText;
+  Result.RequestedTicks := LFrames.RequestedTicks;
+  Result.ActualTicks := LFrames.ActualTicks;
+  Result.CellCount := LFrames.CellCount;
   if Result.CellCount > WFC_MUSIC_AUDIO_STREAM_MAX_FRAMES div
       FRAMES_PER_CELL then
     StreamError('duration exceeds the exact WAVE/RF64 frame envelope');
@@ -218,7 +278,6 @@ begin
     TWfcMusicEnsembleAudioCount(Result.CellCount) * FRAMES_PER_CELL;
   if Result.ExpectedFrames < 1 then
     StreamError('duration quantizes to zero PCM frames');
-  Result.RequestedText := LText;
 end;
 
 function EnsembleStudioStreamSecondsText(
@@ -289,16 +348,9 @@ begin
   end;
 end;
 
-constructor TEnsembleStudioPcmStream.Create(
-  const APlan: TEnsembleStudioStreamPlan;
+procedure ValidateStreamOptions(
   const AOptions: TEnsembleStudioStreamOptions);
-var
-  LAudio: TWfcMusicAudioOptions;
-  LCapacities: TWfcMusicEnsembleAudioVoiceCapacities;
-  LConfig: TWfcMusicEnsembleStreamConfig;
-  LVerifiedPlan: TEnsembleStudioStreamPlan;
 begin
-  inherited Create;
   {$IFDEF PAS2JS}
   if (AOptions.Seed <> Trunc(AOptions.Seed)) or
       (AOptions.Seed < 0) or (AOptions.Seed > Cardinal($FFFFFFFF)) then
@@ -311,12 +363,6 @@ begin
       (AOptions.MaxPassBacktracks > High(Integer)) then
     StreamError('search allowances exceed integer capacity');
   {$ENDIF}
-  LVerifiedPlan := PlanEnsembleStudioStream(APlan.RequestedText);
-  if (APlan.RequestedTicks <> LVerifiedPlan.RequestedTicks) or
-      (APlan.ActualTicks <> LVerifiedPlan.ActualTicks) or
-      (APlan.CellCount <> LVerifiedPlan.CellCount) or
-      (APlan.ExpectedFrames <> LVerifiedPlan.ExpectedFrames) then
-    StreamError('stream plan is inconsistent');
   if (AOptions.SegmentCellCount < 1) or
       (AOptions.SegmentCellCount > High(Integer) div
         ENSEMBLE_STUDIO_STREAM_QUANTUM) then
@@ -324,6 +370,22 @@ begin
   if (AOptions.MaxBacktracks < 0) or
       (AOptions.MaxPassBacktracks < 0) then
     StreamError('search allowances must be nonnegative');
+end;
+
+constructor TEnsembleStudioFrameStream.Create(
+  const APlan: TEnsembleStudioFramePlan;
+  const AOptions: TEnsembleStudioStreamOptions);
+var
+  LConfig: TWfcMusicEnsembleStreamConfig;
+  LVerifiedPlan: TEnsembleStudioFramePlan;
+begin
+  inherited Create;
+  ValidateStreamOptions(AOptions);
+  LVerifiedPlan := PlanEnsembleStudioFrames(APlan.RequestedText);
+  if (APlan.RequestedTicks <> LVerifiedPlan.RequestedTicks) or
+      (APlan.ActualTicks <> LVerifiedPlan.ActualTicks) or
+      (APlan.CellCount <> LVerifiedPlan.CellCount) then
+    StreamError('frame plan is inconsistent');
   FPlan := APlan;
   FOptions := AOptions;
   FModels := BuildModels;
@@ -339,16 +401,7 @@ begin
     FGenerator := TWfcMusicEnsembleStream.Create(LConfig);
     if FGenerator.ActualTicks <> FPlan.ActualTicks then
       StreamError('generation rounding differs from the preflight plan');
-    SetLength(LCapacities, ENSEMBLE_STUDIO_VOICE_COUNT);
-    LCapacities[0] := 1;
-    LCapacities[1] := 3;
-    LCapacities[2] := 1;
-    LAudio := DefaultWfcMusicAudioOptions;
-    LAudio.SampleRate := ENSEMBLE_STUDIO_STREAM_SAMPLE_RATE;
-    FRenderer := TWfcMusicEnsembleAudioRenderer.Create(LAudio,
-      ENSEMBLE_STUDIO_STREAM_TPQ, LCapacities);
   except
-    FreeAndNil(FRenderer);
     FreeAndNil(FGenerator);
     FreeModels(FModels);
     raise;
@@ -357,16 +410,15 @@ begin
   FLastNegotiationStatus := gnsContradiction;
 end;
 
-destructor TEnsembleStudioPcmStream.Destroy;
+destructor TEnsembleStudioFrameStream.Destroy;
 begin
   ClearSegment;
-  FRenderer.Free;
   FGenerator.Free;
   FreeModels(FModels);
   inherited Destroy;
 end;
 
-procedure TEnsembleStudioPcmStream.ClearSegment;
+procedure TEnsembleStudioFrameStream.ClearSegment;
 begin
   FSegment.Free;
   FSegment := nil;
@@ -374,45 +426,30 @@ begin
   FFrameIndex := 0;
 end;
 
-procedure TEnsembleStudioPcmStream.Fail(const AMessage: String);
+procedure TEnsembleStudioFrameStream.Fail(const AMessage: String);
 begin
   FFailure := AMessage;
   if FFailure = '' then FFailure := 'stream failed without a diagnostic';
   FStatus := wmasFailed;
   ClearSegment;
   if FGenerator <> nil then FGenerator.Cancel;
-  if FRenderer <> nil then FRenderer.Cancel;
 end;
 
-function TEnsembleStudioPcmStream.GetProducedTicks:
+function TEnsembleStudioFrameStream.GetProducedTicks:
   TWfcMusicArrangementWide;
 begin
   if FGenerator = nil then Result := 0
   else Result := FGenerator.ProducedTicks;
 end;
 
-function TEnsembleStudioPcmStream.GetRenderedFrames:
-  TWfcMusicEnsembleAudioCount;
-begin
-  if FRenderer = nil then Result := 0
-  else Result := FRenderer.RenderedFrames;
-end;
-
-function TEnsembleStudioPcmStream.GetEmittedFrames:
-  TWfcMusicEnsembleAudioCount;
-begin
-  if FRenderer = nil then Result := 0
-  else Result := FRenderer.EmittedFrames;
-end;
-
-function TEnsembleStudioPcmStream.NextSamples(
-  out ASamples: TWfcMusicPcm16Samples): TWfcMusicArrangementStep;
+function TEnsembleStudioFrameStream.NextFrame(
+  out AFrame: TWfcMusicEnsembleFrame): TWfcMusicArrangementStep;
 var
   I: Integer;
   LReport: TGraphNegotiationReport;
   LStep: TWfcMusicArrangementStep;
 begin
-  ASamples := nil;
+  AFrame := Default(TWfcMusicEnsembleFrame);
   case FStatus of
     wmasCompleted: Exit(wmaspCompleted);
     wmasCancelled: Exit(wmaspCancelled);
@@ -422,31 +459,11 @@ begin
   try
     while True do
     begin
-      if FRenderer.ReadSamples(WFC_MUSIC_ENSEMBLE_AUDIO_BLOCK_FRAMES,
-          ASamples) then
-        Exit(wmaspProduced);
-      if FRenderer.Finished then
-      begin
-        ClearSegment;
-        if FRenderer.EmittedFrames <> FPlan.ExpectedFrames then
-        begin
-          Fail('emitted frame count differs from the preflight plan');
-          Exit(wmaspFailed);
-        end;
-        FStatus := wmasCompleted;
-        Exit(wmaspCompleted);
-      end;
-      if not FRenderer.NeedsInput then
-      begin
-        Fail('renderer made no progress and did not request input');
-        Exit(wmaspFailed);
-      end;
       if (FSegment <> nil) and (FFrameIndex < Length(FFrames)) then
       begin
-        FRenderer.AdmitFrame(FFrames[FFrameIndex],
-          ENSEMBLE_STUDIO_STREAM_QUANTUM, ENSEMBLE_STUDIO_STREAM_TEMPO);
+        AFrame := MakeWfcMusicEnsembleFrame(FFrames[FFrameIndex].Voices);
         Inc(FFrameIndex);
-        Continue;
+        Exit(wmaspProduced);
       end;
       ClearSegment;
       LStep := FGenerator.Next(FSegment, LReport);
@@ -457,6 +474,11 @@ begin
             if Length(FFrames) <> FSegment.CellCount then
             begin
               Fail('generated segment frame count differs');
+              Exit(wmaspFailed);
+            end;
+            if (Length(FFrames) < 1) then
+            begin
+              Fail('generated segment is empty');
               Exit(wmaspFailed);
             end;
             if FSegmentsProduced > 0 then
@@ -470,8 +492,9 @@ begin
           end;
         wmaspCompleted:
           begin
-            FRenderer.EndInput;
-            Continue;
+            ClearSegment;
+            FStatus := wmasCompleted;
+            Exit(wmaspCompleted);
           end;
         wmaspCancelled:
           begin
@@ -506,12 +529,203 @@ begin
   end;
 end;
 
-procedure TEnsembleStudioPcmStream.Cancel;
+procedure TEnsembleStudioFrameStream.Cancel;
 begin
   if FStatus in [wmasCompleted, wmasCancelled, wmasFailed] then Exit;
   FGenerator.Cancel;
-  FRenderer.Cancel;
   ClearSegment;
+  FStatus := wmasCancelled;
+  FFailure := '';
+end;
+
+constructor TEnsembleStudioPcmStream.Create(
+  const APlan: TEnsembleStudioStreamPlan;
+  const AOptions: TEnsembleStudioStreamOptions);
+var
+  LAudio: TWfcMusicAudioOptions;
+  LCapacities: TWfcMusicEnsembleAudioVoiceCapacities;
+  LFramePlan: TEnsembleStudioFramePlan;
+  LVerifiedPlan: TEnsembleStudioStreamPlan;
+begin
+  inherited Create;
+  LVerifiedPlan := PlanEnsembleStudioStream(APlan.RequestedText);
+  if (APlan.RequestedTicks <> LVerifiedPlan.RequestedTicks) or
+      (APlan.ActualTicks <> LVerifiedPlan.ActualTicks) or
+      (APlan.CellCount <> LVerifiedPlan.CellCount) or
+      (APlan.ExpectedFrames <> LVerifiedPlan.ExpectedFrames) then
+    StreamError('stream plan is inconsistent');
+  FPlan := APlan;
+  FOptions := AOptions;
+  LFramePlan.RequestedText := APlan.RequestedText;
+  LFramePlan.RequestedTicks := APlan.RequestedTicks;
+  LFramePlan.ActualTicks := APlan.ActualTicks;
+  LFramePlan.CellCount := APlan.CellCount;
+  try
+    FFrameStream := TEnsembleStudioFrameStream.Create(LFramePlan, AOptions);
+    SetLength(LCapacities, ENSEMBLE_STUDIO_VOICE_COUNT);
+    LCapacities[0] := 1;
+    LCapacities[1] := 3;
+    LCapacities[2] := 1;
+    LAudio := DefaultWfcMusicAudioOptions;
+    LAudio.SampleRate := ENSEMBLE_STUDIO_STREAM_SAMPLE_RATE;
+    FRenderer := TWfcMusicEnsembleAudioRenderer.Create(LAudio,
+      ENSEMBLE_STUDIO_STREAM_TPQ, LCapacities);
+  except
+    FreeAndNil(FRenderer);
+    FreeAndNil(FFrameStream);
+    raise;
+  end;
+  FStatus := wmasReady;
+end;
+
+destructor TEnsembleStudioPcmStream.Destroy;
+begin
+  FRenderer.Free;
+  FFrameStream.Free;
+  inherited Destroy;
+end;
+
+procedure TEnsembleStudioPcmStream.Fail(const AMessage: String);
+begin
+  FFailure := AMessage;
+  if FFailure = '' then FFailure := 'stream failed without a diagnostic';
+  FStatus := wmasFailed;
+  if FFrameStream <> nil then FFrameStream.Cancel;
+  if FRenderer <> nil then FRenderer.Cancel;
+end;
+
+function TEnsembleStudioPcmStream.GetProducedTicks:
+  TWfcMusicArrangementWide;
+begin
+  if FFrameStream = nil then Result := 0
+  else Result := FFrameStream.ProducedTicks;
+end;
+
+function TEnsembleStudioPcmStream.GetSegmentsProduced:
+  TWfcMusicArrangementWide;
+begin
+  if FFrameStream = nil then Result := 0
+  else Result := FFrameStream.SegmentsProduced;
+end;
+
+function TEnsembleStudioPcmStream.GetSeamHoldCount:
+  TWfcMusicArrangementWide;
+begin
+  if FFrameStream = nil then Result := 0
+  else Result := FFrameStream.SeamHoldCount;
+end;
+
+function TEnsembleStudioPcmStream.GetRenderedFrames:
+  TWfcMusicEnsembleAudioCount;
+begin
+  if FRenderer = nil then Result := 0
+  else Result := FRenderer.RenderedFrames;
+end;
+
+function TEnsembleStudioPcmStream.GetEmittedFrames:
+  TWfcMusicEnsembleAudioCount;
+begin
+  if FRenderer = nil then Result := 0
+  else Result := FRenderer.EmittedFrames;
+end;
+
+function TEnsembleStudioPcmStream.GetLastSegmentSignature: Cardinal;
+begin
+  if FFrameStream = nil then Result := 0
+  else Result := FFrameStream.LastSegmentSignature;
+end;
+
+function TEnsembleStudioPcmStream.GetLastNegotiationStatus:
+  TGraphNegotiationStatus;
+begin
+  if FFrameStream = nil then Result := gnsContradiction
+  else Result := FFrameStream.LastNegotiationStatus;
+end;
+
+function TEnsembleStudioPcmStream.GetLastTranscriptHash:
+  TGraphTraceSignature;
+begin
+  if FFrameStream = nil then Result := 0
+  else Result := FFrameStream.LastTranscriptHash;
+end;
+
+function TEnsembleStudioPcmStream.NextSamples(
+  out ASamples: TWfcMusicPcm16Samples): TWfcMusicArrangementStep;
+var
+  LFrame: TWfcMusicEnsembleFrame;
+  LStep: TWfcMusicArrangementStep;
+begin
+  ASamples := nil;
+  case FStatus of
+    wmasCompleted: Exit(wmaspCompleted);
+    wmasCancelled: Exit(wmaspCancelled);
+    wmasFailed: Exit(wmaspFailed);
+  end;
+  FStatus := wmasActive;
+  try
+    while True do
+    begin
+      if FRenderer.ReadSamples(WFC_MUSIC_ENSEMBLE_AUDIO_BLOCK_FRAMES,
+          ASamples) then
+        Exit(wmaspProduced);
+      if FRenderer.Finished then
+      begin
+        if FRenderer.EmittedFrames <> FPlan.ExpectedFrames then
+        begin
+          Fail('emitted frame count differs from the preflight plan');
+          Exit(wmaspFailed);
+        end;
+        FStatus := wmasCompleted;
+        Exit(wmaspCompleted);
+      end;
+      if not FRenderer.NeedsInput then
+      begin
+        Fail('renderer made no progress and did not request input');
+        Exit(wmaspFailed);
+      end;
+      LStep := FFrameStream.NextFrame(LFrame);
+      case LStep of
+        wmaspProduced:
+          FRenderer.AdmitFrame(LFrame, ENSEMBLE_STUDIO_STREAM_QUANTUM,
+            ENSEMBLE_STUDIO_STREAM_TEMPO);
+        wmaspCompleted:
+          FRenderer.EndInput;
+        wmaspCancelled:
+          begin
+            FStatus := wmasCancelled;
+            Exit(wmaspCancelled);
+          end;
+        wmaspFailed:
+          begin
+            Fail(FFrameStream.Failure);
+            Exit(wmaspFailed);
+          end;
+      else
+        begin
+          Fail('frame generation returned an unknown step');
+          Exit(wmaspFailed);
+        end;
+      end;
+    end;
+  except
+    on E: EOutOfMemory do
+    begin
+      Fail('memory allocation failed');
+      raise;
+    end;
+    on E: Exception do
+    begin
+      Fail(E.Message);
+      raise;
+    end;
+  end;
+end;
+
+procedure TEnsembleStudioPcmStream.Cancel;
+begin
+  if FStatus in [wmasCompleted, wmasCancelled, wmasFailed] then Exit;
+  FFrameStream.Cancel;
+  FRenderer.Cancel;
   FStatus := wmasCancelled;
   FFailure := '';
 end;

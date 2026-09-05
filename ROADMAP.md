@@ -619,8 +619,10 @@ adapter is optional and cannot be required by the portable ecosystem.
   sequence-state frontiers across bounded local graphs, including partial BOS
   history and independently held chords. Incremental PCM rendering preserves
   phase and release envelopes with a fixed pending buffer. The wider global
-  timeline stays separate from Integer-indexed local sections; streamed MIDI,
-  global long-range feasibility, and infinite storage are not claimed.
+  timeline stays separate from Integer-indexed local sections. The separate
+  [MIDI stream](docs/music-midi-stream.md) counts and deterministically replays
+  events into a forward-only format-0 file, preserving held voices and long
+  silent gaps. Global long-range feasibility and infinite storage are not claimed.
 - A portable three-pass fixture solves harmony and rhythm before melody,
   composes both constraints through latent sequence projection maps,
   independently validates the public relation, rebuilds a score, and checks

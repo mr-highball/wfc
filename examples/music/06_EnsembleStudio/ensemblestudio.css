@@ -117,7 +117,7 @@ dd { margin: .2rem 0 0; overflow-wrap: anywhere; color: var(--jade); font: 700 .
 
 .stream-fields { min-width: 0; display: grid; grid-template-columns: 1.35fr 1fr 1fr 1fr auto; gap: .65rem; align-items: end; }
 .stream-plan { margin: .8rem 0; padding: .7rem; border: 1px solid var(--line); border-radius: .52rem; background: rgba(6, 10, 12, .52); color: var(--jade); font: .72rem/1.5 ui-monospace, monospace; overflow-wrap: anywhere; }
-.stream-actions { min-width: 0; display: grid; grid-template-columns: auto auto minmax(10rem, 1fr); gap: .6rem; align-items: center; }
+.stream-actions { min-width: 0; display: grid; grid-template-columns: auto auto auto auto minmax(10rem, 1fr); gap: .6rem; align-items: center; }
 .stream-actions progress { width: 100%; min-width: 0; accent-color: var(--jade); }
 .stream-fallback { margin: .7rem 0 0; padding: .68rem; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; border: 1px solid var(--line); border-radius: .5rem; background: #070c0e; color: #ddd3c4; font: .69rem/1.5 ui-monospace, monospace; }
 
@@ -129,6 +129,8 @@ footer { padding: 1rem 0 2rem; color: var(--muted); text-align: center; font-siz
   .generation-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .reports { grid-template-columns: minmax(0, 1fr); }
   .stream-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .stream-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .stream-actions progress { grid-column: 1 / -1; }
 }
 
 @media (max-width: 768px) {

@@ -35,7 +35,8 @@ the score. MIDI adapter rejection likewise leaves the canonical score current.
 The separate continuous stream is not tied to the finite editor grid. It
 accepts positive decimal seconds, rounds upward only to the next eighth-note
 cell, and exposes the requested and actual durations in preflight. The browser
-shows both before it opens a destination. Five-cell working segments
+shows both before it opens a WAVE destination or begins a MIDI counting pass.
+Five-cell working segments
 deliberately cross held bass and chord boundaries. The generator carries the
 exact learned frontier between segments, and the synthesizer carries note phase
 and envelopes between PCM blocks; it does not restart voices or loop a finished
@@ -110,7 +111,7 @@ The browser never autoplays. **Render preview** is a user action that creates a
 project-owned WAV Blob; playback begins only if the user then activates the
 standard HTML audio control.
 
-## Continuous WAVE stream
+## Continuous WAVE and MIDI streams
 
 The continuous renderer retains one generated segment and one bounded PCM
 block, not a whole-song score or audio buffer. Duration has no arbitrary minute
@@ -165,12 +166,49 @@ streaming file access is unavailable, the page displays a native command with
 the same captured seed, segment size, search allowances, trace choice, and
 duration.
 
-Continuous PCM is intentionally separate from the finite editor's short
-preview and MIDI adapter. It generates a fresh composition from the current
+Streaming MIDI uses the same frame generator without allocating PCM. Its
+format-0 track maps the bass, chord, and upper voices to channels 0, 1, and 2,
+with TPQ 480, constant 120 BPM tempo, and 4/4 meter. The counting pass retains
+only configuration, counts, and deterministic fingerprints—not frames or an
+event timeline. It must complete before any destination is opened.
+
+The browser therefore separates **Plan MIDI** from **Save planned MIDI**.
+Planning is asynchronous and consumes no file-picker activation. Saving must
+be a new explicit user click; it opens the picker immediately, regenerates the
+same frame stream, awaits every block write, and closes only after tick, byte,
+event, and generation fingerprints match. Editing a captured input invalidates
+the plan and cancels a pending replay. Browser Save As may replace the file the
+user selects.
+
+The normal native gate also produces `EnsembleStudioMidiRender.exe` on Windows
+or `EnsembleStudioMidiRender` elsewhere. A focused Windows build is:
+
+```powershell
+fpc -B -Mdelphi -Fusrc -Futools -Fuexamples/music/06_EnsembleStudio `
+  -FUbuild/ensemble/render/units -FEbuild/ensemble/render/bin `
+  examples/music/06_EnsembleStudio/EnsembleStudioMidiRender.lpr
+```
+
+The full native gate places this executable in `build/native/bin`; the isolated
+build above uses `build/ensemble/render/bin`. Invoke it from that directory or
+use its full path, adding `.exe` on Windows. `DURATION` and `NEW-MIDI-PATH`
+below are placeholders for your positive decimal seconds and new output path:
+
+```text
+EnsembleStudioMidiRender --seconds DURATION --output NEW-MIDI-PATH
+  [--seed UINT32] [--segment-cells POSITIVE]
+  [--backtracks NONNEGATIVE] [--pass-backtracks NONNEGATIVE] [--trace]
+```
+
+It completes the full counting pass before creating an exclusive sibling,
+replays and verifies the stream, and atomically publishes without replacing an
+existing path. Ctrl+C before or during replay leaves no claimed completed file.
+
+Continuous output is intentionally separate from the finite editor's short
+preview and finite-score MIDI adapter. It generates a fresh composition from the current
 seed and stream settings; finite editor locks and repair scope are not
 transferred. The reusable stream API supports explicit future-cell constraints
-for applications that need them. Streaming MIDI without retaining an event timeline is
-a future transport and is not claimed here.
+for applications that need them.
 
 ## Source layout
 
@@ -179,9 +217,12 @@ a future transport and is not claimed here.
 - `ensemble_studio_demo.pas` contains the shared deterministic proof used by
   the native and browser conformance programs.
 - `ensemble_studio_stream.pas` owns duration preflight, authored stream models,
-  the incremental generator, and the stateful PCM pull source.
+  the common incremental frame generator, and the stateful PCM pull source.
+- `ensemble_studio_midi_stream.pas` owns bounded MIDI counting and verified
+  replay over that common frame source.
 - `EnsembleStudio.lpr` is the native console and export host.
 - `EnsembleStudioRender.lpr` is the no-replace atomic streaming WAVE host.
+- `EnsembleStudioMidiRender.lpr` is the two-pass no-replace streaming MIDI host.
 - `browser_ensemble_studio_app.pas` contains browser DOM, Blob, and media glue.
 - `browser_ensemble_stream.pas` contains the bounded asynchronous browser file
   transaction and its fake-backend conformance checks.

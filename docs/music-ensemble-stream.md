@@ -372,8 +372,10 @@ Executable specifications:
   without writing an enormous file.
 
 The established MIDI encoder remains a finite-score adapter with its own
-limits; this milestone does not provide a streamed MIDI writer. It also does
-not provide serialized resumable frontiers, whole-song constraint solving,
+limits. The separate [streamed MIDI contract](music-midi-stream.md) now counts
+and replays the same continued frame source without retaining a score or
+timeline. These APIs do not provide serialized resumable frontiers, whole-song
+constraint solving,
 independent marginal-voice recombination, expressive performance synthesis,
 or automatic musical-form planning. The streamed generation and audio APIs
 are reusable foundations for those separate capabilities.

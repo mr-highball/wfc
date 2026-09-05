@@ -33,7 +33,9 @@ uses
   SysUtils,
   wfc,
   wfc_music_audio,
+  wfc_music_audio_stream,
   wfc_music_arrangement,
+  wfc_music_ensemble,
   wfc_music_ensemble_audio,
   ensemble_studio_stream;
 
@@ -139,6 +141,87 @@ begin
     if LValue < 0 then Inc(LValue, 65536);
     HashByte(AHash, Byte(LValue and $FF));
     HashByte(AHash, Byte(LValue shr 8));
+  end;
+end;
+
+procedure TestFrameSource;
+var
+  I: Integer;
+  LFirstText: String;
+  LFrame, LPrevious: TWfcMusicEnsembleFrame;
+  LFramePlan: TEnsembleStudioFramePlan;
+  LOptions: TEnsembleStudioStreamOptions;
+  LRejected: Boolean;
+  LStep: TWfcMusicArrangementStep;
+  LStream: TEnsembleStudioFrameStream;
+begin
+  LFramePlan := PlanEnsembleStudioFrames('1000000000000');
+  Check((LFramePlan.RequestedTicks = 960000000000000) and
+    (LFramePlan.CellCount = 4000000000000),
+    'transport-neutral frame plan is not restricted by the WAVE envelope');
+  LRejected := False;
+  try
+    PlanEnsembleStudioStream('1000000000000');
+  except
+    on E: EEnsembleStudioStream do LRejected := True;
+  end;
+  Check(LRejected, 'WAVE planning retains its independent frame envelope');
+
+  LFramePlan := PlanEnsembleStudioFrames('5.25');
+  LOptions := DefaultEnsembleStudioStreamOptions;
+  LOptions.SegmentCellCount := 5;
+  LStream := TEnsembleStudioFrameStream.Create(LFramePlan, LOptions);
+  try
+    I := 0;
+    LPrevious := Default(TWfcMusicEnsembleFrame);
+    repeat
+      LStep := LStream.NextFrame(LFrame);
+      if LStep = wmaspProduced then
+      begin
+        Check(Length(LFrame.Voices) = 3,
+          'detached frame exposes all three ordered voices');
+        if I = 0 then
+        begin
+          Check(WfcMusicEnsembleFrameCanStart(LFrame),
+            'first streamed frame is a legal start');
+          LFirstText := EncodeWfcMusicEnsembleFrame(LFrame);
+          LPrevious := MakeWfcMusicEnsembleFrame(LFrame.Voices);
+          if Length(LFrame.Voices[0].Tones) > 0 then
+            LFrame.Voices[0].Tones[0].Pitch := 0;
+        end
+        else
+        begin
+          Check(WfcMusicEnsembleFrameCanFollow(LPrevious, LFrame),
+            'successive streamed frames preserve temporal continuity');
+          LPrevious := MakeWfcMusicEnsembleFrame(LFrame.Voices);
+        end;
+        Inc(I);
+      end;
+    until LStep <> wmaspProduced;
+    Check((LStep = wmaspCompleted) and (I = 21) and
+      (LStream.ProducedTicks = 5040),
+      'frame source reaches the exact transport-neutral duration');
+    Check((LStream.SegmentsProduced = 5) and
+      (LStream.SeamHoldCount = 5) and
+      (LStream.LastSegmentSignature = Cardinal($433EDED7)),
+      'frame source retains segment and held-seam evidence');
+    Check((LStream.NextFrame(LFrame) = wmaspCompleted) and
+      (LFrame.Voices = nil), 'frame completion is terminal and clears output');
+  finally
+    LStream.Free;
+  end;
+
+  LStream := TEnsembleStudioFrameStream.Create(LFramePlan, LOptions);
+  try
+    Check((LStream.NextFrame(LFrame) = wmaspProduced) and
+      (EncodeWfcMusicEnsembleFrame(LFrame) = LFirstText),
+      'caller mutation cannot alter a fresh deterministic frame replay');
+    LStream.Cancel;
+    Check((LStream.NextFrame(LFrame) = wmaspCancelled) and
+      (LFrame.Voices = nil) and (LStream.Status = wmasCancelled),
+      'frame-source cancellation is terminal and clears output');
+  finally
+    LStream.Free;
   end;
 end;
 
@@ -339,6 +422,7 @@ end;
 begin
   try
     TestPlans;
+    TestFrameSource;
     TestStreaming;
     TestCancelAndForgedInput;
     {$IFDEF PAS2JS}

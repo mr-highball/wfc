@@ -19,7 +19,7 @@ for source in test/*_test.lpr; do
   [[ -f "$source" ]] || continue
   name="${source##*/}"
   name="${name%.lpr}"
-  case "$name" in wfc_browser_dom_test|wfc_serve_test|wfc_music_render_process_test|wfc_music_ensemble_render_process_test) continue ;; esac
+  case "$name" in wfc_browser_dom_test|wfc_serve_test|wfc_music_render_process_test|wfc_music_ensemble_render_process_test|wfc_music_ensemble_midi_render_process_test) continue ;; esac
   sources+=("$name")
   for extension in html js; do
     [[ -f "$web/$name.$extension" ]] || missing+=("$web/$name.$extension")
@@ -120,6 +120,8 @@ for name in "${sources[@]}"; do
     # Awaited file transactions have their own application completion signal.
     checker_args+=(--expect data-stream-self-test=passed)
     checker_args+=(--expect data-stream-release=passed)
+    checker_args+=(--expect data-midi-stream-self-test=passed)
+    checker_args+=(--expect data-midi-stream-release=passed)
   fi
   if [[ -s "$timeout_marker" ]]; then
     failures+=("$name")

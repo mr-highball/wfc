@@ -36,12 +36,21 @@ uses
   wfc_music_audio,
   wfc_music_audio_stream,
   wfc_music_arrangement,
-  ensemble_studio_stream;
+  wfc_midi_smf,
+  wfc_midi_stream,
+  ensemble_studio_stream,
+  ensemble_studio_midi_stream;
 
 type
+  TBrowserEnsembleStreamOperationKind = (
+    besokWave, besokMidiPlan, besokMidiSave);
+
   TBrowserEnsembleStreamOperation = class
   public
+    Kind: TBrowserEnsembleStreamOperationKind;
     Cancelled, Committing: Boolean;
+    MidiPlan: TEnsembleStudioMidiPlan;
+    destructor Destroy; override;
   end;
 
   { Browser transport for the independent long-form stream. It owns no finite
@@ -52,10 +61,11 @@ type
     FSeed, FSeconds, FSegmentCells, FBacktracks, FPassBacktracks:
       TJSHTMLInputElement;
     FTrace: TJSHTMLInputElement;
-    FStart, FCancel: TJSHTMLButtonElement;
+    FStart, FMidiPlanButton, FMidiSaveButton, FCancel: TJSHTMLButtonElement;
     FProgress: TJSHTMLProgressElement;
     FStatus, FDetail, FPlan, FFallback: TJSElement;
     FActive: TBrowserEnsembleStreamOperation;
+    FMidiPlan: TEnsembleStudioMidiPlan;
     FBusy, FReleased, FBound, FSelfTestRunning: Boolean;
     FAsyncCount: Integer;
     FRefreshTimer: NativeInt;
@@ -67,13 +77,19 @@ type
     procedure SetStatus(const AState, AMessage: String);
     procedure SetBusy(const AValue: Boolean);
     procedure RefreshPlan;
+    procedure ClearMidiPlan;
     procedure Cancel(const AReason: String);
     procedure AsyncFinished;
     function HandleStart(AEvent: TJSMouseEvent): Boolean;
+    function HandleMidiPlan(AEvent: TJSMouseEvent): Boolean;
+    function HandleMidiSave(AEvent: TJSMouseEvent): Boolean;
     function HandleCancel(AEvent: TJSMouseEvent): Boolean;
     function HandleMutation(AEvent: TJSEvent): Boolean;
     procedure SaveStream(const ATestPicker: TJSPromise = nil); async;
+    procedure PlanMidi; async;
+    procedure SaveMidi(const ATestPicker: TJSPromise = nil); async;
     procedure CheckSaveFixture(const AKind: String); async;
+    procedure CheckMidiSaveFixture(const AKind: String); async;
   public
     constructor Create;
     procedure Run;
@@ -155,6 +171,12 @@ begin
     (TObject(AValue) is EBrowserEnsembleStreamCancelled);
 end;
 
+destructor TBrowserEnsembleStreamOperation.Destroy;
+begin
+  MidiPlan.Free;
+  inherited Destroy;
+end;
+
 function OperationCurrent(const AActive, ACandidate:
   TBrowserEnsembleStreamOperation): Boolean;
 begin
@@ -232,6 +254,90 @@ procedure TOneBlockSink.Discard;
 begin
   FBlock := nil;
   FSize := 0;
+end;
+
+function MidiBlockBlob(const ABytes: TWfcMidiBytes): TJSBlob;
+var
+  I: Integer;
+  LBlock: TJSUint8Array;
+  LOptions: TJSBlobInit;
+  LParts: TJSArray;
+begin
+  if (Length(ABytes) < 1) or
+      (Length(ABytes) > WFC_MIDI_STREAM_BLOCK_BYTES) then
+    raise EEnsembleStudioMidiStream.Create(
+      'browser MIDI block is outside the 1..4096 byte transport bound');
+  LBlock := TJSUint8Array.new(Length(ABytes));
+  for I := 0 to High(ABytes) do LBlock[I] := ABytes[I];
+  LParts := TJSArray.new;
+  LParts.push(LBlock);
+  LOptions := TJSBlobInit.new;
+  LOptions.type_ := 'audio/midi';
+  Result := TJSBlob.new(LParts, LOptions);
+end;
+
+procedure AppendMidiBytes(var ADestination: TWfcMidiBytes;
+  const ASource: TWfcMidiBytes);
+var
+  I, LOld: Integer;
+begin
+  if Length(ASource) > High(Integer) - Length(ADestination) then
+    raise EEnsembleStudioMidiStream.Create(
+      'browser MIDI self-test byte fixture exceeds Integer');
+  LOld := Length(ADestination);
+  SetLength(ADestination, LOld + Length(ASource));
+  for I := 0 to High(ASource) do ADestination[LOld + I] := ASource[I];
+end;
+
+procedure AppendTypedMidiBytes(var ADestination: TWfcMidiBytes;
+  const ASource: TJSUint8Array);
+var
+  I, LOld: Integer;
+begin
+  if ASource.length > High(Integer) - Length(ADestination) then
+    raise EEnsembleStudioMidiStream.Create(
+      'browser MIDI Blob fixture exceeds Integer');
+  LOld := Length(ADestination);
+  SetLength(ADestination, LOld + ASource.length);
+  for I := 0 to ASource.length - 1 do
+    ADestination[LOld + I] := ASource[I];
+end;
+
+function MidiBytesEqual(const ALeft, ARight: TWfcMidiBytes): Boolean;
+var
+  I: Integer;
+begin
+  if Length(ALeft) <> Length(ARight) then Exit(False);
+  for I := 0 to High(ALeft) do
+    if ALeft[I] <> ARight[I] then Exit(False);
+  Result := True;
+end;
+
+function CollectPlannedMidiBytes(
+  const APlan: TEnsembleStudioMidiPlan): TWfcMidiBytes;
+var
+  LBlock: TWfcMidiBytes;
+  LReplay: TEnsembleStudioMidiStream;
+  LStep: TWfcMusicArrangementStep;
+begin
+  Result := nil;
+  LReplay := TEnsembleStudioMidiStream.Create(APlan);
+  try
+    repeat
+      LStep := LReplay.NextBytes(LBlock);
+      case LStep of
+        wmaspProduced: AppendMidiBytes(Result, LBlock);
+        wmaspCompleted: ;
+        wmaspCancelled:
+          raise EEnsembleStudioMidiStream.Create(
+            'browser MIDI self-test replay was cancelled');
+        wmaspFailed:
+          raise EEnsembleStudioMidiStream.Create(LReplay.Failure);
+      end;
+    until LStep = wmaspCompleted;
+  finally
+    LReplay.Free;
+  end;
 end;
 
 constructor TBrowserEnsembleStreamController.Create;
@@ -358,6 +464,8 @@ begin
   FBusy := AValue;
   if FReleased then Exit;
   FStart.disabled := AValue;
+  FMidiPlanButton.disabled := AValue;
+  FMidiSaveButton.disabled := AValue or (FMidiPlan = nil);
   FCancel.disabled := not AValue or (FActive = nil);
 end;
 
@@ -369,35 +477,74 @@ end;
 
 procedure TBrowserEnsembleStreamController.RefreshPlan;
 var
+  LFrames: TEnsembleStudioFramePlan;
   LOptions: TEnsembleStudioStreamOptions;
   LPlan: TEnsembleStudioStreamPlan;
-  LTraceOption: String;
+  LMidiCommand, LTraceOption, LWaveCommand, LWaveFailure: String;
 begin
   if FReleased then Exit;
   try
     LOptions := ReadOptions;
-    LPlan := PlanEnsembleStudioStream(FSeconds.value);
-    FPlan.textContent := 'Requested ' + LPlan.RequestedText +
-      ' s → actual ' + EnsembleStudioStreamSecondsText(LPlan.ActualTicks) +
-      ' s (' + IntToStr(LPlan.CellCount) + ' eighth-note cells, ' +
-      IntToStr(LPlan.ExpectedFrames) + ' PCM frames). Working segment ' +
-      IntToStr(LOptions.SegmentCellCount) + ' cells; seed ' +
-      IntToStr(LOptions.Seed) + '.';
-    FPlan.setAttribute('data-valid', 'true');
+    LFrames := PlanEnsembleStudioFrames(FSeconds.value);
     if LOptions.CaptureTrace then LTraceOption := ' --trace'
     else LTraceOption := '';
-    FFallback.textContent := 'Native fallback (new output path): ' +
-      'EnsembleStudioRender --seconds ' + LPlan.RequestedText + ' --seed ' +
+    LMidiCommand := 'EnsembleStudioMidiRender --seconds ' +
+      LFrames.RequestedText + ' --seed ' + IntToStr(LOptions.Seed) +
+      ' --segment-cells ' + IntToStr(LOptions.SegmentCellCount) +
+      ' --backtracks ' + IntToStr(LOptions.MaxBacktracks) +
+      ' --pass-backtracks ' + IntToStr(LOptions.MaxPassBacktracks) +
+      LTraceOption + ' --output NEW.mid';
+    LWaveCommand := '';
+    LWaveFailure := '';
+    try
+      LPlan := PlanEnsembleStudioStream(FSeconds.value);
+      FPlan.textContent := 'Requested ' + LFrames.RequestedText +
+        ' s → actual ' + EnsembleStudioStreamSecondsText(LFrames.ActualTicks) +
+        ' s (' + IntToStr(LFrames.CellCount) + ' eighth-note cells, ' +
+        IntToStr(LPlan.ExpectedFrames) + ' PCM frames). Working segment ' +
+        IntToStr(LOptions.SegmentCellCount) + ' cells; seed ' +
+        IntToStr(LOptions.Seed) + '.';
+      FPlan.setAttribute('data-valid', 'true');
+      LWaveCommand := 'EnsembleStudioRender --seconds ' +
+        LPlan.RequestedText + ' --seed ' +
       IntToStr(LOptions.Seed) + ' --segment-cells ' +
       IntToStr(LOptions.SegmentCellCount) + ' --backtracks ' +
       IntToStr(LOptions.MaxBacktracks) + ' --pass-backtracks ' +
       IntToStr(LOptions.MaxPassBacktracks) + LTraceOption +
-      ' --output NEW.wav';
+        ' --output NEW.wav';
+    except
+      LWaveFailure := FailureText(JSExceptValue);
+      FPlan.textContent := 'Requested ' + LFrames.RequestedText +
+        ' s → actual ' + EnsembleStudioStreamSecondsText(LFrames.ActualTicks) +
+        ' s (' + IntToStr(LFrames.CellCount) +
+        ' eighth-note cells). MIDI planning is valid; WAVE is unavailable: ' +
+        LWaveFailure + '.';
+      FPlan.setAttribute('data-valid', 'false');
+    end;
+    FPlan.setAttribute('data-midi-valid', 'true');
+    if LWaveCommand <> '' then
+      FFallback.textContent := 'Native WAVE (new output): ' + LWaveCommand +
+        #10 + 'Native MIDI (new output): ' + LMidiCommand
+    else
+      FFallback.textContent := 'Native WAVE unavailable: ' + LWaveFailure +
+        #10 + 'Native MIDI (new output): ' + LMidiCommand;
   except
     FPlan.textContent := 'Stream cannot start: ' + FailureText(JSExceptValue) + '.';
     FPlan.setAttribute('data-valid', 'false');
+    FPlan.setAttribute('data-midi-valid', 'false');
     FFallback.textContent := 'Correct the stream inputs to show the native command.';
   end;
+end;
+
+procedure TBrowserEnsembleStreamController.ClearMidiPlan;
+begin
+  FreeAndNil(FMidiPlan);
+  if FReleased then Exit;
+  document.body.setAttribute('data-midi-stream-plan-state', 'none');
+  document.body.removeAttribute('data-midi-stream-plan-bytes');
+  document.body.removeAttribute('data-midi-stream-plan-signature');
+  document.body.removeAttribute('data-midi-stream-frame-signature');
+  FMidiSaveButton.disabled := True;
 end;
 
 procedure TBrowserEnsembleStreamController.Cancel(const AReason: String);
@@ -416,6 +563,20 @@ begin
   if not FBusy then SaveStream;
 end;
 
+function TBrowserEnsembleStreamController.HandleMidiPlan(
+  AEvent: TJSMouseEvent): Boolean;
+begin
+  Result := False;
+  if not FBusy then PlanMidi;
+end;
+
+function TBrowserEnsembleStreamController.HandleMidiSave(
+  AEvent: TJSMouseEvent): Boolean;
+begin
+  Result := False;
+  if not FBusy and (FMidiPlan <> nil) then SaveMidi;
+end;
+
 function TBrowserEnsembleStreamController.HandleCancel(
   AEvent: TJSMouseEvent): Boolean;
 begin
@@ -431,7 +592,10 @@ begin
   Result := True;
   if FReleased or not (AEvent.target is TJSElement) then Exit;
   LId := TJSElement(AEvent.target).id;
-  if (LId = 'stream-start-button') or (LId = 'stream-cancel-button') then Exit;
+  if (LId = 'stream-start-button') or
+      (LId = 'stream-midi-plan-button') or
+      (LId = 'stream-midi-save-button') or
+      (LId = 'stream-cancel-button') then Exit;
   if (AEvent._type = 'click') and (LId <> 'new-session-button') then Exit;
   if (AEvent._type <> 'click') and
       (LId <> 'seed-input') and (LId <> 'stream-seconds-input') and
@@ -445,6 +609,7 @@ begin
     AEvent.stopImmediatePropagation;
     Exit(False);
   end;
+  ClearMidiPlan;
   Cancel('Stream inputs changed; the captured transaction is stale.');
   if FRefreshTimer <> 0 then window.clearTimeout(FRefreshTimer);
   FRefreshTimer := window.setTimeout(
@@ -456,7 +621,8 @@ begin
       begin
         FProgress.value := 0;
         FDetail.textContent := 'No stream save is active.';
-        if FPlan.getAttribute('data-valid') = 'true' then
+        if (FPlan.getAttribute('data-valid') = 'true') or
+            (FPlan.getAttribute('data-midi-valid') = 'true') then
           if isFunction(TJSObject(window)['showSaveFilePicker']) then
             SetStatus('ready', 'Plan updated. Save As may replace a file selected by the user.')
           else SetStatus('unavailable',
@@ -510,6 +676,7 @@ begin
         Exit;
       end;
       LOperation := TBrowserEnsembleStreamOperation.Create;
+      LOperation.Kind := besokWave;
       FActive := LOperation;
       SetBusy(True);
       FProgress.value := 0;
@@ -643,6 +810,288 @@ begin
     if FReleased then
     begin
       FStart.disabled := True;
+      FMidiPlanButton.disabled := True;
+      FMidiSaveButton.disabled := True;
+      FCancel.disabled := True;
+    end;
+    AsyncFinished;
+  end;
+end;
+
+procedure TBrowserEnsembleStreamController.PlanMidi; async;
+var
+  LFramePlan: TEnsembleStudioFramePlan;
+  LNewPlan: TEnsembleStudioMidiPlan;
+  LOperation: TBrowserEnsembleStreamOperation;
+  LPlanner: TEnsembleStudioMidiPlanner;
+  LStep: TWfcMusicArrangementStep;
+  LStreamOptions: TEnsembleStudioStreamOptions;
+  LFailure: String;
+begin
+  if FReleased or FBusy then Exit;
+  ClearMidiPlan;
+  Inc(FAsyncCount);
+  LNewPlan := nil;
+  LOperation := nil;
+  LPlanner := nil;
+  try
+    try
+      { MIDI has its own format capacity. Do not route this preflight through
+        the WAVE/RF64 frame-count envelope. }
+      LFramePlan := PlanEnsembleStudioFrames(FSeconds.value);
+      LStreamOptions := ReadOptions;
+      RefreshPlan;
+      LOperation := TBrowserEnsembleStreamOperation.Create;
+      LOperation.Kind := besokMidiPlan;
+      FActive := LOperation;
+      SetBusy(True);
+      FProgress.value := 0;
+      document.body.setAttribute('data-midi-stream-plan-state', 'planning');
+      document.body.setAttribute('data-midi-stream-planned-frames', '0');
+      SetStatus('midi-planning',
+        'Planning MIDI before any file picker is opened.');
+      FDetail.textContent := 'Counting format-0 events and bytes from a ' +
+        'deterministic frame pass; no frames or event timeline are retained.';
+      LPlanner := TEnsembleStudioMidiPlanner.Create(
+        LFramePlan, LStreamOptions);
+      repeat
+        await(BrowserYield);
+        CheckOperation(FActive, LOperation);
+        LStep := LPlanner.Next;
+        case LStep of
+          wmaspProduced:
+            begin
+              FProgress.value := LPlanner.FramesProcessed /
+                LFramePlan.CellCount;
+              document.body.setAttribute('data-midi-stream-planned-frames',
+                IntToStr(LPlanner.FramesProcessed));
+              FDetail.textContent := 'Planning frame ' +
+                IntToStr(LPlanner.FramesProcessed) + ' / ' +
+                IntToStr(LFramePlan.CellCount) +
+                '; no destination has been requested.';
+            end;
+          wmaspCompleted: ;
+          wmaspCancelled:
+            raise EBrowserEnsembleStreamCancelled.Create(
+              'MIDI planning was cancelled');
+          wmaspFailed:
+            raise EEnsembleStudioMidiStream.Create(LPlanner.Failure);
+        end;
+      until LStep = wmaspCompleted;
+      CheckOperation(FActive, LOperation);
+      LNewPlan := LPlanner.DetachPlan;
+      FMidiPlan := LNewPlan;
+      LNewPlan := nil;
+      FProgress.value := 1;
+      document.body.setAttribute('data-midi-stream-plan-state', 'planned');
+      document.body.setAttribute('data-midi-stream-plan-bytes',
+        IntToStr(FMidiPlan.FileByteCount));
+      document.body.setAttribute('data-midi-stream-plan-signature',
+        IntToHex(FMidiPlan.MidiSignature, 8));
+      document.body.setAttribute('data-midi-stream-frame-signature',
+        IntToHex(FMidiPlan.FrameSignature, 8));
+      SetStatus('midi-planned',
+        'MIDI plan ready. Use Save planned MIDI in a new user click.');
+      FDetail.textContent := IntToStr(FMidiPlan.FrameCount) + ' frames, ' +
+        IntToStr(FMidiPlan.EventCount) + ' events, ' +
+        IntToStr(FMidiPlan.FileByteCount) +
+        ' file bytes. The plan retains counts and fingerprints, not music frames.';
+    except
+      LFailure := FailureText(JSExceptValue);
+      if LPlanner <> nil then LPlanner.Cancel;
+      ClearMidiPlan;
+      if ((LOperation <> nil) and LOperation.Cancelled) or
+          IsCancelledFailure(JSExceptValue) then
+        SetStatus('cancelled',
+          'MIDI planning cancelled; there is no savable plan.')
+      else
+        SetStatus('failed', 'MIDI planning failed: ' + LFailure +
+          '. There is no savable plan.');
+    end;
+  finally
+    if FActive = LOperation then FActive := nil;
+    LNewPlan.Free;
+    LPlanner.Free;
+    LOperation.Free;
+    SetBusy(False);
+    if FReleased then
+    begin
+      FStart.disabled := True;
+      FMidiPlanButton.disabled := True;
+      FMidiSaveButton.disabled := True;
+      FCancel.disabled := True;
+    end;
+    AsyncFinished;
+  end;
+end;
+
+procedure TBrowserEnsembleStreamController.SaveMidi(
+  const ATestPicker: TJSPromise); async;
+var
+  LBlob: TJSBlob;
+  LBytes: TWfcMidiBytes;
+  LCancelled, LCommitted: Boolean;
+  LControls: TControlStates;
+  LFile: TEnsembleFileHandle;
+  LOptions, LType, LAccept: TJSObject;
+  LOperation: TBrowserEnsembleStreamOperation;
+  LPicker: TJSPromise;
+  LReplay: TEnsembleStudioMidiStream;
+  LStep: TWfcMusicArrangementStep;
+  LWritable: TEnsembleWritableFile;
+  LFailure: String;
+  LPeak: Integer;
+begin
+  if FReleased or FBusy then Exit;
+  if FMidiPlan = nil then
+  begin
+    SetStatus('invalid',
+      'Plan MIDI first; saving never performs a hidden planning pass.');
+    Exit;
+  end;
+  Inc(FAsyncCount);
+  LBlob := nil;
+  LControls := nil;
+  LCommitted := False;
+  LFile := nil;
+  LOperation := nil;
+  LReplay := nil;
+  LWritable := nil;
+  LPeak := 0;
+  try
+    try
+      if (ATestPicker = nil) and
+          not isFunction(TJSObject(window)['showSaveFilePicker']) then
+      begin
+        SetStatus('unavailable',
+          'This browser cannot save the planned MIDI stream. Use the native command.');
+        Exit;
+      end;
+      LOperation := TBrowserEnsembleStreamOperation.Create;
+      LOperation.Kind := besokMidiSave;
+      { Consume the immutable plan into this operation. Input edits can now
+        invalidate the controller without freeing a plan still in use. }
+      LOperation.MidiPlan := FMidiPlan;
+      FMidiPlan := nil;
+      FActive := LOperation;
+      SetBusy(True);
+      FProgress.value := 0;
+      document.body.setAttribute('data-midi-stream-plan-state', 'saving');
+      document.body.setAttribute('data-midi-stream-written-bytes', '0');
+      document.body.removeAttribute('data-midi-stream-peak-bytes');
+      SetStatus('midi-choosing',
+        'Choose a MIDI file. Save As is user-mediated and may replace the selected file.');
+      FDetail.textContent := 'Replaying seed ' +
+        IntToStr(LOperation.MidiPlan.Options.Seed) + ' for ' +
+        EnsembleStudioStreamSecondsText(
+          LOperation.MidiPlan.FramePlan.ActualTicks) +
+        ' seconds; the stored plan contains no frame timeline.';
+      LOptions := TJSObject.new;
+      LOptions['suggestedName'] := 'ensemble-stream-seed-' +
+        IntToStr(LOperation.MidiPlan.Options.Seed) + '.mid';
+      LType := TJSObject.new;
+      LType['description'] := 'Standard MIDI File';
+      LAccept := TJSObject.new;
+      LAccept['audio/midi'] := TJSArray.new('.mid');
+      LType['accept'] := LAccept;
+      LOptions['types'] := TJSArray.new(LType);
+      { This call is evaluated before the first await and therefore remains in
+        the explicit Save planned MIDI user-activation turn. }
+      if ATestPicker <> nil then LPicker := ATestPicker
+      else LPicker := TEnsembleSaveWindow(window).showSaveFilePicker(LOptions);
+      LFile := await(TEnsembleFileHandle, LPicker);
+      CheckOperation(FActive, LOperation);
+      LWritable := await(TEnsembleWritableFile, LFile.createWritable);
+      CheckOperation(FActive, LOperation);
+      LReplay := TEnsembleStudioMidiStream.Create(LOperation.MidiPlan);
+
+      repeat
+        await(BrowserYield);
+        CheckOperation(FActive, LOperation);
+        LStep := LReplay.NextBytes(LBytes);
+        case LStep of
+          wmaspProduced:
+            begin
+              LBlob := MidiBlockBlob(LBytes);
+              if LBlob.size > LPeak then LPeak := LBlob.size;
+              SetStatus('midi-writing',
+                'Writing one bounded MIDI block from deterministic replay.');
+              await(LWritable.write(LBlob));
+              LBlob := nil;
+              CheckOperation(FActive, LOperation);
+              FProgress.value := LReplay.EmittedBytes /
+                LOperation.MidiPlan.FileByteCount;
+              document.body.setAttribute('data-midi-stream-written-bytes',
+                IntToStr(LReplay.EmittedBytes));
+              FDetail.textContent := IntToStr(LReplay.EmittedBytes) + ' / ' +
+                IntToStr(LOperation.MidiPlan.FileByteCount) +
+                ' bytes written; one byte block is in flight.';
+            end;
+          wmaspCompleted: ;
+          wmaspCancelled:
+            raise EBrowserEnsembleStreamCancelled.Create(
+              'MIDI replay was cancelled');
+          wmaspFailed:
+            raise EEnsembleStudioMidiStream.Create(LReplay.Failure);
+        end;
+      until LStep = wmaspCompleted;
+      CheckOperation(FActive, LOperation);
+      if (LReplay.TickCount <> LOperation.MidiPlan.EndTick) or
+          (LReplay.EmittedBytes <> LOperation.MidiPlan.FileByteCount) then
+        raise EEnsembleStudioMidiStream.Create(
+          'MIDI replay differs from the stored plan');
+
+      LOperation.Committing := True;
+      FreezeControls(LControls);
+      SetStatus('midi-committing',
+        'Committing the chosen MIDI file; edits and cancellation are briefly locked.');
+      await(LWritable.close);
+      LCommitted := True;
+      if not FReleased then
+      begin
+        FProgress.value := 1;
+        document.body.setAttribute('data-midi-stream-peak-bytes',
+          IntToStr(LPeak));
+        document.body.setAttribute('data-midi-stream-plan-state', 'saved');
+        SetStatus('midi-saved', 'Saved verified format-0 MIDI for ' +
+          EnsembleStudioStreamSecondsText(
+            LOperation.MidiPlan.FramePlan.ActualTicks) + ' seconds.');
+      end;
+    except
+      LFailure := FailureText(JSExceptValue);
+      LCancelled := ((LOperation <> nil) and LOperation.Cancelled) or
+        (FailureName(JSExceptValue) = 'AbortError') or
+        IsCancelledFailure(JSExceptValue);
+      if LReplay <> nil then LReplay.Cancel;
+      if (LWritable <> nil) and not LCommitted then
+      begin
+        try
+          await(LWritable.abort);
+        except
+          LFailure := LFailure + ' Abort also failed: ' +
+            FailureText(JSExceptValue);
+          LCancelled := False;
+        end;
+      end;
+      if not FReleased then ClearMidiPlan;
+      if LCancelled then
+        SetStatus('cancelled',
+          'MIDI save cancelled; no completed stream is claimed.')
+      else
+        SetStatus('failed', 'MIDI save failed: ' + LFailure +
+          '. No completed stream is claimed.');
+    end;
+  finally
+    RestoreControls(LControls);
+    if FActive = LOperation then FActive := nil;
+    LReplay.Free;
+    LOperation.Free;
+    SetBusy(False);
+    if FReleased then
+    begin
+      FStart.disabled := True;
+      FMidiPlanButton.disabled := True;
+      FMidiSaveButton.disabled := True;
       FCancel.disabled := True;
     end;
     AsyncFinished;
@@ -800,14 +1249,238 @@ begin
   end;
 end;
 
+procedure TBrowserEnsembleStreamController.CheckMidiSaveFixture(
+  const AKind: String); async;
+var
+  LAbortCalls, LCloseCalls, LOpenCalls, LWriteCalls: Integer;
+  LExpectedData, LObservedData: TWfcMidiBytes;
+  LExpectedBytes: TWfcMidiStreamCount;
+  LFile, LWritable: TJSObject;
+  LInFlight: Boolean;
+  LOriginalSeconds: String;
+  LPicker: TJSPromise;
+  LPlanSignature, LStateAtRelease: String;
+  LWritten: NativeInt;
+begin
+  LAbortCalls := 0;
+  LCloseCalls := 0;
+  LOpenCalls := 0;
+  LWriteCalls := 0;
+  LExpectedBytes := 0;
+  LExpectedData := nil;
+  LInFlight := False;
+  LObservedData := nil;
+  LWritten := 0;
+  LPlanSignature := '';
+  LStateAtRelease := '';
+  LOriginalSeconds := FSeconds.value;
+  try
+    FSeconds.value := '1.5';
+    ClearMidiPlan;
+    SetBusy(False);
+    RefreshPlan;
+    if AKind = 'no-plan' then
+    begin
+      await(SaveMidi(TJSPromise.resolve(Null)));
+      BrowserAssert(document.body.getAttribute('data-stream-state') = 'invalid',
+        'MIDI save without an explicit plan is rejected before the picker');
+      Exit;
+    end;
+    if AKind = 'plan-pending-edit' then
+    begin
+      PlanMidi;
+      FSeconds.value := '1.75';
+      FSeconds.dispatchEvent(TJSEvent.new('input'));
+      while FBusy do await(BrowserYield);
+      BrowserAssert((FMidiPlan = nil) and FMidiSaveButton.disabled and
+        (document.body.getAttribute('data-midi-stream-plan-state') = 'none'),
+        'input mutation cancels a pending MIDI counting pass');
+      Exit;
+    end;
+    await(PlanMidi);
+    BrowserAssert((FMidiPlan <> nil) and
+      (document.body.getAttribute('data-midi-stream-plan-state') = 'planned'),
+      'MIDI counting pass produces an explicit savable plan');
+    BrowserAssert(FMidiPlan.FrameCount = 6,
+      'MIDI test plan uses the exact six-cell duration');
+    LExpectedBytes := FMidiPlan.FileByteCount;
+    LPlanSignature := IntToHex(FMidiPlan.MidiSignature, 8);
+    if AKind = 'plan-stale' then
+    begin
+      FSeconds.value := '1.75';
+      FSeconds.dispatchEvent(TJSEvent.new('input'));
+      await(BrowserYield);
+      BrowserAssert((FMidiPlan = nil) and FMidiSaveButton.disabled and
+        (document.body.getAttribute('data-midi-stream-plan-state') = 'none'),
+        'input mutation immediately invalidates the counted MIDI plan');
+      Exit;
+    end;
+    if AKind = 'saved' then
+      LExpectedData := CollectPlannedMidiBytes(FMidiPlan);
+
+    LWritable := TJSObject.new;
+    LWritable['write'] := function(AData: JSValue): JSValue
+      begin
+        BrowserAssert(not LInFlight, 'MIDI writes cannot overlap');
+        BrowserAssert((TJSBlob(AData).size > 0) and
+          (TJSBlob(AData).size <= WFC_MIDI_STREAM_BLOCK_BYTES),
+          'MIDI Blob stays within one encoded block');
+        LInFlight := True;
+        Inc(LWriteCalls);
+        Inc(LWritten, TJSBlob(AData).size);
+        if AKind = 'cancel' then FCancel.click;
+        if AKind = 'edit' then
+        begin
+          FSeconds.value := '1.75';
+          FSeconds.dispatchEvent(TJSEvent.new('input'));
+        end;
+        if AKind = 'saved' then
+          Result := TJSBlob(AData).arrayBuffer._then(
+            function(AValue: JSValue): JSValue
+            var
+              LTyped: TJSUint8Array;
+            begin
+              LTyped := TJSUint8Array.new(TJSArrayBuffer(AValue));
+              AppendTypedMidiBytes(LObservedData, LTyped);
+              LInFlight := False;
+              Result := Null;
+            end)
+        else
+          Result := BrowserYield._then(function(AValue: JSValue): JSValue
+            begin
+              LInFlight := False;
+              if AKind = 'write-failure' then
+                Result := TJSPromise.reject('fixture MIDI write failure')
+              else Result := Null;
+            end);
+      end;
+    LWritable['close'] := function: JSValue
+      begin
+        BrowserAssert(not LInFlight, 'MIDI close waits for the final write');
+        BrowserAssert(FSeed.disabled and FSeconds.disabled and FCancel.disabled,
+          'MIDI commit freezes edits and cancellation');
+        Inc(LCloseCalls);
+        if AKind = 'release-close' then
+        begin
+          LStateAtRelease := document.body.getAttribute('data-stream-state');
+          Release;
+          Result := BrowserYield;
+        end
+        else if AKind = 'close-failure' then
+          Result := TJSPromise.reject('fixture MIDI close failure')
+        else Result := BrowserYield;
+      end;
+    LWritable['abort'] := function: JSValue
+      begin
+        BrowserAssert(not LInFlight, 'MIDI abort waits for a pending write');
+        Inc(LAbortCalls);
+        Result := BrowserYield;
+      end;
+    LFile := TJSObject.new;
+    LFile['createWritable'] := function: JSValue
+      begin
+        Inc(LOpenCalls);
+        if AKind = 'open-edit' then
+        begin
+          FSeconds.value := '1.75';
+          FSeconds.dispatchEvent(TJSEvent.new('input'));
+          Result := BrowserYield._then(function(AValue: JSValue): JSValue
+            begin Result := LWritable; end);
+        end
+        else Result := TJSPromise.resolve(LWritable);
+      end;
+    LPicker := TJSPromise.resolve(LFile);
+    if AKind = 'stale' then
+      LPicker := LPicker._then(function(AValue: JSValue): JSValue
+        begin
+          FActive := nil;
+          Result := AValue;
+        end);
+    await(SaveMidi(LPicker));
+    if AKind = 'saved' then
+    begin
+      BrowserAssert((LOpenCalls = 1) and (LWriteCalls > 0) and
+        (LWritten = LExpectedBytes) and (LCloseCalls = 1) and
+        (LAbortCalls = 0),
+        'planned MIDI replay writes exact bytes and commits once');
+      BrowserAssert(MidiBytesEqual(LObservedData, LExpectedData),
+        'Uint8Array-backed MIDI Blobs preserve every planned replay byte');
+      BrowserAssert((document.body.getAttribute('data-stream-state') =
+        'midi-saved') and
+        (document.body.getAttribute('data-midi-stream-plan-signature') =
+          LPlanSignature),
+        'MIDI saved state remains bound to the counted plan signature');
+      BrowserAssert(document.body.getAttribute(
+        'data-midi-stream-peak-bytes') <> '',
+        'MIDI save publishes its bounded peak block only after close');
+    end
+    else if (AKind = 'cancel') or (AKind = 'edit') then
+    begin
+      BrowserAssert((LOpenCalls = 1) and (LWriteCalls = 1) and
+        (LCloseCalls = 0) and (LAbortCalls = 1),
+        'MIDI cancel/edit aborts after the pending block');
+      BrowserAssert(document.body.getAttribute('data-stream-state') =
+        'cancelled', 'cancelled MIDI replay cannot claim completion');
+    end
+    else if AKind = 'open-edit' then
+    begin
+      BrowserAssert((LOpenCalls = 1) and (LWriteCalls = 0) and
+        (LCloseCalls = 0) and (LAbortCalls = 1),
+        'edit while createWritable is pending aborts the returned writable');
+      BrowserAssert(document.body.getAttribute('data-stream-state') =
+        'cancelled', 'stale writable completion cannot start MIDI replay');
+    end
+    else if (AKind = 'write-failure') or (AKind = 'close-failure') then
+    begin
+      BrowserAssert((LOpenCalls = 1) and (LAbortCalls = 1),
+        'MIDI write/close failure aborts its writable transaction');
+      BrowserAssert(document.body.getAttribute('data-stream-state') = 'failed',
+        'failed MIDI replay cannot claim completion');
+    end
+    else if AKind = 'release-close' then
+    begin
+      BrowserAssert((LOpenCalls = 1) and (LWriteCalls > 0) and
+        (LCloseCalls = 1) and (LAbortCalls = 0),
+        'release during MIDI close lets the irreversible commit settle once');
+      BrowserAssert(FReleased and
+        (document.body.getAttribute('data-stream-state') = LStateAtRelease),
+        'released MIDI controller publishes no post-close status');
+      BrowserAssert(not document.body.hasAttribute(
+        'data-midi-stream-peak-bytes'),
+        'released MIDI controller publishes no post-close peak marker');
+      BrowserAssert((FStart.onclick = nil) and
+        (FMidiPlanButton.onclick = nil) and
+        (FMidiSaveButton.onclick = nil) and (FCancel.onclick = nil) and
+        not FSeed.disabled and FStart.disabled and
+        FMidiPlanButton.disabled and FMidiSaveButton.disabled and
+        FCancel.disabled,
+        'MIDI release detaches handlers and cleanup restores shared controls');
+    end
+    else if AKind = 'stale' then
+    begin
+      BrowserAssert((LOpenCalls = 0) and (LWriteCalls = 0) and
+        (LCloseCalls = 0) and (LAbortCalls = 0),
+        'stale MIDI picker completion cannot open a destination');
+    end;
+    BrowserAssert(not FBusy and (FActive = nil),
+      'MIDI async operation releases active state');
+  finally
+    FSeconds.value := LOriginalSeconds;
+    SetBusy(False);
+  end;
+end;
+
 procedure TBrowserEnsembleStreamController.RunSelfTest; async;
 var
-  LReleaseController: TBrowserEnsembleStreamController;
+  LMidiReleaseController, LReleaseController:
+    TBrowserEnsembleStreamController;
 begin
   if FReleased or FSelfTestRunning or FBusy then Exit;
   FSelfTestRunning := True;
   Inc(FAsyncCount);
   document.body.setAttribute('data-stream-self-test', 'pending');
+  document.body.setAttribute('data-midi-stream-self-test', 'pending');
+  LMidiReleaseController := nil;
   LReleaseController := nil;
   try
     try
@@ -848,6 +1521,8 @@ begin
         { The temporary controller owned the same fixture briefly. Restore the
           real controller's direct button handlers after its listener cleanup. }
         FStart.onclick := @HandleStart;
+        FMidiPlanButton.onclick := @HandleMidiPlan;
+        FMidiSaveButton.onclick := @HandleMidiSave;
         FCancel.onclick := @HandleCancel;
         SetBusy(False);
       end;
@@ -859,16 +1534,53 @@ begin
       document.body.setAttribute('data-stream-commit', 'passed');
       document.body.setAttribute('data-stream-release', 'passed');
       document.body.setAttribute('data-stream-self-test', 'passed');
+
+      await(CheckMidiSaveFixture('no-plan'));
+      await(CheckMidiSaveFixture('plan-pending-edit'));
+      await(CheckMidiSaveFixture('plan-stale'));
+      await(CheckMidiSaveFixture('saved'));
+      await(CheckMidiSaveFixture('cancel'));
+      await(CheckMidiSaveFixture('edit'));
+      await(CheckMidiSaveFixture('open-edit'));
+      await(CheckMidiSaveFixture('write-failure'));
+      await(CheckMidiSaveFixture('close-failure'));
+      await(CheckMidiSaveFixture('stale'));
+      if FReleased then Exit;
+      LMidiReleaseController := TBrowserEnsembleStreamController.Create;
+      try
+        LMidiReleaseController.Run;
+        Inc(LMidiReleaseController.FAsyncCount);
+        try
+          await(LMidiReleaseController.CheckMidiSaveFixture('release-close'));
+        finally
+          if not LMidiReleaseController.FReleased then
+            LMidiReleaseController.Release;
+          LMidiReleaseController.AsyncFinished;
+          LMidiReleaseController := nil;
+        end;
+      finally
+        FStart.onclick := @HandleStart;
+        FMidiPlanButton.onclick := @HandleMidiPlan;
+        FMidiSaveButton.onclick := @HandleMidiSave;
+        FCancel.onclick := @HandleCancel;
+        SetBusy(False);
+      end;
+      BrowserAssert(not FStart.disabled and not FMidiPlanButton.disabled and
+        FMidiSaveButton.disabled and FCancel.disabled,
+        'parent controls are usable after the MIDI release fixture');
+      document.body.setAttribute('data-midi-stream-release', 'passed');
+      document.body.setAttribute('data-midi-stream-self-test', 'passed');
       RefreshPlan;
       FProgress.value := 0;
       SetStatus('ready',
         'Stream transaction checks passed; no user file was opened.');
       FDetail.textContent :=
-        'Fake picker checks covered capacity preflight, held seams, cancellation, stale completion, bounded writes, and commit failure.';
+        'Fake picker checks covered WAVE and MIDI preflight, held seams, cancellation, stale completion, bounded writes, replay, and commit failure.';
     except
       if not FReleased then
       begin
         document.body.setAttribute('data-stream-self-test', 'failed');
+        document.body.setAttribute('data-midi-stream-self-test', 'failed');
         document.body.setAttribute('data-stream-test-message',
           FailureText(JSExceptValue));
         SetStatus('failed', FailureText(JSExceptValue));
@@ -892,6 +1604,10 @@ begin
     RequireElement('stream-pass-backtracks-input'));
   FTrace := TJSHTMLInputElement(RequireElement('stream-trace-input'));
   FStart := TJSHTMLButtonElement(RequireElement('stream-start-button'));
+  FMidiPlanButton := TJSHTMLButtonElement(
+    RequireElement('stream-midi-plan-button'));
+  FMidiSaveButton := TJSHTMLButtonElement(
+    RequireElement('stream-midi-save-button'));
   FCancel := TJSHTMLButtonElement(RequireElement('stream-cancel-button'));
   FProgress := TJSHTMLProgressElement(RequireElement('stream-progress'));
   FStatus := RequireElement('stream-status');
@@ -899,11 +1615,14 @@ begin
   FPlan := RequireElement('stream-plan');
   FFallback := RequireElement('stream-fallback');
   FStart.onclick := @HandleStart;
+  FMidiPlanButton.onclick := @HandleMidiPlan;
+  FMidiSaveButton.onclick := @HandleMidiSave;
   FCancel.onclick := @HandleCancel;
   document.addEventListener('input', @HandleMutation, True);
   document.addEventListener('change', @HandleMutation, True);
   document.addEventListener('click', @HandleMutation, True);
   FBound := True;
+  ClearMidiPlan;
   SetBusy(False);
   RefreshPlan;
   if isFunction(TJSObject(window)['showSaveFilePicker']) then
@@ -917,6 +1636,7 @@ begin
   if FReleased then Exit;
   FReleased := True;
   if FActive <> nil then FActive.Cancelled := True;
+  FreeAndNil(FMidiPlan);
   if FRefreshTimer <> 0 then
   begin
     window.clearTimeout(FRefreshTimer);
@@ -931,6 +1651,8 @@ begin
     TEnsembleEventDocument(document).removeEventListener(
       'click', @HandleMutation, True);
     FStart.onclick := nil;
+    FMidiPlanButton.onclick := nil;
+    FMidiSaveButton.onclick := nil;
     FCancel.onclick := nil;
   end;
   if FAsyncCount = 0 then Free;
@@ -947,6 +1669,8 @@ begin
     '<input id="stream-trace-input" type="checkbox">' +
     '<button id="new-session-button" type="button"></button>' +
     '<button id="stream-start-button" type="button"></button>' +
+    '<button id="stream-midi-plan-button" type="button"></button>' +
+    '<button id="stream-midi-save-button" type="button" disabled></button>' +
     '<button id="stream-cancel-button" type="button"></button>' +
     '<progress id="stream-progress" max="1" value="0"></progress>' +
     '<span id="stream-status"></span><span id="stream-detail"></span>' +

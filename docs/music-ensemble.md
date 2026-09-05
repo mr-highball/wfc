@@ -245,6 +245,7 @@ silently shorten it, or redefine its requested length. The existing streamed
 Music Studio arranger remains monophonic; it is not a polyphonic export path.
 The separate ensemble stream supplies polyphonic generation and PCM output
 with bounded timeline memory; it does not turn a continued segment into a
-standalone finite score. Streamed MIDI, independent marginal-voice
-recombination, expressive performance, and additional harmonic policies remain
+standalone finite score. A separate [MIDI stream](music-midi-stream.md) counts
+and replays these frames into bounded forward-only file output. Independent
+marginal-voice recombination, expressive performance, and additional harmonic policies remain
 ecosystem work.

@@ -26,7 +26,8 @@ uses
   wfc_music_arrangement, wfc_music_midi_import, wfc_music_training,
   wfc_timing, wfc_music_ensemble, wfc_music_ensemble_graph,
   wfc_music_ensemble_passes, wfc_music_ensemble_training,
-  wfc_music_ensemble_stream, wfc_music_ensemble_audio;
+  wfc_music_ensemble_stream, wfc_music_ensemble_audio, wfc_midi_stream,
+  wfc_music_ensemble_midi;
 
 implementation
 

@@ -1655,6 +1655,8 @@ begin
     '<input id="stream-pass-backtracks-input" type="number" min="0" step="1" value="16">' +
     '<input id="stream-trace-input" type="checkbox">' +
     '<button id="stream-start-button" type="button"></button>' +
+    '<button id="stream-midi-plan-button" type="button"></button>' +
+    '<button id="stream-midi-save-button" type="button" disabled></button>' +
     '<button id="stream-cancel-button" type="button"></button>' +
     '<progress id="stream-progress" max="1" value="0"></progress>' +
     '<span id="stream-status"></span><span id="stream-detail"></span>' +
