@@ -107,7 +107,7 @@ The native and browser hosts share Pascal generation and validation code.
 | 3D buildings | Validated multi-floor geometry and deterministic SVG | [Building 3D](examples/3D/03_BrowserBuilding/README.md) |
 | Text | Structure → lexical → punctuation composition | [Text Pass Workbench](examples/text/03_PassComposition/README.md) |
 | Music | Score, MIDI, WAV, streamed arrangements, import/training tools | [Music Studio](examples/music/05_MusicStudio/README.md) |
-| Polyphonic music | Synchronized chord-capable voices, common-excerpt training, constrained generation and repair | [Ensemble Studio](examples/music/06_EnsembleStudio/README.md) |
+| Polyphonic music | Synchronized chord-capable voices, training, repair, incremental generation and audio | [Ensemble Studio](examples/music/06_EnsembleStudio/README.md) |
 | Training | Editable corpora → models → recipes → validated results | [Training Studio](examples/learning/05_TrainingStudio/README.md) |
 | Pass counts | Lower/upper bounds, wrapped aliases, scoped repair | [Neighborhood Counts](examples/passes/04_NeighborhoodCounts/README.md) |
 
@@ -115,8 +115,10 @@ Music Studio accepts user-defined composition duration and streams newly
 solved sections with bounded memory. There is no fixed minute cap; numeric
 capacity, storage, and local search constraints still apply. Its current
 streamed arranger remains monophonic. The separate
-[ensemble libraries](docs/music-ensemble.md) now generate synchronized
-polyphonic scores; their preview/export adapters have distinct resource bounds.
+[ensemble libraries](docs/music-ensemble.md) generate synchronized polyphonic
+scores and [stream continued polyphonic segments and audio](docs/music-ensemble-stream.md)
+without retaining the whole composition. Finite preview and MIDI adapters
+still have their own resource bounds.
 See [arrangements](docs/music-arrangement.md)
 and [MIDI import and selected-excerpt training](docs/music-import.md).
 
@@ -169,8 +171,8 @@ code is build output, not a second hand-maintained implementation.
 | Music and text | [Exact music model](docs/music.md), [polyphonic ensembles](docs/music-ensemble.md), [audio](docs/music-audio.md), [arrangements](docs/music-arrangement.md), [import](docs/music-import.md), [text completion](docs/text.md) |
 | Portable workflow | [Pipeline artifacts and tools](docs/pipeline-artifacts.md), [dependency policy](docs/dependencies.md) |
 
-The remaining work includes streamed polyphonic arranging, richer harmonic
-models and independent voice recombination, larger
+The remaining work includes streamed MIDI, richer harmonic models and
+independent voice recombination, larger
 spatial topologies, interactive domain/trace inspection, stronger repair
 strategies, more importers, and complete release/provenance tooling.
 Research claims must have reproducible fixtures and counterexamples; the

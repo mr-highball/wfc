@@ -354,6 +354,21 @@ RF64 boundary fixtures inspect headers without allocating or writing a
 multi-gigabyte song; full-file host evidence is documented separately in
 [Music arrangements v1](music-arrangement.md#evidence-and-scope).
 
+## Incremental polyphonic audio
+
+`wfc_music_ensemble_audio` provides a separate pull renderer for ordered voice
+frames. Held voices retain oscillator phases across generation segments. A
+fixed release look-behind buffer permits correct endings without a whole-song
+PCM allocation, and an exact rational clock avoids accumulating per-segment
+rounding error. This API does not change the finite renderer's output or
+resource policy. See [the ensemble streaming contract](music-ensemble-stream.md)
+for admission, draining, cancellation, ownership, and capacity rules.
+
+`TWfcMusicWaveStream.AppendSamples` accepts these PCM16 blocks directly, with
+the same exact frame accounting and failure behavior as `AppendClip`. The
+sample rate must be an exact integer, including at browser interop boundaries;
+malformed values reject before the first header write.
+
 ## conformance evidence
 
 The focused suite contains 35 checks, measured on FPC 3.2.2, FPC 3.3.1, and

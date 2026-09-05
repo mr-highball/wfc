@@ -35,6 +35,7 @@ uses
 
 const
   WFC_SEQUENCE_GRAPH_ADAPTER_VERSION = 1;
+  WFC_SEQUENCE_SEGMENT_VERSION = 1;
 
 type
   EWfcSequenceGraph = class(EWfcSequence);
@@ -74,6 +75,22 @@ type
     Tokens: TWfcModelTokens;
   end;
 
+  { A finite segment has either an observed start or one exact predecessor
+    state. The predecessor already carries all Order-1 latent history, even
+    when early history still contains BOS. A caller carrying a published
+    stream is responsible for authenticating that predecessor's provenance. }
+  TWfcSequenceSegmentBoundary = record
+    HasPrevious: Boolean;
+    PreviousState: Integer;
+    RequireObservedEnd: Boolean;
+  end;
+
+  TWfcGeneratedSequenceSegment = record
+    Boundary: TWfcSequenceSegmentBoundary;
+    StateIndices: TWfcSequenceStateIndices;
+    Tokens: TWfcModelTokens;
+  end;
+
   { A complete public-token mapping from one latent sequence pass to another.
     TargetToken identifies one public token in the consumer model. Every
     SourceTokens item is an OR alternative projected by the provider model.
@@ -103,6 +120,28 @@ function MakeWfcSequenceProjectionBinding(
   const ASourceModel: TWfcSequenceModel; const ASourcePass: String;
   const ARules: TWfcSequenceProjectionRules):
   TWfcSequenceProjectionBinding;
+
+function MakeWfcSequenceInitialSegmentBoundary(
+  const ARequireObservedEnd: Boolean): TWfcSequenceSegmentBoundary;
+function MakeWfcSequenceContinuingSegmentBoundary(
+  const APreviousState: Integer; const ARequireObservedEnd: Boolean):
+  TWfcSequenceSegmentBoundary;
+
+{ New segment APIs leave ordinary extent semantics and exact model identities
+  unchanged. Initial boundaries use PreviousState=-1; continuing boundaries
+  require an in-range predecessor. Malformed boundaries are rejected before
+  application; validation/capture report wsgikGraphShape and return False.
+  A failed incoming seam is a transition from position -1 to position 0. }
+procedure ApplySequenceModelSegmentToGraph(const AModel: TWfcSequenceModel;
+  const AGraph: TGraph; const ABoundary: TWfcSequenceSegmentBoundary);
+function ValidateSequenceSegmentStatePath(const AModel: TWfcSequenceModel;
+  const AStateIndices: TWfcSequenceStateIndices;
+  const ABoundary: TWfcSequenceSegmentBoundary;
+  out AReport: TWfcSequenceGraphValidationReport): Boolean;
+function CaptureSolvedSequenceSegment(const AModel: TWfcSequenceModel;
+  const AGraph: TGraph; const ABoundary: TWfcSequenceSegmentBoundary;
+  out ASequence: TWfcGeneratedSequenceSegment;
+  out AReport: TWfcSequenceGraphValidationReport): Boolean;
 
 { Applies the latent model to an already shaped, empty, one-dimensional graph
   pass. Open graphs receive observed start/end domains. Wrapped graphs receive
@@ -255,6 +294,35 @@ begin
   SetLength(Result.SourceTokens, Length(ASourceTokens));
   for I := 0 to Length(ASourceTokens) - 1 do
     Result.SourceTokens[I] := ASourceTokens[I];
+end;
+
+function MakeWfcSequenceInitialSegmentBoundary(
+  const ARequireObservedEnd: Boolean): TWfcSequenceSegmentBoundary;
+begin
+  Result.HasPrevious := False;
+  Result.PreviousState := -1;
+  Result.RequireObservedEnd := ARequireObservedEnd;
+end;
+
+function MakeWfcSequenceContinuingSegmentBoundary(
+  const APreviousState: Integer; const ARequireObservedEnd: Boolean):
+  TWfcSequenceSegmentBoundary;
+begin
+  if APreviousState < 0 then
+    raise ERangeError.Create('sequence segment predecessor must be nonnegative');
+  Result.HasPrevious := True;
+  Result.PreviousState := APreviousState;
+  Result.RequireObservedEnd := ARequireObservedEnd;
+end;
+
+function SegmentBoundaryIsValid(const AModel: TWfcSequenceModel;
+  const ABoundary: TWfcSequenceSegmentBoundary): Boolean;
+begin
+  if ABoundary.HasPrevious then
+    Result := (ABoundary.PreviousState >= 0) and
+      (ABoundary.PreviousState < AModel.StateCount)
+  else
+    Result := ABoundary.PreviousState = -1;
 end;
 
 function MakeWfcSequenceProjectionBinding(
@@ -770,6 +838,58 @@ begin
     ApplyWrappedDomains(AModel, AGraph)
   else
     ApplyEndpointDomains(AModel, AGraph, AExtent);
+end;
+
+procedure ApplySequenceModelSegmentToGraph(const AModel: TWfcSequenceModel;
+  const AGraph: TGraph; const ABoundary: TWfcSequenceSegmentBoundary);
+var
+  I: Integer;
+  LAllowed: Boolean;
+  LFirstValues, LEndValues: TGraphValues;
+  LKeys: TWfcModelTokens;
+  LGraphModel: TWfcModel;
+begin
+  RequireAssigned(AModel, AGraph);
+  if AGraph.Running then
+    raise EWfcSequenceGraph.Create(
+      'sequence segment cannot be applied while the pipeline is running');
+  ValidateGraphShape(AGraph, 'sequence segment application');
+  if AGraph.WrapNeighbors or not SegmentBoundaryIsValid(AModel, ABoundary) then
+    raise EWfcSequenceGraph.Create('sequence segment boundary is invalid');
+
+  //Prepare every endpoint candidate before changing the graph. Only domains
+  //differ from ordinary application; the private keys and directional rules
+  //remain exactly those of the existing adapter.
+  LKeys := CopyStateKeys(AModel);
+  LFirstValues := nil;
+  LEndValues := nil;
+  for I := 0 to AModel.StateCount - 1 do
+  begin
+    if ABoundary.HasPrevious then
+      LAllowed := AModel.StatesCompatible(ABoundary.PreviousState, I)
+    else
+      LAllowed := AModel.StartCountAt(I) > 0;
+    if LAllowed then
+    begin
+      SetLength(LFirstValues, Length(LFirstValues) + 1);
+      LFirstValues[High(LFirstValues)] := ModelTokenToGraphValue(LKeys[I]);
+    end;
+    if ABoundary.RequireObservedEnd and (AModel.EndCountAt(I) > 0) then
+    begin
+      SetLength(LEndValues, Length(LEndValues) + 1);
+      LEndValues[High(LEndValues)] := ModelTokenToGraphValue(LKeys[I]);
+    end;
+  end;
+  LGraphModel := AModel.CreateGraphModel(LKeys);
+  try
+    ApplyModelToGraph(LGraphModel, AGraph);
+  finally
+    LGraphModel.Free;
+  end;
+  IntersectGraphDomain(AGraph, 0, LFirstValues);
+  if ABoundary.RequireObservedEnd then
+    IntersectGraphDomain(AGraph, Integer(AGraph.Dimension.Width) - 1,
+      LEndValues);
 end;
 
 procedure IntersectSequenceAllowedTokens(
@@ -1543,6 +1663,77 @@ begin
   Result := True;
 end;
 
+function ValidateSequenceSegmentStatePath(const AModel: TWfcSequenceModel;
+  const AStateIndices: TWfcSequenceStateIndices;
+  const ABoundary: TWfcSequenceSegmentBoundary;
+  out AReport: TWfcSequenceGraphValidationReport): Boolean;
+var
+  I, LCount, LState: Integer;
+  LLength: SizeInt;
+begin
+  if not Assigned(AModel) then
+    raise EArgumentNilException.Create('sequence model cannot be nil');
+  InitializeReport(AReport);
+  LLength := Length(AStateIndices);
+  if (LLength < 1) or
+      ((LLength and (not SizeInt(High(Integer)))) <> 0) or
+      not SegmentBoundaryIsValid(AModel, ABoundary) then
+    Exit(InvalidReport(AReport, wsgikGraphShape));
+  LCount := Integer(LLength);
+  for I := 0 to LCount - 1 do
+  begin
+    LState := AStateIndices[I];
+    if (LState < 0) or (LState >= AModel.StateCount) then
+    begin
+      AReport.Issue.Position := I;
+      AReport.Issue.StateIndex := LState;
+      Exit(InvalidReport(AReport, wsgikStateIndex));
+    end;
+    CheckedReportIncrement(AReport.CheckedStates);
+  end;
+  if ABoundary.HasPrevious then
+  begin
+    CheckedReportIncrement(AReport.CheckedTransitions);
+    if not AModel.StatesCompatible(ABoundary.PreviousState,
+      AStateIndices[0]) then
+    begin
+      AReport.Issue.Position := -1;
+      AReport.Issue.RelatedPosition := 0;
+      AReport.Issue.StateIndex := ABoundary.PreviousState;
+      AReport.Issue.RelatedStateIndex := AStateIndices[0];
+      Exit(InvalidReport(AReport, wsgikTransition));
+    end;
+  end
+  else if AModel.StartCountAt(AStateIndices[0]) < 1 then
+  begin
+    AReport.Issue.Position := 0;
+    AReport.Issue.StateIndex := AStateIndices[0];
+    Exit(InvalidReport(AReport, wsgikStartState));
+  end;
+  for I := 1 to LCount - 1 do
+  begin
+    CheckedReportIncrement(AReport.CheckedTransitions);
+    if not AModel.StatesCompatible(AStateIndices[I - 1], AStateIndices[I]) then
+    begin
+      AReport.Issue.Position := I - 1;
+      AReport.Issue.RelatedPosition := I;
+      AReport.Issue.StateIndex := AStateIndices[I - 1];
+      AReport.Issue.RelatedStateIndex := AStateIndices[I];
+      Exit(InvalidReport(AReport, wsgikTransition));
+    end;
+  end;
+  if ABoundary.RequireObservedEnd and
+    (AModel.EndCountAt(AStateIndices[LCount - 1]) < 1) then
+  begin
+    AReport.Issue.Position := LCount - 1;
+    AReport.Issue.StateIndex := AStateIndices[LCount - 1];
+    Exit(InvalidReport(AReport, wsgikEndState));
+  end;
+  AReport.Valid := True;
+  AReport.Issue.Kind := wsgikNone;
+  Result := True;
+end;
+
 function FindStateValue(const AModel: TWfcSequenceModel;
   const AValue: TGraphValue): Integer;
 var
@@ -1621,6 +1812,52 @@ begin
   if not ValidateSequenceStatePath(AModel, LSequence.StateIndices,
       AExtent, AReport) then
     Exit(False);
+  LSequence.Tokens := AModel.ProjectStateIndices(LSequence.StateIndices);
+  ASequence := LSequence;
+  Result := True;
+end;
+
+function CaptureSolvedSequenceSegment(const AModel: TWfcSequenceModel;
+  const AGraph: TGraph; const ABoundary: TWfcSequenceSegmentBoundary;
+  out ASequence: TWfcGeneratedSequenceSegment;
+  out AReport: TWfcSequenceGraphValidationReport): Boolean;
+var
+  I, LState, LWidth: Integer;
+  LEntry: TGraphEntry;
+  LSequence: TWfcGeneratedSequenceSegment;
+begin
+  RequireAssigned(AModel, AGraph);
+  ASequence := Default(TWfcGeneratedSequenceSegment);
+  LSequence := Default(TWfcGeneratedSequenceSegment);
+  InitializeReport(AReport);
+  if (AGraph.Dimension.Width = 0) or
+      (AGraph.Dimension.Width > TGraphCoordinate(High(Integer))) or
+      (AGraph.Dimension.Height <> 1) or (AGraph.Dimension.Depth <> 1) or
+      AGraph.WrapNeighbors or not SegmentBoundaryIsValid(AModel, ABoundary) then
+    Exit(InvalidReport(AReport, wsgikGraphShape));
+  if not AppliedModelMatches(AModel, AGraph) then
+    Exit(InvalidReport(AReport, wsgikModelIdentity));
+  LWidth := Integer(AGraph.Dimension.Width);
+  SetLength(LSequence.StateIndices, LWidth);
+  LSequence.Boundary := ABoundary;
+  for I := 0 to LWidth - 1 do
+  begin
+    LEntry := AGraph.Entry[TGraphCoordinate(I), 0, 0];
+    if LEntry.Empty then
+    begin
+      AReport.Issue.Position := I;
+      Exit(InvalidReport(AReport, wsgikEmptyCell));
+    end;
+    LState := FindStateValue(AModel, LEntry.Value);
+    if LState < 0 then
+    begin
+      AReport.Issue.Position := I;
+      Exit(InvalidReport(AReport, wsgikUnknownStateKey));
+    end;
+    LSequence.StateIndices[I] := LState;
+  end;
+  if not ValidateSequenceSegmentStatePath(AModel, LSequence.StateIndices,
+      ABoundary, AReport) then Exit(False);
   LSequence.Tokens := AModel.ProjectStateIndices(LSequence.StateIndices);
   ASequence := LSequence;
   Result := True;

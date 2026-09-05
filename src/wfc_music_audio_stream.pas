@@ -93,6 +93,10 @@ type
       const ASampleRate: Integer;
       const AExpectedFrames: TWfcMusicAudioStreamCount);
     procedure AppendClip(const AClip: TWfcMusicPcm16Clip);
+    { Borrowed samples are consumed synchronously with the same validation,
+      bounded writes and failure accounting as AppendClip. No clip allocation
+      or preview-duration limit applies to this direct PCM entry point. }
+    procedure AppendSamples(const ASamples: array of TWfcMusicPcm16Sample);
     procedure Finish;
     property SampleRate: Integer read FSampleRate;
     property FrameCount: TWfcMusicAudioStreamCount read FFrameCount;
@@ -149,6 +153,10 @@ begin
   inherited Create;
   if ASink = nil then
     StreamError('sink cannot be nil');
+  {$IFDEF PAS2JS}
+  if ASampleRate <> Trunc(ASampleRate) then
+    StreamError('sample rate must be an exact integer');
+  {$ENDIF}
   if (ASampleRate < WFC_MUSIC_AUDIO_MIN_SAMPLE_RATE) or
     (ASampleRate > WFC_MUSIC_AUDIO_MAX_SAMPLE_RATE) then
     StreamError(Format('sample rate must be from %d through %d',
@@ -264,6 +272,43 @@ begin
     for I := 0 to LFrames - 1 do
     begin
       LSample := AClip.SampleAt(LOffset + I);
+      if LSample < 0 then Inc(LSample, 65536);
+      FBuffer[I * 2] := Byte(LSample and $FF);
+      FBuffer[I * 2 + 1] := Byte(LSample shr 8);
+    end;
+    WriteBuffer;
+    FFrameCount := FFrameCount + LFrames;
+    Inc(LOffset, LFrames);
+  end;
+end;
+
+procedure TWfcMusicWaveStream.AppendSamples(
+  const ASamples: array of TWfcMusicPcm16Sample);
+var
+  I, LOffset, LFrames, LSample: Integer;
+begin
+  CheckWritable;
+  if Length(ASamples) > High(Integer) then
+    StreamError('sample block count exceeds Integer');
+  if Length(ASamples) > FExpectedFrames - FFrameCount then
+    StreamError('sample block exceeds the remaining declared frame count');
+  {$IFDEF PAS2JS}
+  { Typed arrays supplied by a host can still contain malformed numeric data.
+    Validate the complete borrowed block before the first sink side effect. }
+  for I := 0 to High(ASamples) do
+    if (ASamples[I] <> Trunc(ASamples[I])) or (ASamples[I] < -32768) or
+      (ASamples[I] > 32767) then StreamError('sample must fit signed PCM16');
+  {$ENDIF}
+  LOffset := 0;
+  while LOffset < Length(ASamples) do
+  begin
+    LFrames := Length(ASamples) - LOffset;
+    if LFrames > WFC_MUSIC_AUDIO_STREAM_BLOCK_BYTES div 2 then
+      LFrames := WFC_MUSIC_AUDIO_STREAM_BLOCK_BYTES div 2;
+    SetLength(FBuffer, LFrames * 2);
+    for I := 0 to LFrames - 1 do
+    begin
+      LSample := ASamples[LOffset + I];
       if LSample < 0 then Inc(LSample, 65536);
       FBuffer[I * 2] := Byte(LSample and $FF);
       FBuffer[I * 2 + 1] := Byte(LSample shr 8);

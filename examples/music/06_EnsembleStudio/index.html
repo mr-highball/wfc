@@ -14,7 +14,13 @@
   data-midi-bytes="0" data-midi-status="none" data-wave-bytes="0" data-audio-ready="false"
   data-audio-play-events="0" data-new-session-invalidation="not-run"
   data-run-invalidation="not-run" data-failure-clears-output="not-run"
-  data-selective-regeneration="not-run" data-recovery="not-run">
+  data-selective-regeneration="not-run" data-recovery="not-run"
+  data-stream-state="loading" data-stream-self-test="not-requested"
+  data-stream-written-frames="0" data-stream-written-bytes="0"
+  data-stream-seam-holds="0" data-stream-actual-seconds=""
+  data-stream-cancel="not-run" data-stream-stale="not-run"
+  data-stream-write-failure="not-run" data-stream-commit="not-run"
+  data-stream-release="not-run">
   <header class="masthead">
     <div>
       <p class="eyebrow">WFC / MUSIC LAB 06</p>
@@ -157,6 +163,31 @@
         <a id="download-wav-link" class="button-link disabled" aria-disabled="true">Short WAV preview</a>
       </div>
       <label class="artifact-inspector"><span>Canonical score text</span><textarea id="artifact-output" rows="14" readonly spellcheck="false"></textarea></label>
+    </section>
+
+    <section class="panel stream-panel full" aria-labelledby="stream-heading">
+      <div class="section-heading">
+        <div><p class="step">07 / CONTINUOUS STREAM</p><h2 id="stream-heading">Generate long-form ensemble audio by bounded blocks</h2></div>
+        <strong id="stream-status" class="audio-chip" aria-live="polite">loading stream controls</strong>
+      </div>
+      <div class="stream-fields">
+        <label><span>Requested seconds</span><input id="stream-seconds-input" inputmode="decimal" value="6.125" autocomplete="off"></label>
+        <label><span>Working segment cells</span><input id="stream-segment-cells-input" type="number" min="1" step="1" value="5"></label>
+        <label><span>Local backtracks</span><input id="stream-backtracks-input" type="number" min="0" step="1" value="256"></label>
+        <label><span>Pass backtracks</span><input id="stream-pass-backtracks-input" type="number" min="0" step="1" value="16"></label>
+        <label class="check-field"><input id="stream-trace-input" type="checkbox"><span>Capture trace</span></label>
+      </div>
+      <p id="stream-plan" class="stream-plan">Preparing duration preflight…</p>
+      <div class="stream-actions">
+        <button id="stream-start-button" class="primary" type="button">Stream WAVE with Save As</button>
+        <button id="stream-cancel-button" type="button" disabled>Cancel pending stream</button>
+        <progress id="stream-progress" max="1" value="0" aria-label="Streaming output progress"></progress>
+      </div>
+      <p id="stream-detail" class="bounded-claim">No stream save is active.</p>
+      <p class="bounded-claim">This generates a fresh composition using the current seed and stream settings. It does not export the finite score above or transfer that editor's locks and repair scope.</p>
+      <p class="bounded-claim">Requested time is rounded up only to the next eighth-note cell at 120 BPM, and the actual duration is shown before the file picker. There is no minute policy ceiling; exact numeric, WAVE/RF64, storage, and search constraints still apply. Five-cell working segments deliberately cross held bass and chord boundaries. Generation, synthesis, and saving retain one bounded segment and one PCM block rather than a whole-song audio buffer.</p>
+      <p class="bounded-claim"><strong>Browser file contract:</strong> Save As is controlled by the browser and may replace a file that you select. This differs from the native renderer, which requires a new path and atomically refuses replacement. Cancellation or failure before browser close never claims a completed stream.</p>
+      <pre id="stream-fallback" class="stream-fallback">A native fallback command will appear after input validation.</pre>
     </section>
   </main>
 

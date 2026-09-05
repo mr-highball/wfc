@@ -40,7 +40,8 @@ uses
   wfc_music_ensemble_passes,
   wfc_midi_smf,
   wfc_music_midi,
-  ensemble_studio_workbench;
+  ensemble_studio_workbench,
+  browser_ensemble_stream;
 
 type
   { Browser-only interaction and Blob glue. The portable workbench owns all
@@ -48,6 +49,7 @@ type
   TBrowserEnsembleStudioApplication = class
   strict private
     FStudio: TEnsembleStudio;
+    FStreamController: TBrowserEnsembleStreamController;
     FOptions: TEnsembleStudioOptions;
     FAction: TEnsembleStudioAction;
     FVocabulary: TWfcModelTokens;
@@ -192,6 +194,7 @@ end;
 
 destructor TBrowserEnsembleStudioApplication.Destroy;
 begin
+  if FStreamController <> nil then FStreamController.Release;
   RevokeUrl(FScoreUrl);
   RevokeUrl(FMidiUrl);
   RevokeUrl(FWaveUrl);
@@ -1597,7 +1600,13 @@ begin
     document.body.setAttribute('data-audio-play-events', '0');
     StartNewSession;
     Generate;
-    if Pos('selftest=1', window.location.search) > 0 then RunSelfTest
+    FStreamController := TBrowserEnsembleStreamController.Create;
+    FStreamController.Run;
+    if Pos('selftest=1', window.location.search) > 0 then
+    begin
+      RunSelfTest;
+      FStreamController.RunSelfTest;
+    end
     else document.body.setAttribute('data-self-test', 'not-requested');
   except on E: Exception do ShowError(E.Message); end;
 end;
@@ -1640,6 +1649,16 @@ begin
     '<audio id="preview-audio" controls preload="none"></audio></div>' +
     '<a id="download-score-link"></a><a id="download-midi-link"></a>' +
     '<a id="download-wav-link"></a><textarea id="artifact-output"></textarea>' +
+    '<input id="stream-seconds-input" inputmode="decimal" autocomplete="off" value="6.125">' +
+    '<input id="stream-segment-cells-input" type="number" min="1" step="1" value="5">' +
+    '<input id="stream-backtracks-input" type="number" min="0" step="1" value="256">' +
+    '<input id="stream-pass-backtracks-input" type="number" min="0" step="1" value="16">' +
+    '<input id="stream-trace-input" type="checkbox">' +
+    '<button id="stream-start-button" type="button"></button>' +
+    '<button id="stream-cancel-button" type="button"></button>' +
+    '<progress id="stream-progress" max="1" value="0"></progress>' +
+    '<span id="stream-status"></span><span id="stream-detail"></span>' +
+    '<span id="stream-plan"></span><pre id="stream-fallback"></pre>' +
     '<pre id="failure"></pre>';
 end;
 

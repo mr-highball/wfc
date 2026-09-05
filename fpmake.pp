@@ -89,6 +89,8 @@ begin
     P.Targets.AddUnit('wfc_music_ensemble_graph.pas');
     P.Targets.AddUnit('wfc_music_ensemble_passes.pas');
     P.Targets.AddUnit('wfc_music_ensemble_training.pas');
+    P.Targets.AddUnit('wfc_music_ensemble_stream.pas');
+    P.Targets.AddUnit('wfc_music_ensemble_audio.pas');
     Run;
   end;
 end.

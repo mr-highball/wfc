@@ -344,10 +344,10 @@ esac
 "$restart_demo_executable" --selftest || exit $?
 
 compiler_ensemble_demo_directory="$compiler_source_directory/../examples/music/06_EnsembleStudio"
-for ensemble_test_name in wfc_music_ensemble_test wfc_music_ensemble_graph_test wfc_music_ensemble_passes_test wfc_music_ensemble_training_test wfc_music_ensemble_demo_test; do
+for ensemble_test_name in wfc_music_ensemble_test wfc_music_ensemble_graph_test wfc_music_ensemble_passes_test wfc_music_ensemble_training_test wfc_music_ensemble_demo_test wfc_sequence_segment_test wfc_music_ensemble_stream_test wfc_music_ensemble_audio_test wfc_music_ensemble_stream_demo_test; do
   printf "Building and running '%s'.\n" "$ensemble_test_name"
   "$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
-    "-Fu$compiler_source_directory" "-Fu$compiler_ensemble_demo_directory" \
+    "-Fu$compiler_source_directory" "-Fu$compiler_ensemble_demo_directory" "-Fu$compiler_source_directory/../tools" \
     "-FU$compiler_unit_output_directory" "-FE$compiler_binary_output_directory" \
     "$compiler_source_directory/../test/$ensemble_test_name.lpr" || exit $?
   ensemble_test_executable="$binary_output_directory/$ensemble_test_name"
@@ -1305,4 +1305,26 @@ case "$host_system" in
     ;;
 esac
 "$music_render_test_executable" "$music_render_executable" \
+  "$compiler_binary_output_directory" || exit $?
+
+printf 'Building and checking the streaming Ensemble Studio renderer.\n'
+for render_source in \
+  "$compiler_ensemble_demo_directory/EnsembleStudioRender.lpr" \
+  "$compiler_source_directory/../test/wfc_music_ensemble_render_process_test.lpr"
+do
+  "$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
+    "-Fu$compiler_source_directory" "-Fu$compiler_ensemble_demo_directory" \
+    "-Fu$compiler_tools_directory" \
+    "-FU$compiler_unit_output_directory" "-FE$compiler_binary_output_directory" \
+    "$render_source" || exit $?
+done
+ensemble_render_executable="$compiler_binary_output_directory/EnsembleStudioRender"
+ensemble_render_test_executable="$binary_output_directory/wfc_music_ensemble_render_process_test"
+case "$host_system" in
+  CYGWIN*|MINGW*|MSYS*)
+    ensemble_render_executable="${ensemble_render_executable}.exe"
+    ensemble_render_test_executable="${ensemble_render_test_executable}.exe"
+    ;;
+esac
+"$ensemble_render_test_executable" "$ensemble_render_executable" \
   "$compiler_binary_output_directory" || exit $?

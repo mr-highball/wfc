@@ -614,9 +614,13 @@ adapter is optional and cannot be required by the portable ecosystem.
   negotiation, and common-excerpt training. Ensemble Studio exposes this
   pipeline in native FPC and pas2js without changing monophonic replay formats.
   Joint frames preserve observed vertical combinations; independent marginal
-  voice recombination and streamed polyphonic arranging remain work. A wider
-  global timeline must stay separate from bounded, Integer-indexed local
-  sections; removing a duration preset is not a claim of infinite storage.
+  voice recombination remains work. The separate
+  [ensemble streaming protocol](docs/music-ensemble-stream.md) carries exact
+  sequence-state frontiers across bounded local graphs, including partial BOS
+  history and independently held chords. Incremental PCM rendering preserves
+  phase and release envelopes with a fixed pending buffer. The wider global
+  timeline stays separate from Integer-indexed local sections; streamed MIDI,
+  global long-range feasibility, and infinite storage are not claimed.
 - A portable three-pass fixture solves harmony and rhythm before melody,
   composes both constraints through latent sequence projection maps,
   independently validates the public relation, rebuilds a score, and checks

@@ -15,7 +15,7 @@ if (-not $Server) { $Server = Join-Path $repositoryRoot 'build/native/bin/wfc_se
 if (-not $Checker) { $Checker = Join-Path $repositoryRoot 'build/native/bin/wfc_browser_check.exe' }
 $web = Join-Path $repositoryRoot 'build/browser/tests/www'
 $results = Join-Path $repositoryRoot 'build/browser/tests/results'
-$nativeOnly = @('wfc_browser_dom_test','wfc_serve_test','wfc_music_render_process_test')
+$nativeOnly = @('wfc_browser_dom_test','wfc_serve_test','wfc_music_render_process_test','wfc_music_ensemble_render_process_test')
 $sources = @(Get-ChildItem -LiteralPath (Join-Path $repositoryRoot 'test') -Filter '*_test.lpr' |
   Where-Object { $_.BaseName -notin $nativeOnly } | Sort-Object Name)
 if ($sources.Count -eq 0) { throw 'No current browser conformance sources found.' }
@@ -73,7 +73,13 @@ try {
       $browserProcess.WaitForExit()
       $browserProcess.Dispose()
       $browserProcess = $null
-      & $checker --dom $dom --expect 'data-self-test=passed'
+      $assertions = @('--dom', $dom, '--expect', 'data-self-test=passed')
+      if ($page.BaseName -eq 'wfc_music_ensemble_stream_demo_test') {
+        # The synchronous harness cannot certify awaited file transactions.
+        $assertions += @('--expect', 'data-stream-self-test=passed')
+        $assertions += @('--expect', 'data-stream-release=passed')
+      }
+      & $checker @assertions
       if ($LASTEXITCODE -ne 0) { throw "Browser assertions failed: $($page.Name)" }
     } catch {
       $failures += $page.Name

@@ -302,10 +302,12 @@ $ensembleDemoDirectory = Join-Path $repositoryRoot 'examples/music/06_EnsembleSt
 foreach ($ensembleTestName in @(
     'wfc_music_ensemble_test', 'wfc_music_ensemble_graph_test',
     'wfc_music_ensemble_passes_test', 'wfc_music_ensemble_training_test',
-    'wfc_music_ensemble_demo_test')) {
+    'wfc_music_ensemble_demo_test', 'wfc_sequence_segment_test',
+    'wfc_music_ensemble_stream_test', 'wfc_music_ensemble_audio_test',
+    'wfc_music_ensemble_stream_demo_test')) {
   Write-Host "Building and running '$ensembleTestName'."
   & $Compiler @CompilerOptions -B -Mdelphi -Sa -Cr -Co -Ci `
-    "-Fu$sourceDirectory" "-Fu$ensembleDemoDirectory" `
+    "-Fu$sourceDirectory" "-Fu$ensembleDemoDirectory" "-Fu$repositoryRoot/tools" `
     "-FU$unitOutputDirectory" "-FE$binaryOutputDirectory" `
     (Join-Path $repositoryRoot "test/$ensembleTestName.lpr")
   if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -1722,6 +1724,20 @@ foreach ($renderSource in @(
 }
 & (Join-Path $binaryOutputDirectory "wfc_music_render_process_test$toolExecutableSuffix") `
   (Join-Path $binaryOutputDirectory "MusicStudioRender$toolExecutableSuffix") `
+  $binaryOutputDirectory
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+Write-Host 'Building and checking the streaming Ensemble Studio renderer.'
+foreach ($renderSource in @(
+  (Join-Path $ensembleDemoDirectory 'EnsembleStudioRender.lpr'),
+  (Join-Path $repositoryRoot 'test/wfc_music_ensemble_render_process_test.lpr')
+)) {
+  & $Compiler @CompilerOptions -B -Mdelphi -Sa -Cr -Co -Ci `
+    "-Fu$sourceDirectory" "-Fu$ensembleDemoDirectory" "-Fu$toolsDirectory" `
+    "-FU$unitOutputDirectory" "-FE$binaryOutputDirectory" $renderSource
+  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+}
+& (Join-Path $binaryOutputDirectory "wfc_music_ensemble_render_process_test$toolExecutableSuffix") `
+  (Join-Path $binaryOutputDirectory "EnsembleStudioRender$toolExecutableSuffix") `
   $binaryOutputDirectory
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 exit 0

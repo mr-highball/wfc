@@ -104,6 +104,8 @@ Both scripts rebuild with assertions and range, overflow, and I/O checks, run
 `wfc_music_ensemble_test`, `wfc_music_ensemble_graph_test`,
 `wfc_music_ensemble_passes_test`, `wfc_music_ensemble_training_test`,
 `wfc_music_ensemble_demo_test`,
+`wfc_sequence_segment_test`, `wfc_music_ensemble_stream_test`,
+`wfc_music_ensemble_audio_test`, `wfc_music_ensemble_stream_demo_test`,
 `wfc_browser_dom_test`, `wfc_serve_test`,
 `wfc_text_codec_test`, `wfc_rule_model_test`,
 `wfc_rule_text_test`, `wfc_pipeline_model_test`, `wfc_pipeline_text_test`,
@@ -405,11 +407,14 @@ as the other browser staging scripts. Serve `build/browser/ensemble/www` with
 the included FPC server. Its shared Pascal helper and controller event path are
 also exercised by portable browser conformance.
 
-The native gate builds `EnsembleStudio` and runs `--selftest`. The
+The native gate builds `EnsembleStudio` and runs `--selftest`, then checks the
+streaming `EnsembleStudioRender` host with native process tests. The
 [example guide](../examples/music/06_EnsembleStudio/README.md) describes controls,
 native exports, user-defined score lengths, and the separate bounded audio
 preview. [The ensemble contract](music-ensemble.md) specifies voice continuity,
 training selections, exact versus allowed harmony, and transaction behavior.
+The separate [streaming contract](music-ensemble-stream.md) describes bounded
+local generation, sustained voices, incremental PCM, and exact length accounting.
 
 ## Neighborhood Counts browser workbench
 

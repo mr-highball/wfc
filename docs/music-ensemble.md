@@ -24,6 +24,8 @@ has been learned.
 | `wfc_music_ensemble_graph` | Continuation-model preflight and distinct rhythm/exact-harmony/allowed-harmony maps |
 | `wfc_music_ensemble_passes` | Reusable three-pass owner, public locks, negotiation, selective regeneration, immutable compositions, independent commit validation |
 | `wfc_music_ensemble_training` | Ordered multi-voice, common-excerpt training documents |
+| `wfc_music_ensemble_stream` | Bounded local pass graphs with exact continuation frontiers and caller-defined total ticks |
+| `wfc_music_ensemble_audio` | Incremental chord-capable PCM, exact rational timing, held phases, and bounded release look-behind |
 
 All are project-owned Pascal using repository units and the compiler RTL.
 Constructors and copy accessors detach managed arrays, including nested tones.
@@ -226,7 +228,8 @@ Existing `wm1`, `wr1`, `wh1`, and `wfcmusicpass=1` retain their monophonic
 meanings. Do not put ensemble tokens into that old composition format. Exact
 multi-voice scores already serialize as `wfcmusic=1`; generic sequence/training
 artifacts can carry the new tokens. A dedicated ensemble-composition container
-and streamed polyphonic arrangement protocol are not supplied by this slice.
+is not supplied. The separately versioned [streaming protocol](music-ensemble-stream.md)
+does not alter these finite composition formats or signatures.
 
 There is no arbitrary minute, voice-count, or chord-tone cap in the frame
 representation. Integer-indexed storage and expanded counts are checked before
@@ -240,5 +243,8 @@ The existing MIDI and PCM preview adapters have their own voice, pitch, tone,
 duration, and frame limits. An adapter rejection must not erase a valid score,
 silently shorten it, or redefine its requested length. The existing streamed
 Music Studio arranger remains monophonic; it is not a polyphonic export path.
-General polyphonic streaming, independent marginal-voice recombination,
-expressive performance, and additional harmonic policies remain ecosystem work.
+The separate ensemble stream supplies polyphonic generation and PCM output
+with bounded timeline memory; it does not turn a continued segment into a
+standalone finite score. Streamed MIDI, independent marginal-voice
+recombination, expressive performance, and additional harmonic policies remain
+ecosystem work.

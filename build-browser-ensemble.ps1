@@ -46,6 +46,7 @@ $compilerArguments = @(
   '-Jc'
   '-Jirtl.js'
   "-Fu$sourceDirectory"
+  "-Fu$repositoryRoot/tools"
   "-Fu$browserDirectory"
   "-FU$unitOutputDirectory"
   "-FE$webOutputDirectory"

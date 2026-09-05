@@ -176,6 +176,12 @@ and a 15-second browser virtual-time budget, and requires
 `data-self-test=passed`. Rendered DOM and browser/server logs remain in
 `build/browser/tests/results`.
 
+The ensemble stream demo test also requires its application-owned
+`data-stream-self-test=passed` and `data-stream-release=passed` markers. Its fake writable-file transactions are
+asynchronous: returning from the synchronous Pascal harness alone is not
+completion. Pending, failed, or missing stream markers fail the runner even
+when the synchronous source tests passed.
+
 PowerShell accepts `-Checker` when staging and `-Server`, `-Checker`, and
 `-Port` when running; the default port is 4180. The shell scripts use
 `WFC_BROWSER_CHECK`, `WFC_SERVE`, and `WFC_BROWSER`, with port 4180. Shell
@@ -183,7 +189,7 @@ execution uses the host's `curl` and standard `sleep`/`kill` commands. Its owned
 watchdog applies the 60-second deadline, then allows up to two seconds before
 forced termination; GNU `timeout` is not required. The shell runner is exercised
 by the Linux browser lane. Both runners collect per-program failures and fail the
-overall run if any current program fails. The five interactive demo
+overall run if any current program fails. Interactive demo
 self-tests are a separate hosted gate with each demo's fuller attribute map.
 
 To rerun only the native host-boundary checks after a native build:
@@ -193,14 +199,39 @@ build/native/bin/wfc_serve_test --integration \
   build/native/bin/wfc_serve build/native/bin
 build/native/bin/wfc_music_render_process_test \
   build/native/bin/MusicStudioRender build/native/bin
+build/native/bin/wfc_music_ensemble_render_process_test \
+  build/native/bin/EnsembleStudioRender build/native/bin
 ```
 
-Both use uniquely owned fixtures beneath the supplied existing directory and
+These use uniquely owned fixtures beneath the supplied existing directory and
 exercise real child processes and files. The server test also covers binary
 GET/HEAD, malformed requests, stalled/abandoned connections, and link escapes.
 The renderer test checks 4-, 6-, and 180-second WAVE extents, deterministic
 prefixes, duration rejection, and preservation of an output created during a
 publication race. Their pure source-level companion tests run separately.
+
+## Native new-file publication
+
+`tools/wfc_atomic_new_file.pas` supplies a reusable `TWfcAtomicNewFile` host
+utility, separate from the portable music libraries. Construct it with an
+explicit new destination whose parent already exists, feed borrowed byte
+blocks with `WriteBytes`, then call `Publish` only after the producer finishes
+successfully. `Cancel` and destruction never publish implicitly.
+
+The helper exclusively creates a unique sibling, flushes and closes it, then
+publishes without replacing an existing destination. It uses a non-replacing
+move on Windows and link creation followed by sibling removal on Unix. A
+destination appearing during generation is preserved. Failure cleanup targets
+only the exact owned partial path; `CleanupError` exposes a cleanup failure.
+Use a trusted parent directory: this is not a sandbox against hostile path
+changes, nor a claim of crash-durable directory metadata. Unix filesystems
+must support sibling hard links; there is no overwriting fallback.
+
+The [Ensemble Studio renderer](../examples/music/06_EnsembleStudio/README.md)
+uses this utility after exact duration/frame preflight. The browser host uses
+a user-authorized writable-file transaction instead; choosing an existing
+file in the browser save picker can authorize replacement and does not carry
+the native new-file-only guarantee.
 
 ## Evidence scope
 

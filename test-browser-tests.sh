@@ -19,7 +19,7 @@ for source in test/*_test.lpr; do
   [[ -f "$source" ]] || continue
   name="${source##*/}"
   name="${name%.lpr}"
-  case "$name" in wfc_browser_dom_test|wfc_serve_test|wfc_music_render_process_test) continue ;; esac
+  case "$name" in wfc_browser_dom_test|wfc_serve_test|wfc_music_render_process_test|wfc_music_ensemble_render_process_test) continue ;; esac
   sources+=("$name")
   for extension in html js; do
     [[ -f "$web/$name.$extension" ]] || missing+=("$web/$name.$extension")
@@ -115,12 +115,18 @@ for name in "${sources[@]}"; do
   wait "$browser_pid" || browser_status=$?
   browser_pid=''
   stop_watchdog
+  checker_args=(--dom "$results/$name.dom" --expect data-self-test=passed)
+  if [[ "$name" == wfc_music_ensemble_stream_demo_test ]]; then
+    # Awaited file transactions have their own application completion signal.
+    checker_args+=(--expect data-stream-self-test=passed)
+    checker_args+=(--expect data-stream-release=passed)
+  fi
   if [[ -s "$timeout_marker" ]]; then
     failures+=("$name")
   elif [[ "$browser_status" -ne 0 ]]; then
     printf 'Browser failed: %s (exit %s).\n' "$name" "$browser_status" >&2
     failures+=("$name")
-  elif ! "$checker" --dom "$results/$name.dom" --expect data-self-test=passed; then
+  elif ! "$checker" "${checker_args[@]}"; then
     printf 'Browser assertions failed: %s.\n' "$name" >&2
     failures+=("$name")
   fi

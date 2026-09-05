@@ -179,6 +179,29 @@ missing final LF, and trailing data. A decoded document must re-encode
 byte-for-byte. Canonical text therefore identifies the immutable learned model
 without making graph-adapter implementation details part of the format.
 
+## Exact continued segments
+
+`TWfcSequenceSegmentBoundary` is a separate, versioned boundary contract for
+streaming through one immutable model. An initial boundary requires an
+observed start and canonical `PreviousState = -1`. A continuing boundary
+requires the first state to be a structural successor of the exact previous
+latent state. Either can optionally require an observed terminal state.
+
+Use `MakeWfcSequenceInitialSegmentBoundary` or
+`MakeWfcSequenceContinuingSegmentBoundary`, then
+`ApplySequenceModelSegmentToGraph`. Capture with
+`CaptureSolvedSequenceSegment` and independently check with
+`ValidateSequenceSegmentStatePath`. State witnesses are model-relative; the
+returned arrays are detached, but validating them later still needs the same
+model. A public token alone is not enough to identify an order-N frontier.
+
+This is not `wseFragment`: tiny early segments may still carry typed BOS
+history. Excluding all BOS-bearing states at every new segment would reject
+valid continuations. Existing finite extents, wrapping, model formats, and
+graph-adapter version constants remain unchanged. See the
+[ensemble stream](music-ensemble-stream.md) for a three-pass application and
+its independently checked continuation semantics.
+
 ## replay identity
 
 Relearning the same model requires the exact ordered sample/token arrays,

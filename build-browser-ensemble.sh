@@ -56,6 +56,7 @@ printf "Building Ensemble Studio with '%s'.\n" "$compiler"
   -Jc \
   -Jirtl.js \
   "-Fu$compiler_source_directory" \
+  "-Fu$compiler_source_directory/../tools" \
   "-Fu$compiler_browser_directory" \
   "-FU$compiler_unit_output_directory" \
   "-FE$compiler_web_output_directory" \
