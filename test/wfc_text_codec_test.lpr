@@ -28,6 +28,7 @@ program wfc_text_codec_test;
 uses
   {$IFDEF PAS2JS}wfc_browser_test_host,{$ENDIF}
   SysUtils,
+  wfc_model,
   wfc_text_codec;
 
 type
@@ -247,6 +248,95 @@ begin
     'signed Integer rejects arbitrarily long negative overflow');
 end;
 
+function RepeatText(const AText: String; const ACount: Integer): String;
+var I: Integer;
+begin
+  Result := '';
+  for I := 1 to ACount do Result := Result + AText;
+end;
+
+procedure TestLargeTokensAndUnicode;
+var Token, UnicodeToken, Bad: TWfcModelToken; Encoded, Expected: String;
+  I: Integer; Rejected: Boolean;
+begin
+  Token := TWfcModelToken(StringOfChar('x', 60000));
+  Encoded := WfcTextEncodeToken(Token, 'large token fixture');
+  Check((Length(Encoded) = 60000) and (Encoded = String(Token)),
+    'large unreserved token preserves every byte');
+  Check(WfcTextDecodeToken(Encoded, 'large token fixture') = Token,
+    'large unreserved token roundtrip');
+  Token := TWfcModelToken(RepeatText(':% ', 10000));
+  Expected := RepeatText('%3A%25%20', 10000);
+  Encoded := WfcTextEncodeToken(Token, 'large escaped fixture');
+  Check((Length(Encoded) = 90000) and (Encoded = Expected),
+    'large reserved token matches independently specified escapes');
+  Check(WfcTextDecodeToken(Encoded, 'large escaped fixture') = Token,
+    'large reserved token roundtrip');
+  UnicodeToken := WfcTextDecodeToken('%C3%A9%F0%9F%8E%B5', 'Unicode fixture');
+  Token := '';
+  for I := 1 to 8192 do Token := Token + UnicodeToken;
+  Expected := RepeatText('%C3%A9%F0%9F%8E%B5', 8192);
+  Encoded := WfcTextEncodeToken(Token, 'large Unicode fixture');
+  Check((Length(Encoded) = 147456) and (Encoded = Expected),
+    'large BMP and supplementary Unicode token has exact UTF8 escapes');
+  Check(WfcTextDecodeToken(Encoded, 'large Unicode fixture') = Token,
+    'large Unicode token roundtrip preserves surrogate pairs');
+  Token := 'AZaz09-._~' + #0 + #10 + ':%';
+  Check(WfcTextEncodeToken(Token, 'byte fixture') =
+    'AZaz09-._~%00%0A%3A%25', 'unreserved and control-byte canonical spelling unchanged');
+  Check(WfcTextEncodeToken('', 'empty fixture') = '', 'empty token encoding remains empty');
+  for I := 0 to 3 do
+  begin
+    {$IFDEF PAS2JS}
+    case I of
+      0: Bad := Chr($D800);
+      1: Bad := Chr($DC00);
+      2: Bad := Chr($D800) + 'A';
+      3: Bad := Chr($DC00) + Chr($D800);
+    end;
+    {$ELSE}
+    { Populate raw UTF8String bytes. Assigning character literals directly can
+      transcode them through the source code page and accidentally make them
+      valid UTF8 before the encoder sees this adversarial input. }
+    case I of
+      0: begin SetLength(Bad, 2); Bad[1] := AnsiChar($C0); Bad[2] := AnsiChar($AF); end;
+      1: begin SetLength(Bad, 4); Bad[1] := AnsiChar($F4); Bad[2] := AnsiChar($90);
+        Bad[3] := AnsiChar($80); Bad[4] := AnsiChar($80); end;
+      2: begin SetLength(Bad, 3); Bad[1] := AnsiChar($ED); Bad[2] := AnsiChar($A0);
+        Bad[3] := AnsiChar($80); end;
+      3: begin SetLength(Bad, 2); Bad[1] := AnsiChar($E2); Bad[2] := AnsiChar($82); end;
+    end;
+    {$ENDIF}
+    Rejected := False;
+    try WfcTextEncodeToken(Bad, 'malformed Unicode fixture');
+    except on E: EConvertError do Rejected := True; end;
+    Check(Rejected, 'malformed host Unicode still rejects ' + IntToStr(I));
+  end;
+end;
+
+procedure TestLargeCanonicalLines;
+var Lines, Parsed: TWfcTextLines; Joined, Expected: String; I: Integer;
+begin
+  SetLength(Lines, 3);
+  Lines[0] := StringOfChar('a', 60000);
+  Lines[1] := RepeatText('%3A%25%20', 10000);
+  Lines[2] := 'terminal';
+  Expected := Lines[0] + #10 + Lines[1] + #10 + Lines[2] + #10;
+  Joined := WfcTextJoinCanonicalLines(Lines, 'large lines fixture');
+  Check((Length(Joined) = 150011) and (Joined = Expected),
+    'large multiline document preserves exact boundaries and final LF');
+  WfcTextSplitCanonicalLines(Joined, 'large lines fixture', Parsed);
+  Check(Length(Parsed) = Length(Lines), 'large line join/split preserves cardinality');
+  for I := 0 to High(Lines) do
+    Check(Parsed[I] = Lines[I], 'large line content and borrowed input unchanged ' + IntToStr(I));
+  Lines := nil;
+  Check(WfcTextJoinCanonicalLines(Lines, 'empty lines fixture') = '',
+    'empty line vector does not introduce an LF');
+  SetLength(Lines, 1); Lines[0] := '';
+  Check(WfcTextJoinCanonicalLines(Lines, 'blank line fixture') = #10,
+    'join retains historical blank-line behavior; validation remains separate');
+end;
+
 begin
   WriteLn('WFC text-codec numeric conformance suite');
   WriteLn('========================================');
@@ -257,6 +347,9 @@ begin
     TestMalformedCardinals);
   RunTest('malformed signed Integer forms and error context',
     TestMalformedSignedIntegers);
+  RunTest('large canonical tokens and unchanged Unicode validation',
+    TestLargeTokensAndUnicode);
+  RunTest('large canonical line assembly', TestLargeCanonicalLines);
   WriteLn('========================================');
   WriteLn('Checks: ', GCheckCount, '  Failures: ', GFailureCount);
   if GFailureCount <> 0 then

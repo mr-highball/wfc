@@ -49,6 +49,8 @@ authentication gateway, upload service, or general application backend.
 | Building 3D | `build-browser-building3d` | `build/browser/building3d/www` |
 | Training Studio | `build-browser-training` | `build/browser/training/www` |
 | Music Studio | `build-browser-music` | `build/browser/music/www` |
+| Ensemble Studio | `build-browser-ensemble` | `build/browser/ensemble/www` |
+| Voice Studio | `build-browser-voices` | `build/browser/voices/www` |
 | Neighborhood Counts | `build-browser-counts` | `build/browser/counts/www` |
 
 Use the `.ps1` entry on Windows or the `.sh` entry in a POSIX shell. Pass
@@ -165,8 +167,28 @@ PAS2JS=/opt/pas2js/bin/pas2js bash ./build-browser-tests.sh
 WFC_BROWSER=/usr/bin/chromium bash ./test-browser-tests.sh
 ```
 
+For diagnosis, select one exact current test basename without changing the
+default full gate:
+
+```powershell
+.\test-browser-tests.ps1 -Browser 'C:/path/to/chrome.exe' -TestName wfc_text_codec_test
+```
+
+```bash
+WFC_BROWSER=/usr/bin/chromium WFC_BROWSER_TEST=wfc_text_codec_test bash ./test-browser-tests.sh
+```
+
+An unknown name fails instead of silently selecting nothing. Readiness checks
+use the first selected current page. Omit the selector to execute the complete
+source-derived suite; a focused success does not certify the other programs.
+
 Staging compiles `test/*_test.lpr` for `-Tbrowser`, embeds the matching RTL, and
 uses the FPC checker to create harnesses under `build/browser/tests/www`.
+It also rebuilds all eight demos and copies their three named public assets
+into `demo-entries` below that root. `wfc_browser_demo_entries_test` loads the
+actual `index.html?selftest=1` pages in sequential same-origin frames and checks
+their rendered contracts. This catches entry-point/bootstrap problems that
+controller-only fixtures cannot. No external server is required.
 Native DOM-parser, socket-server, and renderer-process tests are excluded;
 they execute in the native gate. The runner independently derives that same
 current source list, rejects missing HTML or compiled scripts, and ignores stale
@@ -181,6 +203,22 @@ The ensemble stream demo test also requires its application-owned
 asynchronous: returning from the synchronous Pascal harness alone is not
 completion. Pending, failed, or missing stream markers fail the runner even
 when the synchronous source tests passed.
+
+The independent-role Voice Studio gate likewise requires
+`data-voice-stream-self-test=passed` and `data-voice-stream-release=passed`.
+Its pending asynchronous save/release tests cannot be replaced by a successful
+transpilation or synchronous harness return. Stage the eighth browser demo
+with `build-browser-voices.ps1` or `build-browser-voices.sh`, then serve
+`build/browser/voices/www` using the same FPC server. See
+[Independent Voices](music-voices.md) and the
+[Voice Studio host guide](../examples/music/07_VoiceStudio/README.md).
+
+The actual-page gate additionally requires `data-demo-entries-self-test=passed`
+after all eight pages finish. Each page retains a 15-second virtual deadline;
+this aggregate test receives 125 seconds of accelerated browser virtual time.
+Its real process deadline remains 60 seconds, as for every other program.
+Pending/missing page evidence never counts as success. This browser-only test
+does not appear in the native gate.
 
 PowerShell accepts `-Checker` when staging and `-Server`, `-Checker`, and
 `-Port` when running; the default port is 4180. The shell scripts use
@@ -201,6 +239,8 @@ build/native/bin/wfc_music_render_process_test \
   build/native/bin/MusicStudioRender build/native/bin
 build/native/bin/wfc_music_ensemble_render_process_test \
   build/native/bin/EnsembleStudioRender build/native/bin
+build/native/bin/wfc_music_voices_render_process_test \
+  build/native/bin/VoiceStudioRender build/native/bin
 ```
 
 These use uniquely owned fixtures beneath the supplied existing directory and
@@ -228,7 +268,10 @@ changes, nor a claim of crash-durable directory metadata. Unix filesystems
 must support sibling hard links; there is no overwriting fallback.
 
 The [Ensemble Studio renderer](../examples/music/06_EnsembleStudio/README.md)
-uses this utility after exact duration/frame preflight. The browser host uses
+and independent-role `VoiceStudioRender --format wave|midi` use this utility
+after exact duration/frame or MIDI planning. See
+[Voice Studio](../examples/music/07_VoiceStudio/README.md) for actual commands.
+The browser host uses
 a user-authorized writable-file transaction instead; choosing an existing
 file in the browser save picker can authorize replacement and does not carry
 the native new-file-only guarantee.

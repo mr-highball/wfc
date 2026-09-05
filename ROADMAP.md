@@ -110,6 +110,11 @@ The repository already contains the beginnings of the ecosystem:
   vectors, distinct exact/allowed pitch-class sets, safe continuation-model
   preflight, common-excerpt training, a transactional three-pass owner, and
   shared native/browser Ensemble Studio;
+- [Independent Voices v1](docs/music-voices.md) with detached common-excerpt
+  role training, one chord-capable vocabulary per voice, shared harmony/rhythm
+  providers, pitch ranges and optional pair gaps, existential exact-coverage
+  witnesses, independent semantic capture, bounded continuation, and the
+  native/browser Voice Studio proof corpus;
 - strict canonical `wfcmusic=1` score text, a defensive project-owned SMF
   format-0/1 byte codec, deterministic format-0 score export, four focused
   conformance suites, and a native/pas2js three-pass composition example;
@@ -227,8 +232,9 @@ It is not yet the finished system described above:
   optional GPL-3.0 submodule and is not part of the MIT runtime or standard demo;
 - Music Foundation v1 and Negotiated Variation v1 prove quantized single-voice
   pitch-class composition, public motif preservation, bounded pass-level
-  repair, result replay, and score-to-SMF export. Polyphonic cell projection,
-  key and chord semantics, expressive-performance learning, phrase-aware
+  repair, result replay, and score-to-SMF export. Ensemble and independent-role
+  layers now add polyphonic cell projection and collective exact/subset harmony.
+  Richer key and chord semantics, expressive-performance learning, phrase-aware
   coordinate repair, voicing, ornamentation, and the complete music exit gate
   remain open.
 
@@ -613,8 +619,7 @@ adapter is optional and cannot be required by the portable ecosystem.
   consumer, with voice-slot locks, independent validation, full/selective
   negotiation, and common-excerpt training. Ensemble Studio exposes this
   pipeline in native FPC and pas2js without changing monophonic replay formats.
-  Joint frames preserve observed vertical combinations; independent marginal
-  voice recombination remains work. The separate
+  Joint frames preserve observed vertical combinations. The separate
   [ensemble streaming protocol](docs/music-ensemble-stream.md) carries exact
   sequence-state frontiers across bounded local graphs, including partial BOS
   history and independently held chords. Incremental PCM rendering preserves
@@ -623,6 +628,17 @@ adapter is optional and cannot be required by the portable ecosystem.
   [MIDI stream](docs/music-midi-stream.md) counts and deterministically replays
   events into a forward-only format-0 file, preserving held voices and long
   silent gaps. Global long-range feasibility and infinite storage are not claimed.
+- [Independent Voices v1](docs/music-voices.md) separates chord-capable role
+  models while preserving common excerpts and shared rhythm/harmony providers.
+  Per-role subset clauses plus existential coverage suppliers enforce exact
+  collective harmony without a Cartesian joint vocabulary. Inclusive role
+  ranges and explicit pair-gap/rest policies compose with that relation.
+  A bounded stream carries exact H/R/role frontiers, including held chords and
+  early BOS context, and feeds incremental audio/MIDI. Voice Studio exposes
+  observed-versus-new verticals and supplier evidence. The
+  [research record](docs/research/independent-voices-v1.md) separates the tiny
+  graph truth table from the full two-excerpt temporal corpus and records
+  search degeneracy and the absence of global feasibility guarantees.
 - A portable three-pass fixture solves harmony and rhythm before melody,
   composes both constraints through latent sequence projection maps,
   independently validates the public relation, rebuilds a score, and checks
@@ -658,8 +674,9 @@ adapter is optional and cannot be required by the portable ecosystem.
   browsers; OS/process checks remain native. See
   [development tools](docs/development-tools.md).
 - Extend the pipeline through meter/phrase -> rhythm -> harmony -> melody ->
-  bass/voicing -> dynamics/ornamentation, extending the polyphonic frame baseline,
-  key/scale spelling, voice leading, instrument ranges, and locked motifs.
+  bass/voicing -> dynamics/ornamentation, extending the independent-role baseline
+  with key/scale spelling, general temporal voice-leading constraints,
+  instrument-specific range models, independently learned rhythms, and locked motifs.
 - Extend the current native WAV export and browser HTML-audio presentation
   with optional embedded native playback or a thin WebAudio host only when
   needed, without making a media backend part of the exact runtime foundation.
@@ -672,7 +689,7 @@ harmonies meet the selected model's constraints, semantic score/MIDI
 round-trips are tested, native and web agree on the event list, audio
 presentations consume the same validated result, and the standard demo has no
 required GPL dependency. Foundation v1, Negotiated Variation v1, Music Studio,
-and Ensemble v1 satisfy important parts of this gate, including browser UIs,
+Ensemble v1, and Independent Voices v1 satisfy important parts of this gate, including browser UIs,
 portable audible output, and explicit-policy semantic MIDI import, but not the full
 polyphonic/harmonic breadth or expressive-performance learning.
 

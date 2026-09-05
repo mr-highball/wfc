@@ -4,7 +4,8 @@ param(
   [Parameter(Mandatory=$true)][string] $Browser,
   [int] $Port = 4180,
   [string] $Server = '',
-  [string] $Checker = ''
+  [string] $Checker = '',
+  [string] $TestName = ''
 )
 $ErrorActionPreference = 'Stop'
 if (Get-Variable PSNativeCommandUseErrorActionPreference -ErrorAction SilentlyContinue) {
@@ -15,9 +16,10 @@ if (-not $Server) { $Server = Join-Path $repositoryRoot 'build/native/bin/wfc_se
 if (-not $Checker) { $Checker = Join-Path $repositoryRoot 'build/native/bin/wfc_browser_check.exe' }
 $web = Join-Path $repositoryRoot 'build/browser/tests/www'
 $results = Join-Path $repositoryRoot 'build/browser/tests/results'
-$nativeOnly = @('wfc_browser_dom_test','wfc_serve_test','wfc_music_render_process_test','wfc_music_ensemble_render_process_test','wfc_music_ensemble_midi_render_process_test')
+$nativeOnly = @('wfc_browser_dom_test','wfc_serve_test','wfc_music_render_process_test','wfc_music_ensemble_render_process_test','wfc_music_ensemble_midi_render_process_test','wfc_music_voices_render_process_test')
 $sources = @(Get-ChildItem -LiteralPath (Join-Path $repositoryRoot 'test') -Filter '*_test.lpr' |
   Where-Object { $_.BaseName -notin $nativeOnly } | Sort-Object Name)
+if ($TestName) { $sources = @($sources | Where-Object { $_.BaseName -ceq $TestName }) }
 if ($sources.Count -eq 0) { throw 'No current browser conformance sources found.' }
 $missing = @()
 foreach ($source in $sources) {
@@ -41,7 +43,7 @@ try {
     try {
       $bound = Select-String -LiteralPath (Join-Path $results 'server.log') -SimpleMatch -Quiet -Pattern "WFC static server: http://127.0.0.1:$Port/"
       if (-not $bound) { Start-Sleep -Milliseconds 200; continue }
-      $null = Invoke-WebRequest -Uri "http://127.0.0.1:$Port/wfc_test.html" -TimeoutSec 2
+      $null = Invoke-WebRequest -Uri ("http://127.0.0.1:$Port/" + $sources[0].BaseName + '.html') -TimeoutSec 2
       if ($serverProcess.HasExited) { throw 'FPC server exited during readiness.' }
       $ready = $true
       break
@@ -58,9 +60,12 @@ try {
     New-Item -ItemType Directory -Force -Path $profile | Out-Null
     $dom = Join-Path $results ($page.BaseName + '.dom')
     $log = Join-Path $results ($page.BaseName + '.log')
+    # Eight real pages retain their individual 15-second virtual deadlines.
+    # The browser process still has the same 60-second real-time deadline.
+    $virtualTimeBudget = if ($page.BaseName -eq 'wfc_browser_demo_entries_test') { 125000 } else { 15000 }
     $arguments = @('--headless','--disable-gpu','--disable-dev-shm-usage',
       '--no-first-run','--no-default-browser-check',('--user-data-dir="' + $profile + '"'),
-      '--virtual-time-budget=15000','--dump-dom',("http://127.0.0.1:$Port/" + $page.Name))
+      ("--virtual-time-budget=$virtualTimeBudget"),'--dump-dom',("http://127.0.0.1:$Port/" + $page.Name))
     $browserProcess = $null
     try {
       $browserProcess = Start-Process -FilePath $Browser -ArgumentList $arguments -PassThru -WindowStyle Hidden -RedirectStandardOutput $dom -RedirectStandardError $log
@@ -74,12 +79,20 @@ try {
       $browserProcess.Dispose()
       $browserProcess = $null
       $assertions = @('--dom', $dom, '--expect', 'data-self-test=passed')
+      if ($page.BaseName -eq 'wfc_browser_demo_entries_test') {
+        $assertions += @('--expect', 'data-demo-entries-self-test=passed')
+      }
       if ($page.BaseName -eq 'wfc_music_ensemble_stream_demo_test') {
         # The synchronous harness cannot certify awaited file transactions.
         $assertions += @('--expect', 'data-stream-self-test=passed')
         $assertions += @('--expect', 'data-stream-release=passed')
         $assertions += @('--expect', 'data-midi-stream-self-test=passed')
         $assertions += @('--expect', 'data-midi-stream-release=passed')
+      }
+      if ($page.BaseName -eq 'wfc_music_voices_browser_test') {
+        # Awaited controller/file ownership has its own completion evidence.
+        $assertions += @('--expect', 'data-voice-stream-self-test=passed')
+        $assertions += @('--expect', 'data-voice-stream-release=passed')
       }
       & $checker @assertions
       if ($LASTEXITCODE -ne 0) { throw "Browser assertions failed: $($page.Name)" }

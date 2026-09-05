@@ -7,6 +7,7 @@ text completion, three-pass text composition, exact music-score, music
 projection, Standard MIDI File,
 score-export, deterministic PCM/WAVE rendering, Music Studio, synchronized
 polyphonic frames and training, the ensemble pass owner and Ensemble Studio,
+independent voice training/graphs/frontiers and Voice Studio,
 negotiated music variation/result replay, full and selective
 pass negotiation, count-range pass clauses, deterministic whole-transaction
 restarts and optional diagnostic timing, canonical numeric text primitives, immutable authored-rule
@@ -24,7 +25,7 @@ variation, the four-pass learned-pattern world, and writes a checked seed-zero
 Building SVG artifact.
 It does not initialize the optional legacy music submodule or build the
 unfinished Castle Game Engine viewer. The 2D world, three-pass text workbench,
-Building 3D, Training Studio, Music Studio, Ensemble Studio, and Neighborhood Counts have separate pas2js browser entry
+Building 3D, Training Studio, Music Studio, Ensemble Studio, Voice Studio, and Neighborhood Counts have separate pas2js browser entry
 points described below.
 
 FPC 3.2.2 is the supported stable compiler. The current FPC development
@@ -108,6 +109,9 @@ Both scripts rebuild with assertions and range, overflow, and I/O checks, run
 `wfc_music_ensemble_audio_test`, `wfc_music_ensemble_stream_demo_test`,
 `wfc_midi_stream_test`, `wfc_music_ensemble_midi_test`,
 `wfc_music_ensemble_midi_stream_demo_test`,
+`wfc_sequence_partial_projection_test`, `wfc_music_voices_training_test`,
+`wfc_music_voices_graph_test`, `wfc_music_voices_stream_test`,
+`wfc_music_voices_demo_test`,
 `wfc_browser_dom_test`, `wfc_serve_test`,
 `wfc_text_codec_test`, `wfc_rule_model_test`,
 `wfc_rule_text_test`, `wfc_pipeline_model_test`, `wfc_pipeline_text_test`,
@@ -426,6 +430,46 @@ The browser runner requires `data-stream-self-test=passed`,
 ensemble stream controller test in addition to the synchronous harness marker.
 An unawaited or unfinished file transaction cannot satisfy that gate.
 
+## Voice Studio browser and native hosts
+
+The independent-role studio stages the same portable training, graph,
+continuation and export helpers used by the native host:
+
+```powershell
+.\build-browser-voices.ps1 -Compiler 'C:/path/to/pas2js.exe'
+.\build\native\bin\wfc_serve.exe --root build/browser/voices/www --port 4179
+```
+
+```bash
+PAS2JS=/opt/pas2js/bin/pas2js bash ./build-browser-voices.sh
+build/native/bin/wfc_serve --root build/browser/voices/www --port 4179
+```
+
+Open `http://127.0.0.1:4179/`; append `?selftest=1` for the browser fixture.
+Build the included server with the native gate first. The browser test's
+asynchronous transaction gates include `data-voice-stream-self-test=passed`
+and `data-voice-stream-release=passed`, in addition to its ordinary test
+marker. A synchronous test return alone is insufficient.
+
+The native `VoiceStudioRender` host selects `--format wave` or `--format midi`
+and accepts user-defined `--seconds`, an unsigned `--seed`, and a new `--output`
+path. For example:
+
+```bash
+build/native/bin/VoiceStudioRender --format wave --seconds 8 --seed 1 --output voices.wav
+build/native/bin/VoiceStudioRender --format midi --seconds 8 --seed 1 --output voices.mid
+```
+
+Append `.exe` on Windows. The native host does not replace an existing output.
+The [example guide](../examples/music/07_VoiceStudio/README.md) describes search
+budgets, streaming progress, and browser file support. See
+[Independent Voices](music-voices.md) for reusable APIs and
+[the research record](research/independent-voices-v1.md) for the separate
+graph truth table and authored temporal corpus.
+
+`wfc_music_voices_browser_test` exercises the asynchronous browser controller
+and file helper only in the browser gate; it is not a native no-op test.
+
 ## Neighborhood Counts browser workbench
 
 Stage the shared terrain/roads/market count demo with
@@ -440,13 +484,15 @@ commands, the complete marker contract, and explicit scope limits.
 
 ## Hosted pas2js gate
 
-The hosted browser gate builds the seven pas2js demos with a matching compiler
-and RTL. It serves six standalone demo self-tests and the Ensemble Studio
-controller's portable conformance host with the project-owned FPC server,
+The hosted browser gate builds the eight pas2js demos with a matching compiler
+and RTL. It serves standalone demo self-tests and the ensemble/independent-voice
+controllers' portable conformance hosts with the project-owned FPC server,
 executes them in headless Chrome, and checks rendered body attributes with the
 FPC checker.
 It also compiles every portable standalone conformance program for the browser
-and executes those pages through the same FPC tools. Native socket, DOM-parser,
+and executes those pages through the same FPC tools. An additional browser-only
+entry regression loads all eight actual demo pages and their self-test queries,
+including the HTML bootstrap and awaited controller checks. Native socket, DOM-parser,
 and renderer-process tests remain native. The source-derived test manifest
 rejects missing staged programs; see [development tools](development-tools.md)
 for the reproducible staging and runner commands.
@@ -459,9 +505,9 @@ not assertions that every console fixture has a browser host.
 The hosted workflow runs the checked native gate with FPC 3.2.2 on Linux,
 macOS, and Windows. The Linux lane also builds the FPM and Lazarus packages,
 runs the core Lazarus project, and verifies that generation leaves the checkout
-clean. A separate Linux lane builds all seven browser demos and executes six
+clean. A separate Linux lane builds all eight browser demos and executes
 standalone demo self-tests plus portable browser conformance (including the
-Ensemble Studio controller) in headless Chrome using the included FPC
+Ensemble Studio and Voice Studio controllers) in headless Chrome using the included FPC
 development tools. A canary runs
 against the current official FPC development image and records the image digest
 and compiler revision in the job log. Submodules are deliberately disabled for

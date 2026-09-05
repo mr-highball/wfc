@@ -220,6 +220,11 @@ jobs:
           # Its shared controller event path runs in browser conformance above.
           PAS2JS="$PAS2JS_ROOT/bin/x86_64-linux/pas2js" bash ./build-browser-ensemble.sh
 
+      - name: Build browser Voice Studio
+        shell: bash
+        run: |
+          PAS2JS="$PAS2JS_ROOT/bin/x86_64-linux/pas2js" bash ./build-browser-voices.sh
+
       - name: Build and self-test browser text passes
         shell: bash
         run: |

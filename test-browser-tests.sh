@@ -19,7 +19,8 @@ for source in test/*_test.lpr; do
   [[ -f "$source" ]] || continue
   name="${source##*/}"
   name="${name%.lpr}"
-  case "$name" in wfc_browser_dom_test|wfc_serve_test|wfc_music_render_process_test|wfc_music_ensemble_render_process_test|wfc_music_ensemble_midi_render_process_test) continue ;; esac
+  if [[ -n "${WFC_BROWSER_TEST:-}" && "$name" != "$WFC_BROWSER_TEST" ]]; then continue; fi
+  case "$name" in wfc_browser_dom_test|wfc_serve_test|wfc_music_render_process_test|wfc_music_ensemble_render_process_test|wfc_music_ensemble_midi_render_process_test|wfc_music_voices_render_process_test) continue ;; esac
   sources+=("$name")
   for extension in html js; do
     [[ -f "$web/$name.$extension" ]] || missing+=("$web/$name.$extension")
@@ -68,7 +69,7 @@ for _ in {1..50}; do
     [[ "$line" != 'WFC static server: http://127.0.0.1:4180/' ]] || bound=true
   done <"$results/server.log"
   if [[ "$bound" == true ]] &&
-      curl --max-time 2 --silent --fail http://127.0.0.1:4180/wfc_test.html >/dev/null; then
+      curl --max-time 2 --silent --fail "http://127.0.0.1:4180/${sources[0]}.html" >/dev/null; then
     kill -0 "$server_pid" 2>/dev/null || { cat "$results/server.log" >&2; exit 1; }
     ready=true
     break
@@ -85,9 +86,13 @@ for name in "${sources[@]}"; do
   mkdir -p "$profile"
   timeout_marker="$results/$name.timeout"
   : >"$timeout_marker"
+  # Eight real entry pages retain their individual virtual-time allowances;
+  # this program still uses the unchanged 60-second process watchdog below.
+  virtual_time_budget=15000
+  if [[ "$name" == wfc_browser_demo_entries_test ]]; then virtual_time_budget=125000; fi
   "$chrome" --headless --disable-gpu --disable-dev-shm-usage \
     --no-first-run --no-default-browser-check --user-data-dir="$profile" \
-    --virtual-time-budget=15000 --dump-dom \
+    --virtual-time-budget="$virtual_time_budget" --dump-dom \
     "http://127.0.0.1:4180/$name.html" >"$results/$name.dom" 2>"$results/$name.log" &
   browser_pid=$!
   # POSIX sleep/kill watchdog: no GNU timeout utility is needed on macOS.
@@ -116,12 +121,19 @@ for name in "${sources[@]}"; do
   browser_pid=''
   stop_watchdog
   checker_args=(--dom "$results/$name.dom" --expect data-self-test=passed)
+  if [[ "$name" == wfc_browser_demo_entries_test ]]; then
+    checker_args+=(--expect data-demo-entries-self-test=passed)
+  fi
   if [[ "$name" == wfc_music_ensemble_stream_demo_test ]]; then
     # Awaited file transactions have their own application completion signal.
     checker_args+=(--expect data-stream-self-test=passed)
     checker_args+=(--expect data-stream-release=passed)
     checker_args+=(--expect data-midi-stream-self-test=passed)
     checker_args+=(--expect data-midi-stream-release=passed)
+  fi
+  if [[ "$name" == wfc_music_voices_browser_test ]]; then
+    checker_args+=(--expect data-voice-stream-self-test=passed)
+    checker_args+=(--expect data-voice-stream-release=passed)
   fi
   if [[ -s "$timeout_marker" ]]; then
     failures+=("$name")

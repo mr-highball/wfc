@@ -56,7 +56,8 @@ function WfcTextFindCharacter(const AText: String;
 implementation
 
 uses
-  SysUtils;
+  SysUtils
+  {$IFDEF PAS2JS}, JS{$ENDIF};
 
 type
   TWfcTextBytes = array of Byte;
@@ -369,7 +370,11 @@ var
   LBytes: TWfcTextBytes;
   I: Integer;
   LLength: Integer;
+  {$IFDEF PAS2JS}
+  LParts: array of String;
+  {$ELSE}
   LPosition: Integer;
+  {$ENDIF}
 begin
   LBytes := TokenToUtf8Bytes(AToken, AArtifactName);
 
@@ -395,6 +400,18 @@ begin
     end;
   end;
 
+  {$IFDEF PAS2JS}
+  { Browser strings are immutable. Indexed character writes become full-string
+    slices in the generated RTL, so they are quadratic for large tokens.
+    All output bounds above are checked before allocating these bounded parts;
+    each input byte contributes exactly one one- or three-character part. }
+  SetLength(LParts, Length(LBytes));
+  for I := 0 to High(LBytes) do
+    if IsUnescapedTokenByte(LBytes[I]) then LParts[I] := Chr(LBytes[I])
+    else LParts[I] := '%' + WFC_TEXT_HEX[(LBytes[I] shr 4) + 1] +
+      WFC_TEXT_HEX[(LBytes[I] and $F) + 1];
+  Result := TJSArray(LParts).join('');
+  {$ELSE}
   SetLength(Result, LLength);
   LPosition := 1;
   for I := 0 to High(LBytes) do
@@ -412,6 +429,7 @@ begin
       Inc(LPosition, 3);
     end;
   end;
+  {$ENDIF}
 end;
 
 function WfcTextDecodeToken(const AText,
@@ -467,9 +485,11 @@ function WfcTextJoinCanonicalLines(const ALines: TWfcTextLines;
   const AArtifactName: String): String;
 var
   I: Integer;
+  {$IFNDEF PAS2JS}
   J: Integer;
-  LLength: Integer;
   LPosition: Integer;
+  {$ENDIF}
+  LLength: Integer;
 begin
   LLength := 0;
   for I := 0 to High(ALines) do
@@ -480,6 +500,12 @@ begin
     Inc(LLength, Length(ALines[I]) + 1);
   end;
 
+  {$IFDEF PAS2JS}
+  { Array.join copies the complete lines once; it does not mutate the borrowed
+    line vector. Keep the existing empty-vector and final-LF behavior. }
+  if Length(ALines) = 0 then Result := ''
+  else Result := TJSArray(ALines).join(#10) + #10;
+  {$ELSE}
   SetLength(Result, LLength);
   LPosition := 1;
   for I := 0 to High(ALines) do
@@ -492,6 +518,7 @@ begin
     Result[LPosition] := #10;
     Inc(LPosition);
   end;
+  {$ENDIF}
 end;
 
 procedure WfcTextSplitCanonicalLines(const AText, AArtifactName: String;

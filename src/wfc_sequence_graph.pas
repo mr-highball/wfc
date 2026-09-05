@@ -36,6 +36,7 @@ uses
 const
   WFC_SEQUENCE_GRAPH_ADAPTER_VERSION = 1;
   WFC_SEQUENCE_SEGMENT_VERSION = 1;
+  WFC_SEQUENCE_PARTIAL_PROJECTION_VERSION = 1;
 
 type
   EWfcSequenceGraph = class(EWfcSequence);
@@ -210,6 +211,14 @@ procedure RequireProjectedSequenceFromPass(
   const ATargetValue: TGraphValue; const ASourcePass: String;
   const AAllowedPublicTokens: TWfcModelTokens);
 
+{ Partial counterpart for a plain downstream graph value. Empty alternatives
+  explicitly prune it through a zero-match clause over all provider states.
+  Nonempty alternatives are a distinct conjunctive clause. }
+procedure RequirePartialProjectedSequenceFromPass(
+  const ASourceModel: TWfcSequenceModel; const ATargetGraph: TGraph;
+  const ATargetValue: TGraphValue; const ASourcePass: String;
+  const AAllowedPublicTokens: TWfcModelTokens);
+
 { Checks a complete projection-to-projection relation without adding it.
   Rules must cover every target public token exactly once; alternatives must
   be nonempty, known, and unique. Applied model identities and dependency
@@ -234,6 +243,21 @@ procedure ValidateSequenceProjectionMapsFromPasses(
   const ABindings: TWfcSequenceProjectionBindings);
 
 procedure RequireSequenceProjectionMapsFromPasses(
+  const ATargetModel: TWfcSequenceModel; const ATargetGraph: TGraph;
+  const ABindings: TWfcSequenceProjectionBindings);
+
+{ Additive partial relations. Every target token is still listed exactly once,
+  but an empty source list explicitly forbids that target: a zero-match clause
+  against every source state prunes it when the provider is solved. It is NEVER
+  passed to the historical empty-array RequireFromPass overload. Nonempty
+  relations are distinct conjunctive clauses, including repeated applications.
+  Caller entry domains/locks are untouched. All bindings are preflighted before
+  mutation; an allocation failure during application requires discarding the
+  graph, as with other multi-rule construction operations. }
+procedure ValidateSequencePartialProjectionMapsFromPasses(
+  const ATargetModel: TWfcSequenceModel; const ATargetGraph: TGraph;
+  const ABindings: TWfcSequenceProjectionBindings);
+procedure RequireSequencePartialProjectionMapsFromPasses(
   const ATargetModel: TWfcSequenceModel; const ATargetGraph: TGraph;
   const ABindings: TWfcSequenceProjectionBindings);
 
@@ -271,6 +295,7 @@ type
   TPreparedSequenceProjectionBinding = record
     SourcePass: String;
     SourceValuesByTarget: TSequenceGraphValueArrays;
+    AllSourceValues: TGraphValues;
   end;
   TPreparedSequenceProjectionBindings =
     array of TPreparedSequenceProjectionBinding;
@@ -1181,10 +1206,10 @@ begin
       ASourcePass, LProjectedValues[I]);
 end;
 
-procedure RequireProjectedSequenceFromPass(
+procedure RequireProjectedSequenceFromPassImpl(
   const ASourceModel: TWfcSequenceModel; const ATargetGraph: TGraph;
   const ATargetValue: TGraphValue; const ASourcePass: String;
-  const AAllowedPublicTokens: TWfcModelTokens);
+  const AAllowedPublicTokens: TWfcModelTokens; const APartial: Boolean);
 var
   I: Integer;
   J: Integer;
@@ -1195,6 +1220,7 @@ var
   LSourceGraph: TGraph;
   LSourceValues: TGraphValues;
   LTargetPass: TGraph;
+  LTerms: TGraphPassMatchTerms;
 begin
   RequireAssigned(ASourceModel, ATargetGraph);
   if ATargetGraph.Running then
@@ -1216,7 +1242,7 @@ begin
   if LParentedGroup.Parent <> LTargetPass then
     raise EWfcSequenceGraph.Create(
       'projected sequence target value is owned by another pass');
-  if Length(AAllowedPublicTokens) = 0 then
+  if (Length(AAllowedPublicTokens) = 0) and not APartial then
     raise EArgumentException.Create(
       'projected sequence requirements need at least one public token');
 
@@ -1242,7 +1268,42 @@ begin
           SaltedStateGraphValue(LSalt, I, ASourceModel);
         Break;
       end;
-  LGroup.RequireFromPass(ASourcePass, LSourceValues);
+  if not APartial then LGroup.RequireFromPass(ASourcePass, LSourceValues)
+  else
+  begin
+    SetLength(LTerms, 1);
+    if Length(LSourceValues) = 0 then
+    begin
+      SetLength(LSourceValues, ASourceModel.StateCount);
+      for I := 0 to ASourceModel.StateCount - 1 do
+        LSourceValues[I] := SaltedStateGraphValue(LSalt, I, ASourceModel);
+      LTerms[0] := MakeGraphPassMatchTerm(MakeGraphOffset(0, 0, 0), LSourceValues);
+      LGroup.RequireCountFromPass(ASourcePass, LTerms, 0, 0, gpcmDistinctCells);
+    end
+    else
+    begin
+      LTerms[0] := MakeGraphPassMatchTerm(MakeGraphOffset(0, 0, 0), LSourceValues);
+      LGroup.RequireAnyFromPass(ASourcePass, LTerms);
+    end;
+  end;
+end;
+
+procedure RequireProjectedSequenceFromPass(
+  const ASourceModel: TWfcSequenceModel; const ATargetGraph: TGraph;
+  const ATargetValue: TGraphValue; const ASourcePass: String;
+  const AAllowedPublicTokens: TWfcModelTokens);
+begin
+  RequireProjectedSequenceFromPassImpl(ASourceModel, ATargetGraph,
+    ATargetValue, ASourcePass, AAllowedPublicTokens, False);
+end;
+
+procedure RequirePartialProjectedSequenceFromPass(
+  const ASourceModel: TWfcSequenceModel; const ATargetGraph: TGraph;
+  const ATargetValue: TGraphValue; const ASourcePass: String;
+  const AAllowedPublicTokens: TWfcModelTokens);
+begin
+  RequireProjectedSequenceFromPassImpl(ASourceModel, ATargetGraph,
+    ATargetValue, ASourcePass, AAllowedPublicTokens, True);
 end;
 
 procedure ValidateProjectionDependencyEdge(const ATargetGraph,
@@ -1310,7 +1371,8 @@ procedure PrepareSequenceProjectionMap(
   const ATargetGraph: TGraph; const ASourcePass: String;
   const ARules: TWfcSequenceProjectionRules;
   out ATargetSalt: Integer;
-  out ASourceValuesByTarget: TSequenceGraphValueArrays);
+  out ASourceValuesByTarget: TSequenceGraphValueArrays;
+  const AAllowEmpty: Boolean = False);
 var
   I: Integer;
   J: Integer;
@@ -1361,7 +1423,7 @@ begin
         'duplicate target sequence public token in projection rule %d', [I]);
     LSeenTargets[LTargetTokenIndex] := True;
 
-    if Length(ARules[I].SourceTokens) = 0 then
+    if (Length(ARules[I].SourceTokens) = 0) and not AAllowEmpty then
       raise EArgumentException.CreateFmt(
         'sequence projection rule %d needs a source alternative', [I]);
     SetLength(LAllowedSourceIndices,
@@ -1450,7 +1512,8 @@ procedure PrepareSequenceProjectionBindings(
   const ATargetModel: TWfcSequenceModel; const ATargetGraph: TGraph;
   const ABindings: TWfcSequenceProjectionBindings;
   out ATargetSalt: Integer;
-  out APrepared: TPreparedSequenceProjectionBindings);
+  out APrepared: TPreparedSequenceProjectionBindings;
+  const AAllowEmpty: Boolean = False);
 var
   I: Integer;
   J: Integer;
@@ -1484,7 +1547,14 @@ begin
     PrepareSequenceProjectionMap(ATargetModel,
       ABindings[I].SourceModel, ATargetGraph,
       ABindings[I].SourcePass, ABindings[I].Rules,
-      LTargetSalt, APrepared[I].SourceValuesByTarget);
+      LTargetSalt, APrepared[I].SourceValuesByTarget, AAllowEmpty);
+    if AAllowEmpty then
+    begin
+      SetLength(APrepared[I].AllSourceValues, ABindings[I].SourceModel.StateCount);
+      for J := 0 to ABindings[I].SourceModel.StateCount - 1 do
+        APrepared[I].AllSourceValues[J] := SaltedStateGraphValue(
+          SequenceKeySalt(ABindings[I].SourceModel), J, ABindings[I].SourceModel);
+    end;
     if I = 0 then
       ATargetSalt := LTargetSalt
     else if LTargetSalt <> ATargetSalt then
@@ -1529,6 +1599,48 @@ begin
         SaltedStateGraphValue(LTargetSalt, J, ATargetModel)];
       LGroup.RequireFromPass(LPrepared[I].SourcePass,
         LPrepared[I].SourceValuesByTarget[LTargetTokenIndex]);
+    end;
+end;
+
+procedure ValidateSequencePartialProjectionMapsFromPasses(
+  const ATargetModel: TWfcSequenceModel; const ATargetGraph: TGraph;
+  const ABindings: TWfcSequenceProjectionBindings);
+var P: TPreparedSequenceProjectionBindings; Salt: Integer;
+begin
+  PrepareSequenceProjectionBindings(ATargetModel, ATargetGraph, ABindings,
+    Salt, P, True);
+end;
+
+procedure RequireSequencePartialProjectionMapsFromPasses(
+  const ATargetModel: TWfcSequenceModel; const ATargetGraph: TGraph;
+  const ABindings: TWfcSequenceProjectionBindings);
+var
+  P: TPreparedSequenceProjectionBindings;
+  Salt, I, J, TokenIndex: Integer;
+  Terms: TGraphPassMatchTerms;
+  Group: TGraphRuleGroup;
+begin
+  PrepareSequenceProjectionBindings(ATargetModel, ATargetGraph, ABindings,
+    Salt, P, True);
+  SetLength(Terms, 1);
+  for I := 0 to High(P) do
+    for J := 0 to ATargetModel.StateCount - 1 do
+    begin
+      TokenIndex := ATargetModel.StateEmittedTokenIndexAt(J);
+      Group := ATargetGraph.Rules[SaltedStateGraphValue(Salt, J, ATargetModel)];
+      if Length(P[I].SourceValuesByTarget[TokenIndex]) = 0 then
+      begin
+        Terms[0] := MakeGraphPassMatchTerm(MakeGraphOffset(0, 0, 0),
+          P[I].AllSourceValues);
+        Group.RequireCountFromPass(P[I].SourcePass, Terms, 0, 0,
+          gpcmDistinctCells);
+      end
+      else
+      begin
+        Terms[0] := MakeGraphPassMatchTerm(MakeGraphOffset(0, 0, 0),
+          P[I].SourceValuesByTarget[TokenIndex]);
+        Group.RequireAnyFromPass(P[I].SourcePass, Terms);
+      end;
     end;
 end;
 

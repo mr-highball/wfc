@@ -16,6 +16,12 @@ not construct the Cartesian product of independent voice vocabularies, infer
 arbitrary counterpoint, or claim that every musically meaningful combination
 has been learned.
 
+For independently learned pitch roles that can form unobserved vertical
+combinations, use the additive [Independent Voices layer](music-voices.md).
+It retains these frame/hold codecs but replaces the single joint consumer
+with separate role passes and collective harmony witnesses. The two learning
+representations remain distinct; this guide describes the joint-frame path.
+
 ## Units and ownership
 
 | Unit | Responsibility |
@@ -246,6 +252,8 @@ Music Studio arranger remains monophonic; it is not a polyphonic export path.
 The separate ensemble stream supplies polyphonic generation and PCM output
 with bounded timeline memory; it does not turn a continued segment into a
 standalone finite score. A separate [MIDI stream](music-midi-stream.md) counts
-and replays these frames into bounded forward-only file output. Independent
-marginal-voice recombination, expressive performance, and additional harmonic policies remain
-ecosystem work.
+and replays these frames into bounded forward-only file output.
+[Independent role recombination](music-voices.md) is a separate implemented
+path, with its own [proof corpus and research boundary](research/independent-voices-v1.md).
+Expressive performance, general voice leading, independent rhythm-role
+learning, and richer harmonic policies remain ecosystem work.

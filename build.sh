@@ -1350,3 +1350,39 @@ case "$host_system" in
 esac
 "$ensemble_midi_render_test_executable" "$ensemble_midi_render_executable" \
   "$compiler_binary_output_directory" || exit $?
+
+compiler_voices_demo_directory="$compiler_source_directory/../examples/music/07_VoiceStudio"
+for voices_test_name in wfc_sequence_partial_projection_test wfc_music_voices_graph_test wfc_music_voices_training_test wfc_music_voices_stream_test wfc_music_voices_demo_test; do
+  printf "Building and running '%s'.\n" "$voices_test_name"
+  "$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
+    "-Fu$compiler_source_directory" "-Fu$compiler_voices_demo_directory" \
+    "-Fu$compiler_tools_directory" \
+    "-FU$compiler_unit_output_directory" "-FE$compiler_binary_output_directory" \
+    "$compiler_source_directory/../test/$voices_test_name.lpr" || exit $?
+  voices_test_executable="$binary_output_directory/$voices_test_name"
+  case "$host_system" in
+    CYGWIN*|MINGW*|MSYS*) voices_test_executable="${voices_test_executable}.exe" ;;
+  esac
+  "$voices_test_executable" || exit $?
+done
+printf 'Building and checking the independent Voice Studio renderer.\n'
+for render_source in \
+  "$compiler_voices_demo_directory/VoiceStudioRender.lpr" \
+  "$compiler_source_directory/../test/wfc_music_voices_render_process_test.lpr"
+do
+  "$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
+    "-Fu$compiler_source_directory" "-Fu$compiler_voices_demo_directory" \
+    "-Fu$compiler_tools_directory" \
+    "-FU$compiler_unit_output_directory" "-FE$compiler_binary_output_directory" \
+    "$render_source" || exit $?
+done
+voices_render_executable="$compiler_binary_output_directory/VoiceStudioRender"
+voices_render_test_executable="$binary_output_directory/wfc_music_voices_render_process_test"
+case "$host_system" in
+  CYGWIN*|MINGW*|MSYS*)
+    voices_render_executable="${voices_render_executable}.exe"
+    voices_render_test_executable="${voices_render_test_executable}.exe"
+    ;;
+esac
+"$voices_render_test_executable" "$voices_render_executable" \
+  "$compiler_binary_output_directory" || exit $?

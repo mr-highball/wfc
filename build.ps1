@@ -1755,4 +1755,33 @@ foreach ($renderSource in @(
   (Join-Path $binaryOutputDirectory "EnsembleStudioMidiRender$toolExecutableSuffix") `
   $binaryOutputDirectory
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+$voicesDemoDirectory = Join-Path $repositoryRoot 'examples/music/07_VoiceStudio'
+foreach ($voicesTestName in @(
+    'wfc_sequence_partial_projection_test', 'wfc_music_voices_graph_test',
+    'wfc_music_voices_training_test', 'wfc_music_voices_stream_test',
+    'wfc_music_voices_demo_test')) {
+  Write-Host "Building and running '$voicesTestName'."
+  & $Compiler @CompilerOptions -B -Mdelphi -Sa -Cr -Co -Ci `
+    "-Fu$sourceDirectory" "-Fu$voicesDemoDirectory" "-Fu$toolsDirectory" `
+    "-FU$unitOutputDirectory" "-FE$binaryOutputDirectory" `
+    (Join-Path $repositoryRoot "test/$voicesTestName.lpr")
+  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+  & (Join-Path $binaryOutputDirectory "$voicesTestName$toolExecutableSuffix")
+  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+}
+Write-Host 'Building and checking the independent Voice Studio renderer.'
+foreach ($renderSource in @(
+  (Join-Path $voicesDemoDirectory 'VoiceStudioRender.lpr'),
+  (Join-Path $repositoryRoot 'test/wfc_music_voices_render_process_test.lpr')
+)) {
+  & $Compiler @CompilerOptions -B -Mdelphi -Sa -Cr -Co -Ci `
+    "-Fu$sourceDirectory" "-Fu$voicesDemoDirectory" "-Fu$toolsDirectory" `
+    "-FU$unitOutputDirectory" "-FE$binaryOutputDirectory" $renderSource
+  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+}
+& (Join-Path $binaryOutputDirectory "wfc_music_voices_render_process_test$toolExecutableSuffix") `
+  (Join-Path $binaryOutputDirectory "VoiceStudioRender$toolExecutableSuffix") `
+  $binaryOutputDirectory
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 exit 0
