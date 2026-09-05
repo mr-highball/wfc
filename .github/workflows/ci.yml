@@ -135,13 +135,16 @@ jobs:
       PAS2JS_SOURCE_SHA256: 5a2ad292c8606b899ba384d81b97e789171a335759b67e338d4a37903dbe18f1
       FPC_SOURCE_REVISION: a92f381365576b6b64be9eb9b8a2db5b4609d8a5
       FPC_SOURCE_SHA256: 27b2588f5ddcfa1f3262728d525f7a5ef382cc8d15c717431cc42d2af5197301
-      PAS2JS_ROOT: ${{ runner.temp }}/wfc-pas2js
 
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           submodules: false
+
+      - name: Set pas2js toolchain directory
+        shell: bash
+        run: printf 'PAS2JS_ROOT=%s/wfc-pas2js\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
 
       - name: Restore pinned pas2js toolchain
         id: pas2js-cache
