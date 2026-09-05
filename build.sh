@@ -23,6 +23,8 @@ building_test_source="$repository_root/test/wfc_building3d_test.lpr"
 trace_reference_test_source="$repository_root/test/wfc_trace_reference_test.lpr"
 trace_test_source="$repository_root/test/wfc_trace_test.lpr"
 trace_utility_test_source="$repository_root/test/wfc_trace_utility_test.lpr"
+trace_layout_test_source="$repository_root/test/wfc_trace_layout_test.lpr"
+trace_inspector_test_source="$repository_root/test/wfc_trace_inspector_test.lpr"
 isometric_test_source="$repository_root/test/wfc_voxel3d_isometric_test.lpr"
 svg_test_source="$repository_root/test/wfc_voxel3d_svg_test.lpr"
 building_view_test_source="$repository_root/test/wfc_building3d_view_test.lpr"
@@ -113,6 +115,8 @@ compiler_building_test_source=$building_test_source
 compiler_trace_reference_test_source=$trace_reference_test_source
 compiler_trace_test_source=$trace_test_source
 compiler_trace_utility_test_source=$trace_utility_test_source
+compiler_trace_layout_test_source=$trace_layout_test_source
+compiler_trace_inspector_test_source=$trace_inspector_test_source
 compiler_isometric_test_source=$isometric_test_source
 compiler_svg_test_source=$svg_test_source
 compiler_building_view_test_source=$building_view_test_source
@@ -201,6 +205,8 @@ case "$host_system" in
     compiler_trace_reference_test_source=$(cygpath -m "$trace_reference_test_source") || exit $?
     compiler_trace_test_source=$(cygpath -m "$trace_test_source") || exit $?
     compiler_trace_utility_test_source=$(cygpath -m "$trace_utility_test_source") || exit $?
+    compiler_trace_layout_test_source=$(cygpath -m "$trace_layout_test_source") || exit $?
+    compiler_trace_inspector_test_source=$(cygpath -m "$trace_inspector_test_source") || exit $?
     compiler_isometric_test_source=$(cygpath -m "$isometric_test_source") || exit $?
     compiler_svg_test_source=$(cygpath -m "$svg_test_source") || exit $?
     compiler_building_view_test_source=$(cygpath -m "$building_view_test_source") || exit $?
@@ -662,7 +668,9 @@ printf "Running '%s'.\n" "$building_test_executable"
 for compiler_trace_suite in \
   "$compiler_trace_reference_test_source" \
   "$compiler_trace_test_source" \
-  "$compiler_trace_utility_test_source"
+  "$compiler_trace_utility_test_source" \
+  "$compiler_trace_layout_test_source" \
+  "$compiler_trace_inspector_test_source"
 do
   trace_suite_name=$(basename "$compiler_trace_suite" .lpr)
   printf "Building the causal-trace conformance suite '%s'.\n" "$trace_suite_name"
@@ -674,6 +682,7 @@ do
     -Co \
     -Ci \
     "-Fu$compiler_source_directory" \
+    "-Fu$compiler_trace_example_directory" \
     "-FU$compiler_unit_output_directory" \
     "-FE$compiler_binary_output_directory" \
     "$compiler_trace_suite" || exit $?

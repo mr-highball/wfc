@@ -276,13 +276,14 @@ if not LGraph.TrySolve(LOptions, LReport) then
 ```
 
 Trace capture is optional and defaults to false. When enabled, the report
-contains one chronological transaction trace plus a contiguous
-`TraceStart`/`TraceCount` slice for every pass. Cross-pass removals identify the
-provider through `DependencyPassIndex` and link backward to that provider's
-stage or skip event. `wfc_trace` supplies lookup, detached pass/entry queries,
-formatting, structural/hash validation, and coordinate conversion. The
-[causal-trace contract](traces.md) documents the event schema and shared
-native/pas2js inspector.
+contains one chronological transaction trace. Its legacy `TraceStart` and
+`TraceCount` fields describe a contiguous slice for ordinary reports and retain
+the first event plus aggregate event count if late commit validation adds an
+earlier-pass suffix. `wfc_trace` derives canonical per-pass ranges for consumers
+that accept either form. Cross-pass removals identify the provider through
+`DependencyPassIndex` and link backward to that provider's stage or skip event.
+The [causal-trace contract](traces.md) documents the event schema, validators,
+range layout, and shared native/pas2js inspector.
 
 Defined passes solve against the staged output immediately before them. A
 later definitionless pass stages a copy of the preceding result, with its own
@@ -526,8 +527,8 @@ FPC and pas2js. The same `TGraph`, `SwitchToPass`, `PassGraph`, `ForEachPass`,
 `TryRegenerateFrom`, `TryRegenerateNegotiatedFrom`,
 `RequirePrevious`, `RequireFromPass`, `RequireFromPassAt`, and
 `RequireAnyFromPass`, and `RequireCountFromPass` calls are used on both targets.
-`CaptureTrace`, portable
-trace hashes, full and selective negotiation transcript hashes, per-pass slices, and the
+`CaptureTrace`, portable trace hashes, full and selective negotiation transcript
+hashes, compatible legacy pass metadata, derived per-pass ranges, and the
 `wfc_trace` query/validation helpers have matching native FPC and pas2js
 fixtures as well.
 

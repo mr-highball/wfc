@@ -126,7 +126,8 @@ Both scripts rebuild with assertions and range, overflow, and I/O checks, run
 `wfc_text_training_test`, `wfc_training_workspace_test`,
 `wfc_learned_pattern_world_bundle_test`,
 `wfc_trace_reference_test`,
-`wfc_trace_test`, and `wfc_trace_utility_test`, then compile and smoke-test the
+`wfc_trace_test`, `wfc_trace_utility_test`, `wfc_trace_layout_test`, and
+`wfc_trace_inspector_test`, then compile and smoke-test the
 portable console examples with seed `0`, including the bounded/wrapped spatial
 dependency self-check, causal-trace inspector, bounded pass-negotiation proof,
 negotiated descendant repair, anchored text completion, three-pass text

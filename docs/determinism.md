@@ -301,8 +301,10 @@ set therefore share one scope identity. With zero outer budget, the sole
 same roots and solve options.
 
 Every rejected and terminal round can retain a separate ordinary Trace-v1
-hash. This preserves contiguous per-pass slices instead of interleaving a
-provider revisit into one synthetic trace. See [causal solve
+hash. This keeps round chronologies separate instead of interleaving a provider
+revisit into one synthetic trace. Within a round, additive derived ranges also
+represent a late earlier-pass commit-failure suffix without changing Trace-v1
+events, hashes, or legacy metadata. See [causal solve
 traces](traces.md#negotiated-rounds).
 
 ## callbacks and extension hooks

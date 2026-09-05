@@ -18,6 +18,7 @@ $unitPaths = @('src','tools','examples/2D/common','examples/3D/common',
   'examples/2D/05_LearnedPatternWorld','examples/learning/05_TrainingStudio',
   'examples/music/05_MusicStudio','examples/passes/04_NeighborhoodCounts',
   'examples/passes/05_DeterministicRestarts',
+  'examples/passes/02_TraceInspector',
   'examples/passes/06_ConnectedRoutes',
   'examples/music/06_EnsembleStudio','examples/music/07_VoiceStudio') | ForEach-Object {
     '-Fu' + (Join-Path $repositoryRoot $_)

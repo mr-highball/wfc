@@ -9,12 +9,18 @@ terrain -> settlement -> foliage
 
 Terrain filters where homes can exist. Terrain and settlement together then
 filter trees and reeds. The program captures the complete chronological trace,
-validates its structure and portable signature, prints every pass slice, and
-walks one rejected tree candidate backward to the settlement event that caused
-the rejection.
+validates its structure, derived pass ranges, and portable signature, prints
+every pass range and event, and walks one rejected tree candidate backward to
+the settlement event that caused the rejection. The range layout also handles
+late validation suffixes without changing Trace-v1 events or hashes.
 
 The example deliberately performs the same solve twice. It requires identical
 layers, events, cause links, and hashes before printing `Self-check: passed`.
+It then runs a two-pass transaction whose commit validator rejects pass zero
+after pass one has staged. That second fixture proves rollback, preserves trace
+hash `B27D0AE0`, shows pass-zero ranges `0..1,4..5`, and demonstrates why the
+strict legacy slice validator rejects the report while Trace Layout v1 accepts
+it.
 The implementation uses only repository units and the standard FPC or pas2js
 RTL.
 
@@ -63,7 +69,8 @@ foliage:    bare,reeds,bare,tree
 Its trace contains 27 events and has portable signature `73C4B9A2`. Event 15
 records `tree` being removed from foliage entry zero because of settlement;
 its cause chain reaches the settlement staging event 13. Native FPC and
-pas2js must print the same 47 lines.
+pas2js must print the same 52 lines, including the separate late-rejection
+fixture.
 
 See [the causal trace contract](../../../docs/traces.md) for the event schema,
 hash encoding, query utilities, validation rules, cost, and current limits.

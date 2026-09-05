@@ -512,8 +512,10 @@ type
     Executed: Boolean;
     ExecutionOrdinal: Integer;
     Disposition: TGraphPassDisposition;
-    //Half-open slice into TGraphSolveReport.Trace. TraceCount is zero when
-    //capture is disabled or this pass emitted no events.
+    //Legacy first-event and total-event metadata. It is a half-open slice for
+    //ordinary reports; use wfc_trace layouts for a late commit-failure suffix.
+    //TraceCount is zero when capture is disabled or this pass emitted no
+    //events.
     TraceStart: Integer;
     TraceCount: Integer;
   end;
@@ -553,8 +555,9 @@ type
   end;
 
   TGraphNegotiationAttemptReport = record
-    //Every rejected round retains an ordinary, internally contiguous Trace-v1
-    //report. The sole terminal round is stored in FinalReport below.
+    //Every rejected round retains its own ordinary Trace-v1 chronology. Use a
+    //wfc_trace layout when late validation appends an earlier-pass suffix. The
+    //sole terminal round is stored in FinalReport below.
     SolveReport: TGraphSolveReport;
     //The completed defined pass excluded after this failed round, or -1 when
     //the round is terminal. The exclusion is scoped to its earlier prefix.

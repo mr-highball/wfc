@@ -12,7 +12,7 @@ the [roadmap](../ROADMAP.md).
 | Neighborhood counts | [passes/04_NeighborhoodCounts](passes/04_NeighborhoodCounts/README.md) | Native FPC, pas2js/browser | Composes terrain and roads into a local market probe with lower/upper count ranges, explicit matching-offset versus distinct-cell modes, flood rejection, bounded selective road repair, and stale-output invalidation. |
 | Connected routes | [passes/06_ConnectedRoutes](passes/06_ConnectedRoutes/README.md) | Native FPC/SVG, pas2js/browser | Uses solver-propagated reciprocal ports for terrain → roads → housing and multi-floor circulation, with independent BFS, alternative crossings, upstream-preserving repair, and explicit optional-component semantics. |
 | Deterministic restarts | [passes/05_DeterministicRestarts](passes/05_DeterministicRestarts/README.md) | Native FPC; shared browser conformance | Checks complete ordinary and negotiated attempts, effective seeds, fixed/capped-doubling budgets, rollback, independently sampled outputs, and replay transcripts. Optional timing is diagnostic only. |
-| Causal trace inspector | `passes/02_TraceInspector/TraceInspector.lpr` | Native FPC | Captures and validates a deterministic terrain -> settlement -> foliage transaction, prints its portable trace hash, pass slices, and all 27 events, then follows a rejected foliage candidate back to its settlement provider event. The host emits the same event stream using only repository units and the standard RTL. |
+| Causal trace inspector | `passes/02_TraceInspector/TraceInspector.lpr` | Native FPC | Captures and validates a deterministic terrain -> settlement -> foliage transaction, prints its portable trace hash, derived pass ranges, and all 27 events, then follows a rejected foliage candidate back to its settlement provider event. A second real late-commit rejection proves rollback and a split earlier-pass layout without changing the solved golden. |
 | Bounded pass negotiation | `passes/03_PassNegotiation/PassNegotiation.lpr` | Native FPC | Proves ordinary one-way staging fails for `marsh`, then excludes that exact provider assignment and reopens terrain to commit `meadow|cottage` in two deterministic rounds. The host enforces the same counters and transcript using only repository units and the standard RTL. |
 | Multi-pass 2D world | `2D/01_MultiPassWorld/MultiPassWorld.lpr` | Native FPC | Uses the reusable 2D units, solves terrain → biome → foliage atomically, independently validates every cell/relation, and prints matching portable signatures without external dependencies. |
 | Interactive browser world | `2D/02_BrowserWorld/BrowserWorld.lpr` | pas2js/browser | Runs the same model and validator in a responsive three-layer canvas UI with seeds, wrapping, cell locks, and an exact headless-browser fixture. |
@@ -40,8 +40,8 @@ the [roadmap](../ROADMAP.md).
 
 The 2D field instrument and Building 3D workbench exercise the real browser
 target and document host. The causal-trace console inspector now proves
-portable event capture, validation, hashing, pass slices, and backward cause
-links. The text pass workbench adds public three-layer lineage, locks, and
+portable event capture, validation, hashing, derived pass ranges, and backward
+cause links. The text pass workbench adds public three-layer lineage, locks, and
 contradiction/recovery inspection. Interactive trace stepping, live global
 domain views, richer failed-clause/minimal-core explanations, streaming
 capture, and an arbitrary-corpus completion editor remain roadmap work. The

@@ -226,7 +226,8 @@ Negotiation does not flatten multiple rounds into one Trace-v1 stream. If
 `SolveOptions.CaptureTrace` is enabled, every rejected attempt and the final
 round retains its own ordinary, independently valid `TGraphSolveReport`:
 
-- pass events remain contiguous within that report;
+- pass events retain one chronology within that report, with a derived layout
+  representing any late earlier-pass commit-failure suffix;
 - its terminal event is exactly one pipeline commit or rollback; and
 - its `TraceHash` remains governed by `WFC_TRACE_VERSION` and
   `WFC_TRACE_HASH_VERSION`.

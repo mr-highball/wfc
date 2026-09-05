@@ -8,16 +8,27 @@ causes extend the trace hash encoding, so unconstrained trace goldens remain
 unchanged. The formatter adds `connectivity=N` and the independent validator
 checks descriptor bounds and causal identity against the producing model.
 
-Known Trace v1 boundary: the pass report describes one contiguous trace slice
-per pass. A custom `DoValidateCommit` that rejects an earlier active pass
-after a later pass has staged produces a noncontiguous failure suffix. The
-solve still reports failure, restores entries/random streams, and hashes the
-event sequence correctly, but `ValidateGraphTrace` rejects that report's
-pass slice. Rejection attributed to the last executed pass is representable.
-Do not reinterpret a failed slice check as a successful solve or reattribute
-a failure to the wrong pass. A versioned multi-span trace representation is
-remaining work; connectivity propagation failures occur inside their pass
-and do not need this late-validation representation.
+Trace v1 event chronology and hashes remain unchanged. The pass report also
+retains its original `TraceStart`/`TraceCount` fields for source and transcript
+compatibility. Most reports contain one contiguous run of events per pass, so
+those fields describe the familiar half-open slice. A custom
+`DoValidateCommit` can instead reject an earlier active pass after a later pass
+has staged. Its contradiction and failure events form a second chronological
+run for the earlier pass; the legacy fields are deliberately not rewritten to
+pretend that the intervening events belong to it.
+
+Trace Layout v1 is the additive representation for that case.
+For a captured report, `TryBuildGraphTraceLayout` validates the graph, report,
+events, chronological lifecycle, and legacy metadata, then derives detached
+canonical maximal ranges for every pass. `ValidateGraphTraceLayout` revalidates
+a supplied layout against the report, and `CopyGraphTraceLayout` makes a deep
+copy. The original
+`ValidateGraphTrace` contract is unchanged: it continues to require one
+contiguous legacy slice and therefore continues to reject a genuine late
+failure attributed to an earlier pass. Use the layout API when consuming all
+reports returned by a graph with a derived commit validator. Do not reinterpret
+either validation failure as a successful solve or reattribute the failure to
+another pass.
 
 `TGraph.TrySolve` and `TGraph.TryRegenerateFrom` can capture a deterministic
 causal record of an attempted pass transaction. The trace includes initial
@@ -44,6 +55,7 @@ uses
 
 var
   Graph: TGraph;
+  Layout: TGraphTraceLayout;
   Options: TGraphSolveOptions;
   Report: TGraphSolveReport;
   Validation: TGraphTraceValidationReport;
@@ -56,7 +68,8 @@ begin
     if not Graph.TrySolve(Options, Report) then
       WriteLn('transaction failed in pass ', Report.FailedPassIndex);
 
-    if not ValidateGraphTrace(Graph, Report, Validation) then
+    if not TryBuildGraphTraceLayout(Graph, Report, Layout,
+        Validation) then
       raise Exception.Create(
         DescribeGraphTraceValidationIssue(Validation.Issue));
     WriteLn(GraphTraceSignatureHex(Report.TraceHash));
@@ -68,9 +81,12 @@ end;
 
 `DefaultGraphSolveOptions` sets `CaptureTrace` to `False`. A disabled report
 has `TraceCaptured = False`, `TraceHash = 0`, an empty `Trace`, and a
-`TraceStart` of `-1` with `TraceCount = 0` for every pass. It retains the same
-assignments, counters, status, and random-stream position as the pre-trace
-solver path.
+`TraceStart` of `-1` with `TraceCount = 0` for every pass. Its derived layout
+has no event ranges and uses `-1` for the terminal event index. With no event
+chronology to inspect, validation checks those capture-disabled sentinels; it
+does not independently attest the aggregate solve lifecycle. A report returned
+by the solver retains the same assignments, counters, status, and random-stream
+position as the pre-trace solver path.
 
 Always initialize a local `TGraphSolveOptions` with
 `DefaultGraphSolveOptions` before overriding fields. Local Pascal records are
@@ -96,7 +112,7 @@ Following cause IDs always terminates and cannot form a cycle.
 | `gtekBacktrack` | The solver abandoned a failed decision frame. |
 | `gtekCandidateRestored` | Backtracking restored one candidate from the removal trail. |
 | `gtekPassStaged` | One pass produced a validated staged result; it is not yet committed. |
-| `gtekPassFailed` | A pass ended without a staged solution. |
+| `gtekPassFailed` | A pass failed. Late commit validation may revoke its provisional staging; staged values are never public before pipeline commit. |
 | `gtekPassSkipped` | Selective regeneration reused this pass as immutable input. |
 | `gtekPipelineCommit` | Every staged pass committed successfully. This is the final event of a solved report. |
 | `gtekPipelineRollback` | The transaction failed and committed no staged solver output. This is the final event of an unsolved report. |
@@ -173,7 +189,7 @@ the raw trace first, preserves the numeric core hash in
 `TWfcTextPassReport.TraceHash`, projects every candidate to a public token plus
 numeric `StateIndex`, and publishes those events through
 `TWfcTextPassReport.Trace`. It clears `Solve.Trace`, `Solve.TraceHash`, and the
-generic pass slices so the stripped `TGraphSolveReport` remains a valid
+generic legacy pass metadata so the stripped `TGraphSolveReport` remains a valid
 capture-disabled report. Advanced callers using the exposed graph directly can
 still request the raw graph trace and are responsible for that lower-level
 representation.
@@ -188,19 +204,40 @@ candidate removal or restoration. Metadata events use `0 -> 0`. A decision
 event also has equal counts because its child removal events carry the actual
 decrements.
 
-Each `TGraphPassSolveReport` exposes a half-open slice of the complete event
-array through `TraceStart` and `TraceCount`. Pass events are emitted
-contiguously. The final pipeline event is intentionally outside every pass
-slice.
+Each `TGraphPassSolveReport` retains the original `TraceStart` and
+`TraceCount` metadata. Pass solve events are normally contiguous. A late
+commit rejection of the last executed pass remains contiguous too. When a
+late rejection names an earlier active pass, its final contradiction/failure
+suffix is separated from that pass's first run by later-pass events. The
+canonical `TGraphTraceLayout.Passes[I].Ranges` represents both runs without
+reordering or copying events. Its ranges are half-open, ordered, nonempty,
+maximal, and nonoverlapping. The final pipeline event is identified separately
+by `TerminalEventIndex` and never belongs to a pass range.
+
+The captured layout validator checks the reused-pass prefix, the actual
+`ExecutionOrder`, one active pass at a time, and the staged/failed lifecycle.
+The only permitted revisit is a final-validation contradiction followed by
+that already-staged pass's failure and pipeline rollback. The contradiction
+must link back to that pass's staging event and agree with the failure report.
+Arbitrary rehashed interleaving is not another valid layout.
+
+Ordinary failure summaries must agree with the final contradiction's location,
+neighbor, direction, and connectivity ordinal. Unambiguous cause kinds must
+match too. Initial-domain events record the last candidate removal, which can
+differ from the filter used for the aggregate failure classification. For
+those cases the validator checks the permitted classification family and any
+declared provider, not a uniquely proven failed filter. Counters are checked
+for representable nonnegative values, not independently reconstructed.
 
 ## negotiated rounds
 
-`TGraphNegotiationReport` preserves this contiguity by owning reports rather
-than one aggregate trace. Each rejected `Attempts[I].SolveReport` is an
-ordinary failed transaction ending in `gtekPipelineRollback`. `FinalReport` is
-the sole terminal round and ends in commit on `gnsSolved`, or rollback on every
-other negotiation status. Every individual report can be passed to
-`ValidateGraphTrace` unchanged.
+`TGraphNegotiationReport` keeps rounds separate rather than constructing one
+aggregate trace. Each rejected `Attempts[I].SolveReport` is an ordinary failed
+transaction ending in `gtekPipelineRollback`. `FinalReport` is the sole
+terminal round and ends in commit on `gnsSolved`, or rollback on every other
+negotiation status. Every contained report can be passed independently to
+`TryBuildGraphTraceLayout`; reports with one range per pass also retain their
+original `ValidateGraphTrace` compatibility.
 
 The negotiation transcript records chronological round order, the pass chosen
 for each outer backtrack, its execution ordinal, and the complete excluded
@@ -219,8 +256,18 @@ are simply empty and zero.
 
 `WFC_TRACE_VERSION = 1` identifies the event schema.
 `WFC_TRACE_HASH_VERSION = 1` identifies its portable signature encoding.
+`WFC_TRACE_LAYOUT_VERSION = 1` identifies the detached range layout.
 `CalculateGraphTraceHash` recomputes a report signature, and
 `GraphTraceSignatureHex` renders exactly eight uppercase hexadecimal digits.
+
+The layout is derived metadata, not another event stream or artifact
+fingerprint. It does not contribute to the Trace-v1 hash, alter negotiation or
+restart transcripts, or change legacy report fields. Its copied trace hash and
+event count are checked against the report;
+`ValidateGraphTraceLayout` additionally requires exact equality with the
+canonical current ranges. Mismatched or noncanonical ranges are rejected; this
+is structural validation, not cryptographic report identity, and an identical
+valid layout may be reused.
 
 The signature uses a 32-bit FNV-1a stream with explicit overflow semantics.
 It begins with the ASCII identity `wfc-graph-trace`, then mixes:
@@ -255,10 +302,13 @@ The `wfc_trace` unit is the dependency-free public inspection layer:
 - `TryFindGraphTraceEvent` and `FindGraphTraceEvent` follow event IDs;
 - `CopyGraphTraceEventsForPass` and `CopyGraphTraceEventsForEntry` return
   detached chronological subsets;
+- `TryBuildGraphTraceLayout` derives canonical maximal per-pass ranges,
+  `ValidateGraphTraceLayout` checks an existing layout, and
+  `CopyGraphTraceLayout` deep-copies one;
 - `TryGraphEntryIndexToPosition` recovers public coordinates;
 - `FormatGraphTraceEvent` emits one fixed-order, line-safe record; and
 - `ValidateGraphTrace` checks IDs, direct causal roles, exact domain deltas,
-  pass slices, graph bounds, value identities, directions, dependencies,
+  legacy pass slices, graph bounds, value identities, directions, dependencies,
   field invariants, terminal status, and the recomputed signature.
 
 The formatter percent-escapes whitespace, control characters, and nonliteral
@@ -273,16 +323,21 @@ semantically correct.
 
 The shared example under `examples/passes/02_TraceInspector` solves
 terrain -> settlement -> foliage, independently checks its output and trace,
-prints every event, and walks one rejected foliage candidate backward to the
-provider-pass event. The native FPC host runs the shared Pascal unit and
-produce the same seed-zero event stream.
+prints the derived range or ranges for every pass plus every event, and walks
+one rejected foliage candidate backward to the provider-pass event. The
+native FPC host runs the shared Pascal unit and produces the same seed-zero
+event stream. A second two-pass fixture rejects pass zero after pass one stages,
+proves rollback, and prints pass-zero ranges `0..1,4..5`.
 
 ```text
 fpc -B -Mdelphi -Sa -Cr -Co -Ci -Fusrc -Fuexamples/passes/02_TraceInspector -FUbuild/trace-inspector/native/units -FEbuild/trace-inspector/native/bin examples/passes/02_TraceInspector/TraceInspector.lpr
 build/trace-inspector/native/bin/TraceInspector
 ```
 
-The current golden contract is 27 events with trace hash `73C4B9A2`.
+The solved golden remains 27 events with trace hash `73C4B9A2`. The separate
+late-rejection fixture retains trace hash `B27D0AE0`.
+The [research record](research/chronological-trace-layout-v1.md) preserves the
+counterexample, unchanged hashes, finite tests, and representation tradeoff.
 
 ## cost and current limits
 
@@ -291,6 +346,14 @@ Enabled kernel and public traces grow geometrically and are trimmed to their
 exact event count before publication. Memory use is therefore proportional to
 the full attempted search, including candidates restored from abandoned
 branches.
+
+Building a layout performs linear scans over the published events and owns
+only detached pass/range arrays. Its worst-case range count is proportional to
+the event count; ordinary reports use one range per participating pass. The
+layout is a snapshot, so callers must rebuild it after replacing or changing
+the report. `ValidateGraphTraceLayout` rejects mismatched or noncanonical
+ranges but does not keep the source report alive or establish cryptographic
+identity.
 
 Negotiated capture multiplies that cost by the number of rounds because every
 rejected report is retained. Whole-assignment chronological enumeration can be

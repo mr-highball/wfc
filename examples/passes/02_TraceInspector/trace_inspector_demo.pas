@@ -40,6 +40,8 @@ const
   DEMO_WIDTH = 4;
   DEMO_SEED = TGraphSeed(0);
   EXPECTED_TRACE_HASH = TGraphTraceSignature($73C4B9A2);
+  LATE_FAILURE_SEED = TGraphSeed(55);
+  EXPECTED_LATE_FAILURE_HASH = TGraphTraceSignature($B27D0AE0);
 
   PASS_TERRAIN = 'terrain';
   PASS_SETTLEMENT = 'settlement';
@@ -58,11 +60,18 @@ const
 type
   ETraceInspector = class(Exception);
 
+  TInspectorRejectingGraph = class(TGraph)
+  protected
+    function DoValidateCommit(out AFailedPassIndex,
+      AFailedEntryIndex: Integer): Boolean; override;
+  end;
+
   TInspectorRun = record
     Terrain: String;
     Settlement: String;
     Foliage: String;
     Report: TGraphSolveReport;
+    Layout: TGraphTraceLayout;
     ChainStartEventId: Integer;
     ChainProviderEventId: Integer;
   end;
@@ -71,6 +80,14 @@ procedure Require(const ACondition: Boolean; const AMessage: String);
 begin
   if not ACondition then
     raise ETraceInspector.Create(AMessage);
+end;
+
+function TInspectorRejectingGraph.DoValidateCommit(
+  out AFailedPassIndex, AFailedEntryIndex: Integer): Boolean;
+begin
+  AFailedPassIndex := 0;
+  AFailedEntryIndex := 0;
+  Result := False;
 end;
 
 function BooleanName(const AValue: Boolean): String;
@@ -253,8 +270,8 @@ begin
 end;
 
 procedure ValidateTrace(const AGraph: TGraph;
-  const AReport: TGraphSolveReport; out AChainStartEventId,
-  AChainProviderEventId: Integer);
+  const AReport: TGraphSolveReport; out ALayout: TGraphTraceLayout;
+  out AChainStartEventId, AChainProviderEventId: Integer);
 var
   LRemoval: TGraphTraceEvent;
   LValidation: TGraphTraceValidationReport;
@@ -270,10 +287,22 @@ begin
       'seed-zero trace no longer matches the native/pas2js golden [%s <> %s]',
       [GraphTraceSignatureHex(AReport.TraceHash),
         GraphTraceSignatureHex(EXPECTED_TRACE_HASH)]);
-  Require(ValidateGraphTrace(AGraph, AReport, LValidation),
+  Require(TryBuildGraphTraceLayout(AGraph, AReport, ALayout,
+      LValidation),
     DescribeGraphTraceValidationIssue(LValidation.Issue));
+  Require(ValidateGraphTraceLayout(AGraph, AReport, ALayout,
+      LValidation),
+    'derived trace layout: ' +
+      DescribeGraphTraceValidationIssue(LValidation.Issue));
   Require(LValidation.CheckedEvents = Length(AReport.Trace),
     'trace validator did not inspect every event');
+  Require((ALayout.Version = WFC_TRACE_LAYOUT_VERSION) and
+      ALayout.TraceCaptured and
+      (ALayout.TraceHash = AReport.TraceHash) and
+      (ALayout.EventCount = Length(AReport.Trace)) and
+      (ALayout.TerminalEventIndex = High(AReport.Trace)) and
+      (Length(ALayout.Passes) = Length(AReport.Passes)),
+    'derived trace layout does not describe the captured report');
   Require(Length(AReport.ExecutionOrder) = 3,
     'pipeline execution order length changed');
   Require((AReport.ExecutionOrder[0] = 0) and
@@ -308,8 +337,8 @@ begin
   Require(AGraph.TrySolve(LOptions, ARun.Report),
     'deterministic pass pipeline did not solve');
   ValidateLayers(AGraph);
-  ValidateTrace(AGraph, ARun.Report, ARun.ChainStartEventId,
-    ARun.ChainProviderEventId);
+  ValidateTrace(AGraph, ARun.Report, ARun.Layout,
+    ARun.ChainStartEventId, ARun.ChainProviderEventId);
   ARun.Terrain := CaptureLayer(AGraph, 0);
   ARun.Settlement := CaptureLayer(AGraph, 1);
   ARun.Foliage := CaptureLayer(AGraph, 2);
@@ -348,22 +377,34 @@ begin
     'same-seed causal chain changed');
 end;
 
+function TraceRangesText(const ARanges: TGraphTraceRanges): String;
+var
+  I: Integer;
+begin
+  if Length(ARanges) = 0 then
+    Exit('none');
+  Result := '';
+  for I := 0 to High(ARanges) do
+  begin
+    if I <> 0 then
+      Result := Result + ',';
+    Result := Result + IntToStr(ARanges[I].Start) + '..' +
+      IntToStr(ARanges[I].Start + ARanges[I].Count - 1);
+  end;
+end;
+
 procedure PrintPassSummaries(const AGraph: TGraph;
-  const AReport: TGraphSolveReport);
+  const AReport: TGraphSolveReport; const ALayout: TGraphTraceLayout);
 var
   I: Integer;
   LPass: TGraphPassSolveReport;
-  LTraceRange: String;
 begin
+  Require(Length(ALayout.Passes) = Length(AReport.Passes),
+    'trace layout pass count changed before inspection');
   WriteLn('Pass summaries:');
   for I := 0 to High(AReport.Passes) do
   begin
     LPass := AReport.Passes[I];
-    if LPass.TraceCount = 0 then
-      LTraceRange := 'none'
-    else
-      LTraceRange := IntToStr(LPass.TraceStart) + '..' +
-        IntToStr(LPass.TraceStart + LPass.TraceCount - 1);
     WriteLn('  pass=', I, ' label=', AGraph.PassGraph[I].CurrentPass,
       ' executed=', BooleanName(LPass.Executed),
       ' ordinal=', LPass.ExecutionOrdinal,
@@ -372,7 +413,81 @@ begin
       ' propagations=', LPass.Propagations,
       ' contradictions=', LPass.Contradictions,
       ' backtracks=', LPass.Backtracks,
-      ' trace=', LTraceRange);
+      ' trace-ranges=', TraceRangesText(ALayout.Passes[I].Ranges));
+  end;
+end;
+
+procedure RunLateCommitLayoutExample;
+var
+  LGraph: TInspectorRejectingGraph;
+  LLayout: TGraphTraceLayout;
+  LOptions: TGraphSolveOptions;
+  LReport: TGraphSolveReport;
+  LValidation: TGraphTraceValidationReport;
+begin
+  LGraph := TInspectorRejectingGraph.Create;
+  try
+    LGraph.Reshape(1, 1, 1);
+    LGraph.WrapNeighbors := False;
+    LGraph.Seed := LATE_FAILURE_SEED;
+    LGraph.CurrentPass := 'provider';
+    LGraph.AddValue('A');
+    LGraph.SwitchToPass('consumer');
+    LGraph.PassMode := gpmOverlay;
+    LGraph.AddValue('B');
+
+    LOptions := DefaultGraphSolveOptions;
+    LOptions.CaptureTrace := True;
+    Require(not LGraph.TrySolve(LOptions, LReport),
+      'late commit validator unexpectedly accepted the transaction');
+    Require((LReport.Status = gssContradiction) and
+        (LReport.Contradiction.Kind = gckFinalValidation) and
+        (LReport.FailedPassIndex = 0),
+      'late commit rejection classification changed');
+    Require(LReport.TraceHash = EXPECTED_LATE_FAILURE_HASH,
+      'late commit rejection trace hash changed');
+    Require(not ValidateGraphTrace(LGraph, LReport, LValidation),
+      'legacy slice validator unexpectedly accepted a split pass');
+    Require(LValidation.Issue.Kind = gtvikPassSlice,
+      'legacy validator rejected the late failure for an unexpected reason');
+    Require(TryBuildGraphTraceLayout(LGraph, LReport, LLayout,
+        LValidation),
+      'layout rejected a real late commit failure: ' +
+        DescribeGraphTraceValidationIssue(LValidation.Issue));
+    Require(ValidateGraphTraceLayout(LGraph, LReport, LLayout,
+        LValidation),
+      'derived late-failure layout did not revalidate: ' +
+        DescribeGraphTraceValidationIssue(LValidation.Issue));
+    Require((LLayout.EventCount = 7) and
+        (LLayout.TerminalEventIndex = 6) and
+        (Length(LLayout.Passes) = 2) and
+        (Length(LLayout.Passes[0].Ranges) = 2) and
+        (LLayout.Passes[0].Ranges[0].Start = 0) and
+        (LLayout.Passes[0].Ranges[0].Count = 2) and
+        (LLayout.Passes[0].Ranges[1].Start = 4) and
+        (LLayout.Passes[0].Ranges[1].Count = 2) and
+        (Length(LLayout.Passes[1].Ranges) = 1) and
+        (LLayout.Passes[1].Ranges[0].Start = 2) and
+        (LLayout.Passes[1].Ranges[0].Count = 2),
+      'late commit rejection ranges changed');
+    Require(LGraph.PassGraph[0].Entry[0, 0, 0].Empty and
+        not LGraph.PassGraph[0].Entry[0, 0, 0].Generated and
+        LGraph.PassGraph[1].Entry[0, 0, 0].Empty and
+        not LGraph.PassGraph[1].Entry[0, 0, 0].Generated,
+      'late commit rejection did not roll back both passes');
+
+    WriteLn('Late commit rejection:');
+    WriteLn('  seed=', LATE_FAILURE_SEED,
+      ' hash=', GraphTraceSignatureHex(LReport.TraceHash),
+      ' failed-pass=', LReport.FailedPassIndex,
+      ' rollback=true');
+    WriteLn('  legacy-validator=rejected');
+    WriteLn('  pass=0 label=provider trace-ranges=',
+      TraceRangesText(LLayout.Passes[0].Ranges));
+    WriteLn('  pass=1 label=consumer trace-ranges=',
+      TraceRangesText(LLayout.Passes[1].Ranges));
+  finally
+    LGraph.Free;
   end;
 end;
 
@@ -429,19 +544,21 @@ begin
     WriteLn('Seed: ', DEMO_SEED);
     WriteLn('Trace versions: schema=', WFC_TRACE_VERSION,
       ' hash=', WFC_TRACE_HASH_VERSION,
-      ' utility=', WFC_TRACE_UTILITY_VERSION);
+      ' utility=', WFC_TRACE_UTILITY_VERSION,
+      ' layout=', WFC_TRACE_LAYOUT_VERSION);
     WriteLn('Portable trace hash: ',
       GraphTraceSignatureHex(LRun.Report.TraceHash));
     WriteLn('Layers:');
     WriteLn('  terrain:    ', LRun.Terrain);
     WriteLn('  settlement: ', LRun.Settlement);
     WriteLn('  foliage:    ', LRun.Foliage);
-    PrintPassSummaries(LGraph, LRun.Report);
+    PrintPassSummaries(LGraph, LRun.Report, LRun.Layout);
     PrintChronologicalTrace(LRun.Report);
     PrintCausalChain(LGraph, LRun);
     WriteLn('Trace validation: checked=', Length(LRun.Report.Trace),
       ' valid=true');
     WriteLn('Deterministic replay: identical layers and event stream');
+    RunLateCommitLayoutExample;
     WriteLn('Self-check: passed');
   finally
     LReplayGraph.Free;

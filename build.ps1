@@ -35,6 +35,8 @@ $traceTestSources = @(
   (Join-Path $repositoryRoot 'test/wfc_trace_reference_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_trace_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_trace_utility_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_trace_layout_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_trace_inspector_test.lpr')
 )
 $viewerTestSources = @(
   (Join-Path $repositoryRoot 'test/wfc_voxel3d_isometric_test.lpr')
@@ -814,6 +816,7 @@ foreach ($traceTestSource in $traceTestSources) {
     '-Co'
     '-Ci'
     "-Fu$sourceDirectory"
+    "-Fu$traceExampleDirectory"
     "-FU$unitOutputDirectory"
     "-FE$binaryOutputDirectory"
     $traceTestSource

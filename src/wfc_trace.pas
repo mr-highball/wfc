@@ -33,6 +33,8 @@ uses
 
 const
   WFC_TRACE_UTILITY_VERSION = 1;
+  //Derived indexing only: the original event schema and hashes stay v1.
+  WFC_TRACE_LAYOUT_VERSION = 1;
 
 type
   EWfcTrace = class(Exception);
@@ -61,7 +63,9 @@ type
     gtvikEventFields,
     gtvikPassSlice,
     gtvikTerminalEvent,
-    gtvikConstraintIndex
+    gtvikConstraintIndex,
+    gtvikTraceLayout,
+    gtvikPassLifecycle
   );
 
   TGraphTraceValidationIssue = record
@@ -74,6 +78,23 @@ type
     Valid: Boolean;
     CheckedEvents: Integer;
     Issue: TGraphTraceValidationIssue;
+  end;
+
+  TGraphTraceRange = record
+    Start, Count: Integer;
+  end;
+  TGraphTraceRanges = array of TGraphTraceRange;
+  TGraphPassTraceLayout = record
+    EventCount: Integer;
+    Ranges: TGraphTraceRanges;
+  end;
+  TGraphPassTraceLayouts = array of TGraphPassTraceLayout;
+  TGraphTraceLayout = record
+    Version: Integer;
+    TraceCaptured: Boolean;
+    TraceHash: TGraphTraceSignature;
+    EventCount, TerminalEventIndex: Integer;
+    Passes: TGraphPassTraceLayouts;
   end;
 
 function GraphTraceEventKindName(
@@ -111,6 +132,18 @@ function FormatGraphTraceEvent(const AEvent: TGraphTraceEvent): String;
 function ValidateGraphTrace(const AGraph: TGraph;
   const AReport: TGraphSolveReport;
   out AValidation: TGraphTraceValidationReport): Boolean;
+//The layout owns only detached maximal ranges into the unchanged event array.
+//Construction validates the chronological lifecycle, including a late commit
+//failure suffix. Failure publishes no partial layout. The legacy validator
+//above deliberately retains its single-contiguous-slice contract.
+function TryBuildGraphTraceLayout(const AGraph: TGraph;
+  const AReport: TGraphSolveReport; out ALayout: TGraphTraceLayout;
+  out AValidation: TGraphTraceValidationReport): Boolean;
+function ValidateGraphTraceLayout(const AGraph: TGraph;
+  const AReport: TGraphSolveReport; const ALayout: TGraphTraceLayout;
+  out AValidation: TGraphTraceValidationReport): Boolean;
+function CopyGraphTraceLayout(
+  const ASource: TGraphTraceLayout): TGraphTraceLayout;
 function DescribeGraphTraceValidationIssue(
   const AIssue: TGraphTraceValidationIssue): String;
 
@@ -237,6 +270,8 @@ begin
     gtvikPassSlice: Result := 'pass-slice';
     gtvikTerminalEvent: Result := 'terminal-event';
     gtvikConstraintIndex: Result := 'constraint-index';
+    gtvikTraceLayout: Result := 'trace-layout';
+    gtvikPassLifecycle: Result := 'pass-lifecycle';
   else
     Result := 'unknown-validation-issue-' + IntToStr(Ord(AKind));
   end;
@@ -566,8 +601,386 @@ begin
   Result := False;
 end;
 
-function ValidateGraphTrace(const AGraph: TGraph;
+function IsTraceInteger(const AValue, AMinimum, AMaximum: Double): Boolean;
+begin
+  Result := (AValue >= AMinimum) and (AValue <= AMaximum);
+  {$IFDEF PAS2JS}
+  Result := Result and (AValue = Trunc(AValue));
+  {$ENDIF}
+end;
+
+function IsTraceBoolean(const AValue: Boolean): Boolean;
+begin
+  {$IFDEF PAS2JS}
+  Result := (AValue = False) or (AValue = True);
+  {$ELSE}
+  Result := Ord(AValue) <= 1;
+  {$ENDIF}
+end;
+
+function ValidateTraceInputNumbers(const AReport: TGraphSolveReport;
+  var AValidation: TGraphTraceValidationReport): Boolean;
+var I, P: Integer; E: TGraphTraceEvent; R: TGraphPassSolveReport;
+begin
+  //The additive validator accepts host-created records too. Check exact
+  //numbers before array indexing, enum membership, integer arithmetic or
+  //hash conversion; NaN must never bypass a pair of negative comparisons.
+  if not IsTraceInteger(Length(AReport.Trace), 0, High(Integer)) or
+    not IsTraceInteger(Length(AReport.Passes), 0, High(Integer)) or
+    not IsTraceInteger(Length(AReport.ExecutionOrder), 0, High(Integer)) then
+    Exit(InvalidTrace(AValidation, gtvikTraceLayout, -1, -1));
+  P := Length(AReport.Passes);
+  if not IsTraceBoolean(AReport.TraceCaptured) or
+    not IsTraceInteger(AReport.TraceHash, 0, 4294967295.0) or
+    not IsTraceInteger(AReport.Seed, 0, 4294967295.0) or
+    not IsTraceInteger(AReport.RandomAlgorithmVersion, 0, High(Integer)) or
+    not IsTraceInteger(AReport.SolverAlgorithmVersion, 0, High(Integer)) or
+    not IsTraceInteger(AReport.GraphModelVersion, 0, High(Integer)) or
+    not IsTraceInteger(AReport.PipelineAlgorithmVersion, 0, High(Integer)) then
+    Exit(InvalidTrace(AValidation, gtvikTraceLayout, -1, -1));
+  if not IsTraceInteger(Ord(AReport.Status), Ord(Low(TGraphSolveStatus)),
+    Ord(High(TGraphSolveStatus))) or
+    not IsTraceInteger(AReport.FailedPassIndex, -1, P - 1) then
+    Exit(InvalidTrace(AValidation, gtvikPassLifecycle, -1, -1));
+  with AReport.Contradiction do
+    if not IsTraceInteger(Ord(Kind), Ord(Low(TGraphContradictionKind)),
+      Ord(High(TGraphContradictionKind))) or
+      not IsTraceInteger(PassIndex, -1, P - 1) or
+      not IsTraceInteger(EntryIndex, -1, High(Integer)) or
+      not IsTraceInteger(NeighborIndex, -1, High(Integer)) or
+      not IsTraceBoolean(HasDirection) or
+      not IsTraceInteger(Ord(Direction), Ord(Low(TGraphDirection)),
+        Ord(High(TGraphDirection))) or
+      not IsTraceInteger(DependencyPassIndex, -1, P - 1) or
+      not IsTraceInteger(ConstraintIndex, -1, High(Integer)) then
+      Exit(InvalidTrace(AValidation, gtvikPassLifecycle, -1, -1));
+  for I := 0 to High(AReport.ExecutionOrder) do
+    if not IsTraceInteger(AReport.ExecutionOrder[I], 0, P - 1) then
+      Exit(InvalidTrace(AValidation, gtvikPassLifecycle, -1, -1));
+  for I := 0 to P - 1 do
+  begin
+    R := AReport.Passes[I];
+    if not IsTraceInteger(R.TraceStart, -1, High(Integer)) or
+      not IsTraceInteger(R.TraceCount, 0, High(Integer)) then
+      Exit(InvalidTrace(AValidation, gtvikPassSlice, -1, I));
+    if not IsTraceBoolean(R.Executed) or
+      not IsTraceInteger(R.ExecutionOrdinal, -1, P - 1) or
+      not IsTraceInteger(Ord(R.Disposition), Ord(Low(TGraphPassDisposition)),
+        Ord(High(TGraphPassDisposition))) or
+      not IsTraceInteger(R.Decisions, 0, High(Integer)) or
+      not IsTraceInteger(R.Propagations, 0, High(Integer)) or
+      not IsTraceInteger(R.Contradictions, 0, High(Integer)) or
+      not IsTraceInteger(R.Backtracks, 0, High(Integer)) or
+      not IsTraceInteger(R.ExcludedAssignments, 0, High(Integer)) then
+      Exit(InvalidTrace(AValidation, gtvikPassLifecycle, -1, I));
+  end;
+  for I := 0 to High(AReport.Trace) do
+  begin
+    E := AReport.Trace[I];
+    if not IsTraceInteger(E.EventId, 0, High(Integer)) then
+      Exit(InvalidTrace(AValidation, gtvikEventId, I, -1));
+    if not IsTraceInteger(E.CauseEventId, -1, High(Integer)) then
+      Exit(InvalidTrace(AValidation, gtvikCauseEventId, I, -1));
+    if not IsTraceInteger(E.PassIndex, -1, P - 1) then
+      Exit(InvalidTrace(AValidation, gtvikPassIndex, I, -1));
+    if not IsTraceInteger(Ord(E.Kind), Ord(Low(TGraphTraceEventKind)),
+      Ord(High(TGraphTraceEventKind))) then
+      Exit(InvalidTrace(AValidation, gtvikEventKind, I, E.PassIndex));
+    if not IsTraceInteger(Ord(E.CauseKind), Ord(Low(TGraphTraceCauseKind)),
+      Ord(High(TGraphTraceCauseKind))) then
+      Exit(InvalidTrace(AValidation, gtvikCauseKind, I, E.PassIndex));
+    if not IsTraceInteger(E.EntryIndex, -1, High(Integer)) then
+      Exit(InvalidTrace(AValidation, gtvikEntryIndex, I, E.PassIndex));
+    if not IsTraceInteger(E.ValueIndex, -1, High(Integer)) then
+      Exit(InvalidTrace(AValidation, gtvikValueIndex, I, E.PassIndex));
+    if not IsTraceInteger(E.NeighborIndex, -1, High(Integer)) then
+      Exit(InvalidTrace(AValidation, gtvikNeighborIndex, I, E.PassIndex));
+    if not IsTraceBoolean(E.HasDirection) or
+      not IsTraceInteger(Ord(E.Direction), Ord(Low(TGraphDirection)),
+        Ord(High(TGraphDirection))) then
+      Exit(InvalidTrace(AValidation, gtvikDirection, I, E.PassIndex));
+    if not IsTraceInteger(E.DependencyPassIndex, -1, P - 1) then
+      Exit(InvalidTrace(AValidation, gtvikDependencyPassIndex, I, E.PassIndex));
+    if not IsTraceInteger(E.DecisionDepth, 0, High(Integer)) then
+      Exit(InvalidTrace(AValidation, gtvikDecisionDepth, I, E.PassIndex));
+    if not IsTraceInteger(E.DomainCountBefore, 0, High(Integer)) or
+      not IsTraceInteger(E.DomainCountAfter, 0, High(Integer)) then
+      Exit(InvalidTrace(AValidation, gtvikDomainCount, I, E.PassIndex));
+    if not IsTraceInteger(E.ConstraintIndex, -1, High(Integer)) then
+      Exit(InvalidTrace(AValidation, gtvikConstraintIndex, I, E.PassIndex));
+  end;
+  Result := True;
+end;
+
+procedure BuildTraceLayout(const AReport: TGraphSolveReport;
+  out ALayout: TGraphTraceLayout);
+var I, P, R, LPrevious: Integer; LRangeCounts: TGraphPassIndices;
+begin
+  ALayout := Default(TGraphTraceLayout);
+  ALayout.Version := WFC_TRACE_LAYOUT_VERSION;
+  ALayout.TraceCaptured := AReport.TraceCaptured;
+  ALayout.TraceHash := AReport.TraceHash;
+  ALayout.EventCount := Length(AReport.Trace);
+  ALayout.TerminalEventIndex := -1;
+  SetLength(ALayout.Passes, Length(AReport.Passes));
+  SetLength(LRangeCounts, Length(AReport.Passes));
+  LPrevious := -1;
+  for I := 0 to High(AReport.Trace) do
+  begin
+    P := AReport.Trace[I].PassIndex;
+    if P >= 0 then
+    begin
+      Inc(ALayout.Passes[P].EventCount);
+      if P <> LPrevious then Inc(LRangeCounts[P]);
+    end
+    else ALayout.TerminalEventIndex := I;
+    LPrevious := P;
+  end;
+  for P := 0 to High(ALayout.Passes) do
+  begin
+    SetLength(ALayout.Passes[P].Ranges, LRangeCounts[P]);
+    LRangeCounts[P] := 0;
+  end;
+  LPrevious := -1;
+  for I := 0 to High(AReport.Trace) do
+  begin
+    P := AReport.Trace[I].PassIndex;
+    if P >= 0 then
+    begin
+      if P <> LPrevious then
+      begin
+        R := LRangeCounts[P];
+        ALayout.Passes[P].Ranges[R].Start := I;
+        Inc(LRangeCounts[P]);
+      end;
+      R := LRangeCounts[P] - 1;
+      Inc(ALayout.Passes[P].Ranges[R].Count);
+    end;
+    LPrevious := P;
+  end;
+end;
+
+function ValidateFailureSummary(const AGraph: TGraph;
+  const AReport: TGraphSolveReport; const AEventIndex: Integer;
+  var AValidation: TGraphTraceValidationReport): Boolean;
+var
+  E: TGraphTraceEvent;
+  LAllowedKinds: set of TGraphContradictionKind;
+begin
+  if AEventIndex < 0 then
+    Exit(InvalidTrace(AValidation, gtvikPassLifecycle, -1,
+      AReport.FailedPassIndex));
+  E := AReport.Trace[AEventIndex];
+  //Initial-domain causes describe the last removal, whereas the aggregate
+  //classification can describe another candidate's failed filter. Trace v1
+  //does not encode enough evidence to distinguish all initial-filter kinds.
+  //Do not infer a unique kind/provider from that last removal alone.
+  LAllowedKinds := [gckEmptyDomain, gckEntryDomain, gckPreviousPass,
+    gckPassDependency];
+  case E.CauseKind of
+    gtckNone, gtckCallerDomain, gtckPassDependency: ;
+    gtckCallerLock:
+      if E.CauseEventId = -1 then LAllowedKinds := [gckInvalidLock];
+    gtckAdjacency: LAllowedKinds := [gckAdjacency];
+    gtckRequiredSupport: LAllowedKinds := [gckRequiredSupport];
+    gtckFinalValidation: LAllowedKinds := [gckFinalValidation];
+    gtckExactAssignmentExclusion: LAllowedKinds := [gckExcludedAssignment];
+    gtckConnectivity: LAllowedKinds := [gckConnectivity];
+  else LAllowedKinds := [];
+  end;
+  with AReport.Contradiction do
+  begin
+    if not (Kind in LAllowedKinds) or
+      (PassIndex <> E.PassIndex) or (EntryIndex <> E.EntryIndex) or
+      (NeighborIndex <> E.NeighborIndex) or
+      (HasDirection <> E.HasDirection) or (Direction <> E.Direction) or
+      (ConstraintIndex <> E.ConstraintIndex) then
+      Exit(InvalidTrace(AValidation, gtvikPassLifecycle, AEventIndex, E.PassIndex));
+    if Kind in [gckPreviousPass, gckPassDependency] then
+    begin
+      if (DependencyPassIndex < 0) or
+        not HasDeclaredDependency(AGraph, PassIndex, DependencyPassIndex) then
+        Exit(InvalidTrace(AValidation, gtvikPassLifecycle, AEventIndex, E.PassIndex));
+    end
+    else if DependencyPassIndex <> -1 then
+      Exit(InvalidTrace(AValidation, gtvikPassLifecycle, AEventIndex, E.PassIndex));
+  end;
+  Result := True;
+end;
+
+function ValidateTraceLifecycle(const AGraph: TGraph;
   const AReport: TGraphSolveReport;
+  var AValidation: TGraphTraceValidationReport): Boolean;
+var
+  I, J, P, D, LActive, LOrdinal, LLastSkipped, LLate, LEnd: Integer;
+  LLastContradiction: Integer;
+  LState: TTraceByteArray;
+  LStagedEvent: TGraphPassIndices;
+  E: TGraphTraceEvent;
+  LLayout: TGraphTraceLayout;
+begin
+  //States: unseen, active, staged, skipped, failed. Only the recognized
+  //commit suffix may revisit a staged pass. Negotiation rounds remain
+  //separate reports; arbitrary interleaved work is not accepted here.
+  SetLength(LState, Length(AReport.Passes));
+  SetLength(LStagedEvent, Length(AReport.Passes));
+  for I := 0 to High(LStagedEvent) do LStagedEvent[I] := -1;
+  LActive := -1; LOrdinal := 0; LLastSkipped := -1;
+  LLastContradiction := -1;
+  LLate := -1;
+  LEnd := High(AReport.Trace);
+  if LEnd >= 2 then
+  begin
+    E := AReport.Trace[LEnd - 2];
+    if (E.Kind = gtekContradiction) and
+      (E.CauseKind = gtckFinalValidation) and (E.CauseEventId >= 0) then
+      if AReport.Trace[E.CauseEventId].Kind = gtekPassStaged then
+        LLate := LEnd - 2;
+  end;
+  if LLate >= 0 then LEnd := LLate;
+  for I := 0 to LEnd - 1 do
+  begin
+    E := AReport.Trace[I]; P := E.PassIndex;
+    if P < 0 then
+      Exit(InvalidTrace(AValidation, gtvikTerminalEvent, I, P));
+    case E.Kind of
+      gtekPassSkipped:
+        begin
+          if (LActive <> -1) or (LOrdinal <> 0) or
+            (P <= LLastSkipped) or (LState[P] <> 0) or
+            AReport.Passes[P].Executed or
+            (AReport.Passes[P].ExecutionOrdinal <> -1) then
+            Exit(InvalidTrace(AValidation, gtvikPassLifecycle, I, P));
+          LState[P] := 3; LLastSkipped := P;
+        end;
+      gtekPassBegin:
+        begin
+          if (LActive <> -1) or (LState[P] <> 0) or
+            (LOrdinal >= Length(AReport.ExecutionOrder)) then
+            Exit(InvalidTrace(AValidation, gtvikPassLifecycle, I, P));
+          if (AReport.ExecutionOrder[LOrdinal] <> P) or
+            not AReport.Passes[P].Executed or
+            (AReport.Passes[P].ExecutionOrdinal <> LOrdinal) then
+            Exit(InvalidTrace(AValidation, gtvikPassLifecycle, I, P));
+          for J := 0 to AGraph.PassGraph[P].DependencyCount - 1 do
+          begin
+            D := AGraph.PassGraph[P].DependencyIndex[J];
+            if not (LState[D] in [2, 3]) then
+              Exit(InvalidTrace(AValidation, gtvikPassLifecycle, I, P));
+          end;
+          Inc(LOrdinal); LActive := P; LState[P] := 1;
+        end;
+      gtekPassStaged:
+        begin
+          if (LActive <> P) or (LState[P] <> 1) then
+            Exit(InvalidTrace(AValidation, gtvikPassLifecycle, I, P));
+          LState[P] := 2; LActive := -1; LStagedEvent[P] := I;
+        end;
+      gtekPassFailed:
+        begin
+          if (LActive <> P) or (LState[P] <> 1) or
+            (I <> High(AReport.Trace) - 1) or (E.CauseEventId <> I - 1) or
+            (AReport.Trace[I - 1].PassIndex <> P) then
+            Exit(InvalidTrace(AValidation, gtvikPassLifecycle, I, P));
+          LState[P] := 4; LActive := -1;
+        end;
+    else
+      if (LActive <> P) or (LState[P] <> 1) then
+        Exit(InvalidTrace(AValidation, gtvikPassLifecycle, I, P));
+    end;
+    if E.Kind = gtekContradiction then LLastContradiction := I;
+  end;
+  if (LActive <> -1) or (LOrdinal <> Length(AReport.ExecutionOrder)) then
+    Exit(InvalidTrace(AValidation, gtvikPassLifecycle, -1, LActive));
+  if LLate >= 0 then
+  begin
+    E := AReport.Trace[LLate]; P := E.PassIndex;
+    if (LState[P] <> 2) or (E.CauseEventId <> LStagedEvent[P]) or
+      (E.NeighborIndex <> -1) or E.HasDirection or
+      (E.DependencyPassIndex <> -1) or (E.DecisionDepth <> 0) or
+      (E.DomainCountBefore <> 0) or (E.DomainCountAfter <> 0) or
+      (AReport.Trace[LLate + 1].Kind <> gtekPassFailed) or
+      (AReport.Trace[LLate + 1].PassIndex <> P) or
+      (AReport.Trace[LLate + 1].CauseEventId <> LLate) or
+      (AReport.Trace[LLate + 2].Kind <> gtekPipelineRollback) or
+      (AReport.Status <> gssContradiction) or
+      (AReport.FailedPassIndex <> P) or
+      (AReport.Contradiction.Kind <> gckFinalValidation) or
+      (AReport.Contradiction.PassIndex <> P) or
+      (AReport.Contradiction.EntryIndex <> E.EntryIndex) or
+      (AReport.Contradiction.NeighborIndex <> -1) or
+      AReport.Contradiction.HasDirection or
+      (AReport.Contradiction.Direction <> gdNorth) or
+      (AReport.Contradiction.DependencyPassIndex <> -1) or
+      (AReport.Contradiction.ConstraintIndex <> -1) then
+      Exit(InvalidTrace(AValidation, gtvikPassLifecycle, LLate, P));
+    for I := 0 to High(LState) do
+      if not (LState[I] in [2, 3]) then
+        Exit(InvalidTrace(AValidation, gtvikPassLifecycle, LLate, I));
+    LState[P] := 4;
+  end;
+  for P := 0 to High(LState) do
+  begin
+    case LState[P] of
+      0:
+        if AReport.Passes[P].Executed or
+          (AReport.Passes[P].ExecutionOrdinal <> -1) or
+          (AReport.Passes[P].Disposition <> gpdNotRun) or
+          (AReport.Status = gssSolved) then
+          Exit(InvalidTrace(AValidation, gtvikPassLifecycle, -1, P));
+      2:
+        if not (AReport.Passes[P].Disposition in
+          [gpdSolved, gpdCopied, gpdCleared, gpdReused]) then
+          Exit(InvalidTrace(AValidation, gtvikPassLifecycle, -1, P));
+      3:
+        if AReport.Passes[P].Disposition <> gpdReused then
+          Exit(InvalidTrace(AValidation, gtvikPassLifecycle, -1, P));
+      4:
+        if (AReport.Passes[P].Disposition <> gpdFailed) or
+          (AReport.Status = gssSolved) or (AReport.FailedPassIndex <> P) or
+          (AReport.Contradiction.PassIndex <> P) or
+          (AReport.Passes[P].Contradictions < 1) then
+          Exit(InvalidTrace(AValidation, gtvikPassLifecycle, -1, P));
+    else Exit(InvalidTrace(AValidation, gtvikPassLifecycle, -1, P));
+    end;
+  end;
+  if AReport.Status = gssSolved then
+  begin
+    if (AReport.FailedPassIndex <> -1) or
+      (AReport.Contradiction.Kind <> gckNone) or
+      (AReport.Contradiction.PassIndex <> -1) or
+      (AReport.Contradiction.EntryIndex <> -1) or
+      (AReport.Contradiction.NeighborIndex <> -1) or
+      AReport.Contradiction.HasDirection or
+      (AReport.Contradiction.Direction <> gdNorth) or
+      (AReport.Contradiction.DependencyPassIndex <> -1) or
+      (AReport.Contradiction.ConstraintIndex <> -1) then
+      Exit(InvalidTrace(AValidation, gtvikPassLifecycle, -1, -1));
+  end
+  else if (AReport.FailedPassIndex < 0) or
+    (LState[AReport.FailedPassIndex] <> 4) then
+    Exit(InvalidTrace(AValidation, gtvikPassLifecycle, -1, -1));
+  if (AReport.Status <> gssSolved) and (LLate < 0) then
+    if not ValidateFailureSummary(AGraph, AReport, LLastContradiction,
+      AValidation) then Exit(False);
+  BuildTraceLayout(AReport, LLayout);
+  for P := 0 to High(LLayout.Passes) do
+  begin
+    I := -1;
+    if Length(LLayout.Passes[P].Ranges) <> 0 then
+      I := LLayout.Passes[P].Ranges[0].Start;
+    //Do not repair the old fields: they also belong to existing negotiation
+    //transcripts. For the explicitly recognized suffix, check the emitter's
+    //first-event/total counters without pretending they describe one span.
+    if (AReport.Passes[P].TraceStart <> I) or
+      (AReport.Passes[P].TraceCount <> LLayout.Passes[P].EventCount) then
+      Exit(InvalidTrace(AValidation, gtvikPassSlice, -1, P));
+  end;
+  Result := True;
+end;
+
+function ValidateGraphTraceInternal(const AGraph: TGraph;
+  const AReport: TGraphSolveReport; const AChronological: Boolean;
   out AValidation: TGraphTraceValidationReport): Boolean;
 var
   I: Integer;
@@ -590,6 +1003,8 @@ begin
     Exit(InvalidTrace(AValidation, gtvikPassCount, -1, -1));
   if not TryDimensionEntryCount(AGraph.Dimension, LEntryCount) then
     Exit(InvalidTrace(AValidation, gtvikGraph, -1, -1));
+  if AChronological and
+    not ValidateTraceInputNumbers(AReport, AValidation) then Exit(False);
 
   if not AReport.TraceCaptured then
   begin
@@ -889,43 +1304,51 @@ begin
     Inc(AValidation.CheckedEvents);
   end;
 
-  SetLength(LCovered, Length(AReport.Trace));
-  for I := 0 to LPassCount - 1 do
+  if AChronological then
   begin
-    if AReport.Passes[I].TraceCount < 0 then
-      Exit(InvalidTrace(AValidation, gtvikPassSlice, -1, I));
-    if AReport.Passes[I].TraceCount = 0 then
+    if not ValidateTraceLifecycle(AGraph, AReport, AValidation) then Exit(False);
+  end
+  else
+  begin
+    SetLength(LCovered, Length(AReport.Trace));
+    for I := 0 to LPassCount - 1 do
     begin
-      if AReport.Passes[I].TraceStart <> -1 then
+      if AReport.Passes[I].TraceCount < 0 then
         Exit(InvalidTrace(AValidation, gtvikPassSlice, -1, I));
-      Continue;
-    end;
-    if AReport.Passes[I].TraceStart < 0 then
-      Exit(InvalidTrace(AValidation, gtvikPassSlice, -1, I));
-    if AReport.Passes[I].TraceStart >
+      if AReport.Passes[I].TraceCount = 0 then
+      begin
+        if AReport.Passes[I].TraceStart <> -1 then
+          Exit(InvalidTrace(AValidation, gtvikPassSlice, -1, I));
+        Continue;
+      end;
+      if AReport.Passes[I].TraceStart < 0 then
+        Exit(InvalidTrace(AValidation, gtvikPassSlice, -1, I));
+      if AReport.Passes[I].TraceStart >
         Length(AReport.Trace) - AReport.Passes[I].TraceCount then
-      Exit(InvalidTrace(AValidation, gtvikPassSlice, -1, I));
-    LSliceEnd := AReport.Passes[I].TraceStart +
-      AReport.Passes[I].TraceCount;
-    for J := AReport.Passes[I].TraceStart to LSliceEnd - 1 do
-    begin
-      if (AReport.Trace[J].PassIndex <> I) or
+        Exit(InvalidTrace(AValidation, gtvikPassSlice, -1, I));
+      LSliceEnd := AReport.Passes[I].TraceStart + AReport.Passes[I].TraceCount;
+      for J := AReport.Passes[I].TraceStart to LSliceEnd - 1 do
+      begin
+        if (AReport.Trace[J].PassIndex <> I) or
           IsPipelineEventKind(AReport.Trace[J].Kind) or
           (LCovered[J] <> 0) then
-        Exit(InvalidTrace(AValidation, gtvikPassSlice, J, I));
-      LCovered[J] := 1;
+          Exit(InvalidTrace(AValidation, gtvikPassSlice, J, I));
+        LCovered[J] := 1;
+      end;
     end;
   end;
 
   for I := 0 to Length(AReport.Trace) - 1 do
     if IsPipelineEventKind(AReport.Trace[I].Kind) then
     begin
-      if (I <> High(AReport.Trace)) or (LCovered[I] <> 0) then
+      if (I <> High(AReport.Trace)) or
+        ((not AChronological) and (LCovered[I] <> 0)) then
         Exit(InvalidTrace(AValidation, gtvikTerminalEvent, I, -1));
     end
-    else if LCovered[I] = 0 then
-      Exit(InvalidTrace(AValidation, gtvikPassSlice, I,
-        AReport.Trace[I].PassIndex));
+    else if not AChronological then
+      if LCovered[I] = 0 then
+        Exit(InvalidTrace(AValidation, gtvikPassSlice, I,
+          AReport.Trace[I].PassIndex));
 
   case AReport.Status of
     gssSolved: LExpectedTerminal := gtekPipelineCommit;
@@ -942,6 +1365,71 @@ begin
     Exit(InvalidTrace(AValidation, gtvikTraceHash, -1, -1));
 
   Result := True;
+end;
+
+function ValidateGraphTrace(const AGraph: TGraph;
+  const AReport: TGraphSolveReport;
+  out AValidation: TGraphTraceValidationReport): Boolean;
+begin
+  Result := ValidateGraphTraceInternal(AGraph, AReport, False, AValidation);
+end;
+
+function TryBuildGraphTraceLayout(const AGraph: TGraph;
+  const AReport: TGraphSolveReport; out ALayout: TGraphTraceLayout;
+  out AValidation: TGraphTraceValidationReport): Boolean;
+var LLayout: TGraphTraceLayout;
+begin
+  ALayout := Default(TGraphTraceLayout);
+  Result := ValidateGraphTraceInternal(AGraph, AReport, True, AValidation);
+  if Result then
+  begin
+    BuildTraceLayout(AReport, LLayout);
+    ALayout := LLayout;
+  end;
+end;
+
+function ValidateGraphTraceLayout(const AGraph: TGraph;
+  const AReport: TGraphSolveReport; const ALayout: TGraphTraceLayout;
+  out AValidation: TGraphTraceValidationReport): Boolean;
+var LExpected: TGraphTraceLayout; P, R: Integer;
+begin
+  if not TryBuildGraphTraceLayout(AGraph, AReport, LExpected,
+    AValidation) then Exit(False);
+  if (ALayout.Version <> LExpected.Version) or
+    not IsTraceBoolean(ALayout.TraceCaptured) or
+    (ALayout.TraceCaptured <> LExpected.TraceCaptured) or
+    (ALayout.TraceHash <> LExpected.TraceHash) or
+    (ALayout.EventCount <> LExpected.EventCount) or
+    (ALayout.TerminalEventIndex <> LExpected.TerminalEventIndex) or
+    (Length(ALayout.Passes) <> Length(LExpected.Passes)) then
+    Exit(InvalidTrace(AValidation, gtvikTraceLayout, -1, -1));
+  for P := 0 to High(LExpected.Passes) do
+  begin
+    if (ALayout.Passes[P].EventCount <> LExpected.Passes[P].EventCount) or
+      (Length(ALayout.Passes[P].Ranges) <> Length(LExpected.Passes[P].Ranges)) then
+      Exit(InvalidTrace(AValidation, gtvikTraceLayout, -1, P));
+    for R := 0 to High(LExpected.Passes[P].Ranges) do
+      if (ALayout.Passes[P].Ranges[R].Start <> LExpected.Passes[P].Ranges[R].Start) or
+        (ALayout.Passes[P].Ranges[R].Count <> LExpected.Passes[P].Ranges[R].Count) then
+        Exit(InvalidTrace(AValidation, gtvikTraceLayout, -1, P));
+  end;
+  Result := True;
+end;
+
+function CopyGraphTraceLayout(
+  const ASource: TGraphTraceLayout): TGraphTraceLayout;
+var P, R: Integer;
+begin
+  Result := ASource;
+  Result.Passes := nil;
+  SetLength(Result.Passes, Length(ASource.Passes));
+  for P := 0 to High(ASource.Passes) do
+  begin
+    Result.Passes[P].EventCount := ASource.Passes[P].EventCount;
+    SetLength(Result.Passes[P].Ranges, Length(ASource.Passes[P].Ranges));
+    for R := 0 to High(ASource.Passes[P].Ranges) do
+      Result.Passes[P].Ranges[R] := ASource.Passes[P].Ranges[R];
+  end;
 end;
 
 function DescribeGraphTraceValidationIssue(

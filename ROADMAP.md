@@ -55,9 +55,10 @@ The repository already contains the beginnings of the ecosystem:
   reused provider value and random stream;
 - an opt-in Causal Trace v1 contract covering initial filters, decisions,
   propagation, contradictions, backtracking/restoration, pass lifecycle, and
-  atomic commit/rollback; per-pass slices, provider-pass cause links, stable
-  portable hashes, public query/validation helpers, and matching native/pas2js
-  conformance fixtures;
+  atomic commit/rollback; compatible legacy pass slices plus additive
+  versioned derived ranges for late earlier-pass commit failures,
+  provider-pass cause links, stable portable hashes, public query/validation
+  helpers, and matching native/pas2js conformance fixtures;
 - a dependency-free shared native/pas2js console inspector that validates and
   prints a terrain -> settlement -> foliage trace, then follows a rejected
   downstream candidate backward to its provider-pass event;
@@ -755,10 +756,9 @@ API. Promising research areas include:
   caller-chosen descendant closure used by Selective Negotiation v1;
 - soft constraints and objective functions alongside hard constraints;
 - explanation graphs and minimal contradiction sets;
-- a versioned trace representation for noncontiguous pass events when a final
-  domain validator rejects an earlier active pass after later passes staged;
-  Trace v1's single-slice metadata cannot represent that suffix even though
-  rollback and event hashing remain correct (see [traces](docs/traces.md));
+- persisted or streaming forms of the derived trace layout, beyond the current
+  detached in-memory ranges that preserve Trace v1 chronology and legacy
+  report fields (see [traces](docs/traces.md));
 - streaming and chunk-boundary reconciliation for large or infinite worlds;
 - minimal-change counterfactual search beyond dependency-closure regeneration;
 - constraint transfer between representations, such as rhythm influencing a

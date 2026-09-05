@@ -314,11 +314,13 @@ index through `DependencyPassIndex`. Historical `RequirePrevious` failures
 remain `gckPreviousPass`.
 
 Set `TGraphSolveOptions.CaptureTrace` to retain the complete attempted
-transaction rather than only its aggregate report. Every pass owns a
-contiguous `TraceStart`/`TraceCount` slice. Selective regeneration emits
-`gtekPassSkipped` for reused immutable inputs; executed passes emit begin and
-stage/fail lifecycle events; and the final commit or rollback remains outside
-all pass slices.
+transaction rather than only its aggregate report. The legacy
+`TraceStart`/`TraceCount` pair is a contiguous slice for ordinary reports; if
+late commit validation rejects an earlier active pass, the additive
+`TGraphTraceLayout` exposes every canonical range without changing those
+legacy fields. Selective regeneration emits `gtekPassSkipped` for reused
+immutable inputs; executed passes emit begin and stage/fail lifecycle events;
+and the final commit or rollback remains outside all pass ranges.
 
 A candidate removed by a named or spatial requirement uses
 `gtckPassDependency`, identifies the stable provider through

@@ -853,6 +853,7 @@ function PublishTextPassSolveReport(const AGraph: TGraph;
   var AReport: TWfcTextPassReport): Boolean;
 var
   I: Integer;
+  LTraceLayout: TGraphTraceLayout;
 begin
   AReport.Solve := ARaw;
   AReport.TraceCaptured := ARaw.TraceCaptured;
@@ -862,7 +863,7 @@ begin
   Result := True;
   if ARaw.TraceCaptured then
   begin
-    Result := ValidateGraphTrace(AGraph, ARaw,
+    Result := TryBuildGraphTraceLayout(AGraph, ARaw, LTraceLayout,
       AReport.TraceValidation);
     if Result then
       ProjectTextPassTrace(AModels, ARaw.Trace, AReport.Trace);

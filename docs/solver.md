@@ -374,18 +374,22 @@ An exact whole-assignment exclusion is an entryless contradiction with cause
 one ordinary Trace-v1 report; the coordinator never interleaves revisited pass
 events into a single trace.
 
-Each `TGraphPassSolveReport` exposes its contiguous half-open trace slice using
-`TraceStart` and `TraceCount`; the final pipeline event is outside every pass
-slice. `WFC_TRACE_VERSION` versions the event schema, and
+Each `TGraphPassSolveReport` retains legacy `TraceStart` and `TraceCount`
+metadata. These fields expose a contiguous half-open slice for ordinary
+reports. When late commit validation rejects an earlier active pass,
+`TGraphTraceLayout` derives all canonical ranges while preserving that legacy
+metadata. The final pipeline event is outside every pass range.
+`WFC_TRACE_VERSION` versions the event schema, and
 `WFC_TRACE_HASH_VERSION` versions the portable numeric signature.
 `CalculateGraphTraceHash` recomputes it without depending on host string
 encoding.
 
 The project-owned `wfc_trace` unit provides stable event/cause names, event-ID
 lookup, detached pass/entry subsets, entry-index-to-coordinate conversion, a
-line-safe formatter, and `ValidateGraphTrace`. Validation checks event IDs and
-causes, graph and value bounds, dependency links, per-pass slices, field
-invariants, terminal status, and the recomputed hash. See
+line-safe formatter, the strict legacy `ValidateGraphTrace`, and additive
+layout construction/validation. Validation checks event IDs and causes, graph
+and value bounds, dependency links, pass metadata and ranges, field invariants,
+terminal status, and the recomputed hash. See
 [causal solve traces](traces.md) for the complete schema and the shared
 native/pas2js terrain -> settlement -> foliage inspector.
 

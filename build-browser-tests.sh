@@ -16,6 +16,7 @@ for source in test/*_test.lpr; do
     -Fuexamples/learning/05_TrainingStudio -Fuexamples/music/05_MusicStudio \
     -Fuexamples/passes/04_NeighborhoodCounts \
     -Fuexamples/passes/05_DeterministicRestarts \
+    -Fuexamples/passes/02_TraceInspector \
     -Fuexamples/passes/06_ConnectedRoutes \
     -Fuexamples/music/06_EnsembleStudio \
     -Fuexamples/music/07_VoiceStudio \
