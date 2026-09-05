@@ -4,9 +4,6 @@ program MultiPassWorld;
 
 uses
   SysUtils,
-  {$IFDEF PAS2JS}
-  NodeJSApp,
-  {$ENDIF}
   wfc,
   wfc_world2d,
   wfc_world2d_validate,

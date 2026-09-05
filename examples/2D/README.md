@@ -3,8 +3,8 @@
 [`01_MultiPassWorld`](01_MultiPassWorld/README.md) is the dedicated portable 2D
 ecosystem demo. It generates terrain, then biome, then foliage with the atomic
 reference solver, validates the result independently, renders every layer, and
-prints stable per-layer signatures. The same source builds with native FPC and
-pas2js/Node without external dependencies.
+prints stable per-layer signatures. Its native FPC host uses portable model
+and validation units without external dependencies.
 
 [`02_BrowserWorld`](02_BrowserWorld/README.md) compiles the same model,
 validator, and shared showcase fixture to a real browser application. It shows
@@ -24,13 +24,13 @@ backward repair inside a caller-chosen descendant horizon. A housing-only
 horizon cannot change its reused roads provider and fails atomically; a
 roads-root horizon reopens roads, housing, and decor, excludes one exact roads
 assignment, and succeeds without changing terrain, climate, or either reused
-provider's random stream. Native FPC and pas2js/Node replay identical output
+provider's random stream. Native FPC replay identical output
 and versioned transcript hashes.
 
 [`05_LearnedPatternWorld`](05_LearnedPatternWorld/README.md) learns wrapped
 `2x2` terrain structure from two token grids at runtime, turns private pattern
 anchors into an exact public terrain pass, then solves foliage and structure in
-the same atomic DAG. Its native FPC and pas2js/Node self-checks pin model and
+the same atomic DAG. Its native FPC self-checks pin model and
 layer signatures, validate every overlap and projected contribution, prove no
 private key escaped, and exercise failed structure-only regeneration with exact
 entry and random-stream rollback. A checked

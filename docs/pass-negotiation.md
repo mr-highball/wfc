@@ -272,7 +272,7 @@ backtrack path, including clearing and re-enumerating later `B` context. The
 published experimental seed set is exactly `{0}`. The portable
 [`03_PassNegotiation`](../examples/passes/03_PassNegotiation/README.md)
 example makes the one-cell round sequence inspectable from native FPC and
-pas2js/Node.
+pas2js.
 
 The experimental method, measurements, limitations, and stopping rules are
 recorded in [Pass Negotiation v1 research notes](research/pass-negotiation-v1.md).

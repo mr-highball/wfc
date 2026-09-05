@@ -138,9 +138,9 @@ The repository already contains the beginnings of the ecosystem:
   and the established three public layer hashes;
 - a project-owned collision-safe token lookup plus shared Pascal application
   logic for strict recipe validation and headless recipe-plus-run execution,
-  with thin bounded-I/O native and pas2js/Node hosts;
+  with thin bounded-I/O native hosts;
 - Portable Training v1: immutable pretokenized corpora, strict editable
-  `wfclearn=1` text, explicit capacity preflights, and a shared native/Node
+  `wfclearn=1` text, explicit capacity preflights, and a shared native
   `wfc-learn` host producing cardinal, overlapping-pattern, or sequence
   models and executable recipes with source/license and per-sample identity;
   four checked source/model/recipe/run/result bundles and real-process
@@ -149,7 +149,7 @@ The repository already contains the beginnings of the ecosystem:
   invalidation, detached outputs, explicit interactive resource policy, and
   a project-owned Unicode-scalar raw-text import bridge; Training Studio
   connects those APIs to a pas2js corpus/lock/export workbench and five
-  independently validated native/Node presets;
+  independently validated native presets;
 - stack-safe iterative traversal of large planes while preserving the legacy
   solver's north/east/south/west depth-first order;
 - checked one-command native build gates, an FPM package, a runtime-only
@@ -205,14 +205,16 @@ It is not yet the finished system described above:
   lint, and general inspection tools remain;
 - the hosted CI definition is present, but its first remote run still needs to
   be observed before the Phase 0 exit gate is claimed complete;
-- the portable music path now has project-owned PCM/WAVE rendering, native/Node
-  file export, and an interactive browser Music Studio with HTML audio;
+- the portable music path now has project-owned PCM/WAVE rendering, native
+  file export, MIDI-to-score import and selected-excerpt training, and an
+  interactive browser Music Studio with HTML audio and user-defined-duration
+  streamed arrangements;
   SoundShop/SDL2 remains only in two legacy Lazarus experiments behind an
   optional GPL-3.0 submodule and is not part of the MIT runtime or standard demo;
 - Music Foundation v1 and Negotiated Variation v1 prove quantized single-voice
   pitch-class composition, public motif preservation, bounded pass-level
   repair, result replay, and score-to-SMF export. Polyphonic cell projection,
-  key and chord semantics, MIDI-to-score import/learning, phrase-aware
+  key and chord semantics, expressive-performance learning, phrase-aware
   coordinate repair, voicing, ornamentation, and the complete music exit gate
   remain open.
 
@@ -369,7 +371,7 @@ The focused pass-negotiation fixture adds one-cell, two-cell, provider-
 exhaustion, and independent-provider join cases. It records exact rejected
 assignments, distinguishes local and outer limits, proves atomic rollback and
 ordinary-solver isolation, and replays attempt transcripts across native FPC
-and pas2js/Node.
+and pas2js.
 The negotiated-repair fixture then compares two explicit horizons over
 terrain/climate -> roads -> housing -> decor. A housing-root horizon fails
 without reopening roads; a roads-root horizon excludes one whole roads
@@ -454,15 +456,15 @@ intersection machinery is project-owned Pascal shared by native FPC and
 pas2js. Execution emits strict canonical `wfcpipeline-run=1` and
 `wfcpipeline-result=1` replay artifacts.
 Shared Pascal application logic now drives a strict recipe validator and a
-headless recipe-plus-run executor through thin native and pas2js/Node hosts.
+headless recipe-plus-run executor through a thin native host.
 Portable Training v1 now adds editable, pretokenized source documents and a
 shared `wfc-learn` application. It preserves sample boundaries, explicit
 options, source/license labels and content fingerprints while exporting
 cardinal, overlapping-pattern, or whole-sequence recipes. Four bundled corpora
-replay exact source-to-result artifacts on native FPC and pas2js/Node.
+replay exact source-to-result artifacts on native FPC.
 Training Studio now connects editable corpora and explicit Unicode-scalar raw
 text to that workflow through one reusable invalidation-aware workspace, five
-native/Node presets, and a browser lock/inspection/export workbench. Its
+native presets, and a browser lock/inspection/export workbench. Its
 interactive envelope is bounded and synchronous; raw media/voxel/music
 extraction, larger background jobs, and general recipe authoring remain open.
 Word-boundary tables, wrapped sequence training, higher-dimensional extraction,
@@ -513,7 +515,7 @@ gate.
 
 The learned-pattern vertical slice now trains a wrapped `2x2` model at runtime,
 materializes its private anchors as public terrain, and feeds foliage and
-structure in the same atomic four-pass DAG. Native FPC and pas2js/Node replay
+structure in the same atomic four-pass DAG. Native FPC replay
 the same seed-zero signatures, deliberate contradiction, exact rollback, and
 selective recovery without an external runtime library.
 
@@ -581,7 +583,7 @@ adapter is optional and cannot be required by the portable ecosystem.
 - A portable three-pass fixture solves harmony and rhythm before melody,
   composes both constraints through latent sequence projection maps,
   independently validates the public relation, rebuilds a score, and checks
-  canonical text and MIDI bytes on native FPC and pas2js/Node.
+  canonical text and MIDI bytes on native FPC.
 - A reusable persistent music-pass owner now supports public-token constraints
   and motif locks, immutable composition capture, ordinary regeneration,
   bounded full-pipeline negotiation, and selective negotiated repair from an
@@ -589,14 +591,29 @@ adapter is optional and cannot be required by the portable ecosystem.
   cells, score semantics, seed/configuration, and the recomputed signature;
   latent sequence keys remain private.
 - The project-owned SMF layer reads and writes format 0 and 1 event streams;
-  the score exporter emits deterministic format 0. A semantic score importer
-  and event-stream learner remain to be designed.
+  the score exporter emits deterministic format 0. Semantic MIDI import now
+  provides exact note pairing, voice lanes, explicit unsupported-event policy,
+  and import receipts. Caller-selected fixed-grid voice excerpts become
+  melody/rhythm/harmony training documents with explicit provenance. General
+  expressive-performance learning and automatic polyphonic reduction remain
+  separate work; see [music import](docs/music-import.md).
 - Music Audio v1 now provides exact tempo-to-frame conversion, bounded
   fixed-point PCM16 synthesis, and a canonical RIFF/WAVE writer. Music Studio
-  connects the persistent pass owner to native/Node artifact exporters and a
+  connects the persistent pass owner to native artifact exporters and a
   pas2js lock/repair/piano-roll workbench with user-initiated HTML playback.
   All corpus phrases and synthesis code are project-owned. Its model remains
   one monophonic voice over a fixed two-bar form.
+- A lazy arrangement iterator now separates total duration from local section
+  size. Music Studio accepts user-defined seconds with visible bar rounding,
+  solves fresh context-constrained sections, and streams PCM to RIFF/RF64
+  through native FPC or browser file APIs. There is no arbitrary duration cap;
+  numeric/storage capacity and finite local search still apply. The supplied
+  source prevents immediate harmonic-form repeats, not global recurrence or
+  long-range thematic failure; see [arrangements](docs/music-arrangement.md).
+- Included native FPC development tools serve all maintained browser demos and
+  validate executed browser evidence. Portable conformance runs in real
+  browsers; OS/process checks remain native. See
+  [development tools](docs/development-tools.md).
 - Extend the pipeline through meter/phrase -> rhythm -> harmony -> melody ->
   bass/voicing -> dynamics/ornamentation, including polyphonic representations,
   key/scale spelling, voice leading, instrument ranges, and locked motifs.
@@ -628,7 +645,7 @@ portable audible output, but not the importer or polyphonic/harmonic breadth.
   project-owned Unicode-scalar tokenizer; a caller-defined tokenizer learning
   contract; anchored infill; prefix continuation; structured failure; and
   independent text/token validation.
-- A shared native FPC and pas2js/Node seed-zero fixture proves `e | c` at one
+- A shared native FPC seed-zero fixture proves `e | c` at one
   unresolved position, completes `the quick fox rests.`, rejects a truncated
   whole sample while accepting its prefix extent, and replays identically with
   no external dependency.
@@ -638,7 +655,7 @@ portable audible output, but not the importer or polyphonic/harmonic breadth.
   preflight, exact `@wfctf1:` fragments, public-token trace projection,
   independent three-layer validation, transactional failure/recovery, and
   selective descendant regeneration are checked on native FPC and pas2js.
-- The same project-owned showcase now has console, Node, and interactive
+- The same project-owned showcase now has console and interactive
   browser hosts. Its seed-zero `A sun rises brightly!` fixture and portable
   signature are checked headlessly, including a deliberate contradiction and
   exact recovery after clearing constraints.

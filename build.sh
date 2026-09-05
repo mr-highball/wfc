@@ -606,6 +606,11 @@ for compiler_music_suite in \
   "$compiler_music_test_source" \
   "$compiler_music_graph_test_source" \
   "$compiler_music_midi_test_source" \
+  "$compiler_source_directory/../test/wfc_music_midi_import_test.lpr" \
+  "$compiler_source_directory/../test/wfc_music_training_test.lpr" \
+  "$compiler_source_directory/../test/wfc_music_arrangement_test.lpr" \
+  "$compiler_source_directory/../test/wfc_music_audio_stream_test.lpr" \
+  "$compiler_source_directory/../test/wfc_music_studio_arrangement_test.lpr" \
   "$compiler_music_passes_test_source" \
   "$compiler_music_passes_text_test_source" \
   "$compiler_music_audio_test_source" \
@@ -648,12 +653,15 @@ for compiler_artifact_suite in \
   "$compiler_pipeline_result_text_test_source" \
   "$compiler_pipeline_runtime_test_source" \
   "$compiler_validate_app_test_source" \
+  "$compiler_tools_directory/../test/wfc_browser_dom_test.lpr" \
+  "$compiler_tools_directory/../test/wfc_serve_test.lpr" \
   "$compiler_run_app_test_source" \
   "$compiler_training_test_source" \
   "$compiler_text_training_test_source" \
   "$compiler_training_workspace_test_source" \
   "$compiler_training_text_test_source" \
   "$compiler_learn_app_test_source" \
+  "$compiler_tools_directory/../test/wfc_music_import_app_test.lpr" \
   "$compiler_learned_pattern_world_bundle_test_source"
 do
   artifact_suite_name=$(basename -- "$compiler_artifact_suite" .lpr)
@@ -692,9 +700,15 @@ done
 for compiler_tool_source in \
   "$compiler_validate_tool_source" \
   "$compiler_learn_tool_source" \
+  "$compiler_tools_directory/wfc_music_import_cli.lpr" \
+  "$compiler_tools_directory/wfc_serve.lpr" \
+  "$compiler_tools_directory/wfc_browser_check.lpr" \
   "$compiler_run_tool_source"
 do
   tool_name=$(basename -- "$compiler_tool_source" .lpr)
+  if [[ "$tool_name" == wfc_music_import_cli ]]; then
+    tool_name=wfc_music_import
+  fi
   if [[ "$tool_name" == wfc_learn_cli ]]; then
     tool_name=wfc_learn
   fi
@@ -726,6 +740,18 @@ do
 done
 
 validator_tool_executable="$binary_output_directory/wfc_validate"
+server_test_executable="$binary_output_directory/wfc_serve_test"
+server_tool_executable="$compiler_binary_output_directory/wfc_serve"
+case "$host_system" in
+  CYGWIN*|MINGW*|MSYS*)
+    server_test_executable="${server_test_executable}.exe"
+    server_tool_executable="${server_tool_executable}.exe"
+    ;;
+esac
+printf 'Running live FPC server conformance.\n'
+"$server_test_executable" --integration "$server_tool_executable" \
+  "$compiler_binary_output_directory" || exit $?
+
 runner_tool_executable="$binary_output_directory/wfc_run"
 learner_tool_executable="$binary_output_directory/wfc_learn"
 case "$host_system" in
@@ -1185,3 +1211,24 @@ if test "$music_studio_probe_actual" != "$music_studio_probe_expected"; then
   exit 1
 fi
 printf 'Music Studio form matrix matches its checked fixture.\n'
+
+printf 'Building and checking the streaming Music Studio renderer.\n'
+for render_source in \
+  "$compiler_music_studio_directory/MusicStudioRender.lpr" \
+  "$compiler_source_directory/../test/wfc_music_render_process_test.lpr"
+do
+  "$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
+    "-Fu$compiler_source_directory" "-Fu$compiler_music_studio_directory" \
+    "-FU$compiler_unit_output_directory" "-FE$compiler_binary_output_directory" \
+    "$render_source" || exit $?
+done
+music_render_executable="$compiler_binary_output_directory/MusicStudioRender"
+music_render_test_executable="$binary_output_directory/wfc_music_render_process_test"
+case "$host_system" in
+  CYGWIN*|MINGW*|MSYS*)
+    music_render_executable="${music_render_executable}.exe"
+    music_render_test_executable="${music_render_test_executable}.exe"
+    ;;
+esac
+"$music_render_test_executable" "$music_render_executable" \
+  "$compiler_binary_output_directory" || exit $?

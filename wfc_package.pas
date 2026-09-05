@@ -13,8 +13,7 @@ uses
   wfc_pattern2d_learn, wfc_pattern2d_text, wfc_world2d_settlement,
   wfc_world2d_settlement_validate, wfc_sequence, wfc_sequence_learn,
   wfc_sequence_graph, wfc_sequence_text, wfc_music, wfc_music_sequence,
-  wfc_music_graph, wfc_music_text, wfc_midi_smf, wfc_music_midi,
-  wfc_music_audio, wfc_voxel3d,
+  wfc_music_graph, wfc_music_text, wfc_midi_smf, wfc_music_midi, wfc_voxel3d,
   wfc_voxel3d_validate, wfc_voxel3d_mesh, wfc_voxel3d_passes, wfc_building3d,
   wfc_building3d_validate, wfc_voxel3d_isometric, wfc_voxel3d_svg,
   wfc_building3d_view, wfc_sequence_analyze, wfc_text_tokenize,
@@ -22,8 +21,9 @@ uses
   wfc_pattern2d_graph, wfc_rule_model, wfc_rule_text, wfc_pipeline_model,
   wfc_pipeline_text, wfc_token_lookup, wfc_pipeline_compile, wfc_pipeline_run,
   wfc_pipeline_run_text, wfc_pipeline_result, wfc_pipeline_result_text,
-  wfc_pipeline_runtime, wfc_training, wfc_training_text,
-  wfc_text_training, wfc_training_workspace;
+  wfc_pipeline_runtime, wfc_training, wfc_training_text, wfc_text_training,
+  wfc_training_workspace, wfc_music_audio, wfc_music_audio_stream,
+  wfc_music_arrangement, wfc_music_midi_import, wfc_music_training;
 
 implementation
 

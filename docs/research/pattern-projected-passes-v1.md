@@ -1,5 +1,9 @@
 # Pattern-Projected Pass Composition v1 research record
 
+Execution note: pas2js figures below are historical measurements. Maintained
+execution paths are native FPC and the documented browser demos; those earlier
+figures do not establish browser coverage for this experiment.
+
 - **Status:** experimental, measured, reproducible representation bridge
 - **Graph adapter:** `WFC_PATTERN_2D_GRAPH_ADAPTER_VERSION = 1`
 - **Reusable owner:** `WFC_PATTERN_2D_PASS_PIPELINE_VERSION = 1`
@@ -357,7 +361,7 @@ The fixture performs these checked phases:
    structure-only regeneration, then require exact entry and all-pass random
    next-draw parity again.
 9. Replay the complete seed-zero fixture under current native FPC, stable FPC
-   3.2.2, and pas2js/Node.
+   3.2.2, and historical pas2js runs.
 
 The deliberate lock is rejected as `gckPassDependency` before final
 validation. It proves selective solve rollback and provider reuse; it is not
@@ -425,7 +429,7 @@ latent, terrain, foliage, and structure identities. These demo identities are
 distinct from the separately versioned generic
 `TWfcPattern2DComposition.Signature`.
 
-Current native FPC 3.3.1, stable native FPC 3.2.2, and pas2js 3.3.1/Node
+Current native FPC 3.3.1, stable native FPC 3.2.2, and historical pas2js runs
 agree exactly on these seed-zero identities:
 
 | Evidence | Value |
@@ -442,7 +446,7 @@ agree exactly on these seed-zero identities:
 | --- | --- |
 | FPC 3.3.1 native | all identities and structural counts exact |
 | FPC 3.2.2 native | all identities and structural counts exact |
-| pas2js 3.3.1 with Node | all identities and structural counts exact |
+| historical pas2js 3.3.1 runs | all identities and structural counts exact |
 
 These uppercase values are fixed acceptance criteria, not attractive-output
 targets selected after searching additional seeds.

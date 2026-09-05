@@ -36,7 +36,8 @@ uses
   wfc_music,
   wfc_music_sequence,
   wfc_music_passes,
-  music_studio_workbench;
+  music_studio_workbench,
+  browser_music_arrangement;
 
 type
   { Browser-only DOM, Blob, and interaction glue. The workbench remains the
@@ -44,6 +45,7 @@ type
   TBrowserMusicStudioApplication = class
   strict private
     FStudio: TWfcMusicStudio;
+    FArrangement: TBrowserMusicArrangement;
     FOptions: TWfcMusicStudioOptions;
     FAction: TWfcMusicStudioAction;
     FVocabulary: TWfcModelTokens;
@@ -175,6 +177,7 @@ constructor TBrowserMusicStudioApplication.Create;
 begin
   inherited Create;
   FStudio := TWfcMusicStudio.Create(0);
+  FArrangement := TBrowserMusicArrangement.Create(FStudio);
   FOptions := DefaultMusicStudioOptions;
   FAction := msaGenerate;
   FVocabulary := nil;
@@ -187,6 +190,7 @@ end;
 
 destructor TBrowserMusicStudioApplication.Destroy;
 begin
+  if FArrangement <> nil then FArrangement.Release;
   RevokeUrl(FCompositionUrl);
   RevokeUrl(FScoreUrl);
   RevokeUrl(FMidiUrl);
@@ -618,6 +622,13 @@ begin
   LReport := FStudio.CopyReport;
   LPassCount := ReportPassCount(LReport);
   LStatus := MusicStudioStatusName(FStudio.Status);
+  FScopeSelect.disabled := not FStudio.HasBaseline;
+  if not FStudio.HasBaseline then
+  begin
+    FScopeSelect.value := 'full';
+    FGenerateButton.textContent := 'Generate baseline';
+  end
+  else FGenerateButton.textContent := 'Generate / repair';
   FSeedOutput.textContent := UIntToStr(FStudio.Seed);
   FResultStatusOutput.textContent := LStatus;
   FStrategyOutput.textContent := StrategyName(FOptions);
@@ -1038,6 +1049,13 @@ begin
       'seed differs from this session; start a new session before generating');
   LOptions := ReadOptions;
   LAction := SelectedAction;
+  { A fresh session has nothing to repair. Also normalize a restored browser
+    form value or a queued scope edit before asking the owner to execute. }
+  if not FStudio.HasBaseline then
+  begin
+    LAction := msaGenerate;
+    FScopeSelect.value := 'full';
+  end;
   FOptions := LOptions;
   FAction := LAction;
   LSolved := FStudio.Run(LAction, LOptions);
@@ -1132,10 +1150,16 @@ begin
     FSeedInput.value := '0';
     DispatchDomEvent(FSeedInput, 'input');
     DispatchDomEvent(FNewSessionButton, 'click');
+    AssertTest(FScopeSelect.disabled and (FScopeSelect.value = 'full'),
+      'new session offered repair without a baseline');
+    { Simulate a restored stale form selection from the previous session. }
+    FScopeSelect.value := 'harmony';
     DispatchDomEvent(FGenerateButton, 'click');
     AssertTest(FStudio.HasCurrent and
       (FStudio.SignatureText = BASELINE_SIGNATURE),
       'same-seed new session did not restore the deterministic baseline');
+    AssertTest((FScopeSelect.value = 'full') and not FScopeSelect.disabled,
+      'baseline generation did not normalize stale repair selection');
 
     FBacktracksInput.value := '255';
     DispatchDomEvent(FBacktracksInput, 'input');
@@ -1473,6 +1497,7 @@ begin
     Generate;
     if Pos('selftest=1', window.location.search) > 0 then RunSelfTest
     else document.body.setAttribute('data-self-test', 'not-requested');
+    FArrangement.Run;
   except on E: Exception do ShowError(E.Message); end;
 end;
 

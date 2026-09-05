@@ -27,10 +27,6 @@ program PassComposition;
 
 uses
   SysUtils,
-  {$IFDEF PAS2JS}
-  NodeJSApp,
-  NodeJS,
-  {$ENDIF}
   wfc,
   wfc_model,
   wfc_sequence,
@@ -407,11 +403,7 @@ begin
     on E: Exception do
     begin
       WriteLn('PassComposition error: ', E.Message);
-      {$IFDEF PAS2JS}
-      TNJSProcess.exitCode := 1;
-      {$ELSE}
       Halt(1);
-      {$ENDIF}
     end;
   end;
 end.

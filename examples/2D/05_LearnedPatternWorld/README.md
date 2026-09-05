@@ -12,8 +12,8 @@ patterns -> terrain -> foliage
 
 The stable pass labels and indices are `patterns=0`, `terrain=1`, `foliage=2`,
 and `structure=3`. Every pass is an overlay on the same wrapped 8 by 6,
-depth-one graph. Both thin entry points call the same Pascal demo unit. Native
-FPC and pas2js/Node use only project units and their applicable standard RTL.
+depth-one graph. The native entry point calls the shared Pascal demo unit. Native
+FPC and pas2js use only project units and their applicable standard RTL.
 
 ## runtime learning and canonical artifact
 
@@ -61,7 +61,7 @@ pas2js test constructs both programmatic and decoded forms, requires one
 semantic identity, executes both, verifies the established rows and layer
 hashes, and round-trips every artifact byte exactly. The native side also
 compares generated text with all three checked-in files. Repository process
-gates run the real native and Node hosts, require validator canonical output,
+gates run the real native hosts, require validator canonical output,
 and compare runner output with the result file.
 
 | Artifact | Bytes | Signature |
@@ -154,22 +154,7 @@ fpc -B -Mdelphi -Sa -Cr -Co -Ci -Fusrc -Fuexamples/2D/05_LearnedPatternWorld -FU
 & '.\build\examples\learned-pattern-world\native\bin\LearnedPatternWorld.exe' 0
 ```
 
-Compile the Node entry point with a configured pas2js compiler and matching
-RTL on a POSIX shell:
-
-```sh
-mkdir -p build/examples/learned-pattern-world/pas2js/units build/examples/learned-pattern-world/pas2js/bin
-pas2js -B -Tnodejs -Mdelphi -Fusrc -Fuexamples/2D/05_LearnedPatternWorld -FUbuild/examples/learned-pattern-world/pas2js/units -FEbuild/examples/learned-pattern-world/pas2js/bin examples/2D/05_LearnedPatternWorld/LearnedPatternWorldNode.lpr
-node build/examples/learned-pattern-world/pas2js/bin/LearnedPatternWorldNode.js 0
-```
-
 The equivalent PowerShell commands are:
-
-```powershell
-New-Item -ItemType Directory -Force -Path 'build/examples/learned-pattern-world/pas2js/units','build/examples/learned-pattern-world/pas2js/bin' | Out-Null
-pas2js -B -Tnodejs -Mdelphi -Fusrc -Fuexamples/2D/05_LearnedPatternWorld -FUbuild/examples/learned-pattern-world/pas2js/units -FEbuild/examples/learned-pattern-world/pas2js/bin examples/2D/05_LearnedPatternWorld/LearnedPatternWorldNode.lpr
-node '.\build\examples\learned-pattern-world\pas2js\bin\LearnedPatternWorldNode.js' 0
-```
 
 Omit the argument to use seed 0, or pass any unsigned 32-bit seed. Seed-zero
 identities are permanent compatibility fixtures:
@@ -186,7 +171,7 @@ identities are permanent compatibility fixtures:
 | complete pipeline | `38FE98C4` |
 
 These values and the complete console output have been measured unchanged on
-native FPC 3.2.2, native FPC 3.3.1, and pas2js 3.3.1 running under Node. A
+native FPC 3.2.2, native FPC 3.3.1, and historical pas2js 3.3.1 runs. A
 golden change is a model or compatibility decision, not an automatic constant
 update.
 
@@ -237,5 +222,5 @@ structure: D=dock H=hut M=mine
 - This is an exact discrete constraint pipeline. It does not implement soft
   objectives, learned scoring, conflict-directed repair, or a minimal-change
   repair guarantee.
-- The pas2js host targets Node for deterministic parity. It does not include a
-  browser UI or require a JavaScript framework.
+- This example has a native command-line host. The shared model and pipeline
+  remain portable Pascal; it does not include a browser UI.

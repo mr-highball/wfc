@@ -183,7 +183,7 @@ The conformance suite fixes known-answer vectors for seeds `0`, `1`,
 `$DEADBEEF`, and `$FFFFFFFF`, the first two jumped streams, forced rejection
 sampling, bottom-up and wrapped top-down 3D grids, and a three-pass
 terrain/foliage/copy pipeline. Those output fixtures are checked by both native
-FPC and pas2js/Node.
+FPC and pas2js.
 
 The specialized 2D suite also freezes a complete terrain → biome → foliage
 fixture as `1:F7B994F3:E2E8E15B:21B79A66`. Its versioned CRC-32 stream uses

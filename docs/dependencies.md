@@ -49,10 +49,10 @@ the adapter.
 
 In project documentation, “dependency-free” means free of third-party runtime
 libraries. Repository units, the applicable standard RTL, the selected
-compiler, and host APIs such as the console, Node process, or browser DOM are
+compiler, and host APIs such as the console or browser DOM are
 still the execution substrate.
 
-Thin native and Node command hosts may call the standard stream/filesystem and
+Thin native command hosts may call the standard stream/filesystem and
 process APIs needed for bounded byte I/O and exit status. Those calls may not
 parse, normalize, validate, hash, compile, solve, or serialize a portable
 artifact; the shared repository Pascal implementation remains authoritative.
@@ -69,6 +69,15 @@ An optional edge must satisfy all of these conditions:
 Build, test, profiling, documentation, conversion, and inspection tools may be
 used during development. Their output is evidence, not a replacement for a
 portable implementation or validator.
+
+Maintained serving and verification commands must also be project-owned FPC.
+The repository includes its static development server and browser-evidence
+checker; do not introduce a separate interpreter, server runtime, or package
+manager for serving or portable validation. Platform shell entry points may
+orchestrate compilers and child processes; portable semantic checks remain in
+the shared Pascal suites. Native command-line hosts use FPC;
+the JavaScript execution target is the browser, with pas2js and its matching
+RTL staged together. See [development tools](development-tools.md).
 
 ## legacy and experimental integrations
 

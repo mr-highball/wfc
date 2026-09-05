@@ -11,7 +11,7 @@ backtrack available, it records the rejected round, excludes the exact
 provider assignment `terrain=[marsh]`, reruns from the same seed, and commits
 `meadow|cottage` atomically.
 
-The example is an executable golden on both hosts. It requires:
+The example is an executable native golden. It requires:
 
 - one-way trace `42AF302E`;
 - one rejected round and two total rounds;
@@ -35,13 +35,6 @@ native host:
 ```text
 fpc -B -Mdelphi -Sa -Cr -Co -Ci -Fusrc -Fuexamples/passes/03_PassNegotiation -FUbuild/pass-negotiation/native/units -FEbuild/pass-negotiation/native/bin examples/passes/03_PassNegotiation/PassNegotiation.lpr
 build/pass-negotiation/native/bin/PassNegotiation
-```
-
-The Node host compiles the same shared Pascal demonstration unit:
-
-```text
-pas2js -B -Tnodejs -Mdelphi -Fusrc -Fuexamples/passes/03_PassNegotiation -FUbuild/pass-negotiation/pas2js/units -FEbuild/pass-negotiation/pas2js/bin examples/passes/03_PassNegotiation/PassNegotiationNode.lpr
-node build/pass-negotiation/pas2js/bin/PassNegotiationNode.js
 ```
 
 Both paths use only repository units and the applicable standard RTL. Either

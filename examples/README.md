@@ -6,28 +6,28 @@ the [roadmap](../ROADMAP.md).
 
 | Area | Entry point | Targets | Current proof and dependencies |
 | --- | --- | --- | --- |
-| Music Studio | [music/05_MusicStudio](music/05_MusicStudio/README.md) | Native FPC, pas2js/Node, pas2js/browser | Original training phrases, public locks, selective negotiated repair, piano roll, project-owned PCM/WAV synthesis, user-initiated browser playback, and exact score/MIDI/WAV exports without a third-party runtime. |
-| Spatial pass constraints | `passes/01_SpatialDependencies/SpatialDependencies.lpr` and `SpatialDependenciesNode.lpr` | Native FPC, pas2js/Node | Solves terrain before settlement and foliage, checks exact-offset AND clauses plus finite any-neighbor OR clauses, contrasts bounded and wrapped edges, rejects an out-of-bounds probe, and replays portable signatures using only repository units and the standard RTL. |
-| Causal trace inspector | `passes/02_TraceInspector/TraceInspector.lpr` and `TraceInspectorNode.lpr` | Native FPC, pas2js/Node | Captures and validates a deterministic terrain -> settlement -> foliage transaction, prints its portable trace hash, pass slices, and all 27 events, then follows a rejected foliage candidate back to its settlement provider event. Both hosts emit the same event stream using only repository units and the standard RTL. |
-| Bounded pass negotiation | `passes/03_PassNegotiation/PassNegotiation.lpr` and `PassNegotiationNode.lpr` | Native FPC, pas2js/Node | Proves ordinary one-way staging fails for `marsh`, then excludes that exact provider assignment and reopens terrain to commit `meadow|cottage` in two deterministic rounds. Both hosts enforce the same counters and transcript using only repository units and the standard RTL. |
-| Multi-pass 2D world | `2D/01_MultiPassWorld/MultiPassWorld.lpr` | Native FPC, pas2js/Node | Uses the reusable 2D units, solves terrain → biome → foliage atomically, independently validates every cell/relation, and prints matching portable signatures without external dependencies. |
+| Music Studio | [music/05_MusicStudio](music/05_MusicStudio/README.md) | Native FPC, pas2js/browser | Original training phrases, public locks, selective negotiated repair, piano roll, project-owned PCM/WAV synthesis, user-initiated browser playback, and exact score/MIDI/WAV exports without a third-party runtime. |
+| Spatial pass constraints | `passes/01_SpatialDependencies/SpatialDependencies.lpr` | Native FPC | Solves terrain before settlement and foliage, checks exact-offset AND clauses plus finite any-neighbor OR clauses, contrasts bounded and wrapped edges, rejects an out-of-bounds probe, and replays portable signatures using only repository units and the standard RTL. |
+| Causal trace inspector | `passes/02_TraceInspector/TraceInspector.lpr` | Native FPC | Captures and validates a deterministic terrain -> settlement -> foliage transaction, prints its portable trace hash, pass slices, and all 27 events, then follows a rejected foliage candidate back to its settlement provider event. The host emits the same event stream using only repository units and the standard RTL. |
+| Bounded pass negotiation | `passes/03_PassNegotiation/PassNegotiation.lpr` | Native FPC | Proves ordinary one-way staging fails for `marsh`, then excludes that exact provider assignment and reopens terrain to commit `meadow|cottage` in two deterministic rounds. The host enforces the same counters and transcript using only repository units and the standard RTL. |
+| Multi-pass 2D world | `2D/01_MultiPassWorld/MultiPassWorld.lpr` | Native FPC | Uses the reusable 2D units, solves terrain → biome → foliage atomically, independently validates every cell/relation, and prints matching portable signatures without external dependencies. |
 | Interactive browser world | `2D/02_BrowserWorld/BrowserWorld.lpr` | pas2js/browser | Runs the same model and validator in a responsive three-layer canvas UI with seeds, wrapping, cell locks, and an exact headless-browser fixture. |
-| Selective settlement | `2D/03_SelectiveSettlement/SelectiveSettlement.lpr` | Native FPC, pas2js/Node | Solves a six-layer dependency DAG, edits hydrology, regenerates only its dependent closure, independently validates the result, proves rollback and exact recovery, and uses no external dependency. |
-| Negotiated descendant repair | `2D/04_NegotiatedRepair/NegotiatedRepair.lpr` and `NegotiatedRepairNode.lpr` | Native FPC, pas2js/Node | Contrasts a too-narrow housing repair horizon with a successful roads-root horizon, excludes one exact roads assignment, verifies immutable provider values and random streams, and replays separately versioned selective and nested transcripts using only repository units and the standard RTL. |
-| Learned-pattern world | `2D/05_LearnedPatternWorld/LearnedPatternWorld.lpr` and `LearnedPatternWorldNode.lpr` | Native FPC, pas2js/Node | Learns wrapped `2x2` terrain structure at runtime, materializes private pattern anchors as a public pass, composes foliage and structure, independently validates every contribution, and proves exact downstream rollback/recovery. Its checked `pipeline/` bundle also exercises bridge-v2 inverse lowering from portable public locks. |
-| Learned tiles | `learning/01_LearnTiles/LearnTiles.lpr` | Native FPC, pas2js/Node | Learns weighted cardinal constraints from a tokenized sample, serializes the immutable model canonically, generates a seeded grid, and independently validates every emitted adjacency without external dependencies. |
-| Learned corpus | `learning/02_LearnCorpus/LearnCorpus.lpr` | Native FPC, pas2js/Node | Learns one directed model from two differently sized samples, proves their local wraps and absent cross-sample seams, round-trips canonical `wfcm=2`, and independently validates generated orientation. |
-| Editable training documents | [learning/04_TrainingDocuments](learning/04_TrainingDocuments/README.md) | Native FPC, pas2js/Node | Four pretokenized corpora train through the project-owned CLI into cardinal, pattern, or sequence recipes; exact source/model/recipe/run/result bundles retain declared provenance and replay through real validator/runner processes. |
-| Training Studio | [learning/05_TrainingStudio](learning/05_TrainingStudio/README.md) | Native FPC, pas2js/Node, pas2js/browser | Editable corpora, explicit Unicode-scalar text import, seeded runs, public locks, failure inspection, and artifact exports share one invalidation-aware Pascal workspace; five native/Node presets and an event-path browser fixture validate the workflow. |
-| Overlapping patterns | `learning/03_LearnPatterns/LearnPatterns.lpr` | Native FPC, pas2js/Node | Learns weighted `2x2` structure from heterogeneous grids with D4 augmentation, round-trips strict `wfcp=1`, solves private latent patterns, independently validates every overlap and projected token contribution, and prints a portable signature without external dependencies. |
-| Learned sequence | `sequence/01_LearnSequence/LearnSequence.lpr` | Native FPC, pas2js/Node | Learns bounded order-2 latent states from a pretokenized UTF-8 corpus, round-trips strict `wfcs=1`, constrains public projection, solves and independently validates the path, and exposes no private graph key or external dependency. |
-| Text constraint completion | `text/02_ConstraintCompletion/ConstraintCompletion.lpr` and `ConstraintCompletionNode.lpr` | Native FPC, pas2js/Node | Learns project-authored raw text with the project-owned Unicode-scalar tokenizer, exposes exact feasible domains, composes prefix/suffix/mask/interior locks, distinguishes prefix from whole-sample boundaries, independently validates anchored infill, and replays without an external dependency. |
-| Three-pass text composition | `text/03_PassComposition/TextPassComposition.lpr`, `TextPassCompositionNode.lpr`, and `BrowserTextPassComposition.lpr` | Native FPC, pas2js/Node, pas2js/browser | Gives structure, lexical choice, and punctuation separate latent owners; constrains the surface from both prior passes; independently validates and renders exact fragments; publishes a private-key-safe trace; and provides an interactive lock/contradiction workbench with an exact browser fixture. Repository units and the standard RTL are the complete runtime path. |
-| Pass-composed music | `music/03_PassComposition/PassComposition.lpr` | Native FPC, pas2js/Node | Solves harmony and rhythm before a jointly constrained melody, rebuilds an exact score, round-trips strict `wfcmusic=1` and project-owned SMF bytes, and needs no playback or external dependency. |
-| Negotiated music variation | `music/04_NegotiatedVariation/NegotiatedVariation.lpr` and `NegotiatedVariationNode.lpr` | Native FPC, pas2js/Node | Preserves a public melody motif, proves an ordinary atomic regeneration failure, reopens an explicit provider horizon through bounded negotiation, validates the immutable composition, and replays strict `wfcmusicpass=1` without exposing latent keys or adding a runtime dependency. |
-| Text-rendered 2D world | `text/01_SimpleTiledWorld/SimpleTiledWorld.lpr` | Native FPC, pas2js/Node | Builds and runs from the same Pascal source, prints and accepts an optional replay seed, and needs no external dependency. This is world generation rendered as text, not a text-prediction model. |
-| Voxel 3D foundation | `../test/wfc_voxel3d_test.lpr` | Native FPC, pas2js/Node | Proves deterministic yaw variants, exact six-face sockets, vertical support, captured scene signatures, independent entrance/connectivity validation, wrapped seams, and renderer-neutral integer meshes using only repository units and the standard RTL. |
-| Multi-pass Building 3D | `3D/02_MultiPassBuilding/MultiPassBuilding.lpr` and `MultiPassBuildingNode.lpr` | Native FPC, pas2js/Node | Runs one depth-three footprint -> structure -> envelope/roof -> props DAG, keeps voxel keys private through checked prototype maps, validates support/entrance/reachability and every cross-layer cell independently, captures an integer mesh, and replays a portable public signature without external dependencies. |
+| Selective settlement | `2D/03_SelectiveSettlement/SelectiveSettlement.lpr` | Native FPC | Solves a six-layer dependency DAG, edits hydrology, regenerates only its dependent closure, independently validates the result, proves rollback and exact recovery, and uses no external dependency. |
+| Negotiated descendant repair | `2D/04_NegotiatedRepair/NegotiatedRepair.lpr` | Native FPC | Contrasts a too-narrow housing repair horizon with a successful roads-root horizon, excludes one exact roads assignment, verifies immutable provider values and random streams, and replays separately versioned selective and nested transcripts using only repository units and the standard RTL. |
+| Learned-pattern world | `2D/05_LearnedPatternWorld/LearnedPatternWorld.lpr` | Native FPC | Learns wrapped `2x2` terrain structure at runtime, materializes private pattern anchors as a public pass, composes foliage and structure, independently validates every contribution, and proves exact downstream rollback/recovery. Its checked `pipeline/` bundle also exercises bridge-v2 inverse lowering from portable public locks. |
+| Learned tiles | `learning/01_LearnTiles/LearnTiles.lpr` | Native FPC | Learns weighted cardinal constraints from a tokenized sample, serializes the immutable model canonically, generates a seeded grid, and independently validates every emitted adjacency without external dependencies. |
+| Learned corpus | `learning/02_LearnCorpus/LearnCorpus.lpr` | Native FPC | Learns one directed model from two differently sized samples, proves their local wraps and absent cross-sample seams, round-trips canonical `wfcm=2`, and independently validates generated orientation. |
+| Editable training documents | [learning/04_TrainingDocuments](learning/04_TrainingDocuments/README.md) | Native FPC | Four pretokenized corpora train through the project-owned CLI into cardinal, pattern, or sequence recipes; exact source/model/recipe/run/result bundles retain declared provenance and replay through real validator/runner processes. |
+| Training Studio | [learning/05_TrainingStudio](learning/05_TrainingStudio/README.md) | Native FPC, pas2js/browser | Editable corpora, explicit Unicode-scalar text import, seeded runs, public locks, failure inspection, and artifact exports share one invalidation-aware Pascal workspace; five native presets and an event-path browser fixture validate the workflow. |
+| Overlapping patterns | `learning/03_LearnPatterns/LearnPatterns.lpr` | Native FPC | Learns weighted `2x2` structure from heterogeneous grids with D4 augmentation, round-trips strict `wfcp=1`, solves private latent patterns, independently validates every overlap and projected token contribution, and prints a portable signature without external dependencies. |
+| Learned sequence | `sequence/01_LearnSequence/LearnSequence.lpr` | Native FPC | Learns bounded order-2 latent states from a pretokenized UTF-8 corpus, round-trips strict `wfcs=1`, constrains public projection, solves and independently validates the path, and exposes no private graph key or external dependency. |
+| Text constraint completion | `text/02_ConstraintCompletion/ConstraintCompletion.lpr` | Native FPC | Learns project-authored raw text with the project-owned Unicode-scalar tokenizer, exposes exact feasible domains, composes prefix/suffix/mask/interior locks, distinguishes prefix from whole-sample boundaries, independently validates anchored infill, and replays without an external dependency. |
+| Three-pass text composition | `text/03_PassComposition/TextPassComposition.lpr`, and `BrowserTextPassComposition.lpr` | Native FPC, pas2js/browser | Gives structure, lexical choice, and punctuation separate latent owners; constrains the surface from both prior passes; independently validates and renders exact fragments; publishes a private-key-safe trace; and provides an interactive lock/contradiction workbench with an exact browser fixture. Repository units and the standard RTL are the complete runtime path. |
+| Pass-composed music | `music/03_PassComposition/PassComposition.lpr` | Native FPC | Solves harmony and rhythm before a jointly constrained melody, rebuilds an exact score, round-trips strict `wfcmusic=1` and project-owned SMF bytes, and needs no playback or external dependency. |
+| Negotiated music variation | `music/04_NegotiatedVariation/NegotiatedVariation.lpr` | Native FPC | Preserves a public melody motif, proves an ordinary atomic regeneration failure, reopens an explicit provider horizon through bounded negotiation, validates the immutable composition, and replays strict `wfcmusicpass=1` without exposing latent keys or adding a runtime dependency. |
+| Text-rendered 2D world | `text/01_SimpleTiledWorld/SimpleTiledWorld.lpr` | Native FPC | Builds and runs from the same Pascal source, prints and accepts an optional replay seed, and needs no external dependency. This is world generation rendered as text, not a text-prediction model. |
+| Voxel 3D foundation | `../test/wfc_voxel3d_test.lpr` | Native FPC | Proves deterministic yaw variants, exact six-face sockets, vertical support, captured scene signatures, independent entrance/connectivity validation, wrapped seams, and renderer-neutral integer meshes using only repository units and the standard RTL. |
+| Multi-pass Building 3D | `3D/02_MultiPassBuilding/MultiPassBuilding.lpr` | Native FPC | Runs one depth-three footprint -> structure -> envelope/roof -> props DAG, keeps voxel keys private through checked prototype maps, validates support/entrance/reachability and every cross-layer cell independently, captures an integer mesh, and replays a portable public signature without external dependencies. |
 | Graphical Building 3D | `3D/03_BrowserBuilding/Building3DSvg.lpr` and `BrowserBuilding.lpr` | Native FPC/SVG, pas2js/browser | Builds one immutable public-lineage view over the shared four-pass showcase, projects fixed-integer commands through four yaws, writes deterministic SVG, and renders an interactive Canvas2D workbench with picking and an exact seed-zero browser fixture. It uses repository units plus the applicable standard RTL; Canvas2D is only the browser edge. |
 | Building-kit console | `3D/01_SimpleBuildingKit/tester.lpr` | Native FPC | Builds without Castle Game Engine, but its current fixture reaches a no-valid-value failure before rendering. It does not yet prove vertical 3D constraints. |
 | Castle viewer shell | `3D/01_SimpleBuildingKit/castle-demo/` | Native Castle Game Engine | The project shell and assets exist, but its game state does not yet call WFC or render generated building geometry. |
@@ -54,27 +54,14 @@ the repository root, the native tiled world is:
 fpc -B -Mdelphi -Sa -Cr -Co -Ci -Fusrc -FUbuild/examples/text/native/units -FEbuild/examples/text/native/bin examples/text/01_SimpleTiledWorld/SimpleTiledWorld.lpr
 ```
 
-With a configured pas2js RTL installation, the same source targets Node.js:
-
-```text
-pas2js -B -Tnodejs -Mdelphi -Fusrc -FUbuild/examples/text/pas2js/units -FEbuild/examples/text/pas2js/bin examples/text/01_SimpleTiledWorld/SimpleTiledWorld.lpr
-node build/examples/text/pas2js/bin/SimpleTiledWorld.js
-```
-
-Pass an optional unsigned 32-bit seed as the first argument on either target,
-for example `SimpleTiledWorld.exe 3735928559` or
-`node SimpleTiledWorld.js 3735928559`.
+Pass an optional unsigned 32-bit seed as the first argument,
+for example `SimpleTiledWorld.exe 3735928559`.
 
 The multi-pass world uses the same dependency-free pattern:
 
 ```text
 fpc -B -Mdelphi -Sa -Cr -Co -Ci -Fusrc -Fuexamples/2D/common -FUbuild/examples/2d/native/units -FEbuild/examples/2d/native/bin examples/2D/01_MultiPassWorld/MultiPassWorld.lpr
 build/examples/2d/native/bin/MultiPassWorld 0
-```
-
-```text
-pas2js -B -Tnodejs -Mdelphi -Fusrc -Fuexamples/2D/common -FUbuild/examples/2d/pas2js/units -FEbuild/examples/2d/pas2js/bin examples/2D/01_MultiPassWorld/MultiPassWorld.lpr
-node build/examples/2d/pas2js/bin/MultiPassWorld.js 0
 ```
 
 The selective-settlement example exercises branching, joins, named cross-pass
@@ -85,17 +72,12 @@ fpc -B -Mdelphi -Sa -Cr -Co -Ci -Fusrc -Fuexamples/2D/common -FUbuild/examples/s
 build/examples/settlement/native/bin/SelectiveSettlement 0
 ```
 
-```text
-pas2js -B -Tnodejs -Mdelphi -Fusrc -Fuexamples/2D/common -FUbuild/examples/settlement/pas2js/units -FEbuild/examples/settlement/pas2js/bin examples/2D/03_SelectiveSettlement/SelectiveSettlement.lpr
-node build/examples/settlement/pas2js/bin/SelectiveSettlement.js 0
-```
-
 See the [selective-settlement guide](2D/03_SelectiveSettlement/README.md) and
 the [pass-DAG contract](../docs/pass-dags.md) for its dependency shape,
 constraints, transactional edit story, and replay identity.
 
 The negotiated-repair example applies bounded pass negotiation to an explicit
-descendant horizon. Its native and Node hosts share one self-checking Pascal
+descendant horizon. Its native hosts share one self-checking Pascal
 unit:
 
 ```text
@@ -103,12 +85,7 @@ fpc -B -Mdelphi -Sa -Cr -Co -Ci -Fusrc -Fuexamples/2D/04_NegotiatedRepair -FUbui
 build/examples/negotiated-repair/native/bin/NegotiatedRepair
 ```
 
-```text
-pas2js -B -Tnodejs -Mdelphi -Fusrc -Fuexamples/2D/04_NegotiatedRepair -FUbuild/examples/negotiated-repair/pas2js/units -FEbuild/examples/negotiated-repair/pas2js/bin examples/2D/04_NegotiatedRepair/NegotiatedRepairNode.lpr
-node build/examples/negotiated-repair/pas2js/bin/NegotiatedRepairNode.js
-```
-
-Both hosts print the same seed-zero proof: the housing-root horizon fails with
+The host prints the seed-zero proof: the housing-root horizon fails with
 hash `7A595E38`; the roads-root repair has nested negotiation hash `80926222`
 and selective transcript hash `E29050A0`; the full-pipeline comparison has
 transcript `9DB789E4`. See the
@@ -116,33 +93,22 @@ transcript `9DB789E4`. See the
 [Selective Negotiation v1 contract](../docs/selective-negotiation.md) for the
 scope equation, immutable-provider boundary, complete output, and limitations.
 
-The spatial-dependency example is the focused Pipeline v2 proof. Native FPC
-and pas2js/Node use separate thin hosts over the same Pascal unit:
+The spatial-dependency example is the focused Pipeline v2 proof. A native FPC
+host calls the shared Pascal demonstration unit:
 
 ```text
 fpc -B -Mdelphi -Sa -Cr -Co -Ci -Fusrc -FUbuild/examples/spatial/native/units -FEbuild/examples/spatial/native/bin examples/passes/01_SpatialDependencies/SpatialDependencies.lpr
 build/examples/spatial/native/bin/SpatialDependencies 0
 ```
 
-```text
-pas2js -B -Tnodejs -Mdelphi -Fusrc -FUbuild/examples/spatial/pas2js/units -FEbuild/examples/spatial/pas2js/bin examples/passes/01_SpatialDependencies/SpatialDependenciesNode.lpr
-node build/examples/spatial/pas2js/bin/SpatialDependenciesNode.js 0
-```
-
 See the [spatial-dependency guide](passes/01_SpatialDependencies/README.md)
 for its clauses, boundary proof, self-check, and golden output.
 
-The causal-trace inspector is another shared-unit example with thin native and
-Node hosts:
+The causal-trace inspector uses a thin native host over a shared Pascal unit:
 
 ```text
 fpc -B -Mdelphi -Sa -Cr -Co -Ci -Fusrc -Fuexamples/passes/02_TraceInspector -FUbuild/trace-inspector/native/units -FEbuild/trace-inspector/native/bin examples/passes/02_TraceInspector/TraceInspector.lpr
 build/trace-inspector/native/bin/TraceInspector
-```
-
-```text
-pas2js -B -Tnodejs -Mdelphi -Fusrc -Fuexamples/passes/02_TraceInspector -FUbuild/trace-inspector/pas2js/units -FEbuild/trace-inspector/pas2js/bin examples/passes/02_TraceInspector/TraceInspectorNode.lpr
-node build/trace-inspector/pas2js/bin/TraceInspectorNode.js
 ```
 
 Both produce the 27-event seed-zero trace hash `73C4B9A2`, validate the report,
@@ -151,33 +117,23 @@ and print the same backward chain from foliage event `15` to settlement event
 signature contract, query helpers, and current limits.
 
 The bounded pass-negotiation example makes the one-way failure and repaired
-composition executable on both hosts:
+composition executable in the native host:
 
 ```text
 fpc -B -Mdelphi -Sa -Cr -Co -Ci -Fusrc -Fuexamples/passes/03_PassNegotiation -FUbuild/pass-negotiation/native/units -FEbuild/pass-negotiation/native/bin examples/passes/03_PassNegotiation/PassNegotiation.lpr
 build/pass-negotiation/native/bin/PassNegotiation
 ```
 
-```text
-pas2js -B -Tnodejs -Mdelphi -Fusrc -Fuexamples/passes/03_PassNegotiation -FUbuild/pass-negotiation/pas2js/units -FEbuild/pass-negotiation/pas2js/bin examples/passes/03_PassNegotiation/PassNegotiationNode.lpr
-node build/pass-negotiation/pas2js/bin/PassNegotiationNode.js
-```
-
 See the [pass-negotiation guide](passes/03_PassNegotiation/README.md) for the
 exact excluded assignment, bounded chronological behavior, portable goldens,
 and fail-fast self-check.
 
-The standard Building 3D host uses a thin native or Node entry point over the
+The standard Building 3D host uses a thin native entry point over the
 same depth-three Pascal demonstration unit:
 
 ```text
 fpc -B -Mdelphi -Sa -Cr -Co -Ci -Fusrc -Fuexamples/3D/common -Fuexamples/3D/02_MultiPassBuilding -FUbuild/examples/building3d/native/units -FEbuild/examples/building3d/native/bin examples/3D/02_MultiPassBuilding/MultiPassBuilding.lpr
 build/examples/building3d/native/bin/MultiPassBuilding 0
-```
-
-```text
-pas2js -B -Tnodejs -Mdelphi -Fusrc -Fuexamples/3D/common -Fuexamples/3D/02_MultiPassBuilding -FUbuild/examples/building3d/pas2js/units -FEbuild/examples/building3d/pas2js/bin examples/3D/02_MultiPassBuilding/MultiPassBuildingNode.lpr
-node build/examples/building3d/pas2js/bin/MultiPassBuildingNode.js 0
 ```
 
 See the [example guide](3D/02_MultiPassBuilding/README.md) and
@@ -225,11 +181,6 @@ fpc -B -Mdelphi -Sa -Cr -Co -Ci -Fusrc -FUbuild/examples/learning/native/units -
 build/examples/learning/native/bin/LearnTiles 0
 ```
 
-```text
-pas2js -B -Tnodejs -Mdelphi -Fusrc -FUbuild/examples/learning/pas2js/units -FEbuild/examples/learning/pas2js/bin examples/learning/01_LearnTiles/LearnTiles.lpr
-node build/examples/learning/pas2js/bin/LearnTiles.js 0
-```
-
 Its optional first argument is the unsigned 32-bit replay seed. See the
 [learned-tiles guide](learning/01_LearnTiles/README.md) for the sample,
 invariants, output, and current radius-one limitation.
@@ -242,11 +193,6 @@ fpc -B -Mdelphi -Sa -Cr -Co -Ci -Fusrc -FUbuild/examples/learning-corpus/native/
 build/examples/learning-corpus/native/bin/LearnCorpus 0
 ```
 
-```text
-pas2js -B -Tnodejs -Mdelphi -Fusrc -FUbuild/examples/learning-corpus/pas2js/units -FEbuild/examples/learning-corpus/pas2js/bin examples/learning/02_LearnCorpus/LearnCorpus.lpr
-node build/examples/learning-corpus/pas2js/bin/LearnCorpus.js 0
-```
-
 See the [corpus-learning guide](learning/02_LearnCorpus/README.md) for the exact
 samples, deterministic ordering, no-seam invariant, and expected output.
 
@@ -256,11 +202,6 @@ explicit latent assignment and projection boundary:
 ```text
 fpc -B -Mdelphi -Sa -Cr -Co -Ci -Fusrc -FUbuild/examples/pattern/native/units -FEbuild/examples/pattern/native/bin examples/learning/03_LearnPatterns/LearnPatterns.lpr
 build/examples/pattern/native/bin/LearnPatterns 0
-```
-
-```text
-pas2js -B -Tnodejs -Mdelphi -Fusrc -FUbuild/examples/pattern/pas2js/units -FEbuild/examples/pattern/pas2js/bin examples/learning/03_LearnPatterns/LearnPatterns.lpr
-node build/examples/pattern/pas2js/bin/LearnPatterns.js 0
 ```
 
 See the [overlapping-pattern guide](learning/03_LearnPatterns/README.md) and
@@ -278,14 +219,6 @@ fpc -B -Mdelphi -Sa -Cr -Co -Ci -Fusrc \
   -FEbuild/examples/pattern-world/native/bin \
   examples/2D/05_LearnedPatternWorld/LearnedPatternWorld.lpr
 build/examples/pattern-world/native/bin/LearnedPatternWorld 0
-
-mkdir -p build/examples/pattern-world/pas2js/units build/examples/pattern-world/pas2js/bin
-pas2js -B -Tnodejs -Mdelphi -Fusrc \
-  -Fuexamples/2D/05_LearnedPatternWorld \
-  -FUbuild/examples/pattern-world/pas2js/units \
-  -FEbuild/examples/pattern-world/pas2js/bin \
-  examples/2D/05_LearnedPatternWorld/LearnedPatternWorldNode.lpr
-node build/examples/pattern-world/pas2js/bin/LearnedPatternWorldNode.js 0
 ```
 
 Seed zero learns `17` patterns and pins canonical bytes `2130`, model hash
@@ -305,11 +238,6 @@ fpc -B -Mdelphi -Sa -Cr -Co -Ci -Fusrc -FUbuild/examples/sequence/native/units -
 build/examples/sequence/native/bin/LearnSequence 0
 ```
 
-```text
-pas2js -B -Tnodejs -Mdelphi -Fusrc -FUbuild/examples/sequence/pas2js/units -FEbuild/examples/sequence/pas2js/bin examples/sequence/01_LearnSequence/LearnSequence.lpr
-node build/examples/sequence/pas2js/bin/LearnSequence.js 0
-```
-
 See the [sequence example guide](sequence/01_LearnSequence/README.md) and
 [sequence-model documentation](../docs/sequences.md) for the bounded/open
 learning contract, derived wrapped-cycle semantics, pass projection, and
@@ -325,11 +253,6 @@ fpc -B -Mdelphi -Sa -Cr -Co -Ci -Fusrc -Fuexamples/text/02_ConstraintCompletion 
 build/examples/text-completion/native/bin/ConstraintCompletion 0
 ```
 
-```text
-pas2js -B -Tnodejs -Mdelphi -Fusrc -Fuexamples/text/02_ConstraintCompletion -FUbuild/examples/text-completion/pas2js/units -FEbuild/examples/text-completion/pas2js/bin examples/text/02_ConstraintCompletion/ConstraintCompletionNode.lpr
-node build/examples/text-completion/pas2js/bin/ConstraintCompletionNode.js 0
-```
-
 See the [constraint-completion guide](text/02_ConstraintCompletion/README.md)
 and [text foundation](../docs/text.md) for scalar offsets, extent semantics,
 domain analysis, independent validation, replay inputs, and the non-LLM scope.
@@ -341,11 +264,6 @@ trace:
 ```text
 fpc -B -Mdelphi -Sa -Cr -Co -Ci -Fusrc -Fuexamples/text/03_PassComposition -FUbuild/examples/text-passes/native/units -FEbuild/examples/text-passes/native/bin examples/text/03_PassComposition/TextPassComposition.lpr
 build/examples/text-passes/native/bin/TextPassComposition 0
-```
-
-```text
-pas2js -B -Tnodejs -Mdelphi -Fusrc -Fuexamples/text/03_PassComposition -FUbuild/examples/text-passes/pas2js/units -FEbuild/examples/text-passes/pas2js/bin examples/text/03_PassComposition/TextPassCompositionNode.lpr
-node build/examples/text-passes/pas2js/bin/TextPassCompositionNode.js 0
 ```
 
 Seed zero renders `A sun rises brightly!` with portable signature
@@ -363,30 +281,20 @@ fpc -B -Mdelphi -Sa -Cr -Co -Ci -Fusrc -FUbuild/examples/music/native/units -FEb
 build/examples/music/native/bin/PassComposition 0
 ```
 
-```text
-pas2js -B -Tnodejs -Mdelphi -Fusrc -FUbuild/examples/music/pas2js/units -FEbuild/examples/music/pas2js/bin examples/music/03_PassComposition/PassComposition.lpr
-node build/examples/music/pas2js/bin/PassComposition.js 0
-```
-
 Create the named output directories first. See the
 [pass-composition guide](music/03_PassComposition/README.md) and
 [music foundation](../docs/music.md) for the exact cell, score, artifact, and
-MIDI contracts. This is a console/Node proof; it does not claim a browser UI or
+MIDI contracts. This is a console proof; it does not claim a browser UI or
 playback.
 
 The negotiated-variation example uses the reusable owner and an explicit
-repair horizon. Native and Node hosts share the same fixture unit. Create the
-named native or pas2js output directories first; the linked guide gives both
+repair horizon. The native host shares the same fixture unit. Create the
+named native output directories first; the linked guide gives both
 PowerShell and POSIX commands:
 
 ```text
 fpc -B -Mdelphi -Sa -Cr -Co -Ci -Fusrc -Fuexamples/music/04_NegotiatedVariation -FUbuild/examples/music-variation/native/units -FEbuild/examples/music-variation/native/bin examples/music/04_NegotiatedVariation/NegotiatedVariation.lpr
 build/examples/music-variation/native/bin/NegotiatedVariation 0
-```
-
-```text
-pas2js -B -Tnodejs -Mdelphi -Fusrc -Fuexamples/music/04_NegotiatedVariation -FUbuild/examples/music-variation/pas2js/units -FEbuild/examples/music-variation/pas2js/bin examples/music/04_NegotiatedVariation/NegotiatedVariationNode.lpr
-node build/examples/music-variation/pas2js/bin/NegotiatedVariationNode.js 0
 ```
 
 See the
@@ -438,7 +346,7 @@ The [Music Studio guide](music/05_MusicStudio/README.md) is the entry point
 for audible, interactive music generation. Its shared Pascal owner trains
 four original short phrases, exposes harmony/rhythm/melody public locks,
 preserves motifs through bounded selective negotiation, and independently
-validates every current composition. Native and Node hosts export score and
+validates every current composition. The native host exports score and
 composition text, MIDI, and the same project-owned four-second PCM/WAV.
 The pas2js browser host adds layer grids, a piano roll, public-token editing,
 failure evidence, user-initiated playback, and downloads. Build it with

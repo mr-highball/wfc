@@ -26,6 +26,7 @@ program wfc_training_text_test;
 {$mode delphi}{$H+}
 
 uses
+  {$IFDEF PAS2JS}wfc_browser_test_host,{$ENDIF}
   SysUtils,
   {$IFNDEF PAS2JS}Classes,{$ENDIF}
   wfc_model,

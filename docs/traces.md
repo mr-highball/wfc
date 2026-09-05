@@ -255,17 +255,12 @@ semantically correct.
 The shared example under `examples/passes/02_TraceInspector` solves
 terrain -> settlement -> foliage, independently checks its output and trace,
 prints every event, and walks one rejected foliage candidate backward to the
-provider-pass event. Native FPC and pas2js/Node run the same Pascal unit and
+provider-pass event. The native FPC host runs the shared Pascal unit and
 produce the same seed-zero event stream.
 
 ```text
 fpc -B -Mdelphi -Sa -Cr -Co -Ci -Fusrc -Fuexamples/passes/02_TraceInspector -FUbuild/trace-inspector/native/units -FEbuild/trace-inspector/native/bin examples/passes/02_TraceInspector/TraceInspector.lpr
 build/trace-inspector/native/bin/TraceInspector
-```
-
-```text
-pas2js -B -Tnodejs -Mdelphi -Fusrc -Fuexamples/passes/02_TraceInspector -FUbuild/trace-inspector/pas2js/units -FEbuild/trace-inspector/pas2js/bin examples/passes/02_TraceInspector/TraceInspectorNode.lpr
-node build/trace-inspector/pas2js/bin/TraceInspectorNode.js
 ```
 
 The current golden contract is 27 events with trace hash `73C4B9A2`.

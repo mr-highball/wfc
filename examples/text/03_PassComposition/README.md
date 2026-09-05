@@ -37,14 +37,6 @@ fpc -B -Mdelphi -Sa -Cr -Co -Ci -Fusrc -Fuexamples/text/03_PassComposition -FUbu
 build/examples/text-passes/native/bin/TextPassComposition 0
 ```
 
-## pas2js and Node
-
-```bash
-mkdir -p build/examples/text-passes/pas2js/units build/examples/text-passes/pas2js/bin
-pas2js -B -Tnodejs -Mdelphi -Fusrc -Fuexamples/text/03_PassComposition -FUbuild/examples/text-passes/pas2js/units -FEbuild/examples/text-passes/pas2js/bin examples/text/03_PassComposition/TextPassCompositionNode.lpr
-node build/examples/text-passes/pas2js/bin/TextPassCompositionNode.js 0
-```
-
 Both hosts use the same showcase unit. Seed zero is the checked replay fixture:
 
 ```text

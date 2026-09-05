@@ -38,7 +38,7 @@ The automated smoke seed `0` produces:
 1:5B0DD75D:08022AF1:A40D0955
 ```
 
-These signatures are identical under native FPC and pas2js/Node. The program
+These signatures are identical under native FPC. The program
 checks both known seeds against these constants and exits with an error if the
 showcase model drifts. They cover the final layer values, not console formatting
 or solver decision traces.
@@ -52,18 +52,9 @@ fpc -B -Mdelphi -Sa -Cr -Co -Ci -Fusrc -Fuexamples/2D/common -FUbuild/examples/2
 build/examples/2d/native/bin/MultiPassWorld 0
 ```
 
-With a configured pas2js compiler and matching RTL:
-
-```text
-pas2js -B -Tnodejs -Mdelphi -Fusrc -Fuexamples/2D/common -FUbuild/examples/2d/pas2js/units -FEbuild/examples/2d/pas2js/bin examples/2D/01_MultiPassWorld/MultiPassWorld.lpr
-node build/examples/2d/pas2js/bin/MultiPassWorld.js 0
-```
-
-Both root build scripts compile the demo and run noninteractive smoke tests for
-seed `0` and the default seed. The hosted pas2js lane does the same with its
-pinned compiler and Node.js runtime. This continuously verifies both documented
-signatures as well as shared-source transpilation and execution; it is not yet
-an interactive browser UI.
+Both root build scripts compile the native demo and run noninteractive smoke
+tests for seed `0` and the default seed. The separate BrowserWorld example
+provides the interactive pas2js UI over the same model and validator.
 
 ## invariants demonstrated
 

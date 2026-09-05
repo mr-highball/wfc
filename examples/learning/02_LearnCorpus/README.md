@@ -37,14 +37,6 @@ fpc -B -Mdelphi -Sa -Cr -Co -Ci -Fusrc -FUbuild/examples/learning-corpus/native/
 build/examples/learning-corpus/native/bin/LearnCorpus 0
 ```
 
-With a configured pas2js compiler and matching RTL, compile the same Pascal
-source for Node.js:
-
-```text
-pas2js -B -Tnodejs -Mdelphi -Fusrc -FUbuild/examples/learning-corpus/pas2js/units -FEbuild/examples/learning-corpus/pas2js/bin examples/learning/02_LearnCorpus/LearnCorpus.lpr
-node build/examples/learning-corpus/pas2js/bin/LearnCorpus.js 0
-```
-
 The optional argument is an unsigned 32-bit seed (`0` through `4294967295`;
 Pascal-style hexadecimal input such as `$DEADBEEF` is also accepted). Omit it
 to use the explicit demo seed `$434F5250`. A malformed seed, solve failure,

@@ -234,7 +234,7 @@ algorithm.
 
 The dependency-free
 [`NegotiatedRepair`](../examples/2D/04_NegotiatedRepair/README.md) fixture makes
-the horizon boundary executable on native FPC and pas2js/Node. With seed `0`,
+the horizon boundary executable on native FPC. With seed `0`,
 a housing root reports `[3] -> [3,4]`, fails without a choice frame, and has
 outer transcript `7A595E38`. A roads root reports `[2] -> [2,3,4]`, rejects the
 complete `roads=[trail]` assignment, and commits `plaza | market |

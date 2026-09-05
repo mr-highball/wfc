@@ -26,6 +26,7 @@ program wfc_rule_model_test;
 {$mode delphi}{$H+}
 
 uses
+  {$IFDEF PAS2JS}wfc_browser_test_host,{$ENDIF}
   SysUtils,
   wfc,
   wfc_model,

@@ -6,6 +6,12 @@ preview edge adapter: it performs no device playback, file I/O, browser work,
 or sample loading. Its implementation uses only project units and the standard
 FPC/pas2js RTL.
 
+For a full composition, keep this bounded renderer at the section boundary
+and use `wfc_music_audio_stream` to write clips sequentially. The 60-second
+limit below belongs to one in-memory preview render, not the total streamed
+arrangement. See [Music arrangements v1](music-arrangement.md) for the section
+source, duration rounding, and native/browser hosts.
+
 The version-1 contract has two independently named versions:
 
 - `WFC_MUSIC_AUDIO_VERSION = 1` covers score timing and synthesis;
@@ -194,7 +200,7 @@ There is no stereo placement, timbral voice model, sustain stage, filtering,
 dither, resampling, dynamics processor, or claim of piano realism. Those
 limitations are part of the version-1 sound.
 
-## defensive limits
+## defensive limits for one preview clip
 
 Validation and render planning finish before the PCM mix and output arrays are
 allocated. Spans are inspected one detached tone array at a time rather than
@@ -255,10 +261,103 @@ These fields and sizes follow Microsoft's primary documentation for
 [multimedia data types and PCM ranges](https://learn.microsoft.com/en-us/windows/win32/multimedia/devices-and-data-types),
 and [`PCMWAVEFORMAT`](https://learn.microsoft.com/en-us/windows/win32/api/mmeapi/ns-mmeapi-pcmwaveformat).
 
+## Sequential WAVE and RF64 streaming
+
+The separately versioned
+[wfc_music_audio_stream.pas](../src/wfc_music_audio_stream.pas) exposes
+`WFC_MUSIC_AUDIO_STREAM_VERSION = 1` and a host-independent sequential writer:
+
+```pascal
+TWfcMusicAudioByteSink = class
+public
+  procedure WriteBytes(const ABytes: array of Byte); virtual; abstract;
+end;
+
+TWfcMusicWaveStream = class
+public
+  constructor Create(const ASink: TWfcMusicAudioByteSink;
+    const ASampleRate: Integer;
+    const AExpectedFrames: TWfcMusicAudioStreamCount);
+  procedure AppendClip(const AClip: TWfcMusicPcm16Clip);
+  procedure Finish;
+  property SampleRate: Integer;
+  property FrameCount: TWfcMusicAudioStreamCount;
+  property ExpectedFrames: TWfcMusicAudioStreamCount;
+  property Finished: Boolean;
+  property Failed: Boolean;
+  property IsRF64: Boolean;
+end;
+```
+
+The caller owns both objects. The writer borrows its sink, which must remain
+alive until the writer is freed. Construction validates the sample rate and
+known final frame count before writing a complete header. Every appended clip
+must have that sample rate, and cumulative frames cannot exceed the declared
+length. A zero-frame stream is valid. The writer does not resample, synthesize,
+change timing, or deduplicate repeated attacks.
+
+`WriteBytes` must consume the entire borrowed block synchronously or raise;
+it cannot retain the input array. A file sink can write directly. A browser
+host can copy blocks into a bounded per-section transfer buffer and await its
+write outside this synchronous interface. The writer retains at most
+`WFC_MUSIC_AUDIO_STREAM_BLOCK_BYTES = 4096` PCM bytes, independent of total
+duration. Clip memory and any host transfer buffer remain separate costs.
+
+`Finish` requires exactly `ExpectedFrames`; successful finish is idempotent
+and writes no extra bytes. It does not flush, close, or publish a host file.
+The destructor neither finishes nor frees the sink. Calls are sequential and
+non-reentrant, not thread-safe.
+
+Nil clips, rate mismatches, excess frames, and a short `Finish` reject before
+writing and leave the writer usable. A sink exception is different: it sets
+`Failed`, rethrows the original exception, and forbids any further write.
+The sink may already have physically written a prefix of the failed block;
+`FrameCount` counts only blocks whose calls returned successfully. The host
+must discard or explicitly handle that partial output. The native Studio
+renderer therefore writes an exclusively created partial file and publishes
+only after complete success; its browser host aborts an unfinished writable
+transaction. See [host publication behavior](music-arrangement.md#stream-a-native-wave-file).
+
+### Exact sizes and format selection
+
+Counts use the same exact-integer envelope on FPC and pas2js:
+
+| Boundary | Value |
+| --- | --- |
+| Sample rate | 32,000 through 48,000 Hz |
+| `WFC_MUSIC_AUDIO_STREAM_MAX_SAFE_INTEGER` | `9,007,199,254,740,991` |
+| `WFC_MUSIC_AUDIO_STREAM_MAX_FRAMES` | `(9,007,199,254,740,991 - 80) div 2` |
+| Largest RIFF frame count | `(4,294,967,295 - 36) div 2` |
+| RIFF total bytes | `44 + 2 * frames` |
+| RF64 total bytes | `80 + 2 * frames` |
+
+RIFF output uses exactly the earlier canonical 44-byte PCM16 layout, so
+appending clips produces the same bytes as encoding their concatenated PCM
+in one clip whenever that clip fits the separate in-memory limits. Larger
+outputs use `RF64` with an 80-byte header, a `ds64` chunk containing unsigned
+64-bit RIFF size, data size, and sample count, and `$FFFFFFFF` in the legacy
+32-bit size fields. The `fmt ` chunk remains mono PCM16; no seeking or header
+rewrite is needed because the final frame count is known at construction.
+The encoder does not claim BWF metadata, mastering features, or that every
+media player supports RF64.
+
+These are representation and arithmetic bounds, not an arbitrary duration
+policy or a promise that a filesystem has enough space. Hosts must preflight
+duration-to-frame arithmetic before opening output and handle later storage
+failures. The Music Studio hosts render four-second sections (a final section
+may be two seconds), so no song-sized PCM or WAVE array is allocated.
+
+The focused [streaming suite](../test/wfc_music_audio_stream_test.lpr) checks
+RIFF parity, exact RF64 headers and the format-switch boundary, bounded block
+sizes, ownership, invalid appends, short/idempotent finish, and poisoned sinks.
+RF64 boundary fixtures inspect headers without allocating or writing a
+multi-gigabyte song; full-file host evidence is documented separately in
+[Music arrangements v1](music-arrangement.md#evidence-and-scope).
+
 ## conformance evidence
 
-The focused suite contains 35 checks and runs unchanged under FPC 3.2.2, FPC
-3.3.1, and pas2js 3.3.1 with Node. It covers immutable ownership, exact empty
+The focused suite contains 35 checks, measured on FPC 3.2.2, FPC 3.3.1, and
+historical pas2js 3.3.1 runs. It covers immutable ownership, exact empty
 and boundary-sample WAVE bytes, multiple voices, chords, rests, tempo changes,
 equal-tempo partition equivalence, phase retriggering, a fractional timestamp
 that contributes the final frame, a note quantized to zero frames, pitch and

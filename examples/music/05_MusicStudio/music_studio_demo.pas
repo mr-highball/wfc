@@ -23,7 +23,6 @@ SOFTWARE.
 *)
 unit music_studio_demo;
 {$mode delphi}{$H+}
-{$IFDEF PAS2JS}{$modeswitch externalclass}{$ENDIF}
 
 interface
 procedure RunMusicStudioDemo;
@@ -32,18 +31,9 @@ implementation
 
 uses
   SysUtils, wfc, wfc_model, wfc_music, wfc_music_passes, wfc_music_audio,
-  wfc_text_codec, music_studio_workbench
-  {$IFDEF PAS2JS}, JS, NodeJS{$ELSE}, Classes{$ENDIF};
+  wfc_text_codec, music_studio_workbench, Classes;
 
-{$IFDEF PAS2JS}
-type
-  TMusicStudioNodeFS = class external name 'Object' (TJSObject)
-  public
-    procedure mkdirSync(const APath: String);
-    procedure writeFileSync(const APath: String; const AData: TJSUint8Array;
-      const AOptions: TJSObject);
-  end;
-{$ENDIF}
+
 
 procedure Require(const ACondition: Boolean; const AMessage: String);
 begin
@@ -62,45 +52,25 @@ begin
 end;
 
 procedure CreateOutputDirectory(const APath: String);
-{$IFDEF PAS2JS}
-var FS: TMusicStudioNodeFS;
-{$ENDIF}
 begin
   Require(APath <> '', 'output directory cannot be empty');
-  {$IFDEF PAS2JS}
-  FS := TMusicStudioNodeFS(NodeJS.require('fs'));
-  FS.mkdirSync(APath);
-  {$ELSE}
   Require(not DirectoryExists(APath) and not FileExists(APath),
     'output directory must not already exist');
   Require(CreateDir(APath), 'could not create new output directory');
-  {$ENDIF}
 end;
 
 procedure WriteArtifact(const ADirectory, AName: String;
   const ABytes: array of Byte);
 var
   Path: String;
-  {$IFDEF PAS2JS}
-  FS: TMusicStudioNodeFS; Data: TJSUint8Array; Options: TJSObject; I: Integer;
-  {$ELSE}
   Stream: TFileStream;
-  {$ENDIF}
 begin
   Path := IncludeTrailingPathDelimiter(ADirectory) + AName;
-  {$IFDEF PAS2JS}
-  FS := TMusicStudioNodeFS(NodeJS.require('fs'));
-  Data := TJSUint8Array.new(Length(ABytes));
-  for I := 0 to High(ABytes) do Data[I] := ABytes[I];
-  Options := TJSObject.new; Options['flag'] := 'wx';
-  FS.writeFileSync(Path, Data, Options);
-  {$ELSE}
   Require(not FileExists(Path), 'refusing to overwrite artifact ' + Path);
   Stream := TFileStream.Create(Path, fmCreate);
   try
     if Length(ABytes) > 0 then Stream.WriteBuffer(ABytes[0], Length(ABytes));
   finally Stream.Free; end;
-  {$ENDIF}
 end;
 
 procedure InspectAndExport(const W: TWfcMusicStudio; const ADirectory: String);

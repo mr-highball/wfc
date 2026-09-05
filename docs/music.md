@@ -318,7 +318,9 @@ source order is stable within a priority. Tempo precedes meter at the same
 tick. End-of-track reaches the exact score length.
 
 The generic codec can read and write format 1. The score exporter emits only
-format 0, and there is no SMF-to-`TWfcMusicScore` semantic importer yet.
+format 0. The separate [semantic importer](music-import.md) converts supported
+format-0/1 streams into `TWfcMusicScore` with explicit event and ending policies;
+it does not promise lossless performance-event round-tripping.
 
 ## audible portable Music Studio
 
@@ -328,12 +330,20 @@ project-owned canonical RIFF/WAVE writer. The same Pascal code produces the
 same bytes on native FPC and pas2js; it has no samples or synthesizer library.
 
 The [Music Studio](../examples/music/05_MusicStudio/README.md) joins this
-renderer to the persistent three-pass owner. Native and Node hosts inspect
+renderer to the persistent three-pass owner. Native hosts inspect
 and export composition text, score text, MIDI, and a four-second WAV. A pas2js
 browser workbench adds public-cell and motif locks, ordinary/negotiated
 selective repair, layer grids, a piano roll, failure reports, downloads, and
 user-initiated HTML audio playback. Pending edits and failed attempts unload
 old previews and hide stale artifacts.
+
+A separate [arrangement path](music-arrangement.md) generates fresh sections
+to a user-defined duration and streams one complete WAVE/RF64 file. The small
+phrase editor is not the total composition-length limit. The supplied source
+uses explicit bar rounding and rest-separated continuity, not a global
+verse/chorus planner. [Semantic MIDI import](music-import.md) now converts
+supported event streams into exact scores and selected fixed-grid training
+documents with explicit provenance and performance-event policies.
 
 Its four original phrases and fixed two-bar rhythmic form are a deliberately
 small, documented model. The [form experiment](research/music-studio-form-v1.md)
@@ -375,7 +385,7 @@ gate. It currently has:
   conflict-directed search, or soft scoring;
 - raw token corpora supplied by the caller, without a semantic MIDI learner;
 - an SMF format-0 score exporter but no score importer;
-- one fixed-corpus browser Studio and native/Node file export, not an
+- one fixed-corpus browser Studio and native file export, not an
   arbitrary score/corpus editor or embedded native playback device;
 - a bounded triangle-wave audio preview, not realistic instruments,
   band-limited synthesis, effects, or mastering.

@@ -28,6 +28,7 @@ program wfc_building3d_test;
 {$Q+}
 
 uses
+  {$IFDEF PAS2JS}wfc_browser_test_host,{$ENDIF}
   SysUtils,
   wfc,
   wfc_voxel3d,

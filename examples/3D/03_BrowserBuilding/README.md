@@ -102,8 +102,11 @@ compiler units stay under `build/`. Serve that directory rather than opening
 the page directly, for example:
 
 ```text
-python -m http.server 8080 --directory build/browser/building3d/www
+build/native/bin/wfc_serve --root build/browser/building3d/www --port 8080
 ```
+
+Build the server with the native gate first; use `wfc_serve.exe` on Windows.
+See [development tools](../../../docs/development-tools.md) for its loopback-only serving boundary.
 
 Open `http://localhost:8080/`. The workbench can:
 

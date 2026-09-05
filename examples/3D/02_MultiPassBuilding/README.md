@@ -14,7 +14,7 @@ projects those private voxel variants to facade, trim, and roof-finish
 semantics. The prop pass can place a lamp or plant only on the feature cell
 after checking all three earlier layers.
 
-The same `building3d_demo.pas` source drives native FPC and pas2js/Node. Both
+The same `building3d_demo.pas` source drives native FPC. Both
 hosts perform independent semantic and voxel validation, same-seed replay,
 renderer-neutral mesh extraction, and print only public roles and prototype
 identities.
@@ -32,19 +32,6 @@ fpc -B -Mdelphi -Sa -Cr -Co -Ci -Fusrc `
   -FEbuild\examples\building3d\native\bin `
   examples\3D\02_MultiPassBuilding\MultiPassBuilding.lpr
 .\build\examples\building3d\native\bin\MultiPassBuilding.exe 0
-```
-
-Compile the Node host with pas2js and its matching RTL:
-
-```bash
-mkdir -p build/examples/building3d/pas2js/{units,bin}
-pas2js -B -Tnodejs -Mdelphi -Fusrc \
-  -Fuexamples/3D/common \
-  -Fuexamples/3D/02_MultiPassBuilding \
-  -FUbuild/examples/building3d/pas2js/units \
-  -FEbuild/examples/building3d/pas2js/bin \
-  examples/3D/02_MultiPassBuilding/MultiPassBuildingNode.lpr
-node build/examples/building3d/pas2js/bin/MultiPassBuildingNode.js 0
 ```
 
 Omit the seed to use the documented default. The generated JavaScript and all

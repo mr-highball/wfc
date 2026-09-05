@@ -11,17 +11,11 @@
 program SimpleTiledWorld;
 uses
   SysUtils,
-  {$IFDEF PAS2JS}
-  NodeJSApp, //installs ParamCount/ParamStr from Node's process.argv
-  {$ENDIF}
-  {$IFNDEF PAS2JS}
   crt, //colors for console
-  {$ENDIF}
   wfc; //library code
 
 procedure SetTileColor(const AValue: TGraphValue);
 begin
-  {$IFNDEF PAS2JS}
   if AValue = 'L' then
     TextColor(Green)
   else if AValue = 'S' then
@@ -30,7 +24,6 @@ begin
     TextColor(Yellow)
   else if AValue = 'M' then
     TextColor(Brown);
-  {$ENDIF}
 end;
 
 procedure RenderWorld(const AWorld : TGraph);
@@ -88,10 +81,7 @@ begin
     LWorld.Free;
   end;
 
-  {$IFNDEF PAS2JS}
   //An explicit seed also acts as a noninteractive native smoke-test mode.
   if ParamCount = 0 then
     ReadLn;
-  {$ENDIF}
 end.
-

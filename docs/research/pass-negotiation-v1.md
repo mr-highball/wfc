@@ -1,5 +1,9 @@
 # Pass Negotiation v1 research record
 
+Execution note: pas2js figures below are historical measurements. Maintained
+execution paths are native FPC and the documented browser demos; those earlier
+figures do not establish browser coverage for this experiment.
+
 - **Status:** experimental, reproducible reference algorithm
 - **Algorithm:** `WFC_PASS_NEGOTIATION_ALGORITHM_VERSION = 1`
 - **Transcript encoding:** `WFC_PASS_NEGOTIATION_HASH_VERSION = 1`
@@ -133,7 +137,7 @@ Each fixture records:
 - post-run random-stream parity against an untouched twin.
 
 The conformance sources run under the current native compiler, the stable FPC
-3.2.2 line, and pas2js/Node. Check totals are intentionally not part of this
+3.2.2 line, and historical pas2js runs. Check totals are intentionally not part of this
 research identity; semantic assertions and portable goldens are.
 
 ## findings
@@ -192,8 +196,8 @@ optimal repair.
 
 ## reproducibility
 
-Run the repository's checked native gate with `build.ps1` or `build.sh`, and
-run the same negotiation conformance source through pas2js/Node. The portable
+Run the repository's checked native gate with `build.ps1` or `build.sh`.
+Earlier pas2js runs used the same negotiation conformance source. The portable
 one-cell demonstration and its commands are documented under
 [`examples/passes/03_PassNegotiation`](../../examples/passes/03_PassNegotiation/README.md).
 

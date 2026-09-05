@@ -2,7 +2,7 @@
 
 `SelectiveSettlement.lpr` is a dependency-DAG and selective-regeneration
 showcase built from the project-owned Pascal core. The same source runs under
-native Free Pascal and pas2js/Node, uses no external library or asset, and
+native Free Pascal, uses no external library or asset, and
 builds a 32 by 14 world with six independently committed overlay layers:
 
 ```text
@@ -111,15 +111,7 @@ fpc -B -Mdelphi -Sa -Cr -Co -Ci -Fusrc -FUbuild/settlement/native/units -FEbuild
 build/settlement/native/bin/SelectiveSettlement 0
 ```
 
-With a configured pas2js compiler and matching RTL:
-
-```text
-mkdir build/settlement/pas2js/units build/settlement/pas2js/bin
-pas2js -B -Tnodejs -Mdelphi -Fusrc -FUbuild/settlement/pas2js/units -FEbuild/settlement/pas2js/bin examples/2D/03_SelectiveSettlement/SelectiveSettlement.lpr
-node build/settlement/pas2js/bin/SelectiveSettlement.js 0
-```
-
-Native and Node output should match exactly for the same seed. The focused
+Native output should match exactly for the same seed. The focused
 `test/wfc_world2d_settlement_test.lpr` suite additionally covers topology
 introspection, wrapped replay, raw-state preservation, failure attribution,
 direct corruption, and independent-instance counterfactual parity.

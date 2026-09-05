@@ -46,21 +46,9 @@ fpc -B -Mdelphi -Sa -Cr -Co -Ci -Fusrc \
 ./build/trace-inspector/native/bin/TraceInspector
 ```
 
-With a configured pas2js compiler and matching RTL:
-
-```bash
-mkdir -p build/trace-inspector/pas2js/units build/trace-inspector/pas2js/bin
-pas2js -B -Tnodejs -Mdelphi -Fusrc \
-  -Fuexamples/passes/02_TraceInspector \
-  -FUbuild/trace-inspector/pas2js/units \
-  -FEbuild/trace-inspector/pas2js/bin \
-  examples/passes/02_TraceInspector/TraceInspectorNode.lpr
-node build/trace-inspector/pas2js/bin/TraceInspectorNode.js
-```
-
 The repository build scripts also compile and run the native inspector as a
 smoke gate. CI compiles and runs the same shared implementation through
-pas2js/Node.
+pas2js.
 
 ## seed-zero contract
 
@@ -75,7 +63,7 @@ foliage:    bare,reeds,bare,tree
 Its trace contains 27 events and has portable signature `73C4B9A2`. Event 15
 records `tree` being removed from foliage entry zero because of settlement;
 its cause chain reaches the settlement staging event 13. Native FPC and
-pas2js/Node must print the same 47 lines.
+pas2js must print the same 47 lines.
 
 See [the causal trace contract](../../../docs/traces.md) for the event schema,
 hash encoding, query utilities, validation rules, cost, and current limits.

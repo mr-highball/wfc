@@ -337,14 +337,14 @@ inventing an unverifiable definition identity.
 
 ## Headless command contracts
 
-The native and pas2js/Node hosts contain only bounded byte I/O and process
+The native hosts contain only bounded byte I/O and process
 plumbing. Parsing, validation, compilation, execution, result construction,
 and canonical encoding remain in the shared portable Pascal units.
 
 The contracts below use distribution-facing hyphenated command names. Checked
 repository builds retain their Pascal source-host basenames as
-`wfc_validate[.exe]`, `wfc_run[.exe]`, `wfc_validate_node.js`, and
-`wfc_run_node.js`; packaging may expose the hyphenated names without changing
+`wfc_validate[.exe]` and `wfc_run[.exe]`;
+packaging may expose the hyphenated names without changing
 behavior.
 
 ### `wfc-validate`
@@ -392,7 +392,7 @@ Options must precede positional paths. `--` permits a path beginning with a
 hyphen. Diagnostics are one line on standard error, while canonical artifacts
 are written only to standard output.
 
-The native build drivers and pas2js/Node CI run both hosts as real child
+The native build drivers run both command-line tools as real child
 processes against the committed `test/fixtures/pipeline-cli` artifacts and the
 domain-scale `examples/2D/05_LearnedPatternWorld/pipeline` bundle. The gate
 compares canonical and summary output byte for byte, exercises file and

@@ -27,10 +27,6 @@ program LearnSequence;
 
 uses
   SysUtils,
-  {$IFDEF PAS2JS}
-  NodeJSApp,
-  NodeJS,
-  {$ENDIF}
   wfc,
   wfc_model,
   wfc_sequence,
@@ -96,11 +92,7 @@ end;
 
 function TokenForDisplay(const AToken: TWfcModelToken): String;
 begin
-  {$IFDEF PAS2JS}
-  Result := String(AToken);
-  {$ELSE}
   Result := String(UTF8Decode(AToken));
-  {$ENDIF}
 end;
 
 function TokensMatch(const AActual: TWfcModelTokens;
@@ -291,11 +283,7 @@ begin
     on E: Exception do
     begin
       WriteLn('LearnSequence error: ', E.Message);
-      {$IFDEF PAS2JS}
-      TNJSProcess.exitCode := 1;
-      {$ELSE}
       Halt(1);
-      {$ENDIF}
     end;
   end;
 end.

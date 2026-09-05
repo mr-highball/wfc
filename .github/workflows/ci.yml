@@ -123,7 +123,7 @@ jobs:
           test -z "$(git status --short)"
 
   pas2js:
-    name: pas2js 3.3.1 (Node.js 22 and Chrome)
+    name: pas2js 3.3.1 (FPC server and browser)
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
@@ -138,11 +138,6 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           submodules: false
-
-      - name: Select Node.js
-        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
-        with:
-          node-version: 22.23.2
 
       - name: Restore pinned pas2js toolchain
         id: pas2js-cache
@@ -205,390 +200,19 @@ jobs:
           test -x "$pas2js"
           test "$("$pas2js" -iV)" = '3.3.1'
           "$pas2js" -iW
-          node --version
 
-      - name: Build and run pas2js conformance
+      - name: Build FPC development tools and browser conformance
         shell: bash
         run: |
-          pas2js="$PAS2JS_ROOT/bin/x86_64-linux/pas2js"
-          test_units='build/pas2js/test/units'
-          test_bin='build/pas2js/test/bin'
-          world_test_units='build/pas2js/world-test/units'
-          world_test_bin='build/pas2js/world-test/bin'
-          settlement_test_units='build/pas2js/settlement-test/units'
-          settlement_test_bin='build/pas2js/settlement-test/bin'
-          learning_test_units='build/pas2js/learning-test/units'
-          learning_test_bin='build/pas2js/learning-test/bin'
-          pattern_test_units='build/pas2js/pattern-test/units'
-          pattern_test_bin='build/pas2js/pattern-test/bin'
-          pattern_pass_test_units='build/pas2js/pattern-pass-test/units'
-          pattern_pass_test_bin='build/pas2js/pattern-pass-test/bin'
-          sequence_test_units='build/pas2js/sequence-test/units'
-          sequence_test_bin='build/pas2js/sequence-test/bin'
-          text_test_units='build/pas2js/text-test/units'
-          text_test_bin='build/pas2js/text-test/bin'
-          text_pass_test_units='build/pas2js/text-pass-test/units'
-          text_pass_test_bin='build/pas2js/text-pass-test/bin'
-          negotiation_test_units='build/pas2js/negotiation-test/units'
-          negotiation_test_bin='build/pas2js/negotiation-test/bin'
-          selective_negotiation_test_units='build/pas2js/selective-negotiation-test/units'
-          selective_negotiation_test_bin='build/pas2js/selective-negotiation-test/bin'
-          voxel_test_units='build/pas2js/voxel-test/units'
-          voxel_test_bin='build/pas2js/voxel-test/bin'
-          building_test_units='build/pas2js/building-test/units'
-          building_test_bin='build/pas2js/building-test/bin'
-          trace_test_units='build/pas2js/trace-test/units'
-          trace_test_bin='build/pas2js/trace-test/bin'
-          viewer_test_units='build/pas2js/viewer-test/units'
-          viewer_test_bin='build/pas2js/viewer-test/bin'
-          music_test_units='build/pas2js/music-test/units'
-          music_test_bin='build/pas2js/music-test/bin'
-          artifact_test_units='build/pas2js/artifact-test/units'
-          artifact_test_bin='build/pas2js/artifact-test/bin'
-          example_units='build/pas2js/example/units'
-          example_bin='build/pas2js/example/bin'
-          world_example_units='build/pas2js/world-example/units'
-          world_example_bin='build/pas2js/world-example/bin'
-          settlement_example_units='build/pas2js/settlement-example/units'
-          settlement_example_bin='build/pas2js/settlement-example/bin'
-          repair_example_units='build/pas2js/repair-example/units'
-          repair_example_bin='build/pas2js/repair-example/bin'
-          learned_pattern_example_units='build/pas2js/learned-pattern-example/units'
-          learned_pattern_example_bin='build/pas2js/learned-pattern-example/bin'
-          learning_example_units='build/pas2js/learning-example/units'
-          learning_example_bin='build/pas2js/learning-example/bin'
-          corpus_example_units='build/pas2js/corpus-example/units'
-          corpus_example_bin='build/pas2js/corpus-example/bin'
-          pattern_example_units='build/pas2js/pattern-example/units'
-          pattern_example_bin='build/pas2js/pattern-example/bin'
-          sequence_example_units='build/pas2js/sequence-example/units'
-          sequence_example_bin='build/pas2js/sequence-example/bin'
-          text_example_units='build/pas2js/text-example/units'
-          text_example_bin='build/pas2js/text-example/bin'
-          text_pass_example_units='build/pas2js/text-pass-example/units'
-          text_pass_example_bin='build/pas2js/text-pass-example/bin'
-          music_example_units='build/pas2js/music-example/units'
-          music_example_bin='build/pas2js/music-example/bin'
-          spatial_example_units='build/pas2js/spatial-example/units'
-          spatial_example_bin='build/pas2js/spatial-example/bin'
-          trace_example_units='build/pas2js/trace-example/units'
-          trace_example_bin='build/pas2js/trace-example/bin'
-          negotiation_example_units='build/pas2js/negotiation-example/units'
-          negotiation_example_bin='build/pas2js/negotiation-example/bin'
-          building_example_units='build/pas2js/building-example/units'
-          building_example_bin='build/pas2js/building-example/bin'
-          mkdir -p \
-            "$test_units" "$test_bin" \
-            "$world_test_units" "$world_test_bin" \
-            "$settlement_test_units" "$settlement_test_bin" \
-            "$learning_test_units" "$learning_test_bin" \
-            "$pattern_test_units" "$pattern_test_bin" \
-            "$pattern_pass_test_units" "$pattern_pass_test_bin" \
-            "$sequence_test_units" "$sequence_test_bin" \
-            "$text_test_units" "$text_test_bin" \
-            "$text_pass_test_units" "$text_pass_test_bin" \
-            "$negotiation_test_units" "$negotiation_test_bin" \
-            "$selective_negotiation_test_units" "$selective_negotiation_test_bin" \
-            "$voxel_test_units" "$voxel_test_bin" \
-            "$building_test_units" "$building_test_bin" \
-            "$trace_test_units" "$trace_test_bin" \
-            "$viewer_test_units" "$viewer_test_bin" \
-            "$music_test_units" "$music_test_bin" \
-            "$artifact_test_units" "$artifact_test_bin" \
-            "$example_units" "$example_bin" \
-            "$world_example_units" "$world_example_bin" \
-            "$settlement_example_units" "$settlement_example_bin" \
-            "$repair_example_units" "$repair_example_bin" \
-            "$learned_pattern_example_units" "$learned_pattern_example_bin" \
-            "$learning_example_units" "$learning_example_bin" \
-            "$corpus_example_units" "$corpus_example_bin" \
-            "$pattern_example_units" "$pattern_example_bin" \
-            "$sequence_example_units" "$sequence_example_bin" \
-            "$text_example_units" "$text_example_bin" \
-            "$text_pass_example_units" "$text_pass_example_bin" \
-            "$music_example_units" "$music_example_bin" \
-            "$spatial_example_units" "$spatial_example_bin" \
-            "$trace_example_units" "$trace_example_bin" \
-            "$negotiation_example_units" "$negotiation_example_bin" \
-            "$building_example_units" "$building_example_bin"
-
-          "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
-            -FU"$test_units" -FE"$test_bin" test/wfc_test.lpr
-          node "$test_bin/wfc_test.js"
-
-          "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
-            -FU"$world_test_units" -FE"$world_test_bin" \
-            test/wfc_world2d_test.lpr
-          node "$world_test_bin/wfc_world2d_test.js"
-
-          "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
-            -FU"$settlement_test_units" -FE"$settlement_test_bin" \
-            test/wfc_world2d_settlement_test.lpr
-          node "$settlement_test_bin/wfc_world2d_settlement_test.js"
-
-          "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
-            -FU"$learning_test_units" -FE"$learning_test_bin" \
-            test/wfc_learn_test.lpr
-          node "$learning_test_bin/wfc_learn_test.js"
-
-          "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
-            -FU"$pattern_test_units" -FE"$pattern_test_bin" \
-            test/wfc_pattern2d_test.lpr
-          node "$pattern_test_bin/wfc_pattern2d_test.js"
-
-          "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
-            -FU"$pattern_pass_test_units" -FE"$pattern_pass_test_bin" \
-            test/wfc_pattern2d_passes_test.lpr
-          node "$pattern_pass_test_bin/wfc_pattern2d_passes_test.js"
-
-          "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
-            -FU"$sequence_test_units" -FE"$sequence_test_bin" \
-            test/wfc_sequence_test.lpr
-          node "$sequence_test_bin/wfc_sequence_test.js"
-
-          "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
-            -FU"$text_test_units" -FE"$text_test_bin" \
-            test/wfc_text_test.lpr
-          node "$text_test_bin/wfc_text_test.js"
-
-          "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
-            -FU"$text_pass_test_units" -FE"$text_pass_test_bin" \
-            test/wfc_text_passes_test.lpr
-          node "$text_pass_test_bin/wfc_text_passes_test.js"
-
-          "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
-            -FU"$negotiation_test_units" -FE"$negotiation_test_bin" \
-            test/wfc_negotiation_test.lpr
-          node "$negotiation_test_bin/wfc_negotiation_test.js"
-
-          "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
-            -FU"$selective_negotiation_test_units" \
-            -FE"$selective_negotiation_test_bin" \
-            test/wfc_selective_negotiation_test.lpr
-          node "$selective_negotiation_test_bin/wfc_selective_negotiation_test.js"
-
-          "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
-            -FU"$voxel_test_units" -FE"$voxel_test_bin" \
-            test/wfc_voxel3d_test.lpr
-          node "$voxel_test_bin/wfc_voxel3d_test.js"
-
-          "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
-            -FU"$building_test_units" -FE"$building_test_bin" \
-            test/wfc_building3d_test.lpr
-          node "$building_test_bin/wfc_building3d_test.js"
-
-          for trace_test in \
-            wfc_trace_reference_test \
-            wfc_trace_test \
-            wfc_trace_utility_test
-          do
-            "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
-              -FU"$trace_test_units" -FE"$trace_test_bin" \
-              "test/$trace_test.lpr"
-            node "$trace_test_bin/$trace_test.js"
+          sudo apt-get update
+          sudo apt-get install --yes fp-compiler-3.2.2 fp-units-fcl-3.2.2 fp-utils-3.2.2
+          mkdir -p build/native/bin build/native/tools-units
+          for tool in wfc_serve wfc_browser_check; do
+            fpc -B -Mdelphi -Sa -Cr -Co -Ci -Futools \
+              -FUbuild/native/tools-units -FEbuild/native/bin "tools/$tool.lpr"
           done
-
-          for viewer_test in \
-            wfc_voxel3d_isometric_test \
-            wfc_voxel3d_svg_test \
-            wfc_building3d_view_test
-          do
-            "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
-              -Fuexamples/3D/common \
-              -FU"$viewer_test_units" -FE"$viewer_test_bin" \
-              "test/$viewer_test.lpr"
-            node "$viewer_test_bin/$viewer_test.js"
-          done
-
-          for music_test in \
-            wfc_midi_smf_test \
-            wfc_music_test \
-            wfc_music_graph_test \
-            wfc_music_midi_test \
-            wfc_music_passes_test \
-            wfc_music_passes_text_test \
-            wfc_music_audio_test \
-            wfc_music_studio_test
-          do
-            "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
-              -Fuexamples/music/05_MusicStudio \
-              -FU"$music_test_units" -FE"$music_test_bin" \
-              "test/$music_test.lpr"
-            node "$music_test_bin/$music_test.js"
-          done
-
-          for artifact_test in \
-            wfc_text_codec_test \
-            wfc_rule_model_test \
-            wfc_rule_text_test \
-            wfc_pipeline_model_test \
-            wfc_pipeline_text_test \
-            wfc_token_lookup_test \
-            wfc_pipeline_compile_test \
-            wfc_pipeline_run_test \
-            wfc_pipeline_run_text_test \
-            wfc_pipeline_result_test \
-            wfc_pipeline_result_text_test \
-            wfc_pipeline_runtime_test \
-            wfc_validate_app_test \
-            wfc_run_app_test \
-            wfc_training_test \
-            wfc_text_training_test \
-            wfc_training_workspace_test \
-            wfc_training_text_test \
-            wfc_learn_app_test \
-            wfc_learned_pattern_world_bundle_test
-          do
-            "$pas2js" -B -Tnodejs -Mdelphi -Fusrc -Futools \
-              -Fuexamples/2D/05_LearnedPatternWorld \
-              -Fuexamples/learning/05_TrainingStudio \
-              -FU"$artifact_test_units" -FE"$artifact_test_bin" \
-              "test/$artifact_test.lpr"
-            node "$artifact_test_bin/$artifact_test.js"
-          done
-
-          for portable_host in wfc_validate_node wfc_run_node wfc_learn_node
-          do
-            "$pas2js" -B -Tnodejs -Mdelphi -Fusrc -Futools \
-              -FU"$artifact_test_units" -FE"$artifact_test_bin" \
-              "tools/$portable_host.lpr"
-            node "$artifact_test_bin/$portable_host.js" --version
-          done
-
-          bash test/wfc_pipeline_cli_process_test.sh \
-            node "$artifact_test_bin/wfc_validate_node.js" -- \
-            node "$artifact_test_bin/wfc_run_node.js"
-
-          bash test/wfc_learn_cli_process_test.sh \
-            node "$artifact_test_bin/wfc_learn_node.js" -- \
-            node "$artifact_test_bin/wfc_validate_node.js" -- \
-            node "$artifact_test_bin/wfc_run_node.js"
-
-          "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
-            -Fuexamples/learning/05_TrainingStudio \
-            -FU"$artifact_test_units" -FE"$artifact_test_bin" \
-            examples/learning/05_TrainingStudio/TrainingStudioNode.lpr
-          node "$artifact_test_bin/TrainingStudioNode.js" --selftest
-
-          "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
-            -Fuexamples/music/05_MusicStudio \
-            -FU"$music_example_units" -FE"$music_example_bin" \
-            examples/music/05_MusicStudio/MusicStudioNode.lpr
-          node "$music_example_bin/MusicStudioNode.js" --selftest
-
-          "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
-            -Fuexamples/music/05_MusicStudio \
-            -FU"$music_example_units" -FE"$music_example_bin" \
-            examples/music/05_MusicStudio/MusicStudioFormProbe.lpr
-          music_studio_probe_actual=$(
-            node "$music_example_bin/MusicStudioFormProbe.js")
-          music_studio_probe_actual=$(printf '%s' "$music_studio_probe_actual" \
-            | tr -d '\r')
-          music_studio_probe_expected=$(tr -d '\r' \
-            < docs/research/music-studio-form-v1.csv)
-          if [ "$music_studio_probe_actual" != "$music_studio_probe_expected" ]; then
-            echo 'Music Studio form probe differs from its checked fixture.' >&2
-            exit 1
-          fi
-
-          "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
-            -FU"$example_units" -FE"$example_bin" \
-            examples/text/01_SimpleTiledWorld/SimpleTiledWorld.lpr
-          node "$example_bin/SimpleTiledWorld.js" 0 >/dev/null
-
-          "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
-            -Fuexamples/2D/common \
-            -FU"$world_example_units" -FE"$world_example_bin" \
-            examples/2D/01_MultiPassWorld/MultiPassWorld.lpr
-          node "$world_example_bin/MultiPassWorld.js" 0 >/dev/null
-          node "$world_example_bin/MultiPassWorld.js" >/dev/null
-
-          "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
-            -Fuexamples/2D/common \
-            -FU"$settlement_example_units" -FE"$settlement_example_bin" \
-            examples/2D/03_SelectiveSettlement/SelectiveSettlement.lpr
-          node "$settlement_example_bin/SelectiveSettlement.js" 0 >/dev/null
-          node "$settlement_example_bin/SelectiveSettlement.js" >/dev/null
-
-          "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
-            -Fuexamples/2D/04_NegotiatedRepair \
-            -FU"$repair_example_units" -FE"$repair_example_bin" \
-            examples/2D/04_NegotiatedRepair/NegotiatedRepairNode.lpr
-          node "$repair_example_bin/NegotiatedRepairNode.js" >/dev/null
-
-          "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
-            -Fuexamples/2D/05_LearnedPatternWorld \
-            -FU"$learned_pattern_example_units" \
-            -FE"$learned_pattern_example_bin" \
-            examples/2D/05_LearnedPatternWorld/LearnedPatternWorldNode.lpr
-          node "$learned_pattern_example_bin/LearnedPatternWorldNode.js" 0 >/dev/null
-
-          "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
-            -FU"$learning_example_units" -FE"$learning_example_bin" \
-            examples/learning/01_LearnTiles/LearnTiles.lpr
-          node "$learning_example_bin/LearnTiles.js" 0 >/dev/null
-
-          "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
-            -FU"$corpus_example_units" -FE"$corpus_example_bin" \
-            examples/learning/02_LearnCorpus/LearnCorpus.lpr
-          node "$corpus_example_bin/LearnCorpus.js" 0 >/dev/null
-
-          "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
-            -FU"$pattern_example_units" -FE"$pattern_example_bin" \
-            examples/learning/03_LearnPatterns/LearnPatterns.lpr
-          node "$pattern_example_bin/LearnPatterns.js" 0 >/dev/null
-
-          "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
-            -FU"$sequence_example_units" -FE"$sequence_example_bin" \
-            examples/sequence/01_LearnSequence/LearnSequence.lpr
-          node "$sequence_example_bin/LearnSequence.js" 0 >/dev/null
-
-          "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
-            -Fuexamples/text/02_ConstraintCompletion \
-            -FU"$text_example_units" -FE"$text_example_bin" \
-            examples/text/02_ConstraintCompletion/ConstraintCompletionNode.lpr
-          node "$text_example_bin/ConstraintCompletionNode.js" 0 >/dev/null
-
-          "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
-            -Fuexamples/text/03_PassComposition \
-            -FU"$text_pass_example_units" -FE"$text_pass_example_bin" \
-            examples/text/03_PassComposition/TextPassCompositionNode.lpr
-          node "$text_pass_example_bin/TextPassCompositionNode.js" 0 >/dev/null
-
-          "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
-            -FU"$music_example_units" -FE"$music_example_bin" \
-            examples/music/03_PassComposition/PassComposition.lpr
-          node "$music_example_bin/PassComposition.js" 0 >/dev/null
-
-          "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
-            -Fuexamples/music/04_NegotiatedVariation \
-            -FU"$music_example_units" -FE"$music_example_bin" \
-            examples/music/04_NegotiatedVariation/NegotiatedVariationNode.lpr
-          node "$music_example_bin/NegotiatedVariationNode.js" 0 >/dev/null
-
-          "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
-            -FU"$spatial_example_units" -FE"$spatial_example_bin" \
-            examples/passes/01_SpatialDependencies/SpatialDependenciesNode.lpr
-          node "$spatial_example_bin/SpatialDependenciesNode.js" 0 >/dev/null
-
-          "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
-            -Fuexamples/passes/02_TraceInspector \
-            -FU"$trace_example_units" -FE"$trace_example_bin" \
-            examples/passes/02_TraceInspector/TraceInspectorNode.lpr
-          node "$trace_example_bin/TraceInspectorNode.js" 0 >/dev/null
-
-          "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
-            -Fuexamples/passes/03_PassNegotiation \
-            -FU"$negotiation_example_units" -FE"$negotiation_example_bin" \
-            examples/passes/03_PassNegotiation/PassNegotiationNode.lpr
-          node "$negotiation_example_bin/PassNegotiationNode.js" >/dev/null
-
-          "$pas2js" -B -Tnodejs -Mdelphi -Fusrc \
-            -Fuexamples/3D/02_MultiPassBuilding \
-            -Fuexamples/3D/common \
-            -FU"$building_example_units" -FE"$building_example_bin" \
-            examples/3D/02_MultiPassBuilding/MultiPassBuildingNode.lpr
-          node "$building_example_bin/MultiPassBuildingNode.js" 0 >/dev/null
+          PAS2JS="$PAS2JS_ROOT/bin/x86_64-linux/pas2js" bash ./build-browser-tests.sh
+          bash ./test-browser-tests.sh
 
       - name: Build and self-test browser text passes
         shell: bash
@@ -625,9 +249,8 @@ jobs:
           }
           trap cleanup EXIT
 
-          python3 -m http.server 4175 \
-            --bind 127.0.0.1 \
-            --directory build/browser/text-passes/www \
+          ./build/native/bin/wfc_serve --port 4175 \
+            --root build/browser/text-passes/www \
             >"$server_log" 2>&1 &
           server_pid=$!
 
@@ -666,40 +289,14 @@ jobs:
             exit 1
           fi
 
-          python3 - "$dom_file" <<'PY'
-          import sys
-          from html.parser import HTMLParser
-
-          class BodyParser(HTMLParser):
-              def __init__(self):
-                  super().__init__()
-                  self.attributes = None
-
-              def handle_starttag(self, tag, attributes):
-                  if tag.lower() == 'body' and self.attributes is None:
-                      self.attributes = dict(attributes)
-
-          with open(sys.argv[1], encoding='utf-8') as source:
-              parser = BodyParser()
-              parser.feed(source.read())
-
-          expected = {
-              'data-state': 'solved',
-              'data-self-test': 'passed',
-              'data-signature': '1:69ABA6CE',
-              'data-output-signature': '1:69ABA6CE',
-              'data-pass-count': '3',
-              'data-trace-hash': '2412171679',
-              'data-output': 'A sun rises brightly!',
-          }
-          if parser.attributes is None:
-              raise SystemExit('Rendered DOM has no body element.')
-          for name, value in expected.items():
-              actual = parser.attributes.get(name)
-              if actual != value:
-                  raise SystemExit(
-                      f'Expected body {name}={value!r}, found {actual!r}.')
-          PY
+          ./build/native/bin/wfc_browser_check --dom "$dom_file" \
+            --expect 'data-state=solved' \
+            --expect 'data-self-test=passed' \
+            --expect 'data-signature=1:69ABA6CE' \
+            --expect 'data-output-signature=1:69ABA6CE' \
+            --expect 'data-pass-count=3' \
+            --expect 'data-trace-hash=2412171679' \
+            --expect 'data-output=A sun rises brightly!'
 
       - name: Build and self-test browser Training Studio
         shell: bash
@@ -736,9 +333,8 @@ jobs:
           }
           trap cleanup EXIT
 
-          python3 -m http.server 4176 \
-            --bind 127.0.0.1 \
-            --directory build/browser/training/www \
+          ./build/native/bin/wfc_serve --port 4176 \
+            --root build/browser/training/www \
             >"$server_log" 2>&1 &
           server_pid=$!
 
@@ -777,45 +373,19 @@ jobs:
             exit 1
           fi
 
-          python3 - "$dom_file" <<'PY'
-          import sys
-          from html.parser import HTMLParser
-
-          class BodyParser(HTMLParser):
-              def __init__(self):
-                  super().__init__()
-                  self.attributes = None
-
-              def handle_starttag(self, tag, attributes):
-                  if tag.lower() == 'body' and self.attributes is None:
-                      self.attributes = dict(attributes)
-
-          with open(sys.argv[1], encoding='utf-8') as source:
-              parser = BodyParser()
-              parser.feed(source.read())
-
-          expected = {
-              'data-state': 'solved',
-              'data-self-test': 'passed',
-              'data-source-signature': '0FA2C5EA',
-              'data-recipe-signature': 'DBCBA621',
-              'data-result-signature': '947C4AFD',
-              'data-cell-count': '16',
-              'data-source-invalidation': 'passed',
-              'data-run-invalidation': 'passed',
-              'data-contradiction': 'passed',
-              'data-recovery': 'passed',
-              'data-preset-sweep': 'passed',
-              'data-import-race': 'passed',
-          }
-          if parser.attributes is None:
-              raise SystemExit('Rendered DOM has no body element.')
-          for name, value in expected.items():
-              actual = parser.attributes.get(name)
-              if actual != value:
-                  raise SystemExit(
-                      f'Expected body {name}={value!r}, found {actual!r}.')
-          PY
+          ./build/native/bin/wfc_browser_check --dom "$dom_file" \
+            --expect 'data-state=solved' \
+            --expect 'data-self-test=passed' \
+            --expect 'data-source-signature=0FA2C5EA' \
+            --expect 'data-recipe-signature=DBCBA621' \
+            --expect 'data-result-signature=947C4AFD' \
+            --expect 'data-cell-count=16' \
+            --expect 'data-source-invalidation=passed' \
+            --expect 'data-run-invalidation=passed' \
+            --expect 'data-contradiction=passed' \
+            --expect 'data-recovery=passed' \
+            --expect 'data-preset-sweep=passed' \
+            --expect 'data-import-race=passed'
 
       - name: Build and self-test browser Music Studio
         shell: bash
@@ -852,9 +422,8 @@ jobs:
           }
           trap cleanup EXIT
 
-          python3 -m http.server 4177 \
-            --bind 127.0.0.1 \
-            --directory build/browser/music/www \
+          ./build/native/bin/wfc_serve --port 4177 \
+            --root build/browser/music/www \
             >"$server_log" 2>&1 &
           server_pid=$!
 
@@ -893,60 +462,38 @@ jobs:
             exit 1
           fi
 
-          python3 - "$dom_file" <<'PY'
-          import sys
-          from html.parser import HTMLParser
-
-          class BodyParser(HTMLParser):
-              def __init__(self):
-                  super().__init__()
-                  self.attributes = None
-
-              def handle_starttag(self, tag, attributes):
-                  if tag.lower() == 'body' and self.attributes is None:
-                      self.attributes = dict(attributes)
-
-          with open(sys.argv[1], encoding='utf-8') as source:
-              parser = BodyParser()
-              parser.feed(source.read())
-
-          expected = {
-              'data-state': 'solved',
-              'data-self-test': 'passed',
-              'data-seed': '0',
-              'data-composition-signature': '216F6EBB',
-              'data-result-status': 'solved',
-              'data-score-signature': '4167E7E5',
-              'data-midi-signature': '86E4DCA3',
-              'data-wave-signature': '64679FF8',
-              'data-strategy': 'negotiated',
-              'data-scope': 'full',
-              'data-cell-count': '16',
-              'data-lock-count': '0',
-              'data-pass-count': '3',
-              'data-midi-bytes': '123',
-              'data-wav-bytes': '352844',
-              'data-new-session-invalidation': 'passed',
-              'data-run-invalidation': 'passed',
-              'data-failure-clears-output': 'passed',
-              'data-motif-lock': 'passed',
-              'data-selective-regeneration': 'passed',
-              'data-recovery': 'passed',
-              'data-audio-ready': 'true',
-              'data-audio-play-events': '0',
-          }
-          if parser.attributes is None:
-              raise SystemExit('Rendered DOM has no body element.')
-          if parser.attributes.get('data-self-test-message'):
-              raise SystemExit(
-                  'Browser Music Studio reported a self-test failure: '
-                  + parser.attributes['data-self-test-message'])
-          for name, value in expected.items():
-              actual = parser.attributes.get(name)
-              if actual != value:
-                  raise SystemExit(
-                      f'Expected body {name}={value!r}, found {actual!r}.')
-          PY
+          ./build/native/bin/wfc_browser_check --dom "$dom_file" \
+            --expect 'data-state=solved' \
+            --expect 'data-self-test=passed' \
+            --expect 'data-seed=0' \
+            --expect 'data-composition-signature=216F6EBB' \
+            --expect 'data-result-status=solved' \
+            --expect 'data-score-signature=4167E7E5' \
+            --expect 'data-midi-signature=86E4DCA3' \
+            --expect 'data-wave-signature=64679FF8' \
+            --expect 'data-strategy=negotiated' \
+            --expect 'data-scope=full' \
+            --expect 'data-cell-count=16' \
+            --expect 'data-lock-count=0' \
+            --expect 'data-pass-count=3' \
+            --expect 'data-midi-bytes=123' \
+            --expect 'data-wav-bytes=352844' \
+            --expect 'data-arrangement-test=passed' \
+            --expect 'data-arrangement-4-frames=176400' \
+            --expect 'data-arrangement-6-frames=264600' \
+            --expect 'data-arrangement-180-frames=7938000' \
+            --expect 'data-arrangement-cancel=passed' \
+            --expect 'data-arrangement-stale=passed' \
+            --expect 'data-arrangement-write-failure=passed' \
+            --expect 'data-arrangement-commit=passed' \
+            --expect 'data-new-session-invalidation=passed' \
+            --expect 'data-run-invalidation=passed' \
+            --expect 'data-failure-clears-output=passed' \
+            --expect 'data-motif-lock=passed' \
+            --expect 'data-selective-regeneration=passed' \
+            --expect 'data-recovery=passed' \
+            --expect 'data-audio-ready=true' \
+            --expect 'data-audio-play-events=0'
 
       - name: Build and self-test browser world
         shell: bash
@@ -983,9 +530,8 @@ jobs:
           }
           trap cleanup EXIT
 
-          python3 -m http.server 4173 \
-            --bind 127.0.0.1 \
-            --directory build/browser/world2d/www \
+          ./build/native/bin/wfc_serve --port 4173 \
+            --root build/browser/world2d/www \
             >"$server_log" 2>&1 &
           server_pid=$!
 
@@ -1024,36 +570,10 @@ jobs:
             exit 1
           fi
 
-          python3 - "$dom_file" <<'PY'
-          import sys
-          from html.parser import HTMLParser
-
-          class BodyParser(HTMLParser):
-              def __init__(self):
-                  super().__init__()
-                  self.attributes = None
-
-              def handle_starttag(self, tag, attributes):
-                  if tag.lower() == 'body' and self.attributes is None:
-                      self.attributes = dict(attributes)
-
-          with open(sys.argv[1], encoding='utf-8') as source:
-              parser = BodyParser()
-              parser.feed(source.read())
-
-          expected = {
-              'data-state': 'solved',
-              'data-self-test': 'passed',
-              'data-signature': '1:5B0DD75D:08022AF1:A40D0955',
-          }
-          if parser.attributes is None:
-              raise SystemExit('Rendered DOM has no body element.')
-          for name, value in expected.items():
-              actual = parser.attributes.get(name)
-              if actual != value:
-                  raise SystemExit(
-                      f'Expected body {name}={value!r}, found {actual!r}.')
-          PY
+          ./build/native/bin/wfc_browser_check --dom "$dom_file" \
+            --expect 'data-state=solved' \
+            --expect 'data-self-test=passed' \
+            --expect 'data-signature=1:5B0DD75D:08022AF1:A40D0955'
 
       - name: Build and self-test browser Building 3D
         shell: bash
@@ -1090,9 +610,8 @@ jobs:
           }
           trap cleanup EXIT
 
-          python3 -m http.server 4174 \
-            --bind 127.0.0.1 \
-            --directory build/browser/building3d/www \
+          ./build/native/bin/wfc_serve --port 4174 \
+            --root build/browser/building3d/www \
             >"$server_log" 2>&1 &
           server_pid=$!
 
@@ -1131,38 +650,12 @@ jobs:
             exit 1
           fi
 
-          python3 - "$dom_file" <<'PY'
-          import sys
-          from html.parser import HTMLParser
-
-          class BodyParser(HTMLParser):
-              def __init__(self):
-                  super().__init__()
-                  self.attributes = None
-
-              def handle_starttag(self, tag, attributes):
-                  if tag.lower() == 'body' and self.attributes is None:
-                      self.attributes = dict(attributes)
-
-          with open(sys.argv[1], encoding='utf-8') as source:
-              parser = BodyParser()
-              parser.feed(source.read())
-
-          expected = {
-              'data-state': 'solved',
-              'data-self-test': 'passed',
-              'data-signature': '1:F1EF0EB6',
-              'data-view-signature': 'AC7290C0',
-              'data-face-count': '140',
-          }
-          if parser.attributes is None:
-              raise SystemExit('Rendered DOM has no body element.')
-          for name, value in expected.items():
-              actual = parser.attributes.get(name)
-              if actual != value:
-                  raise SystemExit(
-                      f'Expected body {name}={value!r}, found {actual!r}.')
-          PY
+          ./build/native/bin/wfc_browser_check --dom "$dom_file" \
+            --expect 'data-state=solved' \
+            --expect 'data-self-test=passed' \
+            --expect 'data-signature=1:F1EF0EB6' \
+            --expect 'data-view-signature=AC7290C0' \
+            --expect 'data-face-count=140'
 
   development:
     name: Development FPC (official trunk image)

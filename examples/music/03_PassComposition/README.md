@@ -1,7 +1,7 @@
 # pass-composed music
 
 `PassComposition.lpr` is the first dependency-free music vertical slice. The
-same Pascal source runs with native FPC and pas2js/Node.
+same Pascal source runs with native FPC.
 
 It learns three order-2 sequence models from small fixed-quantum corpora and
 solves an open eight-cell graph in this order:
@@ -66,17 +66,6 @@ fpc -B -Mdelphi -Sa -Cr -Co -Ci -Fusrc \
   -FEbuild/examples/music/native/bin \
   examples/music/03_PassComposition/PassComposition.lpr
 ./build/examples/music/native/bin/PassComposition 0
-```
-
-With a configured pas2js compiler and matching RTL:
-
-```bash
-mkdir -p build/examples/music/pas2js/units build/examples/music/pas2js/bin
-pas2js -B -Tnodejs -Mdelphi -Fusrc \
-  -FUbuild/examples/music/pas2js/units \
-  -FEbuild/examples/music/pas2js/bin \
-  examples/music/03_PassComposition/PassComposition.lpr
-node build/examples/music/pas2js/bin/PassComposition.js 0
 ```
 
 Omit the argument for seed zero, or pass any unsigned 32-bit decimal seed.

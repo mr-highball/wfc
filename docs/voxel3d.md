@@ -147,7 +147,7 @@ geometry. SVG is an edge artifact: neither its types nor a rendering engine
 enter generation, capture, validation, meshes, or command projection.
 
 The isometric, SVG, and Building-view conformance suites run on native FPC and
-pas2js/Node. They cover exact four-yaw projection, bounds, stable painter
+pas2js. They cover exact four-yaw projection, bounds, stable painter
 ordering, reverse hit testing, non-power-of-two sort lengths, signatures,
 deep-copy lifetime, metadata, XML and alpha encoding, invalid inputs, and
 overflow rejection. The graphical Building example applies the same signed

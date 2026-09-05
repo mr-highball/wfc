@@ -328,7 +328,7 @@ attachments should use explicit padding or roles rather than assuming a
 missing neighbor is a value: an unresolved bounded offset does not satisfy a
 spatial clause.
 
-The standard v1 examples now include native and pas2js/Node textual/mesh
+The standard v1 examples now include native textual/mesh
 proofs, deterministic native SVG, and an interactive pas2js/Canvas2D
 workbench. There is no standard-RTL interactive native window. Engine or
 window-system integrations remain optional edge adapters and must consume the

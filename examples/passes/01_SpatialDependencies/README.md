@@ -51,23 +51,12 @@ fpc -B -Mdelphi -Sa -Cr -Co -Ci -Fusrc \
 ./build/examples/spatial/native/bin/SpatialDependencies 0
 ```
 
-With a configured pas2js compiler and matching RTL:
-
-```bash
-mkdir -p build/examples/spatial/pas2js/units build/examples/spatial/pas2js/bin
-pas2js -B -Tnodejs -Mdelphi -Fusrc \
-  -FUbuild/examples/spatial/pas2js/units \
-  -FEbuild/examples/spatial/pas2js/bin \
-  examples/passes/01_SpatialDependencies/SpatialDependenciesNode.lpr
-node build/examples/spatial/pas2js/bin/SpatialDependenciesNode.js 0
-```
-
 The optional argument is an unsigned 32-bit seed. Omit it for seed zero.
 Malformed arguments or any failed self-check produce a nonzero process exit.
 
 ## seed-zero golden output
 
-Native FPC and pas2js/Node produce the same seed-zero fixture:
+Native FPC produce the same seed-zero fixture:
 
 ```text
 SpatialDependencies: terrain -> settlement + foliage

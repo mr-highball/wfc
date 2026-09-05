@@ -27,10 +27,6 @@ program LearnTiles;
 
 uses
   SysUtils,
-  {$IFDEF PAS2JS}
-  NodeJSApp,
-  NodeJS,
-  {$ENDIF}
   wfc,
   wfc_model,
   wfc_learn,
@@ -135,21 +131,13 @@ end;
 function GraphValueToModelToken(
   const AValue: TGraphValue): TWfcModelToken;
 begin
-  {$IFDEF PAS2JS}
-  Result := TWfcModelToken(AValue);
-  {$ELSE}
   Result := UTF8Encode(UnicodeString(AValue));
-  {$ENDIF}
 end;
 
 function ModelTokenForDisplay(
   const AToken: TWfcModelToken): String;
 begin
-  {$IFDEF PAS2JS}
-  Result := String(AToken);
-  {$ELSE}
   Result := String(UTF8Decode(AToken));
-  {$ENDIF}
 end;
 
 procedure VerifyRepresentable(const AModel: TWfcModel);
@@ -337,11 +325,7 @@ begin
     on E: Exception do
     begin
       WriteLn('LearnTiles error: ', E.Message);
-      {$IFDEF PAS2JS}
-      TNJSProcess.exitCode := 1;
-      {$ELSE}
       Halt(1);
-      {$ENDIF}
     end;
   end;
 end.

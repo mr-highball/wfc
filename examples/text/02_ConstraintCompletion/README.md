@@ -6,7 +6,7 @@ prefix, an interior locked span, a suffix, and a two-token positional domain.
 It also proves the difference between a valid truncated prefix and an invalid
 truncated whole sample.
 
-The same shared Pascal unit runs under native FPC and pas2js/Node. It uses only
+The same shared Pascal unit runs under native FPC. It uses only
 repository units and the applicable standard RTL.
 
 ## native FPC
@@ -27,21 +27,6 @@ build/examples/text-completion/native/bin/ConstraintCompletion 0
 ```
 
 On Windows the executable has an `.exe` suffix.
-
-## pas2js and Node
-
-```powershell
-New-Item -ItemType Directory -Force build/examples/text-completion/pas2js/units, build/examples/text-completion/pas2js/bin
-```
-
-```bash
-mkdir -p build/examples/text-completion/pas2js/units build/examples/text-completion/pas2js/bin
-```
-
-```text
-pas2js -B -Tnodejs -Mdelphi -Fusrc -Fuexamples/text/02_ConstraintCompletion -FUbuild/examples/text-completion/pas2js/units -FEbuild/examples/text-completion/pas2js/bin examples/text/02_ConstraintCompletion/ConstraintCompletionNode.lpr
-node build/examples/text-completion/pas2js/bin/ConstraintCompletionNode.js 0
-```
 
 ## seed-zero output
 

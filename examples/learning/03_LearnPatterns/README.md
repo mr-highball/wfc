@@ -24,19 +24,8 @@ fpc -B -Mdelphi -Fusrc `
 .\build\examples\pattern\native\bin\LearnPatterns.exe 0
 ```
 
-The same Pascal source compiles for Node.js with pas2js:
-
-```bash
-mkdir -p build/pas2js/pattern-example-units build/pas2js/pattern-example
-pas2js -B -Tnodejs -Mdelphi -Fusrc \
-  -FUbuild/pas2js/pattern-example-units \
-  -FEbuild/pas2js/pattern-example \
-  examples/learning/03_LearnPatterns/LearnPatterns.lpr
-node build/pas2js/pattern-example/LearnPatterns.js 0
-```
-
 An optional unsigned 32-bit seed selects a replayable solve. Native FPC and
-pas2js/Node print the same metadata, counters, projection signature, and token
+pas2js print the same metadata, counters, projection signature, and token
 grid for the same seed. No external library, asset pack, or service is used.
 
 Seed `0` currently learns 17 unique patterns and prints projection signature

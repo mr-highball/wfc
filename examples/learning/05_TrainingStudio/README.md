@@ -1,7 +1,7 @@
 # Training Studio
 
 A dependency-free workbench for learning and running your own small corpora.
-The browser UI is compiled from Pascal. Native FPC and pas2js/Node use the same
+The browser UI is compiled from Pascal. The native FPC host uses the same
 workspace, learners, presets, and independent output checker.
 
 ## Run the browser workbench
@@ -20,8 +20,11 @@ The scripts stage `build/browser/training/www` and do not commit generated
 JavaScript. Serve that directory with an ordinary static server:
 
 ```text
-python -m http.server 4176 --bind 127.0.0.1 --directory build/browser/training/www
+build/native/bin/wfc_serve --root build/browser/training/www --port 4176
 ```
+
+Build the server with the native gate first; use `wfc_serve.exe` on Windows.
+See [development tools](../../../docs/development-tools.md) for its loopback-only serving boundary.
 
 Open `http://127.0.0.1:4176/`. Start with the overlapping checkerboard,
 then try editing its token records, changing seed/size, adding two adjacent
@@ -36,7 +39,7 @@ and MIT licensed.
 Browser text fields use LF line endings; canonical token records can retain
 explicit CR or CRLF tokens without textarea normalization.
 
-## Native and Node demonstrations
+## Native demonstrations
 
 The checked native build (`build.ps1` or `build.sh`) also runs all five
 presets. Manually:
@@ -50,13 +53,6 @@ Use `TrainingStudio.exe` on Windows. Arguments are preset index 0–4 and
 an optional unsigned decimal seed; default is preset 2, seed 0. The native
 demonstration is a self-checking console view, not an interactive native window.
 For arbitrary file-based training and replay, use `wfc_learn`/`wfc_run`.
-
-For Node, create `build/studio-node/units` and `build/studio-node/bin`:
-
-```text
-pas2js -B -Tnodejs -Mdelphi -Fusrc -Fuexamples/learning/05_TrainingStudio -FUbuild/studio-node/units -FEbuild/studio-node/bin examples/learning/05_TrainingStudio/TrainingStudioNode.lpr
-node build/studio-node/bin/TrainingStudioNode.js --selftest
-```
 
 The console and browser token grid show percent-encoded values so whitespace and Unicode
 remain visible and byte-portable.

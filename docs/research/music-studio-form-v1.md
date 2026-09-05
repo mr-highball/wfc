@@ -54,19 +54,13 @@ fpc -B -Mdelphi -Sa -Cr -Co -Ci -Fusrc -Fuexamples/music/05_MusicStudio \
   -FUbuild/music-form/native/units -FEbuild/music-form/native/bin \
   examples/music/05_MusicStudio/MusicStudioFormProbe.lpr
 ./build/music-form/native/bin/MusicStudioFormProbe > build/music-form/native/results.csv
-
-mkdir -p build/music-form/node/units build/music-form/node/bin
-pas2js -B -Tnodejs -Mdelphi -Jirtl.js -Fusrc \
-  -Fuexamples/music/05_MusicStudio -FUbuild/music-form/node/units \
-  -FEbuild/music-form/node/bin examples/music/05_MusicStudio/MusicStudioFormProbe.lpr
-node build/music-form/node/bin/MusicStudioFormProbe.js > build/music-form/node/results.csv
 ```
 
-On Windows, create those directories with PowerShell, quote `'-Jirtl.js'`,
+On Windows, create those directories with PowerShell
 and run the native `.exe`. Compare CSV as text after normalizing host CRLF
 to LF; do not discard rows or columns. The checked-in
 [raw results](music-studio-form-v1.csv) contain all 32 cases, not only successes.
-The native and Node gates build/run this probe and compare against that file.
+The native gates build/run this probe and compare against that file.
 
 ## Observations
 

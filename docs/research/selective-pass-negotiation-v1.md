@@ -1,5 +1,9 @@
 # Selective Pass Negotiation v1 research record
 
+Execution note: pas2js figures below are historical measurements. Maintained
+execution paths are native FPC and the documented browser demos; those earlier
+figures do not establish browser coverage for this experiment.
+
 - **Status:** experimental, reproducible reference algorithm
 - **Scope algorithm:** `WFC_SELECTIVE_NEGOTIATION_ALGORITHM_VERSION = 1`
 - **Transcript encoding:** `WFC_SELECTIVE_NEGOTIATION_HASH_VERSION = 1`
@@ -144,7 +148,7 @@ The conformance fixtures record:
 
 The published fixtures use seed `0`. The packaged negotiated-repair demo and
 its four goldens were reproduced byte-for-byte under current FPC 3.3.1, stable
-FPC 3.2.2, and pas2js/Node from the same shared Pascal unit. The focused
+FPC 3.2.2, and historical pas2js runs from the same shared Pascal unit. The focused
 conformance suite reports 124 checks and zero failures on all three hosts from
 one portable Pascal source. The check count is intentionally not part of the
 research identity; semantic assertions and portable transcript/output goldens

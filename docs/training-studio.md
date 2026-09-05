@@ -7,7 +7,7 @@ pas2js. The browser is a presentation edge over that same code, not another
 solver or learner.
 
 The [Studio example](../examples/learning/05_TrainingStudio/README.md) includes a
-browser workbench and a native/Node demonstration of five independently checked
+browser workbench and a native demonstration of five independently checked
 presets. For file-oriented automation, use [wfc-learn](training.md) and the
 [recipe validator/runner](pipeline-artifacts.md).
 
@@ -196,7 +196,7 @@ authoring, and large-corpus/batch management remain separate work.
 The workspace suite pins all five source/recipe/result identities, validates
 public outputs independently, round-trips exported provenance chains, proves
 detached arrays, and checks invalidation, contradiction, empty-domain behavior,
-recovery, and resource-policy rejection on FPC and pas2js/Node. Text-import tests
+recovery, and resource-policy rejection on FPC and pas2js. Text-import tests
 cover exact Unicode/whitespace, sample boundaries, metadata retention, and
 capacity errors.
 

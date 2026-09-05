@@ -26,6 +26,7 @@ program wfc_token_lookup_test;
 {$mode delphi}{$H+}
 
 uses
+  {$IFDEF PAS2JS}wfc_browser_test_host,{$ENDIF}
   SysUtils,
   wfc_model,
   wfc_token_lookup;

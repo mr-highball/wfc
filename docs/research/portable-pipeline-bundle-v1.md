@@ -1,7 +1,11 @@
 # Portable Pipeline Bundle v1
 
+Execution note: pas2js figures below are historical measurements. Maintained
+execution paths are native FPC and the documented browser demos; those earlier
+figures do not establish browser coverage for this experiment.
+
 Status: implemented contract; immutable recipe, run, and result IR; strict
-canonical codecs; transactional runtime compiler; native and pas2js/Node tools
+canonical codecs; transactional runtime compiler; native tools and historical pas2js executions
 
 ## Purpose
 
@@ -20,7 +24,7 @@ made from known WFC artifact and adapter versions, and it can already be
 strictly decoded and validated by native FPC and pas2js without application
 callbacks or third-party serialization libraries. A recipe can be compiled
 into a fresh graph, combined with a canonical run document, and executed into
-a canonical public result by either native FPC or pas2js/Node.
+a canonical public result by either native FPC or historical pas2js runs.
 
 The bundle is intentionally not a dump of a live `TGraph`. A live graph may
 contain procedure pointers, derived pass classes, owner-backed commit hooks,
@@ -382,15 +386,15 @@ invalid execution boundary, `2` for command usage, `3` for I/O, and `70` for
 an internal failure. `wfc-run` additionally uses `4` for a valid non-solved
 result. Quiet mode changes output, not validation or solve semantics.
 
-Native and pas2js/Node hosts own only argument, bounded file, standard-input,
-standard-output, and process-exit plumbing. They do not reimplement model or
+The native and historical pas2js hosts owned only argument, bounded file, standard-input,
+standard-output, and process-exit plumbing. They did not reimplement model or
 validation rules. No JSON, YAML, CLI framework, hashing package, filesystem
 abstraction, or serializer dependency was introduced.
 
 ## Portable proof
 
 The implementation is covered as a layered portable proof on stable FPC,
-development FPC, and pas2js/Node:
+development FPC, and historical pas2js runs:
 
 - compiler fixtures build empty, rules, generic-model, pattern, and sequence
   passes; install both bridge kinds and exact/any public requirements; and
@@ -405,7 +409,7 @@ development FPC, and pas2js/Node:
   replay, real outer-pass repair, inverse-work and pass-budget exhaustion, and
   detached result lifetime;
 - application fixtures execute encoded recipe-plus-run input into decoded
-  canonical results and verify non-solved behavior; native and Node hosts run a
+  canonical results and verify non-solved behavior; native and historical pas2js hosts ran a
   committed process matrix covering exact bytes, both legal standard-input
   positions, quiet output, and every ordinary exit class while the shared
   codecs retain pinned bytes and signatures on both targets.
@@ -432,7 +436,7 @@ Its committed recipe, run, and result artifacts establish:
   the existing layer hashes `EBBC9390`, `92D4BC87`, and `8FA9D854`;
 - the exact result has signature `5329DB78` and contains no private pattern or
   sequence key;
-- native FPC and pas2js/Node execute the same public artifacts, while the
+- native FPC and historical pas2js runs executed the same public artifacts, while the
   native suite additionally verifies all three checked-in files byte for byte.
 
 ## Deliberate nonclaims

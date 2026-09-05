@@ -13,9 +13,9 @@ same-coordinate layer relationship, and cardinal adjacency in the generated
 world. A model-configuration defect therefore cannot validate itself merely
 because solving used the same defective table.
 
-Both units use the same source on FPC 3.2.2 and pas2js. Conformance runs under
-Node.js, and `BrowserWorld` compiles the same model and validator to a real
-interactive browser host with a separate headless-browser fixture.
+Both units use the same source on FPC 3.2.2 and pas2js. `BrowserWorld`
+compiles the model and validator to an interactive browser host with a
+separate headless-browser fixture.
 
 ## learned-pattern world pipeline
 
@@ -260,16 +260,15 @@ data-signature="1:5B0DD75D:08022AF1:A40D0955"
 ```
 
 The hosted browser gate checks those attributes after executing the generated
-program in headless Chrome. This is deliberately distinct from Node.js
-conformance: it covers the browser target, document binding, canvas host,
-validator, and portable signature together.
+program in headless Chrome. It covers the browser target, document binding,
+canvas host, validator, and portable signature together.
 
 ## demonstration and conformance
 
 [`MultiPassWorld`](../examples/2D/01_MultiPassWorld/README.md) renders all three
 layers side by side, prints solver counters, validates the result, and accepts
-an optional seed. The same program is compiled and smoke-tested natively and
-with pas2js/Node.
+an optional seed. The command-line program is compiled and smoke-tested natively; the
+browser demonstration exercises the shared world units through pas2js.
 
 `test/wfc_world2d_test.lpr` freezes the seed `$4D505731` fixture as:
 

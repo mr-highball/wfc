@@ -5,13 +5,16 @@ dependency. It learns fixed-quantum rhythm, harmony, and melody sequences,
 solves them as named passes, rebuilds an exact score, round-trips canonical
 score and public-composition text, performs bounded full/selective negotiated
 variation with exact public motif locks, and exports Standard MIDI File and
-project-owned PCM/WAVE bytes. Music Studio adds browser playback and editing.
+project-owned PCM/WAVE bytes. Music Studio adds browser playback, editing,
+and [user-defined long compositions](../../docs/music-arrangement.md) streamed
+to WAVE/RF64. The [MIDI import tool](../../docs/music-import.md) builds exact
+scores and explicitly selected training excerpts.
 
 | Example | Status | Targets | Dependencies |
 | --- | --- | --- | --- |
-| [`05_MusicStudio`](05_MusicStudio/README.md) | Interactive locks, repair, piano roll, playback and export | Native FPC, pas2js/Node, pas2js/browser | Repository units, standard RTL and host APIs only |
-| [`04_NegotiatedVariation`](04_NegotiatedVariation/README.md) | Current reusable repair and replay proof | Native FPC, pas2js/Node | Repository units and standard RTL only |
-| [`03_PassComposition`](03_PassComposition/README.md) | Current tested vertical slice | Native FPC, pas2js/Node | Repository units and standard RTL only |
+| [`05_MusicStudio`](05_MusicStudio/README.md) | Interactive locks, repair, piano roll, playback and export | Native FPC, pas2js/browser | Repository units, standard RTL and host APIs only |
+| [`04_NegotiatedVariation`](04_NegotiatedVariation/README.md) | Current reusable repair and replay proof | Native FPC | Repository units and standard RTL only |
+| [`03_PassComposition`](03_PassComposition/README.md) | Current tested vertical slice | Native FPC | Repository units and standard RTL only |
 | `01_simple_A_major` | Legacy playback experiment | Lazarus/LCL | Optional GPL-3.0 SoundShop submodule and SDL2 |
 | `02_simple_song_riffs` | Legacy learned-adjacency experiment | Lazarus/LCL | Optional GPL-3.0 SoundShop submodule and SDL2 |
 
@@ -47,23 +50,12 @@ fpc -B -Mdelphi -Sa -Cr -Co -Ci -Fusrc \
 ./build/examples/music/native/bin/PassComposition 0
 ```
 
-For pas2js/Node:
-
-```bash
-mkdir -p build/examples/music/pas2js/units build/examples/music/pas2js/bin
-pas2js -B -Tnodejs -Mdelphi -Fusrc \
-  -FUbuild/examples/music/pas2js/units \
-  -FEbuild/examples/music/pas2js/bin \
-  examples/music/03_PassComposition/PassComposition.lpr
-node build/examples/music/pas2js/bin/PassComposition.js 0
-```
-
 The optional argument is an unsigned 32-bit seed. The program validates both
 cross-pass projections, the strict `wfcmusic=1` score round-trip, and the owned
 SMF round-trip before it reports success. It emits no audio and does not write
 a `.mid` file; the MIDI artifact is held as a byte array.
 
-The negotiated-variation fixture uses thin native and Node hosts over one
+The negotiated-variation fixture uses a thin native host over one
 self-checking Pascal unit:
 
 ```bash
@@ -75,17 +67,6 @@ fpc -B -Mdelphi -Sa -Cr -Co -Ci -Fusrc \
   -FEbuild/examples/music-variation/native/bin \
   examples/music/04_NegotiatedVariation/NegotiatedVariation.lpr
 ./build/examples/music-variation/native/bin/NegotiatedVariation 0
-```
-
-```bash
-mkdir -p build/examples/music-variation/pas2js/units \
-  build/examples/music-variation/pas2js/bin
-pas2js -B -Tnodejs -Mdelphi -Fusrc \
-  -Fuexamples/music/04_NegotiatedVariation \
-  -FUbuild/examples/music-variation/pas2js/units \
-  -FEbuild/examples/music-variation/pas2js/bin \
-  examples/music/04_NegotiatedVariation/NegotiatedVariationNode.lpr
-node build/examples/music-variation/pas2js/bin/NegotiatedVariationNode.js 0
 ```
 
 It preserves an exact public melody motif, demonstrates atomic failure before

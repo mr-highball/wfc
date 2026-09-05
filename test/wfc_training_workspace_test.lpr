@@ -26,6 +26,7 @@ program wfc_training_workspace_test;
 {$mode delphi}{$H+}
 
 uses
+  {$IFDEF PAS2JS}wfc_browser_test_host,{$ENDIF}
   SysUtils, wfc, wfc_model, wfc_training_workspace,
   wfc_pipeline_model, wfc_pipeline_text, wfc_pipeline_run,
   wfc_pipeline_run_text, wfc_pipeline_result, wfc_pipeline_result_text,

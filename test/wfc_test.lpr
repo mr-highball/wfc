@@ -29,6 +29,7 @@ program wfc_test;
 {$ENDIF}
 
 uses
+  {$IFDEF PAS2JS}wfc_browser_test_host,{$ENDIF}
   Classes,
   SysUtils,
   Generics.Collections,

@@ -42,15 +42,15 @@ modular 3D structures, music, text, and other discrete design problems.
 > foundation adds project-owned Unicode-scalar tokenization, atomic prefix,
 > suffix, mask, and locked-span constraints, exact globally feasible token
 > domains, anchored infill, prefix-only continuation, and independent text
-> validation on native FPC and pas2js/Node. Text Pass Composition v1 adds a
+> validation on native FPC. Text Pass Composition v1 adds a
 > persistent structure -> lexical -> punctuation owner, atomic multi-source
 > projection maps, exact surface fragments, independent cross-layer
 > validation, sanitized public traces, selective regeneration, and one shared
-> native/Node/browser fixture. Music Foundation v1 adds an exact
+> native/browser fixture. Music Foundation v1 adds an exact
 > integer score IR, canonical melody/rhythm/harmony cells, two-source latent
 > pass projection, strict `wfcmusic=1` score text, a project-owned SMF
 > format-0/1 codec, and a format-0 score exporter. Its portable three-pass
-> example runs on native FPC and pas2js/Node without a playback dependency.
+> example runs on native FPC without a playback dependency.
 > Music Negotiated Variation v1 promotes that path into a reusable persistent
 > harmony -> rhythm -> melody owner with public-token constraints and motif
 > locks, immutable validated compositions, ordinary and bounded negotiated
@@ -68,19 +68,19 @@ modular 3D structures, music, text, and other discrete design problems.
 > deterministic one-way or bounded negotiated solves. Strict canonical
 > `wfcpipeline-run=1` and `wfcpipeline-result=1` artifacts preserve provenance,
 > options, reports, public layers, and failed outcomes across native FPC and
-> pas2js/Node. Runtime v2 lowers public Pattern2D and Sequence locks and
+> pas2js. Runtime v2 lowers public Pattern2D and Sequence locks and
 > domains back into bounded private source domains while retaining bridge-v1
 > forward-only replay. Shared Pascal application units power a recipe validator and a
-> headless recipe-plus-run executor; their native and Node hosts contain only
+> headless recipe-plus-run executor; their native hosts contain only
 > bounded file, standard-stream, and process plumbing.
 > Portable Training v1 adds editable pretokenized `wfclearn=1` corpora and a
-> shared native/Node learner host for cardinal, pattern, and sequence models.
+> shared native learner host for cardinal, pattern, and sequence models.
 > Generated executable recipes retain source/license labels and ordered sample
 > fingerprints; four checked bundles cover source through solved output.
 > Training Studio adds a shared editable-workspace owner, an explicit
 > Unicode-scalar raw-text bridge, and a pas2js workbench for training, seeded
 > solving, public locks, failure inspection, and artifact export. Its native
-> and Node demonstrations independently check five matching presets.
+> demonstrations independently check five matching presets.
 > Pipeline v2 adds exact signed-offset and finite any-of-neighborhood reads
 > across staged provider passes. Causal Trace v1 adds opt-in chronological
 > decision/removal/backtrack evidence, provider-pass cause links, per-pass
@@ -91,7 +91,7 @@ modular 3D structures, music, text, and other discrete design problems.
 > integer surface meshes. Building 3D v1 now composes a full depth-aware
 > footprint -> structure -> envelope/roof -> props DAG through checked public
 > prototype maps, validates the result independently, and runs the same
-> textual/mesh demonstration on native FPC and pas2js/Node. Its project-owned
+> textual/mesh demonstration on native FPC. Its project-owned
 > presentation layer adds immutable four-pass face lineage, fixed-integer
 > four-yaw isometric commands, stable painter ordering and hit testing,
 > deterministic native SVG, and an interactive pas2js/Canvas2D workbench with
@@ -130,7 +130,7 @@ modular 3D structures, music, text, and other discrete design problems.
 - typed 2D terrain/biome/foliage and selective-settlement libraries with
   independent semantic checkers
 - versioned, fixed-token 2D layer signatures shared by native FPC and pas2js
-- matching seeded golden fixtures on native FPC and pas2js/Node
+- matching seeded golden fixtures on native FPC
 - an interactive browser world with synchronized layers, locks, and a seeded
   headless-browser conformance fixture
 - immutable, versioned one-layer model data shared by native FPC and pas2js
@@ -162,7 +162,7 @@ modular 3D structures, music, text, and other discrete design problems.
   private learned terrain model exclusively through eight public bridge-v2
   locks and reproduces all three established seed-zero public layer hashes
 - dependency-free recipe-validation and headless-execution application units
-  with thin native and Node command-line hosts and documented exit contracts
+  with thin native command-line hosts and documented exit contracts
 - deterministic overlapping 2D pattern extraction with heterogeneous corpora,
   open/wrapped sources, square-footprint D4 augmentation, structural
   compatibility, explicit latent-to-token projection, and strict `.wfcp`
@@ -201,7 +201,7 @@ modular 3D structures, music, text, and other discrete design problems.
   shared by native FPC and pas2js with matching byte identities
 - an interactive Music Studio with public motif/cell locks, selective
   negotiated repair, a piano roll, stale-output invalidation, and browser
-  playback; native/Node hosts export the same score, MIDI, and WAV
+  playback; native hosts export the same score, MIDI, and WAV
 - [immutable voxel kits](docs/voxel3d.md) with deterministic yaw variants,
   explicit socket relations, support-aware six-direction graph compilation,
   portable scene signatures, independent connectivity validation, and integer
@@ -269,7 +269,7 @@ non-minimal repair boundary, see
 The self-checking
 [negotiated-repair example](examples/2D/04_NegotiatedRepair/README.md)
 contrasts a too-narrow leaf horizon with a successful provider-root repair on
-native FPC and pas2js/Node.
+native FPC.
 For `CaptureTrace`, event/cause semantics, per-pass slices, stable hashes,
 query/validation helpers, current limits, and the console inspector, see
 [causal solve traces](docs/traces.md).
@@ -317,6 +317,11 @@ For audible output and an interactive composition/repair workflow, start with
 [Music Audio API](docs/music-audio.md). The standard path uses project-owned
 Pascal synthesis and original training phrases, with no playback library or
 sample-pack dependency.
+For user-defined composition duration, bounded-memory section generation,
+and full-length streamed WAVE/RF64 export, see
+[music arrangements](docs/music-arrangement.md). For explicit-policy MIDI
+score import and caller-selected training excerpts, see
+[music import and training](docs/music-import.md).
 For the reusable footprint-to-props building owner, voxel pass bridge,
 validation, capture, signatures, immutable graphical commands, native SVG,
 and depth-three browser workbench, see
@@ -351,7 +356,7 @@ real-process training/validation/replay against exact fixtures, compile the
 fixed-integer isometric, SVG, and Building-view suites, write a deterministic
 seed-zero Building SVG, and preserve failure exit codes.
 The repository also includes an FPM package, a runtime-only Lazarus package,
-and the same conformance sources for pas2js/Node. Separate `build-browser.ps1`
+and the same conformance sources for pas2js. Separate `build-browser.ps1`
 and `build-browser.sh` entry points stage the interactive 2D world;
 `build-browser-text.ps1` and `build-browser-text.sh` stage the text pass
 workbench; and `build-browser-building3d.ps1` and
@@ -359,7 +364,7 @@ workbench; and `build-browser-building3d.ps1` and
 staging entry points commits generated JavaScript. The additional
 `build-browser-training.ps1` and `build-browser-training.sh` entry points
 stage Training Studio with editable corpora, raw-text import, and artifact
-exports; its native/Node presets use the same workspace.
+exports; its native presets use the same workspace.
 See [building and testing](docs/building.md) for compiler overrides, package
 commands, output paths, and pas2js setup. The
 [Building graphical guide](examples/3D/03_BrowserBuilding/README.md) records

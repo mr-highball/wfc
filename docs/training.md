@@ -38,9 +38,8 @@ exceeded, or recipe export when the current adapter cannot represent it.
 
 The native entry source is `tools/wfc_learn_cli.lpr`; its distinct basename
 avoids an FPC object-file collision with `src/wfc_learn.pas`. Build it with
-`-owfc_learn` (`-owfc_learn.exe` on Windows). The Node entry is
-`tools/wfc_learn_node.lpr`. Both hosts use
-`tools/wfc_learn_app.pas` and contain only bounded file/standard-stream I/O.
+`-owfc_learn` (`-owfc_learn.exe` on Windows). The host uses
+`tools/wfc_learn_app.pas` and contains only bounded file/standard-stream I/O.
 The portable units can also be called by a browser program; this milestone
 does not add a training browser editor.
 
@@ -224,7 +223,7 @@ arrays; callers own returned document/recipe objects. Use
 
 ## Verification and remaining scope
 
-The native build and hosted pas2js/Node gate run immutable-document/learning,
+The native build and hosted pas2js gate run immutable-document/learning,
 strict-codec, and shared CLI application tests. Separate process harnesses run
 25 cases against real learner/validator/runner processes, checking exact LF
 stdout, stderr classification, file/stdin parity, all four artifacts, and

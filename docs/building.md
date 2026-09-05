@@ -56,7 +56,7 @@ portable project units. Causal capture, hashing, formatting, query, and
 validation are likewise project-owned Pascal in `wfc` and `wfc_trace`.
 The `wfcpipeline=1`, `wfcpipeline-run=1`, and `wfcpipeline-result=1` codecs,
 recipe compiler, transactional runtime, result capture, validator application,
-and command-line parsing are also shared native/pas2js Pascal. Native and Node
+and command-line parsing are also shared native/pas2js Pascal. Native
 hosts add only bounded byte I/O and process-exit plumbing.
 
 Playback systems, editors, native window/engine
@@ -94,6 +94,10 @@ Both scripts rebuild with assertions and range, overflow, and I/O checks, run
 `wfc_music_test`,
 `wfc_music_graph_test`, `wfc_music_midi_test`, `wfc_music_passes_test`,
 `wfc_music_passes_text_test`, `wfc_music_audio_test`, `wfc_music_studio_test`,
+`wfc_music_midi_import_test`, `wfc_music_training_test`,
+`wfc_music_arrangement_test`, `wfc_music_audio_stream_test`,
+`wfc_music_studio_arrangement_test`, `wfc_music_import_app_test`,
+`wfc_browser_dom_test`, `wfc_serve_test`,
 `wfc_text_codec_test`, `wfc_rule_model_test`,
 `wfc_rule_text_test`, `wfc_pipeline_model_test`, `wfc_pipeline_text_test`,
 `wfc_pipeline_run_test`, `wfc_pipeline_run_text_test`,
@@ -112,6 +116,9 @@ composition, negotiated music variation, the learned-pattern world, and
 depth-three Building 3D pipeline, all five Training Studio presets, and the
 Music Studio generation/repair/audio self-test. The 32-case Music Studio form
 probe is compared with its checked-in raw CSV;
+the FPC server also runs live HTTP integration checks, and the native
+`MusicStudioRender` process suite exercises requested durations, frame counts,
+no-overwrite publication, and a competing destination created during export;
 the multi-pass and
 selective-settlement worlds also run with their default seeds. Finally, the
 native `Building3DSvg` host generates and validates
@@ -147,7 +154,7 @@ FPC=/opt/fpc/bin/fpc ./build.sh -O2
 
 ## Headless pipeline tools
 
-The native and pas2js/Node builds expose the same project-owned application
+The native builds expose the same project-owned application
 logic through thin hosts. The recipe-only validator accepts one file or
 standard input:
 
@@ -170,9 +177,9 @@ These are the distribution-facing command names used in help and diagnostics.
 The checked repository build writes the native source-host names
 `build/native/bin/wfc_validate[.exe]` and
 `build/native/bin/wfc_run[.exe]`; the training host is
-`build/native/bin/wfc_learn[.exe]`. Direct pas2js builds write
-`wfc_validate_node.js`, `wfc_run_node.js`, and `wfc_learn_node.js` in the
-selected output directory. The native training entry is named
+`build/native/bin/wfc_learn[.exe]`. Portable application logic is also tested
+in real browsers through the [included FPC tools](development-tools.md).
+The native training entry is named
 `tools/wfc_learn_cli.lpr` to avoid an object collision with the learner unit;
 compile it with `-owfc_learn` (`-owfc_learn.exe` on Windows).
 See [training documents](training.md) for its
@@ -237,380 +244,8 @@ executable is written to `build/lazarus/test/bin`, with its units kept in the
 adjacent `units/<target>` directory. Run `wfc_test.exe` on Windows or
 `wfc_test` on other native targets.
 
-## pas2js and Node.js
-
-The conformance sources can be compiled for Node.js when pas2js and its
-matching RTL are configured:
-
-```bash
-mkdir -p build/pas2js/units build/pas2js
-pas2js -B -Tnodejs -Mdelphi -Fusrc \
-  -FUbuild/pas2js/units -FEbuild/pas2js test/wfc_test.lpr
-node build/pas2js/wfc_test.js
-
-mkdir -p build/pas2js/world-units build/pas2js/world
-pas2js -B -Tnodejs -Mdelphi -Fusrc \
-  -FUbuild/pas2js/world-units -FEbuild/pas2js/world \
-  test/wfc_world2d_test.lpr
-node build/pas2js/world/wfc_world2d_test.js
-
-mkdir -p build/pas2js/settlement-units build/pas2js/settlement
-pas2js -B -Tnodejs -Mdelphi -Fusrc \
-  -FUbuild/pas2js/settlement-units -FEbuild/pas2js/settlement \
-  test/wfc_world2d_settlement_test.lpr
-node build/pas2js/settlement/wfc_world2d_settlement_test.js
-
-mkdir -p build/pas2js/learning-units build/pas2js/learning
-pas2js -B -Tnodejs -Mdelphi -Fusrc \
-  -FUbuild/pas2js/learning-units -FEbuild/pas2js/learning \
-  test/wfc_learn_test.lpr
-node build/pas2js/learning/wfc_learn_test.js
-
-mkdir -p build/pas2js/pattern-units build/pas2js/pattern
-pas2js -B -Tnodejs -Mdelphi -Fusrc \
-  -FUbuild/pas2js/pattern-units -FEbuild/pas2js/pattern \
-  test/wfc_pattern2d_test.lpr
-node build/pas2js/pattern/wfc_pattern2d_test.js
-
-mkdir -p build/pas2js/pattern-pass-units build/pas2js/pattern-pass
-pas2js -B -Tnodejs -Mdelphi -Fusrc \
-  -FUbuild/pas2js/pattern-pass-units -FEbuild/pas2js/pattern-pass \
-  test/wfc_pattern2d_passes_test.lpr
-node build/pas2js/pattern-pass/wfc_pattern2d_passes_test.js
-
-mkdir -p build/pas2js/sequence-units build/pas2js/sequence
-pas2js -B -Tnodejs -Mdelphi -Fusrc \
-  -FUbuild/pas2js/sequence-units -FEbuild/pas2js/sequence \
-  test/wfc_sequence_test.lpr
-node build/pas2js/sequence/wfc_sequence_test.js
-
-mkdir -p build/pas2js/text-units build/pas2js/text
-pas2js -B -Tnodejs -Mdelphi -Fusrc \
-  -FUbuild/pas2js/text-units -FEbuild/pas2js/text \
-  test/wfc_text_test.lpr
-node build/pas2js/text/wfc_text_test.js
-
-mkdir -p build/pas2js/text-passes-units build/pas2js/text-passes
-pas2js -B -Tnodejs -Mdelphi -Fusrc \
-  -FUbuild/pas2js/text-passes-units -FEbuild/pas2js/text-passes \
-  test/wfc_text_passes_test.lpr
-node build/pas2js/text-passes/wfc_text_passes_test.js
-
-mkdir -p build/pas2js/negotiation-units build/pas2js/negotiation
-pas2js -B -Tnodejs -Mdelphi -Fusrc \
-  -FUbuild/pas2js/negotiation-units -FEbuild/pas2js/negotiation \
-  test/wfc_negotiation_test.lpr
-node build/pas2js/negotiation/wfc_negotiation_test.js
-
-mkdir -p build/pas2js/selective-negotiation-units \
-  build/pas2js/selective-negotiation
-pas2js -B -Tnodejs -Mdelphi -Fusrc \
-  -FUbuild/pas2js/selective-negotiation-units \
-  -FEbuild/pas2js/selective-negotiation \
-  test/wfc_selective_negotiation_test.lpr
-node build/pas2js/selective-negotiation/wfc_selective_negotiation_test.js
-
-mkdir -p build/pas2js/voxel-units build/pas2js/voxel
-pas2js -B -Tnodejs -Mdelphi -Fusrc \
-  -FUbuild/pas2js/voxel-units -FEbuild/pas2js/voxel \
-  test/wfc_voxel3d_test.lpr
-node build/pas2js/voxel/wfc_voxel3d_test.js
-
-mkdir -p build/pas2js/building-units build/pas2js/building
-pas2js -B -Tnodejs -Mdelphi -Fusrc \
-  -FUbuild/pas2js/building-units -FEbuild/pas2js/building \
-  test/wfc_building3d_test.lpr
-node build/pas2js/building/wfc_building3d_test.js
-
-mkdir -p build/pas2js/trace-units build/pas2js/trace
-for trace_test in wfc_trace_reference_test wfc_trace_test \
-  wfc_trace_utility_test
-do
-  pas2js -B -Tnodejs -Mdelphi -Fusrc \
-    -FUbuild/pas2js/trace-units -FEbuild/pas2js/trace \
-    "test/${trace_test}.lpr"
-  node "build/pas2js/trace/${trace_test}.js"
-done
-
-mkdir -p build/pas2js/music-units build/pas2js/music
-for music_test in wfc_midi_smf_test wfc_music_test \
-  wfc_music_graph_test wfc_music_midi_test \
-  wfc_music_passes_test wfc_music_passes_text_test \
-  wfc_music_audio_test wfc_music_studio_test
-do
-  pas2js -B -Tnodejs -Mdelphi -Fusrc \
-    -Fuexamples/music/05_MusicStudio \
-    -FUbuild/pas2js/music-units -FEbuild/pas2js/music \
-    "test/${music_test}.lpr"
-  node "build/pas2js/music/${music_test}.js"
-done
-
-mkdir -p build/pas2js/artifact-units build/pas2js/artifact
-for artifact_test in wfc_text_codec_test wfc_rule_model_test \
-  wfc_rule_text_test wfc_pipeline_model_test wfc_pipeline_text_test \
-  wfc_pipeline_run_test wfc_pipeline_run_text_test \
-  wfc_pipeline_compile_test wfc_pipeline_result_test \
-  wfc_pipeline_result_text_test wfc_pipeline_runtime_test \
-  wfc_token_lookup_test wfc_validate_app_test wfc_run_app_test \
-  wfc_training_test wfc_training_text_test wfc_learn_app_test \
-  wfc_text_training_test wfc_training_workspace_test \
-  wfc_learned_pattern_world_bundle_test
-do
-  pas2js -B -Tnodejs -Mdelphi -Fusrc -Futools \
-    -Fuexamples/2D/05_LearnedPatternWorld \
-    -Fuexamples/learning/05_TrainingStudio \
-    -FUbuild/pas2js/artifact-units -FEbuild/pas2js/artifact \
-    "test/${artifact_test}.lpr"
-  node "build/pas2js/artifact/${artifact_test}.js"
-done
-```
-
-The portable multi-pass host uses the same target:
-
-```bash
-mkdir -p build/pas2js/world-example-units build/pas2js/world-example
-pas2js -B -Tnodejs -Mdelphi -Fusrc \
-  -Fuexamples/2D/common \
-  -FUbuild/pas2js/world-example-units -FEbuild/pas2js/world-example \
-  examples/2D/01_MultiPassWorld/MultiPassWorld.lpr
-node build/pas2js/world-example/MultiPassWorld.js 0
-```
-
-The dependency-DAG settlement host is portable in the same way:
-
-```bash
-mkdir -p build/pas2js/settlement-example-units build/pas2js/settlement-example
-pas2js -B -Tnodejs -Mdelphi -Fusrc \
-  -Fuexamples/2D/common \
-  -FUbuild/pas2js/settlement-example-units \
-  -FEbuild/pas2js/settlement-example \
-  examples/2D/03_SelectiveSettlement/SelectiveSettlement.lpr
-node build/pas2js/settlement-example/SelectiveSettlement.js 0
-```
-
-The negotiated descendant-repair host shares one self-checking unit between
-native FPC and Node:
-
-```bash
-mkdir -p build/pas2js/repair-example-units build/pas2js/repair-example
-pas2js -B -Tnodejs -Mdelphi -Fusrc \
-  -Fuexamples/2D/04_NegotiatedRepair \
-  -FUbuild/pas2js/repair-example-units \
-  -FEbuild/pas2js/repair-example \
-  examples/2D/04_NegotiatedRepair/NegotiatedRepairNode.lpr
-node build/pas2js/repair-example/NegotiatedRepairNode.js
-```
-
-The learned-tiles training and generation host is portable in the same way:
-
-```bash
-mkdir -p build/pas2js/learning-example-units build/pas2js/learning-example
-pas2js -B -Tnodejs -Mdelphi -Fusrc \
-  -FUbuild/pas2js/learning-example-units -FEbuild/pas2js/learning-example \
-  examples/learning/01_LearnTiles/LearnTiles.lpr
-node build/pas2js/learning-example/LearnTiles.js 0
-```
-
-The heterogeneous corpus host exercises canonical `wfcm=2` on Node.js:
-
-```bash
-mkdir -p build/pas2js/corpus-example-units build/pas2js/corpus-example
-pas2js -B -Tnodejs -Mdelphi -Fusrc \
-  -FUbuild/pas2js/corpus-example-units -FEbuild/pas2js/corpus-example \
-  examples/learning/02_LearnCorpus/LearnCorpus.lpr
-node build/pas2js/corpus-example/LearnCorpus.js 0
-```
-
-The overlapping-pattern host exercises canonical `wfcp=1`, latent capture,
-and independently checked projection:
-
-```bash
-mkdir -p build/pas2js/pattern-example-units build/pas2js/pattern-example
-pas2js -B -Tnodejs -Mdelphi -Fusrc \
-  -FUbuild/pas2js/pattern-example-units -FEbuild/pas2js/pattern-example \
-  examples/learning/03_LearnPatterns/LearnPatterns.lpr
-node build/pas2js/pattern-example/LearnPatterns.js 0
-```
-
-The learned-pattern world materializes that projection inside a four-pass DAG
-and proves exact rollback and recovery:
-
-```bash
-mkdir -p build/pas2js/pattern-world-units build/pas2js/pattern-world
-pas2js -B -Tnodejs -Mdelphi -Fusrc \
-  -Fuexamples/2D/05_LearnedPatternWorld \
-  -FUbuild/pas2js/pattern-world-units -FEbuild/pas2js/pattern-world \
-  examples/2D/05_LearnedPatternWorld/LearnedPatternWorldNode.lpr
-node build/pas2js/pattern-world/LearnedPatternWorldNode.js 0
-```
-
-The sequence host exercises bounded order-N learning, canonical `wfcs=1`,
-latent solving, and independently checked public-token projection:
-
-```bash
-mkdir -p build/pas2js/sequence-example-units build/pas2js/sequence-example
-pas2js -B -Tnodejs -Mdelphi -Fusrc \
-  -FUbuild/pas2js/sequence-example-units -FEbuild/pas2js/sequence-example \
-  examples/sequence/01_LearnSequence/LearnSequence.lpr
-node build/pas2js/sequence-example/LearnSequence.js 0
-```
-
-The text host shares Unicode-scalar learning, exact domain analysis, anchored
-infill, and independent validation between native FPC and Node:
-
-```bash
-mkdir -p build/pas2js/text-example-units build/pas2js/text-example
-pas2js -B -Tnodejs -Mdelphi -Fusrc \
-  -Fuexamples/text/02_ConstraintCompletion \
-  -FUbuild/pas2js/text-example-units -FEbuild/pas2js/text-example \
-  examples/text/02_ConstraintCompletion/ConstraintCompletionNode.lpr
-node build/pas2js/text-example/ConstraintCompletionNode.js 0
-```
-
-The text pass host runs the reusable structure -> lexical -> punctuation owner,
-independent cross-layer validator, exact fragment renderer, and sanitized
-causal trace:
-
-```bash
-mkdir -p build/pas2js/text-pass-example-units \
-  build/pas2js/text-pass-example
-pas2js -B -Tnodejs -Mdelphi -Fusrc \
-  -Fuexamples/text/03_PassComposition \
-  -FUbuild/pas2js/text-pass-example-units \
-  -FEbuild/pas2js/text-pass-example \
-  examples/text/03_PassComposition/TextPassCompositionNode.lpr
-node build/pas2js/text-pass-example/TextPassCompositionNode.js 0
-```
-
-Seed zero emits `A sun rises brightly!`, showcase signature `1:69ABA6CE`, and
-the same numeric trace hash as native FPC. The models and semantic maps are
-project-authored Pascal fixture data; this demonstration does not infer a
-grammar taxonomy from raw prose.
-
-The music host exercises harmony + rhythm -> melody pass composition, exact
-score reconstruction, strict `wfcmusic=1`, and the project-owned format-0 MIDI
-exporter:
-
-```bash
-mkdir -p build/pas2js/music-example-units build/pas2js/music-example
-pas2js -B -Tnodejs -Mdelphi -Fusrc \
-  -FUbuild/pas2js/music-example-units -FEbuild/pas2js/music-example \
-  examples/music/03_PassComposition/PassComposition.lpr
-node build/pas2js/music-example/PassComposition.js 0
-```
-
-This host validates artifacts held in memory. It does not provide a browser UI
-or playback backend.
-
-The negotiated-variation host exercises public motif locks, atomic ordinary
-failure, bounded provider reopening, selective repair scope, independent
-composition validation, and strict public-result replay:
-
-```bash
-mkdir -p build/pas2js/music-variation-units \
-  build/pas2js/music-variation
-pas2js -B -Tnodejs -Mdelphi -Fusrc \
-  -Fuexamples/music/04_NegotiatedVariation \
-  -FUbuild/pas2js/music-variation-units \
-  -FEbuild/pas2js/music-variation \
-  examples/music/04_NegotiatedVariation/NegotiatedVariationNode.lpr
-node build/pas2js/music-variation/NegotiatedVariationNode.js 0
-```
-
-Its finite local and pass-backtrack budgets are part of the example contract;
-success proves a deterministic compatible result, not edit-minimal or
-musically optimal repair.
-
-The Pipeline v2 spatial host uses a thin Node entry point over the same Pascal
-unit as the native executable:
-
-```bash
-mkdir -p build/pas2js/spatial-example-units build/pas2js/spatial-example
-pas2js -B -Tnodejs -Mdelphi -Fusrc \
-  -FUbuild/pas2js/spatial-example-units \
-  -FEbuild/pas2js/spatial-example \
-  examples/passes/01_SpatialDependencies/SpatialDependenciesNode.lpr
-node build/pas2js/spatial-example/SpatialDependenciesNode.js 0
-```
-
-It checks exact-offset and finite any-neighbor clauses, bounded rejection,
-wrapped sampling, independent validation, and same-seed replay without an
-external runtime library.
-
-The Causal Trace v1 inspector uses the same shared-source pattern:
-
-```bash
-mkdir -p build/pas2js/trace-example-units build/pas2js/trace-example
-pas2js -B -Tnodejs -Mdelphi -Fusrc \
-  -Fuexamples/passes/02_TraceInspector \
-  -FUbuild/pas2js/trace-example-units \
-  -FEbuild/pas2js/trace-example \
-  examples/passes/02_TraceInspector/TraceInspectorNode.lpr
-node build/pas2js/trace-example/TraceInspectorNode.js
-```
-
-It validates and prints the complete terrain -> settlement -> foliage event
-stream, per-pass slices, portable hash, and a backward provider-pass cause
-chain. Native and Node output is identical; no inspection library beyond the
-repository units and standard RTL is required. The full schema and limits are
-documented in [`docs/traces.md`](traces.md).
-
-The bounded full-pipeline negotiation proof uses the same pattern:
-
-```bash
-mkdir -p build/pas2js/negotiation-example-units \
-  build/pas2js/negotiation-example
-pas2js -B -Tnodejs -Mdelphi -Fusrc \
-  -Fuexamples/passes/03_PassNegotiation \
-  -FUbuild/pas2js/negotiation-example-units \
-  -FEbuild/pas2js/negotiation-example \
-  examples/passes/03_PassNegotiation/PassNegotiationNode.lpr
-node build/pas2js/negotiation-example/PassNegotiationNode.js
-```
-
-The depth-three Building 3D host also uses one shared Pascal implementation
-behind thin native and Node entry points:
-
-```bash
-mkdir -p build/pas2js/building-example-units \
-  build/pas2js/building-example
-pas2js -B -Tnodejs -Mdelphi -Fusrc \
-  -Fuexamples/3D/common \
-  -Fuexamples/3D/02_MultiPassBuilding \
-  -FUbuild/pas2js/building-example-units \
-  -FEbuild/pas2js/building-example \
-  examples/3D/02_MultiPassBuilding/MultiPassBuildingNode.lpr
-node build/pas2js/building-example/MultiPassBuildingNode.js 0
-```
-
-It solves and independently validates footprint -> structure ->
-envelope/roof -> props, captures the structure mesh, and emits only public
-roles, prototype identities, rotations, and portable signatures. No viewer or
-engine package is needed.
-
-The fixed-integer projector, canonical SVG encoder, and pass-aware Building
-view have matching Node conformance programs:
-
-```bash
-for view_test in wfc_voxel3d_isometric_test wfc_voxel3d_svg_test
-do
-  mkdir -p "build/pas2js/${view_test}-units" \
-    "build/pas2js/${view_test}"
-  pas2js -B -Tnodejs -Mdelphi -Fusrc \
-    -FU"build/pas2js/${view_test}-units" \
-    -FE"build/pas2js/${view_test}" "test/${view_test}.lpr"
-  node "build/pas2js/${view_test}/${view_test}.js"
-done
-
-mkdir -p build/pas2js/building-view-units build/pas2js/building-view
-pas2js -B -Tnodejs -Mdelphi -Fusrc -Fuexamples/3D/common \
-  -FUbuild/pas2js/building-view-units \
-  -FEbuild/pas2js/building-view test/wfc_building3d_view_test.lpr
-node build/pas2js/building-view/wfc_building3d_view_test.js
-```
-
-A standalone `pas2js` executable is not enough when its RTL unit paths are
-missing. Use the compiler and RTL from the same installation.
+The maintained JavaScript execution target is the browser. Use the dedicated
+staging scripts below and the included [FPC development tools](development-tools.md).
 
 ## pas2js browser world
 
@@ -635,8 +270,11 @@ staged page does not depend on an unstaged runtime script.
 Serve the staged site from the repository root, for example:
 
 ```text
-python -m http.server 8080 --directory build/browser/world2d/www
+build/native/bin/wfc_serve --root build/browser/world2d/www --port 8080
 ```
+
+Build the server with the native gate first; use `wfc_serve.exe` on Windows.
+See [development tools](development-tools.md) for its loopback-only serving boundary.
 
 Open `http://localhost:8080/` for the interactive viewer. The deterministic
 browser fixture at `http://localhost:8080/?selftest=1` succeeds only when the
@@ -649,7 +287,7 @@ not commit them.
 ## pas2js browser text passes
 
 The three-pass text workbench compiles the same showcase owner and validator
-used by native FPC and Node, then stages its HTML, CSS, and generated
+used by native FPC, then stages its HTML, CSS, and generated
 `BrowserTextPassComposition.js` together:
 
 ```powershell
@@ -721,7 +359,7 @@ bounded synchronous execution policy.
 
 Music Studio uses the same corpus, persistent pass owner, independent
 validator, exact score, MIDI exporter, and PCM/WAVE renderer as its native
-and Node hosts:
+command-line host:
 
 ```powershell
 ./build-browser-music.ps1 -Compiler 'C:/path/to/pas2js.exe'
@@ -740,45 +378,36 @@ attributes include `data-state="solved"`, `data-self-test="passed"`,
 `data-cell-count="16"`, `data-pass-count="3"`, `data-midi-bytes="123"`,
 `data-wav-bytes="352844"`, and `data-audio-play-events="0"`.
 The self-test prepares playable bytes but does not auto-play or save files.
+Its separate cooperative long-composition checks require
+`data-arrangement-test="passed"`, exact frame counts for 4, 6, and 180 seconds,
+and cancellation, stale-result, write-failure, and final-commit markers.
+These lengths are test cases, not a duration policy. A counting fake browser
+file backend exercises asynchronous save lifecycle without touching disk.
 See [the Studio guide](../examples/music/05_MusicStudio/README.md) for commands,
-controls, limitations, and native/Node export behavior.
+controls, limitations, and native export behavior.
 
 ## Hosted pas2js gate
 
-The hosted pas2js gate uses exact official upstream pas2js and FPC-source
-revisions, verifies both source-archive SHA-256 digests, and caches the resulting
-3.3.1 toolchain. It runs every portable conformance source, including the voxel
-foundation, the recipe/run/compiler/runtime/result artifact suites, the token
-lookup, recipe-validator, and pipeline-runner suites, eight music suites, three
-causal-trace suites, and
-the full and selective pass-negotiation suites; the tiled-world, learned-tiles,
-learned-corpus, overlapping-pattern, sequence, anchored-completion,
-three-pass-text, pass-composed-music, negotiated-music-variation, Music Studio,
-spatial-dependency,
-causal-trace-inspector, pass-negotiation, and negotiated-repair smoke tests;
-and the multi-pass and selective-settlement worlds with both seed zero and
-their default seeds under Node.js 22.23.2. The two Node pipeline hosts also run
-the same exact 18-case process suite as the native hosts, using both the small
-CLI fixture set and the learned-pattern-world bundle. The gate then builds
-the Node training host and runs the same 25-case training process suite
-against all four bundled training documents. The Music Studio form probe
-checks its full 32-row CSV. It also builds all five browser targets,
-serves each staged site, and checks their exact body-state contracts in
-headless Chrome. A pinned development compiler is used
-because the official 3.2.0 binary release cannot resolve the suite's portable
-overloaded plain-procedure callback call.
+The hosted browser gate builds the five pas2js demos with a matching compiler
+and RTL, serves them with the project-owned FPC server, executes their self-tests
+in headless Chrome, and checks rendered body attributes with the FPC checker.
+It also compiles every portable standalone conformance program for the browser
+and executes those pages through the same FPC tools. Native socket, DOM-parser,
+and renderer-process tests remain native. The source-derived test manifest
+rejects missing staged programs; see [development tools](development-tools.md)
+for the reproducible staging and runner commands.
+The native gate runs the full conformance suite, command-line process tests,
+and reproducible research fixtures. Historical pas2js parity measurements are
+not assertions that every console fixture has a browser host.
 
 ## Continuous integration
 
 The hosted workflow runs the checked native gate with FPC 3.2.2 on Linux,
 macOS, and Windows. The Linux lane also builds the FPM and Lazarus packages,
 runs the core Lazarus project, and verifies that generation leaves the checkout
-clean. A separate Linux lane runs the complete core, pipeline-artifact,
-token-lookup, recipe-validator, pipeline-runner, 2D, voxel-3D, Building 3D,
-learning, sequence, music, pass-composition, causal-trace, full-negotiation,
-and selective-negotiation pas2js/Node.js gate, including the negotiated-repair
-host, the text-training/workspace suites and five Studio presets, plus all
-five real browser self-tests in headless Chrome. A canary runs
+clean. A separate Linux lane builds and executes the five real browser self-tests
+and portable browser conformance in headless Chrome using the included FPC
+development tools. A canary runs
 against the current official FPC development image and records the image digest
 and compiler revision in the job log. Submodules are deliberately disabled for
 every gate.

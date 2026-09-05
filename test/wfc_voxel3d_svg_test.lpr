@@ -26,6 +26,7 @@ program wfc_voxel3d_svg_test;
 {$mode delphi}{$H+}
 
 uses
+  {$IFDEF PAS2JS}wfc_browser_test_host,{$ENDIF}
   SysUtils,
   wfc,
   wfc_voxel3d,

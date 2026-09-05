@@ -1,7 +1,7 @@
 # Editable training documents
 
 Four small, project-authored MIT corpora exercise the same portable training
-workflow on native FPC and pas2js/Node. No media, tokenizer, playback, or
+workflow on native FPC. No media, tokenizer, playback, or
 third-party library is needed.
 
 | Profile | Samples | Seed-zero public output | Training fingerprint |
@@ -51,28 +51,3 @@ document and retrain instead of hand-editing generated artifacts. Changing the
 source changes the recipe identity: the checked run files are for the unchanged
 examples. See [pipeline artifacts](../../../docs/pipeline-artifacts.md) for
 constructing new recipe-bound run requests.
-
-## pas2js/Node
-
-With a configured pas2js RTL and Node.js, create `build/training-node/units`
-and `build/training-node/bin`, then:
-
-```text
-pas2js -B -Tnodejs -Mdelphi -Fusrc -Futools -FUbuild/training-node/units -FEbuild/training-node/bin tools/wfc_learn_node.lpr
-pas2js -B -Tnodejs -Mdelphi -Fusrc -Futools -FUbuild/training-node/units -FEbuild/training-node/bin tools/wfc_validate_node.lpr
-pas2js -B -Tnodejs -Mdelphi -Fusrc -Futools -FUbuild/training-node/units -FEbuild/training-node/bin tools/wfc_run_node.lpr
-node build/training-node/bin/wfc_learn_node.js examples/learning/04_TrainingDocuments/pattern2d.wfclearn
-```
-
-From Bash, the full real-process conformance check is:
-
-```bash
-bash test/wfc_learn_cli_process_test.sh \
-  node build/training-node/bin/wfc_learn_node.js -- \
-  node build/training-node/bin/wfc_validate_node.js -- \
-  node build/training-node/bin/wfc_run_node.js
-```
-
-The same 25 cases run against native executables in the checked build. No
-generated JavaScript is committed. [The training guide](../../../docs/training.md)
-documents source syntax, limits, Pascal APIs, fingerprinting, and current scope.

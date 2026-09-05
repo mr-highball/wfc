@@ -175,7 +175,7 @@ position-7 domain `e | c`, seed zero completes:
 the quick fox rests.
 ```
 
-The same source and request run on native FPC and pas2js/Node in
+The same source and request run on native FPC in
 [`02_ConstraintCompletion`](../examples/text/02_ConstraintCompletion/README.md).
 
 ## pass composition
@@ -232,7 +232,7 @@ removed from the returned solve report and never become text-domain output.
 
 The portable
 [`03_PassComposition`](../examples/text/03_PassComposition/README.md) fixture
-runs the same owner on native FPC, pas2js/Node, and an interactive pas2js
+runs the same owner on native FPC and an interactive pas2js
 browser workbench. The browser can replay seeds, inspect the three aligned
 public lineages, apply locks, display contradictions, and run an exact
 headless self-test without a JavaScript framework or runtime network service.

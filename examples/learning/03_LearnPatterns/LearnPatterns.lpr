@@ -27,10 +27,6 @@ program LearnPatterns;
 
 uses
   SysUtils,
-  {$IFDEF PAS2JS}
-  NodeJSApp,
-  NodeJS,
-  {$ENDIF}
   wfc,
   wfc_model,
   wfc_learn,
@@ -129,21 +125,13 @@ end;
 
 function ModelTokenForDisplay(const AToken: TWfcModelToken): String;
 begin
-  {$IFDEF PAS2JS}
-  Result := String(AToken);
-  {$ELSE}
   Result := String(UTF8Decode(AToken));
-  {$ENDIF}
 end;
 
 function ModelTokenToGraphValue(
   const AToken: TWfcModelToken): TGraphValue;
 begin
-  {$IFDEF PAS2JS}
-  Result := TGraphValue(AToken);
-  {$ELSE}
   Result := TGraphValue(UTF8Decode(AToken));
-  {$ENDIF}
 end;
 
 function FindPatternContaining(const AModel: TWfcOverlappingModel2D;
@@ -373,11 +361,7 @@ begin
     on E: Exception do
     begin
       WriteLn('LearnPatterns error: ', E.Message);
-      {$IFDEF PAS2JS}
-      TNJSProcess.exitCode := 1;
-      {$ELSE}
       Halt(1);
-      {$ENDIF}
     end;
   end;
 end.

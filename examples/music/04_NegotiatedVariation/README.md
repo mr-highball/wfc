@@ -1,7 +1,7 @@
 # negotiated music variation
 
-`NegotiatedVariation.lpr` and `NegotiatedVariationNode.lpr` are thin native
-FPC and pas2js/Node hosts over one self-checking Pascal fixture. The fixture
+`NegotiatedVariation.lpr` is a thin native
+FPC host over one self-checking portable Pascal fixture. The fixture
 uses the project-owned music score, sequence, pass-pipeline, canonical text,
 and Standard MIDI File layers. It has no playback or external dependency.
 
@@ -64,19 +64,6 @@ fpc -B -Mdelphi -Sa -Cr -Co -Ci -Fusrc \
 ./build/examples/music-negotiated/native/bin/NegotiatedVariation 0
 ```
 
-With a configured pas2js compiler and matching RTL:
-
-```bash
-mkdir -p build/examples/music-negotiated/pas2js/units \
-  build/examples/music-negotiated/pas2js/bin
-pas2js -B -Tnodejs -Mdelphi -Fusrc \
-  -Fuexamples/music/04_NegotiatedVariation \
-  -FUbuild/examples/music-negotiated/pas2js/units \
-  -FEbuild/examples/music-negotiated/pas2js/bin \
-  examples/music/04_NegotiatedVariation/NegotiatedVariationNode.lpr
-node build/examples/music-negotiated/pas2js/bin/NegotiatedVariationNode.js 0
-```
-
 The seed-zero public goldens are:
 
 | Evidence | Signature |
@@ -89,7 +76,7 @@ The seed-zero public goldens are:
 | Selective Negotiation v1 transcript | `38EE8F80` |
 
 The canonical `wfcmusicpass=1` artifact is `685` bytes. The program requires
-all of these values before reporting `Self-check: passed`; native and Node
+all of these values before reporting `Self-check: passed`; native
 print the same output.
 
 ## bounded claim

@@ -46,6 +46,11 @@ $musicTestSources = @(
   (Join-Path $repositoryRoot 'test/wfc_music_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_music_graph_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_music_midi_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_music_midi_import_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_music_training_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_music_arrangement_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_music_audio_stream_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_music_studio_arrangement_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_music_passes_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_music_passes_text_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_music_audio_test.lpr')
@@ -65,12 +70,15 @@ $artifactTestSources = @(
   (Join-Path $repositoryRoot 'test/wfc_pipeline_result_text_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_pipeline_runtime_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_validate_app_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_browser_dom_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_serve_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_run_app_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_training_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_text_training_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_training_workspace_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_training_text_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_learn_app_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_music_import_app_test.lpr')
   (Join-Path $repositoryRoot `
     'test/wfc_learned_pattern_world_bundle_test.lpr')
 )
@@ -78,6 +86,9 @@ $toolSources = @(
   (Join-Path $repositoryRoot 'tools/wfc_validate.lpr')
   (Join-Path $repositoryRoot 'tools/wfc_run.lpr')
   (Join-Path $repositoryRoot 'tools/wfc_learn_cli.lpr')
+  (Join-Path $repositoryRoot 'tools/wfc_music_import_cli.lpr')
+  (Join-Path $repositoryRoot 'tools/wfc_serve.lpr')
+  (Join-Path $repositoryRoot 'tools/wfc_browser_check.lpr')
 )
 $pipelineCliProcessTestSource = Join-Path $repositoryRoot `
   'test/wfc_pipeline_cli_process_test.ps1'
@@ -784,6 +795,7 @@ foreach ($artifactTestSource in $artifactTestSources) {
 
 foreach ($toolSource in $toolSources) {
   $toolName = [System.IO.Path]::GetFileNameWithoutExtension($toolSource)
+  if ($toolName -eq 'wfc_music_import_cli') { $toolName = 'wfc_music_import' }
   if ($toolName -eq 'wfc_learn_cli') {
     $toolName = 'wfc_learn'
   }
@@ -825,6 +837,12 @@ foreach ($toolSource in $toolSources) {
 }
 
 $toolExecutableSuffix = if ($env:OS -eq 'Windows_NT') { '.exe' } else { '' }
+Write-Host 'Running live FPC server conformance.'
+& (Join-Path $binaryOutputDirectory "wfc_serve_test$toolExecutableSuffix") `
+  --integration (Join-Path $binaryOutputDirectory "wfc_serve$toolExecutableSuffix") `
+  $binaryOutputDirectory
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
 $validatorToolExecutable = Join-Path $binaryOutputDirectory `
   "wfc_validate$toolExecutableSuffix"
 $runnerToolExecutable = Join-Path $binaryOutputDirectory `
@@ -1557,4 +1575,19 @@ if ($musicStudioProbeActual -cne $musicStudioProbeExpected) {
   Write-Error 'Music Studio form probe differs from its checked fixture.'
 }
 Write-Host 'Music Studio form matrix matches its checked fixture.'
+
+Write-Host 'Building and checking the streaming Music Studio renderer.'
+foreach ($renderSource in @(
+  (Join-Path $musicStudioExampleDirectory 'MusicStudioRender.lpr'),
+  (Join-Path $repositoryRoot 'test/wfc_music_render_process_test.lpr')
+)) {
+  & $Compiler @CompilerOptions -B -Mdelphi -Sa -Cr -Co -Ci `
+    "-Fu$sourceDirectory" "-Fu$musicStudioExampleDirectory" `
+    "-FU$unitOutputDirectory" "-FE$binaryOutputDirectory" $renderSource
+  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+}
+& (Join-Path $binaryOutputDirectory "wfc_music_render_process_test$toolExecutableSuffix") `
+  (Join-Path $binaryOutputDirectory "MusicStudioRender$toolExecutableSuffix") `
+  $binaryOutputDirectory
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 exit 0

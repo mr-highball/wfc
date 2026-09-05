@@ -10,7 +10,7 @@ hit-testing, portable view signatures, and canonical SVG without an engine
 dependency. See the [voxel foundation contract](../../docs/voxel3d.md).
 
 `02_MultiPassBuilding` is the standard depth-greater-than-one path. One shared
-Pascal unit drives thin native and pas2js/Node hosts over the reusable
+Pascal unit drives a thin native host over the reusable
 `wfc_building3d` owner and independent validator. Its `7 x 5 x 3` fixture
 solves footprint -> structure -> envelope/roof -> props, proves support and a
 reachable rotated entrance, captures a structure scene and integer mesh, and

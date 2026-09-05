@@ -14,8 +14,8 @@ The stable pass indices and topological execution order are `terrain=0`,
 `home` requires a `trail`; `market` requires a `plaza`; decor is the exact
 join of housing and climate.
 
-Both thin hosts call the same self-checking Pascal unit. Native FPC and
-pas2js/Node need only repository units and their applicable standard RTL.
+The native host calls a self-checking portable Pascal unit. It needs only
+repository units and the standard compiler RTL.
 
 ## two repair horizons
 
@@ -64,19 +64,12 @@ fpc -B -Mdelphi -Sa -Cr -Co -Ci -Fusrc -Fuexamples/2D/04_NegotiatedRepair -FUbui
 build/examples/negotiated-repair/native/bin/NegotiatedRepair
 ```
 
-Compile the Node host with a configured pas2js compiler and matching RTL:
-
-```text
-pas2js -B -Tnodejs -Mdelphi -Fusrc -Fuexamples/2D/04_NegotiatedRepair -FUbuild/examples/negotiated-repair/pas2js/units -FEbuild/examples/negotiated-repair/pas2js/bin examples/2D/04_NegotiatedRepair/NegotiatedRepairNode.lpr
-node build/examples/negotiated-repair/pas2js/bin/NegotiatedRepairNode.js
-```
-
 The repository-wide `build.ps1` and `build.sh` gates also compile and smoke-test
-the native host. Hosted CI compiles and runs the Node host as a second edge.
+the native host. Browser demos exercise shared portable units separately.
 
 ## expected output
 
-Both hosts emit these lines exactly:
+The native host emits these lines exactly:
 
 ```text
 NegotiatedRepair: terrain -> roads -> housing -> decor <- climate

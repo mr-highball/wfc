@@ -1,5 +1,9 @@
 # Music Negotiated Variation v1 research record
 
+Execution note: pas2js figures below are historical measurements. Maintained
+execution paths are native FPC and the documented browser demos; those earlier
+figures do not establish browser coverage for this experiment.
+
 - **Fixture:** `examples/music/04_NegotiatedVariation`
 - **Seed:** `0`
 - **Pass order:** `harmony=0`, `rhythm=1`, `melody=2`
@@ -87,7 +91,7 @@ The pinned seed-zero evidence is:
 | Selective Negotiation v1 transcript | `38EE8F80` |
 | Canonical `wfcmusicpass=1` size | `685` bytes |
 
-Native FPC and pas2js/Node must print the same checked values.
+Native FPC reproduces the checked values also measured in historical pas2js runs.
 
 ## stopping rules and complexity
 

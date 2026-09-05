@@ -21,13 +21,6 @@ fpc -B -Mdelphi -Sa -Cr -Co -Ci -Fusrc -FUbuild/examples/sequence/native/units -
 build/examples/sequence/native/bin/LearnSequence 0
 ```
 
-With a configured pas2js RTL installation, the same source targets Node.js:
-
-```text
-pas2js -B -Tnodejs -Mdelphi -Fusrc -FUbuild/examples/sequence/pas2js/units -FEbuild/examples/sequence/pas2js/bin examples/sequence/01_LearnSequence/LearnSequence.lpr
-node build/examples/sequence/pas2js/bin/LearnSequence.js 0
-```
-
 The optional argument is an unsigned 32-bit replay seed. Seed `0` selects the
 `A B A` branch in the conformance fixture; seed `3735928559` selects `A C A`.
 The seed is only one part of replay identity; the canonical model, graph shape,

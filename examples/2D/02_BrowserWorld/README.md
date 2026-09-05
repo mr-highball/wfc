@@ -45,14 +45,17 @@ Generated JavaScript remains a build artifact and is not committed.
 Serve the staged directory over HTTP rather than opening `index.html` directly:
 
 ```text
-python3 -m http.server 8080 --directory build/browser/world2d/www
+build/native/bin/wfc_serve --root build/browser/world2d/www --port 8080
 ```
+
+Build the server with the native gate first; use `wfc_serve.exe` on Windows.
+See [development tools](../../../docs/development-tools.md) for its loopback-only serving boundary.
 
 Then open `http://127.0.0.1:8080/`.
 
 ## Browser contract
 
-The initial bounded showcase is shared with the native and Node.js demo. Model
+The initial bounded showcase is shared with the native demo. Model
 version 1 produces these portable signatures:
 
 | Seed | Signature |

@@ -8,31 +8,30 @@ the constraint-driven text-prediction/token ecosystem.
 documents with a project-owned Unicode-scalar tokenizer, applies exact prefix,
 suffix, mask, and interior-span locks, exposes globally feasible domains,
 distinguishes prefix continuation from whole-sample generation, and validates
-the completed text independently. Separate thin native and pas2js/Node hosts
-run the same shared Pascal implementation without an external dependency.
+the completed text independently. A thin native host runs the shared
+Pascal implementation without an external dependency.
 
 `03_PassComposition` gives structure, lexical choice, and punctuation their
 own learned sequence passes. Lexical values require structure; exact surface
 fragments require both lexical and structural compatibility. The reusable
 owner solves and validates the three-pass transaction, publishes a sanitized
 public-token causal trace, and supports selective regeneration. One shared
-Pascal showcase runs through native FPC, pas2js/Node, and an interactive
+Pascal showcase runs through native FPC and an interactive
 pas2js browser workbench with locks, lineage inspection, contradiction/recovery,
 and an exact seed-zero self-test.
 
-For `01_SimpleTiledWorld`, the same Pascal source is verified on native FPC and
-pas2js/Node. Native output uses console colors and waits for Enter only when no
-seed argument is supplied; the Node target emits plain text and exits. Both
-print the captured seed. Pass an optional unsigned 32-bit seed as the first
+For `01_SimpleTiledWorld`, the native command-line host uses console colors
+and waits for Enter only when no seed argument is supplied. It prints the
+captured seed. Pass an optional unsigned 32-bit seed as the first
 command-line argument to replay a chosen world; decimal and Pascal-style
 hexadecimal values are accepted.
 
 For `02_ConstraintCompletion`, pass an optional decimal unsigned 32-bit seed.
-Both thin hosts default to seed zero, print the captured seed, and exit.
+The native host defaults to seed zero, prints the captured seed, and exits.
 
 `03_PassComposition` accepts the same seed forms as the other portable
 showcases. Seed zero renders `A sun rises brightly!` with signature
-`1:69ABA6CE` on native, Node, and browser targets.
+`1:69ABA6CE` on native and browser targets.
 
 `01_SimpleTiledWorld` defines a complete adjacency model and does not use an
 invalid-state callback to invent output when constraints conflict. The native

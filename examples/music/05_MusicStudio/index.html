@@ -16,7 +16,8 @@
   data-new-session-invalidation="not-run" data-run-invalidation="not-run"
   data-failure-clears-output="not-run" data-motif-lock="not-run"
   data-selective-regeneration="not-run" data-recovery="not-run"
-  data-audio-ready="false" data-audio-play-events="0">
+  data-audio-ready="false" data-audio-play-events="0"
+  data-arrangement-state="loading" data-arrangement-test="not-requested">
   <header class="masthead">
     <div>
       <p class="eyebrow">WFC / MUSIC LAB 05</p>
@@ -24,8 +25,8 @@
       <p class="lede">Shape harmony, rhythm, and melody as one deterministic public composition.</p>
     </div>
     <div class="transport-note">
-      <strong>16 cells · 120 BPM</strong>
-      <span>Each cell is one half beat. One monophonic melody voice.</span>
+      <strong>Working phrase: 16 cells · 120 BPM</strong>
+      <span>Edit one four-second phrase, or stream a full composition of your chosen length. One monophonic melody voice.</span>
     </div>
   </header>
 
@@ -80,7 +81,7 @@
 
     <section class="layers-panel" aria-labelledby="layers-heading">
       <div class="section-heading">
-        <div><p class="step">02 / PUBLIC LAYERS</p><h2 id="layers-heading">Composition cells</h2></div>
+        <div><p class="step">02 / PUBLIC LAYERS</p><h2 id="layers-heading">Working phrase · 16 cells</h2></div>
         <span class="scroll-hint">scroll each row horizontally on narrow screens</span>
       </div>
       <div class="layer-row">
@@ -96,6 +97,27 @@
         <div class="cell-scroller"><div id="melody-grid" class="cell-grid" aria-label="Melody cells"></div></div>
       </div>
       <p id="layers-placeholder" class="placeholder">Start a session and generate to inspect public tokens.</p>
+    </section>
+
+    <section class="arrangement-panel" aria-labelledby="arrangement-heading">
+      <div class="section-heading">
+        <div><p class="step">LONG COMPOSITION / STREAMING EXPORT</p><h2 id="arrangement-heading">Choose the length. Keep composing.</h2></div>
+        <span class="scroll-hint">New sections, bounded memory, no fixed minute limit</span>
+      </div>
+      <p class="arrangement-intro">Each section is a fresh harmony → rhythm → melody solve with checked context from its predecessor. The current session seed and a copy of your public locks start the composition; locks apply only to the opening section. The working phrase editor and its preview stay separate.</p>
+      <div class="arrangement-actions">
+        <label><span>Requested duration (seconds)</span><input id="arrangement-seconds" type="text" inputmode="decimal" value="4" autocomplete="off" aria-describedby="arrangement-duration-help"></label>
+        <button id="arrangement-start" class="primary" type="button">Generate + save full composition WAV</button>
+        <button id="arrangement-cancel" type="button" disabled>Cancel</button>
+      </div>
+      <p id="arrangement-duration-help" class="arrangement-help">Positive seconds, with up to three decimal places. Output rounds up to complete two-second 4/4 bars at 120 BPM. Only exact numeric/file-size limits apply. Long requests need proportionate time and disk space.</p>
+      <p id="arrangement-plan" class="arrangement-help" aria-live="polite">Next composition: requested 4 seconds → actual 4 seconds, two complete 4/4 bars.</p>
+      <progress id="arrangement-progress" max="1" value="0" aria-label="Full composition written progress"></progress>
+      <strong id="arrangement-status" class="arrangement-status" role="status" aria-live="polite">Loading composition tools…</strong>
+      <p id="arrangement-detail" class="arrangement-help">Requested and actual duration, saved progress, and captured lock count appear here.</p>
+      <p id="arrangement-pitches" class="pitch-summary" aria-label="Most recent section pitches">No long-composition section generated yet.</p>
+      <p class="arrangement-help">Audio is transferred one section at a time, never assembled into a whole-song download. Cancel or edit generation inputs to abort unfinished work. Editing briefly locks during the final file commit. The synthesizer is a structural preview, not a realistic instrument.</p>
+      <pre id="arrangement-fallback" class="arrangement-fallback">Native fallback: MusicStudioRender --seconds 4 --seed 0 --output NEW.wav</pre>
     </section>
 
     <section class="piano-panel" aria-labelledby="piano-heading">
@@ -139,7 +161,7 @@
 
     <section class="preview-panel" aria-labelledby="preview-heading">
       <div class="section-heading">
-        <div><p class="step">06 / PREVIEW + EXPORT</p><h2 id="preview-heading">Audition and artifacts</h2></div>
+        <div><p class="step">06 / PHRASE PREVIEW + EXPORT</p><h2 id="preview-heading">Working phrase audition and artifacts</h2></div>
         <strong id="audio-status" class="audio-chip">no preview</strong>
       </div>
       <div class="audio-block">
