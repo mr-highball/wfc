@@ -75,6 +75,8 @@ begin
     P.Targets.AddUnit('wfc_pipeline_result.pas');
     P.Targets.AddUnit('wfc_pipeline_result_text.pas');
     P.Targets.AddUnit('wfc_pipeline_runtime.pas');
+    P.Targets.AddUnit('wfc_training.pas');
+    P.Targets.AddUnit('wfc_training_text.pas');
     Run;
   end;
 end.

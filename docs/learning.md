@@ -1,5 +1,9 @@
 # model learning and priming
 
+For editable corpus files and the native/pas2js `wfc-learn` tool, start with
+[training documents](training.md). This page documents the underlying Pascal
+cardinal-learning API.
+
 This guide covers radius-one cardinal models. The complementary
 [sequence-model guide](sequences.md) documents bounded order-N learning with
 typed BOS history, structural suffix/prefix recombination, public-token pass

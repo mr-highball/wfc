@@ -429,6 +429,9 @@ jobs:
             wfc_pipeline_runtime_test \
             wfc_validate_app_test \
             wfc_run_app_test \
+            wfc_training_test \
+            wfc_training_text_test \
+            wfc_learn_app_test \
             wfc_learned_pattern_world_bundle_test
           do
             "$pas2js" -B -Tnodejs -Mdelphi -Fusrc -Futools \
@@ -438,7 +441,7 @@ jobs:
             node "$artifact_test_bin/$artifact_test.js"
           done
 
-          for portable_host in wfc_validate_node wfc_run_node
+          for portable_host in wfc_validate_node wfc_run_node wfc_learn_node
           do
             "$pas2js" -B -Tnodejs -Mdelphi -Fusrc -Futools \
               -FU"$artifact_test_units" -FE"$artifact_test_bin" \
@@ -447,6 +450,11 @@ jobs:
           done
 
           bash test/wfc_pipeline_cli_process_test.sh \
+            node "$artifact_test_bin/wfc_validate_node.js" -- \
+            node "$artifact_test_bin/wfc_run_node.js"
+
+          bash test/wfc_learn_cli_process_test.sh \
+            node "$artifact_test_bin/wfc_learn_node.js" -- \
             node "$artifact_test_bin/wfc_validate_node.js" -- \
             node "$artifact_test_bin/wfc_run_node.js"
 

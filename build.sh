@@ -46,6 +46,11 @@ pipeline_result_text_test_source="$repository_root/test/wfc_pipeline_result_text
 pipeline_runtime_test_source="$repository_root/test/wfc_pipeline_runtime_test.lpr"
 validate_app_test_source="$repository_root/test/wfc_validate_app_test.lpr"
 run_app_test_source="$repository_root/test/wfc_run_app_test.lpr"
+training_test_source="$repository_root/test/wfc_training_test.lpr"
+training_text_test_source="$repository_root/test/wfc_training_text_test.lpr"
+learn_app_test_source="$repository_root/test/wfc_learn_app_test.lpr"
+training_fixture_directory="$repository_root/examples/learning/04_TrainingDocuments"
+learn_tool_source="$repository_root/tools/wfc_learn_cli.lpr"
 learned_pattern_world_bundle_test_source="$repository_root/test/wfc_learned_pattern_world_bundle_test.lpr"
 validate_tool_source="$repository_root/tools/wfc_validate.lpr"
 run_tool_source="$repository_root/tools/wfc_run.lpr"
@@ -124,6 +129,11 @@ compiler_pipeline_result_text_test_source=$pipeline_result_text_test_source
 compiler_pipeline_runtime_test_source=$pipeline_runtime_test_source
 compiler_validate_app_test_source=$validate_app_test_source
 compiler_run_app_test_source=$run_app_test_source
+compiler_training_test_source=$training_test_source
+compiler_training_text_test_source=$training_text_test_source
+compiler_learn_app_test_source=$learn_app_test_source
+compiler_training_fixture_directory=$training_fixture_directory
+compiler_learn_tool_source=$learn_tool_source
 compiler_learned_pattern_world_bundle_test_source=$learned_pattern_world_bundle_test_source
 compiler_validate_tool_source=$validate_tool_source
 compiler_run_tool_source=$run_tool_source
@@ -201,6 +211,11 @@ case "$host_system" in
     compiler_pipeline_runtime_test_source=$(cygpath -m "$pipeline_runtime_test_source") || exit $?
     compiler_validate_app_test_source=$(cygpath -m "$validate_app_test_source") || exit $?
     compiler_run_app_test_source=$(cygpath -m "$run_app_test_source") || exit $?
+    compiler_training_test_source=$(cygpath -m "$training_test_source") || exit $?
+    compiler_training_text_test_source=$(cygpath -m "$training_text_test_source") || exit $?
+    compiler_learn_app_test_source=$(cygpath -m "$learn_app_test_source") || exit $?
+    compiler_training_fixture_directory=$(cygpath -m "$training_fixture_directory") || exit $?
+    compiler_learn_tool_source=$(cygpath -m "$learn_tool_source") || exit $?
     compiler_learned_pattern_world_bundle_test_source=$(cygpath -m "$learned_pattern_world_bundle_test_source") || exit $?
     compiler_validate_tool_source=$(cygpath -m "$validate_tool_source") || exit $?
     compiler_run_tool_source=$(cygpath -m "$run_tool_source") || exit $?
@@ -612,6 +627,9 @@ for compiler_artifact_suite in \
   "$compiler_pipeline_runtime_test_source" \
   "$compiler_validate_app_test_source" \
   "$compiler_run_app_test_source" \
+  "$compiler_training_test_source" \
+  "$compiler_training_text_test_source" \
+  "$compiler_learn_app_test_source" \
   "$compiler_learned_pattern_world_bundle_test_source"
 do
   artifact_suite_name=$(basename -- "$compiler_artifact_suite" .lpr)
@@ -639,6 +657,8 @@ do
   if [[ "$artifact_suite_name" == wfc_learned_pattern_world_bundle_test ]]; then
     "$artifact_suite_executable" \
       "$compiler_learned_pattern_world_example_directory/pipeline" || exit $?
+  elif [[ "$artifact_suite_name" == wfc_training_text_test ]]; then
+    "$artifact_suite_executable" "$compiler_training_fixture_directory" || exit $?
   else
     "$artifact_suite_executable" || exit $?
   fi
@@ -646,9 +666,17 @@ done
 
 for compiler_tool_source in \
   "$compiler_validate_tool_source" \
+  "$compiler_learn_tool_source" \
   "$compiler_run_tool_source"
 do
   tool_name=$(basename -- "$compiler_tool_source" .lpr)
+  if [[ "$tool_name" == wfc_learn_cli ]]; then
+    tool_name=wfc_learn
+  fi
+  tool_output_name=$tool_name
+  case "$host_system" in
+    CYGWIN*|MINGW*|MSYS*) tool_output_name="${tool_output_name}.exe" ;;
+  esac
   printf "Building the portable command-line host '%s'.\n" "$tool_name"
   "$compiler" "$@" \
     -B \
@@ -661,6 +689,7 @@ do
     "-Fu$compiler_tools_directory" \
     "-FU$compiler_unit_output_directory" \
     "-FE$compiler_binary_output_directory" \
+    "-o$tool_output_name" \
     "$compiler_tool_source" || exit $?
 
   tool_executable="$binary_output_directory/$tool_name"
@@ -673,15 +702,21 @@ done
 
 validator_tool_executable="$binary_output_directory/wfc_validate"
 runner_tool_executable="$binary_output_directory/wfc_run"
+learner_tool_executable="$binary_output_directory/wfc_learn"
 case "$host_system" in
   CYGWIN*|MINGW*|MSYS*)
     validator_tool_executable="${validator_tool_executable}.exe"
     runner_tool_executable="${runner_tool_executable}.exe"
+    learner_tool_executable="${learner_tool_executable}.exe"
     ;;
 esac
 printf 'Running the portable pipeline CLI process conformance suite.\n'
 bash "$pipeline_cli_process_test_source" \
   "$validator_tool_executable" -- "$runner_tool_executable" || exit $?
+printf 'Running the portable training CLI process conformance suite.\n'
+bash "$repository_root/test/wfc_learn_cli_process_test.sh" \
+  "$learner_tool_executable" -- "$validator_tool_executable" -- \
+  "$runner_tool_executable" || exit $?
 
 printf "Building the dependency-free tiled-world example.\n"
 "$compiler" "$@" \

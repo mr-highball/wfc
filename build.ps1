@@ -64,12 +64,16 @@ $artifactTestSources = @(
   (Join-Path $repositoryRoot 'test/wfc_pipeline_runtime_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_validate_app_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_run_app_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_training_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_training_text_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_learn_app_test.lpr')
   (Join-Path $repositoryRoot `
     'test/wfc_learned_pattern_world_bundle_test.lpr')
 )
 $toolSources = @(
   (Join-Path $repositoryRoot 'tools/wfc_validate.lpr')
   (Join-Path $repositoryRoot 'tools/wfc_run.lpr')
+  (Join-Path $repositoryRoot 'tools/wfc_learn_cli.lpr')
 )
 $pipelineCliProcessTestSource = Join-Path $repositoryRoot `
   'test/wfc_pipeline_cli_process_test.ps1'
@@ -755,6 +759,8 @@ foreach ($artifactTestSource in $artifactTestSources) {
   if ($artifactTestName -eq 'wfc_learned_pattern_world_bundle_test') {
     & $artifactTestExecutable `
       (Join-Path $learnedPatternWorldExampleDirectory 'pipeline')
+  } elseif ($artifactTestName -eq 'wfc_training_text_test') {
+    & $artifactTestExecutable (Join-Path $repositoryRoot 'examples/learning/04_TrainingDocuments')
   } else {
     & $artifactTestExecutable
   }
@@ -766,6 +772,14 @@ foreach ($artifactTestSource in $artifactTestSources) {
 
 foreach ($toolSource in $toolSources) {
   $toolName = [System.IO.Path]::GetFileNameWithoutExtension($toolSource)
+  if ($toolName -eq 'wfc_learn_cli') {
+    $toolName = 'wfc_learn'
+  }
+  $toolExecutableName = if ($env:OS -eq 'Windows_NT') {
+    "$toolName.exe"
+  } else {
+    $toolName
+  }
   $toolCompilerArguments = @(
     $CompilerOptions
     '-B'
@@ -778,6 +792,7 @@ foreach ($toolSource in $toolSources) {
     "-Fu$toolsDirectory"
     "-FU$unitOutputDirectory"
     "-FE$binaryOutputDirectory"
+    "-o$toolExecutableName"
     $toolSource
   )
 
@@ -788,11 +803,6 @@ foreach ($toolSource in $toolSources) {
     exit $toolCompilerExitCode
   }
 
-  $toolExecutableName = if ($env:OS -eq 'Windows_NT') {
-    "$toolName.exe"
-  } else {
-    $toolName
-  }
   $toolExecutable = Join-Path $binaryOutputDirectory $toolExecutableName
   Write-Host "Smoke testing '$toolExecutable --version'."
   & $toolExecutable '--version'
@@ -809,6 +819,14 @@ $runnerToolExecutable = Join-Path $binaryOutputDirectory `
   "wfc_run$toolExecutableSuffix"
 Write-Host 'Running the portable pipeline CLI process conformance suite.'
 & $pipelineCliProcessTestSource `
+  -Validator $validatorToolExecutable `
+  -Runner $runnerToolExecutable
+
+$learnerToolExecutable = Join-Path $binaryOutputDirectory `
+  "wfc_learn$toolExecutableSuffix"
+Write-Host 'Running the portable training CLI process conformance suite.'
+& (Join-Path $repositoryRoot 'test/wfc_learn_cli_process_test.ps1') `
+  -Learner $learnerToolExecutable `
   -Validator $validatorToolExecutable `
   -Runner $runnerToolExecutable
 

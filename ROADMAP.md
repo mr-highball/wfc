@@ -139,6 +139,12 @@ The repository already contains the beginnings of the ecosystem:
 - a project-owned collision-safe token lookup plus shared Pascal application
   logic for strict recipe validation and headless recipe-plus-run execution,
   with thin bounded-I/O native and pas2js/Node hosts;
+- Portable Training v1: immutable pretokenized corpora, strict editable
+  `wfclearn=1` text, explicit capacity preflights, and a shared native/Node
+  `wfc-learn` host producing cardinal, overlapping-pattern, or sequence
+  models and executable recipes with source/license and per-sample identity;
+  four checked source/model/recipe/run/result bundles and real-process
+  file/stdin conformance cover the complete bounded workflow;
 - stack-safe iterative traversal of large planes while preserving the legacy
   solver's north/east/south/west depth-first order;
 - checked one-command native build gates, an FPM package, a runtime-only
@@ -189,7 +195,8 @@ It is not yet the finished system described above:
   sequences with explicit projection; Unicode-scalar text tokenization and
   exact completion domains now sit above that sequence layer, while a
   project-owned versioned word-boundary table, wrapped sequence training, 3D
-  neighborhoods, richer provenance metadata, learning tools, artifact-family
+  neighborhoods, structured multi-license provenance, media/text import and
+  browser training tools, artifact-family
   lint, and general inspection tools remain;
 - the hosted CI definition is present, but its first remote run still needs to
   be observed before the Phase 0 exit gate is claimed complete;
@@ -442,6 +449,11 @@ pas2js. Execution emits strict canonical `wfcpipeline-run=1` and
 `wfcpipeline-result=1` replay artifacts.
 Shared Pascal application logic now drives a strict recipe validator and a
 headless recipe-plus-run executor through thin native and pas2js/Node hosts.
+Portable Training v1 now adds editable, pretokenized source documents and a
+shared `wfc-learn` application. It preserves sample boundaries, explicit
+options, source/license labels and content fingerprints while exporting
+cardinal, overlapping-pattern, or whole-sequence recipes. Four bundled corpora
+replay exact source-to-result artifacts on native FPC and pas2js/Node.
 Word-boundary tables, wrapped sequence training, higher-dimensional extraction,
 broader artifact lint/inspection, and the complete exit gate remain open.
 
@@ -451,9 +463,9 @@ broader artifact lint/inspection, and the complete exit gate remain open.
   neighborhoods, weights, symmetry, boundary behavior, passes, dependencies,
   provenance, and source licenses.
 - Implement the same model reader and writer for native FPC and pas2js.
-- Build `wfc-learn` to extract adjacency, frequencies, neighborhoods, rotations,
-  and reflections from grids, sequences, voxel samples, text, and musical event
-  streams.
+- Extend the current pretokenized `wfc-learn` host beyond cardinal grids,
+  overlapping 2D patterns, and sequences with project-owned raw-text/media,
+  voxel, and musical-event importers and richer domain extraction.
 - Extend the current strict recipe `wfc-validate` host across the run/result
   family and add unreachable-value, asymmetric-rule, impossible-input, and
   missing-asset lint profiles.

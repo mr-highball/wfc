@@ -73,6 +73,10 @@ modular 3D structures, music, text, and other discrete design problems.
 > forward-only replay. Shared Pascal application units power a recipe validator and a
 > headless recipe-plus-run executor; their native and Node hosts contain only
 > bounded file, standard-stream, and process plumbing.
+> Portable Training v1 adds editable pretokenized `wfclearn=1` corpora and a
+> shared native/Node learner host for cardinal, pattern, and sequence models.
+> Generated executable recipes retain source/license labels and ordered sample
+> fingerprints; four checked bundles cover source through solved output.
 > Pipeline v2 adds exact signed-offset and finite any-of-neighborhood reads
 > across staged provider passes. Causal Trace v1 adds opt-in chronological
 > decision/removal/backtrack evidence, provider-pass cause links, per-pass
@@ -267,6 +271,10 @@ and browser demonstrations, see the [2D ecosystem](docs/world2d.md).
 For learned frequencies and adjacency, immutable model data, graph adaptation,
 the `.wfcm` format, and exact replay inputs, see
 [model learning and priming](docs/learning.md).
+
+To train without writing a Pascal program, start with the editable
+[training documents and wfc-learn](docs/training.md) workflow and its
+[four replayable examples](examples/learning/04_TrainingDocuments/README.md).
 For hand-authored rank-1/2/3 rules, declarative multi-resource pipeline recipes,
 run/result artifacts, runtime alias semantics, and the portable command-line
 contracts, see [portable pipeline artifacts](docs/pipeline-artifacts.md).
@@ -312,7 +320,7 @@ Both entry points compile with checked FPC options, keep all output under
 `build/`, run the core, 2D ecosystem, selective-settlement, radius-one
 learning, overlapping-pattern, pattern-pass composition, sequence,
 text-completion, text-pass, authored-rule and portable pipeline recipe,
-compile, run, result, runtime, validator, and runner artifacts,
+compile, run, result, runtime, validator, runner, and training artifacts,
 score/cell, music-graph, music-pass, music-result-codec, SMF, score-to-MIDI,
 voxel, Building 3D, and
 causal-trace, pass-negotiation, and selective-negotiation suites,
@@ -320,7 +328,8 @@ smoke-test the portable console examples—including the bounded/wrapped spatial
 dependency, causal-trace inspector, bounded pass-negotiation proof, negotiated
 2D repair, anchored text infill, three-pass text composition, negotiated music
 variation, learned-pattern four-pass world, and depth-three building
-proofs—compile and smoke-test the native portable command-line hosts, compile the
+proofs—compile and smoke-test the native portable command-line hosts, check
+real-process training/validation/replay against exact fixtures, compile the
 fixed-integer isometric, SVG, and Building-view suites, write a deterministic
 seed-zero Building SVG, and preserve failure exit codes.
 The repository also includes an FPM package, a runtime-only Lazarus package,

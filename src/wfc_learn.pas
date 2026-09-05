@@ -99,6 +99,13 @@ function CheckedSampleSize(const AWidth, AHeight: Integer): Integer;
 begin
   if (AWidth <= 0) or (AHeight <= 0) then
     raise ERangeError.Create('a WFC learning sample needs positive dimensions');
+  if (AWidth > WFC_MODEL_MAX_SAMPLE_DIMENSION) or
+      (AHeight > WFC_MODEL_MAX_SAMPLE_DIMENSION) then
+    raise ERangeError.Create(
+      'WFC learning sample dimension exceeds the version-1 limit');
+  if AWidth > WFC_MODEL_MAX_SAMPLE_CELL_COUNT div AHeight then
+    raise ERangeError.Create(
+      'WFC learning sample cells exceed the version-1 limit');
   if AWidth > High(Integer) div AHeight then
     raise ERangeError.Create('WFC learning sample dimensions are too large');
   Result := AWidth * AHeight;
@@ -141,6 +148,9 @@ begin
   if LValuePairs > High(Integer) div WFC_MODEL_DIRECTION_COUNT then
     raise ERangeError.Create('WFC learned relation table is too large');
   Result := WFC_MODEL_DIRECTION_COUNT * LValuePairs;
+  if Result > WFC_MODEL_MAX_RELATION_SLOT_COUNT then
+    raise ERangeError.Create(
+      'WFC learned relation table exceeds the version-1 limit');
 end;
 
 procedure CheckedIncrement(var AValue: Integer; const ALabel: String);
@@ -179,8 +189,9 @@ begin
     LIndex := FindTokenIndex(AUniqueTokens, ATokens[I]);
     if LIndex < 0 then
     begin
-      if Length(AUniqueTokens) >= High(Integer) then
-        raise ERangeError.Create('WFC learning corpus has too many values');
+      if Length(AUniqueTokens) >= WFC_MODEL_MAX_VALUE_COUNT then
+        raise ERangeError.Create(
+          'WFC learning corpus value count exceeds the version-1 limit');
       LUniqueCount := Integer(Length(AUniqueTokens));
       SetLength(AUniqueTokens, LUniqueCount + 1);
       AUniqueTokens[LUniqueCount] := ATokens[I];
@@ -363,6 +374,7 @@ var
   LValueCount: Integer;
   LTransform: Integer;
   LTransformCount: Integer;
+  LTotalSampleCells: Integer;
   LSampleShapes: TWfcModelSampleShapes;
   LUniqueTokens: TWfcModelTokens;
   LValues: TWfcLearnValueArrays;
@@ -373,9 +385,13 @@ begin
   ValidateSymmetry(ASymmetry);
 
   LSampleCount := CheckedCorpusLength(ASamples);
+  if LSampleCount > WFC_MODEL_MAX_SAMPLE_COUNT then
+    raise ERangeError.Create(
+      'WFC learning corpus sample count exceeds the version-1 limit');
 
   SetLength(LSampleShapes, LSampleCount);
   SetLength(LValues, LSampleCount);
+  LTotalSampleCells := 0;
   for LSampleIndex := 0 to LSampleCount - 1 do
   begin
     if (ARank = 1) and (ASamples[LSampleIndex].Height <> 1) then
@@ -385,6 +401,11 @@ begin
 
     LExpectedSize := CheckedSampleSize(ASamples[LSampleIndex].Width,
       ASamples[LSampleIndex].Height);
+    if LTotalSampleCells > WFC_MODEL_MAX_TOTAL_SAMPLE_CELL_COUNT -
+        LExpectedSize then
+      raise ERangeError.Create(
+        'aggregate WFC learning sample cells exceed the version-1 limit');
+    Inc(LTotalSampleCells, LExpectedSize);
     LTokenLength := CheckedTokenLength(ASamples[LSampleIndex].Tokens,
       Format('WFC learning sample %d', [LSampleIndex]));
     if LTokenLength <> LExpectedSize then
@@ -438,6 +459,9 @@ begin
   LLength := CheckedTokenLength(ATokens, '1D WFC learning sample');
   if LLength = 0 then
     raise ERangeError.Create('a 1D WFC learning sample cannot be empty');
+  if LLength > WFC_MODEL_MAX_SAMPLE_CELL_COUNT then
+    raise ERangeError.Create(
+      '1D WFC learning sample exceeds the version-1 cell limit');
   CopySampleTokens(ATokens, Result.Tokens);
   Result.Width := LLength;
   Result.Height := 1;

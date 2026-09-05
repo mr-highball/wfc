@@ -21,6 +21,11 @@ validated recipe into a fresh closed graph, and `wfc_pipeline_runtime` applies
 one run and returns a detached immutable result. Recipe, run, compiler,
 runtime, and result versions are explicit and fail closed when unsupported.
 
+To generate a recipe from editable samples, see
+[training documents and wfc-learn](training.md). That workflow preserves
+source/license labels and ordered corpus fingerprints for cardinal, pattern,
+and sequence resources without introducing a file-format dependency.
+
 ## Hand-authored rule models
 
 `TWfcRuleModel` in `wfc_rule_model` represents rule semantics that the learned

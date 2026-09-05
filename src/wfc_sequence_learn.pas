@@ -92,6 +92,9 @@ var
 begin
   if AStateCount < 1 then
     Exit;
+  if AStateCount > WFC_SEQUENCE_MAX_STATE_COUNT then
+    raise EWfcSequence.Create(
+      'sequence state count exceeds the version-1 limit');
   if AStateCount > High(Integer) div AStateCount then
     raise EWfcSequence.Create(
       'sequence state relation dimensions exceed the Integer range');
@@ -146,9 +149,9 @@ procedure AppendPublicToken(const AToken: TWfcModelToken;
 begin
   AIndex := CheckedLength(Length(APublicTokens),
     'sequence public-token count');
-  if AIndex = High(Integer) then
+  if AIndex >= WFC_SEQUENCE_MAX_PUBLIC_TOKEN_COUNT then
     raise EWfcSequence.Create(
-      'sequence public-token count exceeds the Integer range');
+      'sequence public-token count exceeds the version-1 limit');
   SetLength(APublicTokens, AIndex + 1);
   APublicTokens[AIndex] := AToken;
 end;
@@ -166,6 +169,11 @@ begin
     raise EWfcSequence.Create(
       'sequence state count exceeds the Integer range');
   CheckStateCapacity(AIndex + 1);
+  if (Length(AState.History) <> 0) and
+      (AIndex + 1 > WFC_SEQUENCE_MAX_TOTAL_HISTORY_ITEM_COUNT div
+      Length(AState.History)) then
+    raise EWfcSequence.Create(
+      'sequence state history exceeds the version-1 aggregate limit');
   SetLength(AStates, AIndex + 1);
   SetLength(AStates[AIndex].History, Length(AState.History));
   for I := 0 to Length(AState.History) - 1 do
@@ -222,12 +230,18 @@ begin
   if AOrder < 1 then
     raise EWfcSequence.CreateFmt(
       'sequence order must be positive [%d]', [AOrder]);
+  if AOrder > WFC_SEQUENCE_MAX_ORDER then
+    raise EWfcSequence.Create(
+      'sequence order exceeds the version-1 limit');
   LHistorySize := AOrder - 1;
   LSampleCount := CheckedLength(Length(ASamples),
     'sequence learning corpus sample count');
   if LSampleCount = 0 then
     raise EWfcSequence.Create(
       'a sequence learning corpus cannot be empty');
+  if LSampleCount > WFC_SEQUENCE_MAX_SAMPLE_COUNT then
+    raise EWfcSequence.Create(
+      'sequence learning corpus sample count exceeds the version-1 limit');
 
   SetLength(LSampleLengths, LSampleCount);
   SetLength(LValues, LSampleCount);

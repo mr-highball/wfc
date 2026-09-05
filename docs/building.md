@@ -97,6 +97,7 @@ Both scripts rebuild with assertions and range, overflow, and I/O checks, run
 `wfc_pipeline_compile_test`, `wfc_pipeline_result_test`,
 `wfc_pipeline_result_text_test`, `wfc_pipeline_runtime_test`,
 `wfc_token_lookup_test`, `wfc_validate_app_test`, `wfc_run_app_test`,
+`wfc_training_test`, `wfc_training_text_test`, `wfc_learn_app_test`,
 `wfc_learned_pattern_world_bundle_test`,
 `wfc_trace_reference_test`,
 `wfc_trace_test`, and `wfc_trace_utility_test`, then compile and smoke-test the
@@ -115,6 +116,12 @@ canonical files in `test/fixtures/pipeline-cli` and
 exact validator and result bytes (including the domain-sized bundle), quiet
 output, and the documented invalid, usage, I/O, solved, and non-solved exit
 classes are all exercised.
+A second, 25-case process suite checks `wfc_learn`, `wfc_validate`, and
+`wfc_run` against all four source/model/recipe/run/result bundles in
+`examples/learning/04_TrainingDocuments`. It covers file/stdin training,
+standalone output, recipe validation, solved replay, quiet/version behavior,
+and invalid/usage/I/O diagnostics. The native training-text suite requires
+that absolute fixture directory as its first argument; the build supplies it.
 A compiler error, failed check,
 or example failure produces a nonzero exit code. Compiler units and binaries
 are written beneath `build/native/`; running the gate does not modify tracked
@@ -156,8 +163,14 @@ wfc-run [--quiet] [--] RECIPE RUN
 These are the distribution-facing command names used in help and diagnostics.
 The checked repository build writes the native source-host names
 `build/native/bin/wfc_validate[.exe]` and
-`build/native/bin/wfc_run[.exe]`; direct pas2js builds write
-`wfc_validate_node.js` and `wfc_run_node.js` in the selected output directory.
+`build/native/bin/wfc_run[.exe]`; the training host is
+`build/native/bin/wfc_learn[.exe]`. Direct pas2js builds write
+`wfc_validate_node.js`, `wfc_run_node.js`, and `wfc_learn_node.js` in the
+selected output directory. The native training entry is named
+`tools/wfc_learn_cli.lpr` to avoid an object collision with the learner unit;
+compile it with `-owfc_learn` (`-owfc_learn.exe` on Windows).
+See [training documents](training.md) for its
+CLI contract and examples.
 Packagers may expose the documented hyphenated names without changing the
 shared application units or artifact contracts.
 
@@ -331,6 +344,7 @@ for artifact_test in wfc_text_codec_test wfc_rule_model_test \
   wfc_pipeline_compile_test wfc_pipeline_result_test \
   wfc_pipeline_result_text_test wfc_pipeline_runtime_test \
   wfc_token_lookup_test wfc_validate_app_test wfc_run_app_test \
+  wfc_training_test wfc_training_text_test wfc_learn_app_test \
   wfc_learned_pattern_world_bundle_test
 do
   pas2js -B -Tnodejs -Mdelphi -Fusrc -Futools \
@@ -686,6 +700,8 @@ and the multi-pass and selective-settlement worlds with both seed zero and
 their default seeds under Node.js 22.23.2. The two Node pipeline hosts also run
 the same exact 18-case process suite as the native hosts, using both the small
 CLI fixture set and the learned-pattern-world bundle. The gate then builds
+the Node training host and runs the same 25-case training process suite
+against all four bundled training documents. It also builds
 all three browser
 targets,
 serves each staged site, and checks their exact body-state contracts in
