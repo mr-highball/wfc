@@ -6,6 +6,11 @@ the score, and exports a Standard MIDI File. All of that code is project-owned
 Pascal shared by native FPC and pas2js. Playback is deliberately outside the
 foundation.
 
+The separate [ensemble extension](music-ensemble.md) adds synchronized
+chord-capable voices, exact or allowed pitch-class sets, multi-voice excerpt
+training, and a polyphonic pass owner. The original monophonic contracts below
+remain unchanged.
+
 The first vertical slice proves this pipeline:
 
 ```text
@@ -383,9 +388,12 @@ gate. It currently has:
 - hard same-coordinate cross-pass constraints and bounded pass-level
   negotiation, without offset look-ahead, coordinate-minimal phrase repair,
   conflict-directed search, or soft scoring;
-- raw token corpora supplied by the caller, without a semantic MIDI learner;
-- an SMF format-0 score exporter but no score importer;
-- one fixed-corpus browser Studio and native file export, not an
+- caller-selected, fixed-grid training rather than automatic expressive
+  quantization; [semantic MIDI import and excerpt training](music-import.md)
+  are available in separate project-owned units;
+- an SMF format-0 score exporter and explicit-policy format-0/1 score import,
+  not lossless interpretation of every MIDI controller or performance detail;
+- fixed-corpus browser studios and native file export, not an
   arbitrary score/corpus editor or embedded native playback device;
 - a bounded triangle-wave audio preview, not realistic instruments,
   band-limited synthesis, effects, or mastering.

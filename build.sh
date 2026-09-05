@@ -343,6 +343,30 @@ case "$host_system" in
 esac
 "$restart_demo_executable" --selftest || exit $?
 
+compiler_ensemble_demo_directory="$compiler_source_directory/../examples/music/06_EnsembleStudio"
+for ensemble_test_name in wfc_music_ensemble_test wfc_music_ensemble_graph_test wfc_music_ensemble_passes_test wfc_music_ensemble_training_test wfc_music_ensemble_demo_test; do
+  printf "Building and running '%s'.\n" "$ensemble_test_name"
+  "$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
+    "-Fu$compiler_source_directory" "-Fu$compiler_ensemble_demo_directory" \
+    "-FU$compiler_unit_output_directory" "-FE$compiler_binary_output_directory" \
+    "$compiler_source_directory/../test/$ensemble_test_name.lpr" || exit $?
+  ensemble_test_executable="$binary_output_directory/$ensemble_test_name"
+  case "$host_system" in
+    CYGWIN*|MINGW*|MSYS*) ensemble_test_executable="${ensemble_test_executable}.exe" ;;
+  esac
+  "$ensemble_test_executable" || exit $?
+done
+printf 'Building and checking Ensemble Studio.\n'
+"$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
+  "-Fu$compiler_source_directory" "-Fu$compiler_ensemble_demo_directory" \
+  "-FU$compiler_unit_output_directory" "-FE$compiler_binary_output_directory" \
+  "$compiler_ensemble_demo_directory/EnsembleStudio.lpr" || exit $?
+ensemble_demo_executable="$binary_output_directory/EnsembleStudio"
+case "$host_system" in
+  CYGWIN*|MINGW*|MSYS*) ensemble_demo_executable="${ensemble_demo_executable}.exe" ;;
+esac
+"$ensemble_demo_executable" --selftest || exit $?
+
 printf "Building the 2D ecosystem conformance suite.\n"
 "$compiler" "$@" \
   -B \

@@ -85,6 +85,10 @@ begin
     P.Targets.AddUnit('wfc_training_text.pas');
     P.Targets.AddUnit('wfc_text_training.pas');
     P.Targets.AddUnit('wfc_training_workspace.pas');
+    P.Targets.AddUnit('wfc_music_ensemble.pas');
+    P.Targets.AddUnit('wfc_music_ensemble_graph.pas');
+    P.Targets.AddUnit('wfc_music_ensemble_passes.pas');
+    P.Targets.AddUnit('wfc_music_ensemble_training.pas');
     Run;
   end;
 end.

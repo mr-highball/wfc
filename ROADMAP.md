@@ -105,6 +105,11 @@ The repository already contains the beginnings of the ecosystem:
   reduced rational helpers, strict `wm1`/`wr1`/`wh1` fixed-quantum cells,
   lossless aligned monophonic projection/rebuild, and exact rhythm and
   pitch-class maps across private latent sequence passes;
+- a separately versioned [polyphonic ensemble layer](docs/music-ensemble.md)
+  with chord-capable synchronized voices, exact score round-trips, rhythm
+  vectors, distinct exact/allowed pitch-class sets, safe continuation-model
+  preflight, common-excerpt training, a transactional three-pass owner, and
+  shared native/browser Ensemble Studio;
 - strict canonical `wfcmusic=1` score text, a defensive project-owned SMF
   format-0/1 byte codec, deterministic format-0 score export, four focused
   conformance suites, and a native/pas2js three-pass composition example;
@@ -603,6 +608,15 @@ adapter is optional and cannot be required by the portable ecosystem.
 - Version-1 fixed-quantum cells model melody attacks/holds/rests, rhythm
   actions, and harmony pitch classes. Exact projection/rebuild is available
   for aligned monophonic voices; chords remain available in scores and export.
+- Ensemble v1 separately represents independently sustained chord-capable
+  voices in joint frames. Harmony and rhythm providers constrain an ensemble
+  consumer, with voice-slot locks, independent validation, full/selective
+  negotiation, and common-excerpt training. Ensemble Studio exposes this
+  pipeline in native FPC and pas2js without changing monophonic replay formats.
+  Joint frames preserve observed vertical combinations; independent marginal
+  voice recombination and streamed polyphonic arranging remain work. A wider
+  global timeline must stay separate from bounded, Integer-indexed local
+  sections; removing a duration preset is not a claim of infinite storage.
 - A portable three-pass fixture solves harmony and rhythm before melody,
   composes both constraints through latent sequence projection maps,
   independently validates the public relation, rebuilds a score, and checks
@@ -638,7 +652,7 @@ adapter is optional and cannot be required by the portable ecosystem.
   browsers; OS/process checks remain native. See
   [development tools](docs/development-tools.md).
 - Extend the pipeline through meter/phrase -> rhythm -> harmony -> melody ->
-  bass/voicing -> dynamics/ornamentation, including polyphonic representations,
+  bass/voicing -> dynamics/ornamentation, extending the polyphonic frame baseline,
   key/scale spelling, voice leading, instrument ranges, and locked motifs.
 - Extend the current native WAV export and browser HTML-audio presentation
   with optional embedded native playback or a thin WebAudio host only when
@@ -651,9 +665,9 @@ adapter is optional and cannot be required by the portable ecosystem.
 harmonies meet the selected model's constraints, semantic score/MIDI
 round-trips are tested, native and web agree on the event list, audio
 presentations consume the same validated result, and the standard demo has no
-required GPL dependency. Foundation v1, Negotiated Variation v1, and Music
-Studio satisfy important parts of this gate, including a browser UI, portable
-audible output, and explicit-policy semantic MIDI import, but not the full
+required GPL dependency. Foundation v1, Negotiated Variation v1, Music Studio,
+and Ensemble v1 satisfy important parts of this gate, including browser UIs,
+portable audible output, and explicit-policy semantic MIDI import, but not the full
 polyphonic/harmonic breadth or expressive-performance learning.
 
 ### Text and sequences

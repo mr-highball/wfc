@@ -17,7 +17,8 @@ New-Item -ItemType Directory -Force -Path $units, $web | Out-Null
 $unitPaths = @('src','tools','examples/2D/common','examples/3D/common',
   'examples/2D/05_LearnedPatternWorld','examples/learning/05_TrainingStudio',
   'examples/music/05_MusicStudio','examples/passes/04_NeighborhoodCounts',
-  'examples/passes/05_DeterministicRestarts') | ForEach-Object {
+  'examples/passes/05_DeterministicRestarts',
+  'examples/music/06_EnsembleStudio') | ForEach-Object {
     '-Fu' + (Join-Path $repositoryRoot $_)
   }
 foreach ($source in Get-ChildItem -LiteralPath (Join-Path $repositoryRoot 'test') -Filter '*_test.lpr') {

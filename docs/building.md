@@ -5,7 +5,8 @@ contracts, specialized 2D and settlement, radius-one model-learning,
 overlapping-pattern and projected-pattern passes, sequence, Unicode-scalar
 text completion, three-pass text composition, exact music-score, music
 projection, Standard MIDI File,
-score-export, deterministic PCM/WAVE rendering, Music Studio,
+score-export, deterministic PCM/WAVE rendering, Music Studio, synchronized
+polyphonic frames and training, the ensemble pass owner and Ensemble Studio,
 negotiated music variation/result replay, full and selective
 pass negotiation, count-range pass clauses, deterministic whole-transaction
 restarts and optional diagnostic timing, canonical numeric text primitives, immutable authored-rule
@@ -23,7 +24,7 @@ variation, the four-pass learned-pattern world, and writes a checked seed-zero
 Building SVG artifact.
 It does not initialize the optional legacy music submodule or build the
 unfinished Castle Game Engine viewer. The 2D world, three-pass text workbench,
-Building 3D, Training Studio, Music Studio, and Neighborhood Counts have separate pas2js browser entry
+Building 3D, Training Studio, Music Studio, Ensemble Studio, and Neighborhood Counts have separate pas2js browser entry
 points described below.
 
 FPC 3.2.2 is the supported stable compiler. The current FPC development
@@ -100,6 +101,9 @@ Both scripts rebuild with assertions and range, overflow, and I/O checks, run
 `wfc_music_midi_import_test`, `wfc_music_training_test`,
 `wfc_music_arrangement_test`, `wfc_music_audio_stream_test`,
 `wfc_music_studio_arrangement_test`, `wfc_music_import_app_test`,
+`wfc_music_ensemble_test`, `wfc_music_ensemble_graph_test`,
+`wfc_music_ensemble_passes_test`, `wfc_music_ensemble_training_test`,
+`wfc_music_ensemble_demo_test`,
 `wfc_browser_dom_test`, `wfc_serve_test`,
 `wfc_text_codec_test`, `wfc_rule_model_test`,
 `wfc_rule_text_test`, `wfc_pipeline_model_test`, `wfc_pipeline_text_test`,
@@ -393,6 +397,20 @@ file backend exercises asynchronous save lifecycle without touching disk.
 See [the Studio guide](../examples/music/05_MusicStudio/README.md) for commands,
 controls, limitations, and native export behavior.
 
+## pas2js browser Ensemble Studio
+
+Build the polyphonic studio with `build-browser-ensemble.ps1` or
+`bash ./build-browser-ensemble.sh`, using the same compiler override conventions
+as the other browser staging scripts. Serve `build/browser/ensemble/www` with
+the included FPC server. Its shared Pascal helper and controller event path are
+also exercised by portable browser conformance.
+
+The native gate builds `EnsembleStudio` and runs `--selftest`. The
+[example guide](../examples/music/06_EnsembleStudio/README.md) describes controls,
+native exports, user-defined score lengths, and the separate bounded audio
+preview. [The ensemble contract](music-ensemble.md) specifies voice continuity,
+training selections, exact versus allowed harmony, and transaction behavior.
+
 ## Neighborhood Counts browser workbench
 
 Stage the shared terrain/roads/market count demo with
@@ -407,9 +425,11 @@ commands, the complete marker contract, and explicit scope limits.
 
 ## Hosted pas2js gate
 
-The hosted browser gate builds the six pas2js demos with a matching compiler
-and RTL, serves them with the project-owned FPC server, executes their self-tests
-in headless Chrome, and checks rendered body attributes with the FPC checker.
+The hosted browser gate builds the seven pas2js demos with a matching compiler
+and RTL. It serves six standalone demo self-tests and the Ensemble Studio
+controller's portable conformance host with the project-owned FPC server,
+executes them in headless Chrome, and checks rendered body attributes with the
+FPC checker.
 It also compiles every portable standalone conformance program for the browser
 and executes those pages through the same FPC tools. Native socket, DOM-parser,
 and renderer-process tests remain native. The source-derived test manifest
@@ -424,8 +444,9 @@ not assertions that every console fixture has a browser host.
 The hosted workflow runs the checked native gate with FPC 3.2.2 on Linux,
 macOS, and Windows. The Linux lane also builds the FPM and Lazarus packages,
 runs the core Lazarus project, and verifies that generation leaves the checkout
-clean. A separate Linux lane builds and executes the six real browser self-tests
-and portable browser conformance in headless Chrome using the included FPC
+clean. A separate Linux lane builds all seven browser demos and executes six
+standalone demo self-tests plus portable browser conformance (including the
+Ensemble Studio controller) in headless Chrome using the included FPC
 development tools. A canary runs
 against the current official FPC development image and records the image digest
 and compiler revision in the job log. Submodules are deliberately disabled for

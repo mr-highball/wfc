@@ -298,6 +298,35 @@ $restartDemoName = if ($env:OS -eq 'Windows_NT') {
 & (Join-Path $binaryOutputDirectory $restartDemoName) --selftest
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+$ensembleDemoDirectory = Join-Path $repositoryRoot 'examples/music/06_EnsembleStudio'
+foreach ($ensembleTestName in @(
+    'wfc_music_ensemble_test', 'wfc_music_ensemble_graph_test',
+    'wfc_music_ensemble_passes_test', 'wfc_music_ensemble_training_test',
+    'wfc_music_ensemble_demo_test')) {
+  Write-Host "Building and running '$ensembleTestName'."
+  & $Compiler @CompilerOptions -B -Mdelphi -Sa -Cr -Co -Ci `
+    "-Fu$sourceDirectory" "-Fu$ensembleDemoDirectory" `
+    "-FU$unitOutputDirectory" "-FE$binaryOutputDirectory" `
+    (Join-Path $repositoryRoot "test/$ensembleTestName.lpr")
+  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+  $ensembleTestExecutable = if ($env:OS -eq 'Windows_NT') {
+    "$ensembleTestName.exe"
+  } else { $ensembleTestName }
+  & (Join-Path $binaryOutputDirectory $ensembleTestExecutable)
+  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+}
+Write-Host 'Building and checking Ensemble Studio.'
+& $Compiler @CompilerOptions -B -Mdelphi -Sa -Cr -Co -Ci `
+  "-Fu$sourceDirectory" "-Fu$ensembleDemoDirectory" `
+  "-FU$unitOutputDirectory" "-FE$binaryOutputDirectory" `
+  (Join-Path $ensembleDemoDirectory 'EnsembleStudio.lpr')
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+$ensembleDemoName = if ($env:OS -eq 'Windows_NT') {
+  'EnsembleStudio.exe'
+} else { 'EnsembleStudio' }
+& (Join-Path $binaryOutputDirectory $ensembleDemoName) --selftest
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
 $worldTestCompilerArguments = @(
   $CompilerOptions
   '-B'

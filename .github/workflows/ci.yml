@@ -214,6 +214,12 @@ jobs:
           PAS2JS="$PAS2JS_ROOT/bin/x86_64-linux/pas2js" bash ./build-browser-tests.sh
           bash ./test-browser-tests.sh
 
+      - name: Build browser Ensemble Studio
+        shell: bash
+        run: |
+          # Its shared controller event path runs in browser conformance above.
+          PAS2JS="$PAS2JS_ROOT/bin/x86_64-linux/pas2js" bash ./build-browser-ensemble.sh
+
       - name: Build and self-test browser text passes
         shell: bash
         run: |

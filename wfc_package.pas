@@ -8,8 +8,7 @@ unit wfc_package;
 interface
 
 uses
-  wfc_solver_reference, wfc_timing, wfc, wfc_trace, wfc_model, wfc_learn,
-  wfc_model_text,
+  wfc_solver_reference, wfc, wfc_trace, wfc_model, wfc_learn, wfc_model_text,
   wfc_world2d, wfc_world2d_validate, wfc_text_codec, wfc_pattern2d,
   wfc_pattern2d_learn, wfc_pattern2d_text, wfc_world2d_settlement,
   wfc_world2d_settlement_validate, wfc_sequence, wfc_sequence_learn,
@@ -24,7 +23,9 @@ uses
   wfc_pipeline_run_text, wfc_pipeline_result, wfc_pipeline_result_text,
   wfc_pipeline_runtime, wfc_training, wfc_training_text, wfc_text_training,
   wfc_training_workspace, wfc_music_audio, wfc_music_audio_stream,
-  wfc_music_arrangement, wfc_music_midi_import, wfc_music_training;
+  wfc_music_arrangement, wfc_music_midi_import, wfc_music_training,
+  wfc_timing, wfc_music_ensemble, wfc_music_ensemble_graph,
+  wfc_music_ensemble_passes, wfc_music_ensemble_training;
 
 implementation
 

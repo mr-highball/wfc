@@ -185,6 +185,12 @@ boundaries must align. A selection that cuts either end of a note rejects;
 chords reject for every projection. Repeated attacks remain attacks even when
 their pitches match.
 
+That is the original single-voice bridge. The separate
+[ensemble training adapter](music-ensemble.md#synchronized-excerpt-training)
+accepts chords and an ordered group of voices sharing each excerpt. It checks
+every selected voice for cut sustained sounds and retains silent voice slots;
+it does not change the single-voice token formats or selection semantics here.
+
 The bridge first forms exact melody cells:
 
 - `wmtpMelody` retains attack/hold/rest, pitch, and velocity;
