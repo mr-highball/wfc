@@ -14,6 +14,7 @@ for source in test/*_test.lpr; do
     -Fuexamples/2D/common -Fuexamples/3D/common \
     -Fuexamples/2D/05_LearnedPatternWorld \
     -Fuexamples/learning/05_TrainingStudio -Fuexamples/music/05_MusicStudio \
+    -Fuexamples/passes/04_NeighborhoodCounts \
     -FUbuild/browser/tests/units -FEbuild/browser/tests/www "$source"
   html="build/browser/tests/www/$name.html"
   if [[ -f "$html" ]]; then rm -- "$html"; fi

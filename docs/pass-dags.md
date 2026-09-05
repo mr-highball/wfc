@@ -50,8 +50,8 @@ An edge may serve more than one role:
 - the protected predecessor edge required by legacy mode;
 - the single protected source of a transform pass;
 - the protected predecessor used by `RequirePrevious`; or
-- a protected source used by `RequireFromPass`, `RequireFromPassAt`, or
-  `RequireAnyFromPass`.
+- a protected source used by `RequireFromPass`, `RequireFromPassAt`,
+  `RequireAnyFromPass`, or `RequireCountFromPass`.
 
 The implementation retains these roles rather than storing an untyped Boolean
 edge. `RemoveDependency` and `ClearDependencies` therefore cannot silently
@@ -190,6 +190,16 @@ order. Offset arithmetic is checked before sampling, so an `Integer`
 displacement cannot silently wrap an unsigned coordinate.
 
 ### boundaries and staging
+
+The independently versioned [count-range extension](pass-counts.md) adds
+`RequireCountFromPass(provider, terms, minimum, maximum, mode)`. It applies an
+inclusive range to matching canonical offsets or distinct matched provider
+cells, as explicitly selected by the required mode argument. Count clauses
+are ANDed with all other clauses; they do not alter the previous-pass
+compatibility merge. Missing positions contribute zero, so an absence range
+can succeed at a bounded edge. Wrapped aliases count separately only in
+matching-term mode. This is a per-candidate finite stencil, not a global
+cardinality or connectivity constraint.
 
 When `WrapNeighbors` is false, every dimension is bounded. Any sampled
 coordinate below zero or at/above that dimension's size is an unresolved
@@ -379,10 +389,13 @@ need explicit deterministic and versioned contracts rather than silently
 changing the meaning of a complete trace.
 
 Cross-pass requirements read `TGraphValue` layers with the same shape at
-exactly declared finite offsets. They do not perform radius expansion,
-distance calculation, counting, arbitrary predicates, resampling, or soft
-scoring. An overlapping-pattern solve instead contains private latent pattern
-keys and yields public tokens only after checked projection. Connecting that
-layer requires a future projection-aware transaction that stages and validates
-the projected grid before dependent passes read it. The dependency API does
-not pretend those two representations are interchangeable.
+exactly declared finite offsets. Count-range clauses can bound matching
+offsets or distinct provider cells in that stencil. These requirements do not
+perform radius expansion, distance calculation, global quotas, arbitrary
+predicates, resampling, or soft scoring. An overlapping-pattern solve instead
+contains private latent pattern keys and yields public tokens only after
+checked projection. The [wrapped pattern-pass adapter](patterns.md#pass-composed-wrapped-projection)
+materializes and validates that public layer inside the transaction for its
+same-shape, depth-one contract. Other projections still need an explicit
+adapter; the dependency API does not treat latent keys and public tokens as
+interchangeable.

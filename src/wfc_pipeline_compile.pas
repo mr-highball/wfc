@@ -128,6 +128,7 @@ uses
 
 type
   TStringArray = array of String;
+  TIntegerArray = array of Integer;
 
   { The root and every pass retain the same owner. The core invokes this hook
     after staged assignments have reached live entries but before it discards
@@ -357,6 +358,63 @@ begin
     Exit(False);
   Result := ProviderEntryAllows(AProvider.Entry[LX, LY, LZ],
     ATerm.AllowedProviderTokens);
+end;
+
+function RequirementCountMatches(const AProvider: TGraph;
+  const AX, AY, AZ: Integer;
+  const ARequirement: TWfcPipelineRequirement;
+  const AWrap: Boolean;
+  var AMatchedIndices: TIntegerArray): Boolean;
+var
+  I: Integer;
+  J: Integer;
+  LAlreadyMatched: Boolean;
+  LCount: Integer;
+  LResolvedIndex: Integer;
+  LX: Integer;
+  LY: Integer;
+  LZ: Integer;
+begin
+  LCount := 0;
+  for I := 0 to Length(ARequirement.Terms) - 1 do
+  begin
+    if not ResolveRequirementAxis(AX, Integer(AProvider.Dimension.Width),
+        ARequirement.Terms[I].OffsetX, AWrap, LX) then
+      Continue;
+    if not ResolveRequirementAxis(AY, Integer(AProvider.Dimension.Height),
+        ARequirement.Terms[I].OffsetY, AWrap, LY) then
+      Continue;
+    if not ResolveRequirementAxis(AZ, Integer(AProvider.Dimension.Depth),
+        ARequirement.Terms[I].OffsetZ, AWrap, LZ) then
+      Continue;
+    if not ProviderEntryAllows(AProvider.Entry[LX, LY, LZ],
+        ARequirement.Terms[I].AllowedProviderTokens) then
+      Continue;
+
+    if ARequirement.CountMode = gpcmDistinctCells then
+    begin
+      LResolvedIndex :=
+        (LZ * Integer(AProvider.Dimension.Height) + LY) *
+        Integer(AProvider.Dimension.Width) + LX;
+      LAlreadyMatched := False;
+      for J := 0 to LCount - 1 do
+        if AMatchedIndices[J] = LResolvedIndex then
+        begin
+          LAlreadyMatched := True;
+          Break;
+        end;
+      if LAlreadyMatched then
+        Continue;
+      AMatchedIndices[LCount] := LResolvedIndex;
+    end
+    else if ARequirement.CountMode <> gpcmMatchingTerms then
+      raise EInvalidOperation.Create(
+        'recipe contains an unknown count requirement mode');
+    Inc(LCount);
+    if LCount > ARequirement.MaximumCount then
+      Exit(False);
+  end;
+  Result := LCount >= ARequirement.MinimumCount;
 end;
 
 function PatternIssueEntry(const AGraph: TGraph;
@@ -637,6 +695,13 @@ begin
             'requirement ' + IntToStr(I) + ' consumer token')]
             .RequireAnyFromPass(
               LGraphLabels[LRequirement.ProviderPassIndex], LTerms);
+        wprqCount:
+          FGraph.Rules[TokenToGraphValue(LRequirement.ConsumerToken,
+            'requirement ' + IntToStr(I) + ' consumer token')]
+            .RequireCountFromPass(
+              LGraphLabels[LRequirement.ProviderPassIndex], LTerms,
+              LRequirement.MinimumCount, LRequirement.MaximumCount,
+              LRequirement.CountMode);
       else
         raise ERangeError.Create(
           'recipe contains an unknown requirement kind');
@@ -714,6 +779,7 @@ var
   LSourceEntry: TGraphEntry;
   LToken: TWfcModelToken;
   LConsumerValue: TGraphValue;
+  LCountMatchedIndices: TIntegerArray;
   LMatched: Boolean;
   X: Integer;
   Y: Integer;
@@ -865,6 +931,11 @@ begin
     LRequirement := FRecipe.RequirementAt(I);
     LProviderGraph := FGraph.PassGraph[
       LRequirement.ProviderPassIndex];
+    if (LRequirement.Kind = wprqCount) and
+        (LRequirement.CountMode = gpcmDistinctCells) then
+      SetLength(LCountMatchedIndices, Length(LRequirement.Terms))
+    else
+      SetLength(LCountMatchedIndices, 0);
     LConsumerValue := TokenToGraphValue(LRequirement.ConsumerToken,
       'commit requirement consumer token');
     for Z := 0 to Integer(FGraph.Dimension.Depth) - 1 do
@@ -875,15 +946,28 @@ begin
             LRequirement.ConsumerPassIndex].Entry[X, Y, Z];
           if LEntry.Empty or (LEntry.Value <> LConsumerValue) then
             Continue;
-          LMatched := False;
-          for LPosition := 0 to Length(LRequirement.Terms) - 1 do
-            if RequirementTermMatches(LProviderGraph, X, Y, Z,
-                LRequirement.Terms[LPosition],
-                FRecipe.WrapNeighbors) then
-            begin
-              LMatched := True;
-              Break;
-            end;
+          case LRequirement.Kind of
+            wprqExact, wprqAny:
+              begin
+                LMatched := False;
+                for LPosition := 0 to
+                    Length(LRequirement.Terms) - 1 do
+                  if RequirementTermMatches(LProviderGraph, X, Y, Z,
+                      LRequirement.Terms[LPosition],
+                      FRecipe.WrapNeighbors) then
+                  begin
+                    LMatched := True;
+                    Break;
+                  end;
+              end;
+            wprqCount:
+              LMatched := RequirementCountMatches(LProviderGraph,
+                X, Y, Z, LRequirement, FRecipe.WrapNeighbors,
+                LCountMatchedIndices);
+          else
+            raise EInvalidOperation.Create(
+              'recipe contains an unknown requirement kind');
+          end;
           if not LMatched then
           begin
             FLastValidation.Kind := wpcvkRequirement;

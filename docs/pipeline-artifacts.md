@@ -85,7 +85,7 @@ recipe records:
 - stable pass indices, labels, visibility, modes, and adapters;
 - the complete acyclic dependency list;
 - closed, typed projection bridges;
-- exact-offset and any-of-neighborhood public-token requirements.
+- exact-offset, any-of-neighborhood, and finite count-range public-token requirements.
 
 Version 1 recognizes four embedded resource kinds:
 
@@ -114,7 +114,7 @@ incompatibly requires a new limits or artifact version.
 | learned model | 65,536 samples; 4,194,304 per dimension, per-sample cells, and aggregate corpus cells; 1,024 values; 4,194,304 relation slots; 16 MiB encoded text; 262,144 lines |
 | overlapping 2D pattern | 65,536 sources; 4,194,304 per source dimension, per-source cells, and aggregate source cells; 4,096 per footprint dimension and footprint cells; 4,096 palette tokens; 1,024 patterns; 4,194,304 aggregate pattern cells and relation slots; 16 MiB encoded text; 262,144 lines |
 | bounded sequence | order 1,024; 4,096 samples; 1,024 public tokens; 1,024 states; 65,536 aggregate history items; 16 MiB encoded text; 262,144 lines |
-| pipeline recipe | 64 resources; 16 MiB per payload and 64 MiB aggregate payload; 256 passes; 4,096 dependencies; 256 bridges; 4,096 requirements; 256 terms per requirement and 8,192 aggregate terms; 1,024 allowed tokens per term and 65,536 aggregate allowed-token records; 1 MiB per encoded outer token and 16 MiB aggregate encoded outer-token text; 16,777,216 aggregate typed-resource relation slots; 256 MiB encoded text; 82,522 lines |
+| pipeline recipe | 64 resources; 16 MiB per payload and 64 MiB aggregate payload; 256 passes; 4,096 dependencies; 256 bridges; 4,096 requirements; 256 terms per requirement and 8,192 aggregate terms; 1,024 allowed tokens per term and 65,536 aggregate allowed-token records; 1 MiB per encoded outer token and 16 MiB aggregate encoded outer-token text; 16,777,216 aggregate typed-resource relation slots; 256 MiB encoded text; 86,618 lines |
 | pipeline run | 4,194,304 per dimension and aggregate cells; 262,144 locks; 262,144 domains; 1,024 tokens per domain and 1,048,576 aggregate domain tokens; 1,000,000 local backtracks; 65,536 pass backtracks; 1 MiB per encoded token and 16 MiB aggregate encoded token text; 64 MiB encoded text; 1,572,878 lines |
 | pipeline compiler | 4,194,304 per dimension and aggregate cells for a direct compile request |
 | pipeline runtime | 16,777,216 aggregate pass cells in addition to the run and result limits; worst-case public-vocabulary encoding is preflighted before graph compilation; inverse-lowering limits version 1 permits 1,048,576 contributions, 16,777,216 candidate predicate visits, and 4,194,304 stored private indices per invocation |
@@ -194,6 +194,16 @@ consumer/provider/offset keys are rejected because the graph API would merge
 their token sets as alternatives. Rank-1 offsets must have zero Y and Z;
 rank-2 offsets must have zero Z. Active axes retain the complete signed
 `Integer` range.
+
+Count requirements use the opt-in `wprqCount` kind and
+`MakeWfcPipelineCountRequirement`. Their required mode distinguishes matching
+canonical offset terms from distinct matched provider cells; bounds satisfy
+`0 <= minimum <= maximum <= term count`. Wrapped aliases collapse only in
+distinct-cell mode, so a valid declared minimum may be unsatisfiable on a
+small graph. The text kind is `count-terms-v1` or `count-cells-v1`, followed
+immediately by a `count=I,min,max` record before its terms. Existing exact/any
+documents and signatures are unchanged. The compiler and independent commit
+validator both enforce the range; see the [complete count contract](pass-counts.md).
 
 ## Canonical recipe, run, and result text
 

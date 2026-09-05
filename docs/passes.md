@@ -16,6 +16,8 @@ This guide introduces pass identity and the compatibility behavior. The
 cross-pass requirements, planning, selective regeneration, and reports.
 The separate [bounded negotiation contract](pass-negotiation.md) specifies how
 complete atomic pipeline rounds may chronologically reopen a prior assignment.
+The [finite count contract](pass-counts.md) adds inclusive neighborhood ranges
+with an explicit choice between matching offsets and distinct provider cells.
 
 ## labels and indices
 
@@ -475,9 +477,10 @@ documented in [deterministic generation](determinism.md).
 
 Version 2 dependency planning is deliberately acyclic. `RequirePrevious` and
 `RequireFromPass` preserve same-coordinate compatibility;
-`RequireFromPassAt` reads one signed offset, and `RequireAnyFromPass` reads an
-explicit finite any-of-neighborhood. These are exact hard value comparisons,
-not radius searches, counts, distance metrics, soft predicates, or a
+`RequireFromPassAt` reads one signed offset, `RequireAnyFromPass` reads an
+explicit finite any-of-neighborhood, and `RequireCountFromPass` bounds matches
+over an explicit stencil. These are exact hard value comparisons, not radius
+searches, global quotas, distance metrics, soft predicates, or a
 conflict-directed repair language. Transform mode has one source. Sequence
 projection helpers now bridge exact public tokens and private latent states in
 both directions; exact N-source sequence token-map bundles are atomic.

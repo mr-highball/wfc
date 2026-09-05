@@ -73,6 +73,9 @@ const
   //regeneration changes in a replay-incompatible way. The per-pass reference
   //solver remains versioned independently above.
   WFC_PIPELINE_ALGORITHM_VERSION = 2;
+  //Identifies opt-in finite cross-pass counting with an explicit alias mode.
+  //Existing graph, solver, pipeline, and trace replay remain unchanged.
+  WFC_PASS_COUNT_VERSION = 1;
   //Identifies the public causal-trace event schema. Trace capture is opt-in,
   //so adding this observability surface does not change solver replay.
   WFC_TRACE_VERSION = 1;
@@ -112,6 +115,11 @@ type
     Values: TGraphValues;
   end;
   TGraphPassMatchTerms = array of TGraphPassMatchTerm;
+
+  //MatchingTerms counts canonical declared offsets, even if wrapping maps
+  //several to one cell. DistinctCells counts a resolved cell once when any
+  //of its aliased terms matches. The caller must choose the interpretation.
+  TGraphPassCountMode = (gpcmMatchingTerms, gpcmDistinctCells);
 
   //all posible "directions" to move from a single point on the graph
   TGraphDirection = (gdNorth, gdEast, gdSouth, gdWest, gdUp, gdDown);
@@ -218,12 +226,15 @@ type
     type
       TPassRequirementOrigin = (proPrevious, proNamed);
       TPassRequirementOrigins = set of TPassRequirementOrigin;
-      TPassRequirementKind = (prkMergedOffset, prkAny);
+      TPassRequirementKind = (prkMergedOffset, prkAny, prkCount);
       TPassRequirement = record
         PassIndex: Integer;
         Terms: TGraphPassMatchTerms;
         Origins: TPassRequirementOrigins;
         Kind: TPassRequirementKind;
+        MinimumMatches: Integer;
+        MaximumMatches: Integer;
+        CountMode: TGraphPassCountMode;
       end;
       TPassRequirements = array of TPassRequirement;
   private
@@ -236,6 +247,10 @@ type
     procedure AddPassAnyRequirement(const APassIndex: Integer;
       const ATerms: TGraphPassMatchTerms;
       const AOrigin: TPassRequirementOrigin);
+    function BuildPassCountRequirements(const APassIndex: Integer;
+      const ATerms: TGraphPassMatchTerms;
+      const AMinimum, AMaximum: Integer; const AMode: TGraphPassCountMode;
+      const AOrigin: TPassRequirementOrigin): TPassRequirements;
   strict private
     FRules: TGraphRules;
     FDeniedDirections: TGraphDirections;
@@ -266,6 +281,10 @@ type
       const AOffset: TGraphOffset; const AValues: TGraphValues); virtual;
     procedure DoRequireAnyFromPass(const APass: String;
       const ATerms: TGraphPassMatchTerms); virtual;
+    procedure DoRequireCountFromPass(const APass: String;
+      const ATerms: TGraphPassMatchTerms;
+      const AMinimum, AMaximum: Integer;
+      const AMode: TGraphPassCountMode); virtual;
     procedure UpsertRule(const ADirections : TGraphDirections;
       const AValue : TGraphValue; const ARequireRule : Boolean);
   public
@@ -324,6 +343,17 @@ type
     //is conjunctive with the group's other clauses.
     function RequireAnyFromPass(const APass: String;
       const ATerms: TGraphPassMatchTerms): TGraphRuleGroup;
+
+    //Adds an inclusive count-range clause, ANDed with all other clauses.
+    //Terms must be non-empty; identical signed offsets merge their value
+    //alternatives before checking 0 <= minimum <= maximum <= term count.
+    //Missing or empty provider cells do not match, so 0..0 expresses absence.
+    //Identical terms, bounds, and mode are idempotent; input arrays are copied.
+    //Even a 0..term-count clause retains its validated provider dependency.
+    function RequireCountFromPass(const APass: String;
+      const ATerms: TGraphPassMatchTerms;
+      const AMinimum, AMaximum: Integer;
+      const AMode: TGraphPassCountMode): TGraphRuleGroup;
 
     constructor Create; virtual; overload;
     constructor Create(const AValue : TGraphValue); virtual; overload;
@@ -595,6 +625,10 @@ type
           const AValues: TGraphValues); override;
         procedure DoRequireAnyFromPass(const APass: String;
           const ATerms: TGraphPassMatchTerms); override;
+        procedure DoRequireCountFromPass(const APass: String;
+          const ATerms: TGraphPassMatchTerms;
+          const AMinimum, AMaximum: Integer;
+          const AMode: TGraphPassCountMode); override;
         procedure SynchronizeInverseRules;
       public
         property Parent : TGraph read FParent write FParent;
@@ -1256,6 +1290,64 @@ begin
   Result := True;
 end;
 
+function CanonicalGraphPassCountTerms(const ATerms: TGraphPassMatchTerms;
+  const AMinimum, AMaximum: Integer;
+  const AMode: TGraphPassCountMode): TGraphPassMatchTerms;
+var
+  LModeOrdinal: Integer;
+begin
+  Result := CanonicalGraphPassMatchTerms(ATerms, 'RequireCountFromPass');
+  if (AMinimum < 0) or (AMaximum < AMinimum)
+    or (AMaximum > Length(Result)) then
+    raise ERangeError.CreateFmt(
+      'RequireCountFromPass::bounds must satisfy 0 <= minimum <= maximum <= %d [%d..%d]',
+      [Length(Result), AMinimum, AMaximum]);
+  LModeOrdinal := Ord(AMode);
+  if (LModeOrdinal < Ord(Low(TGraphPassCountMode)))
+    or (LModeOrdinal > Ord(High(TGraphPassCountMode))) then
+    raise ERangeError.Create('RequireCountFromPass::invalid count mode');
+end;
+
+function GraphPassCountTermsEqual(const ALeft,
+  ARight: TGraphPassMatchTerms): Boolean;
+var
+  I, J: Integer;
+begin
+  //Both inputs are canonical offset-sorted terms with duplicate-free values.
+  //Count-clause identity treats those values as sets without changing the
+  //historical insertion-order identity of RequireAnyFromPass clauses.
+  if Length(ALeft) <> Length(ARight) then
+    Exit(False);
+  for I := 0 to High(ALeft) do
+  begin
+    if (not GraphOffsetsEqual(ALeft[I].Offset, ARight[I].Offset))
+      or (Length(ALeft[I].Values) <> Length(ARight[I].Values)) then
+      Exit(False);
+    for J := 0 to High(ALeft[I].Values) do
+      if not ContainsGraphValue(ARight[I].Values, ALeft[I].Values[J]) then
+        Exit(False);
+  end;
+  Result := True;
+end;
+
+procedure RecordGraphPassCountMatch(const AMode: TGraphPassCountMode;
+  const AResolvedIndex: Integer; var ACount: Integer;
+  var AMatchedIndices: TGraphPassIndices);
+var
+  I: Integer;
+begin
+  if AMode = gpcmDistinctCells then
+  begin
+    //Only matching terms reach this helper. A nonmatching alias must not
+    //prevent a later matching term at the same resolved cell from counting.
+    for I := 0 to Pred(ACount) do
+      if AMatchedIndices[I] = AResolvedIndex then
+        Exit;
+    AMatchedIndices[ACount] := AResolvedIndex;
+  end;
+  Inc(ACount);
+end;
+
 function MakeGraphOffset(const ADeltaX, ADeltaY,
   ADeltaZ: Integer): TGraphOffset;
 begin
@@ -1824,6 +1916,30 @@ begin
   AddPassAnyRequirement(LPassIndex, LCanonical, proNamed);
 end;
 
+procedure TGraph.TParentedGraphRuleGroup.DoRequireCountFromPass(
+  const APass: String; const ATerms: TGraphPassMatchTerms;
+  const AMinimum, AMaximum: Integer; const AMode: TGraphPassCountMode);
+var
+  LCanonical: TGraphPassMatchTerms;
+  LPending: TPassRequirements;
+  LPassIndex: Integer;
+begin
+  LCanonical := CanonicalGraphPassCountTerms(ATerms, AMinimum,
+    AMaximum, AMode);
+  if not Assigned(Parent) then
+    raise EInvalidOperation.Create(
+      'RequireCountFromPass::rule group is not owned by a graph');
+  LPassIndex := Parent.PassIndexForLabel(APass, 'RequireCountFromPass');
+  //Allocate and copy the complete replacement before touching dependency
+  //state. A rejected edge cannot leave a partially installed count clause,
+  //and publishing the prepared array requires no further allocation.
+  LPending := BuildPassCountRequirements(LPassIndex, LCanonical,
+    AMinimum, AMaximum, AMode, proNamed);
+  Parent.SynchronizePreviousValueDependencies;
+  Parent.AddDependencyRole(LPassIndex, pdrRequirement);
+  FPassRequirements := LPending;
+end;
+
 { TGraphRuleGroup }
 
 procedure TGraphRuleGroup.AddPassRequirement(const APassIndex: Integer;
@@ -1865,6 +1981,9 @@ begin
   LRequirement.Terms[0].Values[0] := AValue;
   LRequirement.Origins := [AOrigin];
   LRequirement.Kind := prkMergedOffset;
+  LRequirement.MinimumMatches := 0;
+  LRequirement.MaximumMatches := 0;
+  LRequirement.CountMode := gpcmMatchingTerms;
   SetLength(FPassRequirements, Succ(Length(FPassRequirements)));
   for I := High(FPassRequirements) downto Succ(LInsertIndex) do
     FPassRequirements[I] := FPassRequirements[Pred(I)];
@@ -1912,6 +2031,9 @@ begin
     'PassRequirement');
   LRequirement.Origins := [AOrigin];
   LRequirement.Kind := prkMergedOffset;
+  LRequirement.MinimumMatches := 0;
+  LRequirement.MaximumMatches := 0;
+  LRequirement.CountMode := gpcmMatchingTerms;
   SetLength(FPassRequirements, Succ(Length(FPassRequirements)));
   for I := High(FPassRequirements) downto Succ(LInsertIndex) do
     FPassRequirements[I] := FPassRequirements[Pred(I)];
@@ -1949,10 +2071,56 @@ begin
     'PassRequirement');
   LRequirement.Origins := [AOrigin];
   LRequirement.Kind := prkAny;
+  LRequirement.MinimumMatches := 0;
+  LRequirement.MaximumMatches := 0;
+  LRequirement.CountMode := gpcmMatchingTerms;
   SetLength(FPassRequirements, Succ(Length(FPassRequirements)));
   for I := High(FPassRequirements) downto Succ(LInsertIndex) do
     FPassRequirements[I] := FPassRequirements[Pred(I)];
   FPassRequirements[LInsertIndex] := LRequirement;
+end;
+
+function TGraphRuleGroup.BuildPassCountRequirements(
+  const APassIndex: Integer; const ATerms: TGraphPassMatchTerms;
+  const AMinimum, AMaximum: Integer; const AMode: TGraphPassCountMode;
+  const AOrigin: TPassRequirementOrigin): TPassRequirements;
+var
+  I, LInsertIndex: Integer;
+  LCanonical: TGraphPassMatchTerms;
+  LRequirement: TPassRequirement;
+begin
+  LCanonical := CanonicalGraphPassCountTerms(ATerms, AMinimum,
+    AMaximum, AMode);
+  Result := Copy(FPassRequirements, 0, Length(FPassRequirements));
+  LInsertIndex := Length(Result);
+  for I := 0 to High(Result) do
+  begin
+    if (Result[I].PassIndex = APassIndex)
+      and (Result[I].Kind = prkCount)
+      and (Result[I].MinimumMatches = AMinimum)
+      and (Result[I].MaximumMatches = AMaximum)
+      and (Result[I].CountMode = AMode)
+      and GraphPassCountTermsEqual(Result[I].Terms, LCanonical) then
+    begin
+      Include(Result[I].Origins, AOrigin);
+      Exit;
+    end;
+    if (LInsertIndex = Length(Result))
+      and (Result[I].PassIndex > APassIndex) then
+      LInsertIndex := I;
+  end;
+
+  LRequirement.PassIndex := APassIndex;
+  LRequirement.Terms := LCanonical;
+  LRequirement.Origins := [AOrigin];
+  LRequirement.Kind := prkCount;
+  LRequirement.MinimumMatches := AMinimum;
+  LRequirement.MaximumMatches := AMaximum;
+  LRequirement.CountMode := AMode;
+  SetLength(Result, Succ(Length(Result)));
+  for I := High(Result) downto Succ(LInsertIndex) do
+    Result[I] := Result[Pred(I)];
+  Result[LInsertIndex] := LRequirement;
 end;
 
 function TGraphRuleGroup.GetExists(const ADirection : TGraphDirection): Boolean;
@@ -2159,6 +2327,16 @@ begin
     [APass]);
 end;
 
+procedure TGraphRuleGroup.DoRequireCountFromPass(const APass: String;
+  const ATerms: TGraphPassMatchTerms; const AMinimum, AMaximum: Integer;
+  const AMode: TGraphPassCountMode);
+begin
+  CanonicalGraphPassCountTerms(ATerms, AMinimum, AMaximum, AMode);
+  raise EInvalidOperation.CreateFmt(
+    'RequireCountFromPass::rule group is not owned by a graph [%s]',
+    [APass]);
+end;
+
 
 function TGraphRuleGroup.NewRule(const ADirections: TGraphDirections;
   const AValue: TGraphValue; const ARequireRule: Boolean): TGraphRuleGroup;
@@ -2253,6 +2431,20 @@ begin
   LCanonical := CanonicalGraphPassMatchTerms(ATerms,
     'RequireAnyFromPass');
   DoRequireAnyFromPass(APass, LCanonical);
+end;
+
+function TGraphRuleGroup.RequireCountFromPass(const APass: String;
+  const ATerms: TGraphPassMatchTerms; const AMinimum, AMaximum: Integer;
+  const AMode: TGraphPassCountMode): TGraphRuleGroup;
+var
+  LCanonical: TGraphPassMatchTerms;
+begin
+  Result := Self;
+  //Validation and copying precede virtual dispatch, matching the spatial
+  //clause contract even for user-defined descendants.
+  LCanonical := CanonicalGraphPassCountTerms(ATerms, AMinimum,
+    AMaximum, AMode);
+  DoRequireCountFromPass(APass, LCanonical, AMinimum, AMaximum, AMode);
 end;
 
 constructor TGraphRuleGroup.Create;
@@ -4039,24 +4231,38 @@ var
     function RequirementMatches(
       const ARequirementIndex: Integer): Boolean;
     var
-      LTermIndex: Integer;
+      LCount, LTermIndex: Integer;
+      LIsCount: Boolean;
+      LMatchedIndices: TGraphPassIndices;
+      LRequirement: TGraphRuleGroup.TPassRequirement;
     begin
       Result := False;
-      LSourceGraph := SourceGraph(
-        LGroup.FPassRequirements[ARequirementIndex].PassIndex);
-      for LTermIndex := 0 to High(
-        LGroup.FPassRequirements[ARequirementIndex].Terms) do
+      LRequirement := LGroup.FPassRequirements[ARequirementIndex];
+      LSourceGraph := SourceGraph(LRequirement.PassIndex);
+      LIsCount := LRequirement.Kind = prkCount;
+      LCount := 0;
+      if LIsCount and (LRequirement.CountMode = gpcmDistinctCells) then
+        SetLength(LMatchedIndices, Length(LRequirement.Terms));
+      for LTermIndex := 0 to High(LRequirement.Terms) do
         if ResolveOffsetIndex(AEntry.Index,
-          LGroup.FPassRequirements[ARequirementIndex].Terms[
-            LTermIndex].Offset, LResolvedIndex) then
+          LRequirement.Terms[LTermIndex].Offset, LResolvedIndex) then
         begin
           LSourceEntry := LSourceGraph.FEntries[LResolvedIndex];
           if (not LSourceEntry.Empty)
             and ContainsGraphValue(
-              LGroup.FPassRequirements[ARequirementIndex].Terms[
-                LTermIndex].Values, LSourceEntry.Value) then
-            Exit(True);
+              LRequirement.Terms[LTermIndex].Values,
+              LSourceEntry.Value) then
+          begin
+            if not LIsCount then
+              Exit(True);
+            RecordGraphPassCountMatch(LRequirement.CountMode,
+              LResolvedIndex, LCount, LMatchedIndices);
+            if LCount > LRequirement.MaximumMatches then
+              Exit(False);
+          end;
         end;
+      if LIsCount then
+        Result := LCount >= LRequirement.MinimumMatches;
     end;
 
     function IsMergedPreviousZero(
@@ -5434,26 +5640,40 @@ var
     function RequirementMatches(
       const ARequirementIndex: Integer): Boolean;
     var
-      LResolvedIndex, LTermIndex: Integer;
+      LCount, LResolvedIndex, LTermIndex: Integer;
+      LIsCount: Boolean;
+      LMatchedIndices: TGraphPassIndices;
+      LRequirement: TGraphRuleGroup.TPassRequirement;
       LTermSourcePass: Integer;
       LTermSourceValue: TGraphValue;
     begin
       Result := False;
-      LTermSourcePass :=
-        LGroup.FPassRequirements[ARequirementIndex].PassIndex;
-      for LTermIndex := 0 to High(
-        LGroup.FPassRequirements[ARequirementIndex].Terms) do
+      LRequirement := LGroup.FPassRequirements[ARequirementIndex];
+      LTermSourcePass := LRequirement.PassIndex;
+      LIsCount := LRequirement.Kind = prkCount;
+      LCount := 0;
+      if LIsCount and (LRequirement.CountMode = gpcmDistinctCells) then
+        SetLength(LMatchedIndices, Length(LRequirement.Terms));
+      for LTermIndex := 0 to High(LRequirement.Terms) do
         if AGraph.ResolveOffsetIndex(LCell,
-          LGroup.FPassRequirements[ARequirementIndex].Terms[
-            LTermIndex].Offset, LResolvedIndex) then
+          LRequirement.Terms[LTermIndex].Offset, LResolvedIndex) then
         begin
           LTermSourceValue := AStaged[LTermSourcePass][LResolvedIndex];
           if (LTermSourceValue <> TGraphValue.Empty)
             and ContainsGraphValue(
-              LGroup.FPassRequirements[ARequirementIndex].Terms[
-                LTermIndex].Values, LTermSourceValue) then
-            Exit(True);
+              LRequirement.Terms[LTermIndex].Values,
+              LTermSourceValue) then
+          begin
+            if not LIsCount then
+              Exit(True);
+            RecordGraphPassCountMatch(LRequirement.CountMode,
+              LResolvedIndex, LCount, LMatchedIndices);
+            if LCount > LRequirement.MaximumMatches then
+              Exit(False);
+          end;
         end;
+      if LIsCount then
+        Result := LCount >= LRequirement.MinimumMatches;
     end;
 
     function IsMergedPreviousZero(

@@ -100,7 +100,8 @@ type
 
   TWfcPipelineRequirementKind = (
     wprqExact,
-    wprqAny
+    wprqAny,
+    wprqCount
   );
 
   TWfcPipelineVersions = record
@@ -172,6 +173,9 @@ type
     ConsumerToken: TWfcModelToken;
     ProviderPassIndex: Integer;
     Kind: TWfcPipelineRequirementKind;
+    CountMode: TGraphPassCountMode;
+    MinimumCount: Integer;
+    MaximumCount: Integer;
     Terms: TWfcPipelineRequirementTerms;
   end;
   TWfcPipelineRequirements = array of TWfcPipelineRequirement;
@@ -314,6 +318,14 @@ function MakeWfcPipelineRequirement(const AConsumerPassIndex: Integer;
   const AKind: TWfcPipelineRequirementKind;
   const ATerms: TWfcPipelineRequirementTerms): TWfcPipelineRequirement;
 
+function MakeWfcPipelineCountRequirement(
+  const AConsumerPassIndex: Integer;
+  const AConsumerToken: TWfcModelToken;
+  const AProviderPassIndex: Integer;
+  const ATerms: TWfcPipelineRequirementTerms;
+  const AMinimumCount, AMaximumCount: Integer;
+  const ACountMode: TGraphPassCountMode): TWfcPipelineRequirement;
+
 function WfcPipelineSignatureHex(
   const ASignature: TWfcPipelineSignature): String;
 
@@ -396,7 +408,19 @@ procedure RequireEnumRequirement(const AValue: TWfcPipelineRequirementKind;
   const ALabel: String);
 begin
   case AValue of
-    wprqExact, wprqAny:
+    wprqExact, wprqAny, wprqCount:
+      Exit;
+  else
+    raise EWfcPipelineModel.CreateFmt('%s is unknown [%d]',
+      [ALabel, Ord(AValue)]);
+  end;
+end;
+
+procedure RequireEnumCountMode(const AValue: TGraphPassCountMode;
+  const ALabel: String);
+begin
+  case AValue of
+    gpcmMatchingTerms, gpcmDistinctCells:
       Exit;
   else
     raise EWfcPipelineModel.CreateFmt('%s is unknown [%d]',
@@ -492,6 +516,18 @@ begin
   Result.ConsumerToken := AValue.ConsumerToken;
   Result.ProviderPassIndex := AValue.ProviderPassIndex;
   Result.Kind := AValue.Kind;
+  if AValue.Kind = wprqCount then
+  begin
+    Result.CountMode := AValue.CountMode;
+    Result.MinimumCount := AValue.MinimumCount;
+    Result.MaximumCount := AValue.MaximumCount;
+  end
+  else
+  begin
+    Result.CountMode := gpcmMatchingTerms;
+    Result.MinimumCount := 0;
+    Result.MaximumCount := 0;
+  end;
   Result.Terms := CloneTerms(AValue.Terms);
 end;
 
@@ -627,6 +663,9 @@ function MakeWfcPipelineRequirement(const AConsumerPassIndex: Integer;
 var
   I: Integer;
 begin
+  if AKind = wprqCount then
+    raise EWfcPipelineModel.Create(
+      'count requirements require MakeWfcPipelineCountRequirement');
   CheckedLength(Length(ATerms), 'requirement term count',
     WFC_PIPELINE_MAX_REQUIREMENT_TERM_COUNT);
   for I := 0 to Length(ATerms) - 1 do
@@ -637,6 +676,35 @@ begin
   Result.ConsumerToken := AConsumerToken;
   Result.ProviderPassIndex := AProviderPassIndex;
   Result.Kind := AKind;
+  Result.CountMode := gpcmMatchingTerms;
+  Result.MinimumCount := 0;
+  Result.MaximumCount := 0;
+  Result.Terms := CloneTerms(ATerms);
+end;
+
+function MakeWfcPipelineCountRequirement(
+  const AConsumerPassIndex: Integer;
+  const AConsumerToken: TWfcModelToken;
+  const AProviderPassIndex: Integer;
+  const ATerms: TWfcPipelineRequirementTerms;
+  const AMinimumCount, AMaximumCount: Integer;
+  const ACountMode: TGraphPassCountMode): TWfcPipelineRequirement;
+var
+  I: Integer;
+begin
+  CheckedLength(Length(ATerms), 'requirement term count',
+    WFC_PIPELINE_MAX_REQUIREMENT_TERM_COUNT);
+  for I := 0 to Length(ATerms) - 1 do
+    CheckedLength(Length(ATerms[I].AllowedProviderTokens),
+      Format('requirement term %d allowed-token count', [I]),
+      WFC_PIPELINE_MAX_ALLOWED_TOKEN_COUNT);
+  Result.ConsumerPassIndex := AConsumerPassIndex;
+  Result.ConsumerToken := AConsumerToken;
+  Result.ProviderPassIndex := AProviderPassIndex;
+  Result.Kind := wprqCount;
+  Result.CountMode := ACountMode;
+  Result.MinimumCount := AMinimumCount;
+  Result.MaximumCount := AMaximumCount;
   Result.Terms := CloneTerms(ATerms);
 end;
 
@@ -851,6 +919,12 @@ begin
     HashToken(Result, LRequirement.ConsumerToken);
     HashInteger(Result, LRequirement.ProviderPassIndex);
     HashInteger(Result, Ord(LRequirement.Kind));
+    if LRequirement.Kind = wprqCount then
+    begin
+      HashInteger(Result, Ord(LRequirement.CountMode));
+      HashInteger(Result, LRequirement.MinimumCount);
+      HashInteger(Result, LRequirement.MaximumCount);
+    end;
     HashInteger(Result, Length(LRequirement.Terms));
     for J := 0 to Length(LRequirement.Terms) - 1 do
     begin
@@ -1518,6 +1592,21 @@ begin
     if (ARequirements[I].Kind = wprqAny) and (LTermCount = 0) then
       raise EWfcPipelineModel.CreateFmt(
         'any requirement %d must contain at least one term', [I]);
+    if ARequirements[I].Kind = wprqCount then
+    begin
+      if LTermCount = 0 then
+        raise EWfcPipelineModel.CreateFmt(
+          'count requirement %d must contain at least one term', [I]);
+      RequireEnumCountMode(ARequirements[I].CountMode,
+        Format('requirement %d count mode', [I]));
+      if (ARequirements[I].MinimumCount < 0) or
+          (ARequirements[I].MaximumCount <
+            ARequirements[I].MinimumCount) or
+          (ARequirements[I].MaximumCount > LTermCount) then
+        raise EWfcPipelineModel.CreateFmt(
+          'count requirement %d bounds must satisfy 0 <= minimum <= maximum <= %d',
+          [I, LTermCount]);
+    end;
 
     for J := 0 to LTermCount - 1 do
     begin
@@ -1530,7 +1619,8 @@ begin
           (ARequirements[I].Terms[J].OffsetZ <> 0) then
         raise EWfcPipelineModel.CreateFmt(
           'requirement %d term %d uses an inactive rank-2 axis', [I, J]);
-      if (J > 0) and (ARequirements[I].Kind = wprqAny) and
+      if (J > 0) and
+          (ARequirements[I].Kind in [wprqAny, wprqCount]) and
           (not TermsAreStrictlyOrdered(ARequirements[I].Terms[J - 1],
             ARequirements[I].Terms[J])) then
         raise EWfcPipelineModel.CreateFmt(

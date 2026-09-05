@@ -386,9 +386,21 @@ file backend exercises asynchronous save lifecycle without touching disk.
 See [the Studio guide](../examples/music/05_MusicStudio/README.md) for commands,
 controls, limitations, and native export behavior.
 
+## Neighborhood Counts browser workbench
+
+Stage the shared terrain/roads/market count demo with
+`build-browser-counts.ps1` or `bash ./build-browser-counts.sh`. Serve
+`build/browser/counts/www` with the included FPC server and append
+`?selftest=1`. Its checked contract includes the solved default output key,
+lower/upper contradictions, flood rejection, wrapped alias modes, bounded
+selective road repair, and pending-input invalidation. The native gate builds
+the three focused count suites and runs `NeighborhoodCounts --selftest`.
+See the [demo guide](../examples/passes/04_NeighborhoodCounts/README.md) for
+commands, the complete marker contract, and explicit scope limits.
+
 ## Hosted pas2js gate
 
-The hosted browser gate builds the five pas2js demos with a matching compiler
+The hosted browser gate builds the six pas2js demos with a matching compiler
 and RTL, serves them with the project-owned FPC server, executes their self-tests
 in headless Chrome, and checks rendered body attributes with the FPC checker.
 It also compiles every portable standalone conformance program for the browser
@@ -405,7 +417,7 @@ not assertions that every console fixture has a browser host.
 The hosted workflow runs the checked native gate with FPC 3.2.2 on Linux,
 macOS, and Windows. The Linux lane also builds the FPM and Lazarus packages,
 runs the core Lazarus project, and verifies that generation leaves the checkout
-clean. A separate Linux lane builds and executes the five real browser self-tests
+clean. A separate Linux lane builds and executes the six real browser self-tests
 and portable browser conformance in headless Chrome using the included FPC
 development tools. A canary runs
 against the current official FPC development image and records the image digest

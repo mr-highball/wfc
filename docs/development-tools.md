@@ -49,6 +49,7 @@ authentication gateway, upload service, or general application backend.
 | Building 3D | `build-browser-building3d` | `build/browser/building3d/www` |
 | Training Studio | `build-browser-training` | `build/browser/training/www` |
 | Music Studio | `build-browser-music` | `build/browser/music/www` |
+| Neighborhood Counts | `build-browser-counts` | `build/browser/counts/www` |
 
 Use the `.ps1` entry on Windows or the `.sh` entry in a POSIX shell. Pass
 `-Compiler 'C:/path/to/pas2js.exe'` to PowerShell, or set `PAS2JS` for the shell

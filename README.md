@@ -109,6 +109,8 @@ modular 3D structures, music, text, and other discrete design problems.
 - explicit legacy, overlay, and transform pass modes
 - named same-coordinate, exact-offset, and finite any-of-neighborhood
   cross-pass constraints with selective descendant-only regeneration
+- inclusive cross-pass count ranges with explicit matching-offset or
+  distinct-provider-cell modes, zero-count absence, and portable recipes
 - transactional full and selective solves with selected-pass restoration
 - compatibility-preserving empty-pass copying and previous-pass constraints
 - explicit pipeline seeds with stable, independent per-pass random streams
@@ -257,6 +259,9 @@ For a complete terrain-to-foliage pipeline, including `SwitchToPass`,
 For dependency roles, pass modes, `RequireFromPassAt`,
 `RequireAnyFromPass`, boundary behavior, topological execution, and selective
 regeneration, see [pass DAGs](docs/pass-dags.md).
+For inclusive neighborhood counts, zero-count absence, explicit wrapped-alias
+modes, and portable count recipes, see [finite pass counts](docs/pass-counts.md)
+and the [Neighborhood Counts workbench](examples/passes/04_NeighborhoodCounts/README.md).
 For the reference algorithm, atomicity contract, reports, and exact constraint
 semantics, see the [reference solver](docs/solver.md).
 For full-pipeline chronological reopening, separate local and pass budgets,
@@ -346,7 +351,8 @@ text-completion, text-pass, authored-rule and portable pipeline recipe,
 compile, run, result, runtime, validator, runner, and training artifacts,
 score/cell, music-graph, music-pass, music-result-codec, SMF, score-to-MIDI,
 voxel, Building 3D, and
-causal-trace, pass-negotiation, and selective-negotiation suites,
+causal-trace, pass-negotiation, selective-negotiation, and core/portable/demo
+count-constraint suites,
 smoke-test the portable console examples—including the bounded/wrapped spatial
 dependency, causal-trace inspector, bounded pass-negotiation proof, negotiated
 2D repair, anchored text infill, three-pass text composition, negotiated music
@@ -365,6 +371,9 @@ staging entry points commits generated JavaScript. The additional
 `build-browser-training.ps1` and `build-browser-training.sh` entry points
 stage Training Studio with editable corpora, raw-text import, and artifact
 exports; its native presets use the same workspace.
+`build-browser-counts.ps1` and `build-browser-counts.sh` stage the finite
+neighborhood workbench; its shared native host is smoke-tested with
+`NeighborhoodCounts --selftest`.
 See [building and testing](docs/building.md) for compiler overrides, package
 commands, output paths, and pas2js setup. The
 [Building graphical guide](examples/3D/03_BrowserBuilding/README.md) records

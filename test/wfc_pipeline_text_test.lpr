@@ -833,7 +833,9 @@ begin
     (WFC_PIPELINE_MODEL_VERSION = 1) and
     (WFC_PIPELINE_MODEL_SIGNATURE_VERSION = 1),
     'pipeline text, model, and signature contracts are version one');
-  Check((WFC_PIPELINE_MAX_TEXT_LINE_COUNT = 82522) and
+  { Each count requirement adds one bounds record while legacy requirement
+    documents retain their exact existing byte representation. }
+  Check((WFC_PIPELINE_MAX_TEXT_LINE_COUNT = 86618) and
     (WFC_PIPELINE_MAX_ENCODED_TEXT_LENGTH = 268435456),
     'the canonical envelope has fixed public version-1 limits');
   Check((WFC_PIPELINE_MAX_TOTAL_REQUIREMENT_TERM_COUNT = 8192) and

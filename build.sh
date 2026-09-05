@@ -293,6 +293,31 @@ esac
 printf "Running '%s'.\n" "$test_executable"
 "$test_executable" || exit $?
 
+compiler_count_demo_directory="$compiler_source_directory/../examples/passes/04_NeighborhoodCounts"
+for count_test_name in wfc_pass_count_test wfc_pipeline_count_test wfc_count_demo_test; do
+  printf "Building the count-constraint suite '%s'.\n" "$count_test_name"
+  "$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
+    "-Fu$compiler_source_directory" "-Fu$compiler_count_demo_directory" \
+    "-FU$compiler_unit_output_directory" "-FE$compiler_binary_output_directory" \
+    "$compiler_source_directory/../test/$count_test_name.lpr" || exit $?
+  count_test_executable="$binary_output_directory/$count_test_name"
+  case "$host_system" in
+    CYGWIN*|MINGW*|MSYS*) count_test_executable="${count_test_executable}.exe" ;;
+  esac
+  printf "Running '%s'.\n" "$count_test_executable"
+  "$count_test_executable" || exit $?
+done
+printf 'Building and checking Neighborhood Counts.\n'
+"$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
+  "-Fu$compiler_source_directory" "-Fu$compiler_count_demo_directory" \
+  "-FU$compiler_unit_output_directory" "-FE$compiler_binary_output_directory" \
+  "$compiler_count_demo_directory/NeighborhoodCounts.lpr" || exit $?
+count_demo_executable="$binary_output_directory/NeighborhoodCounts"
+case "$host_system" in
+  CYGWIN*|MINGW*|MSYS*) count_demo_executable="${count_demo_executable}.exe" ;;
+esac
+"$count_demo_executable" --selftest || exit $?
+
 printf "Building the 2D ecosystem conformance suite.\n"
 "$compiler" "$@" \
   -B \

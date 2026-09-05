@@ -25,8 +25,12 @@ The repository already contains the beginnings of the ecosystem:
 - a versioned dependency-DAG pass coordinator with stable labeled passes,
   isolated rules and values, deterministic topological execution, legacy,
   overlay, and transform modes, named same-coordinate constraints, signed
-  exact-offset and finite any-of-neighborhood clauses, and atomic
+  exact-offset, finite any-of-neighborhood clauses, and atomic
   descendant-only regeneration;
+- [finite count-range pass requirements](docs/pass-counts.md) with required
+  matching-offset or distinct-cell semantics, duplicate-safe canonicalization,
+  zero-count absence, portable recipe encoding, independent validation, and a
+  shared native/browser neighborhood inspection and bounded-repair demo;
 - a versioned portable random source with an explicit pipeline seed,
   independent index-derived pass streams, run-to-run rewind, and matching
   native/pas2js golden fixtures;
@@ -348,6 +352,14 @@ semantics. Selective Negotiation v1 preserves that isolation while restricting
 choice frames to caller-requested roots and their transitive dependency
 descendants. Providers outside that canonical horizon remain immutable inputs;
 the algorithm never widens a horizon automatically.
+
+Count Constraints v1 extends finite spatial reads with inclusive lower/upper
+ranges and explicit wrapped-alias semantics. The
+[Neighborhood Counts workbench](examples/passes/04_NeighborhoodCounts/README.md)
+composes terrain, roads, and a market probe, contrasts matching offsets with
+distinct cells, and demonstrates selective road repair without changing
+terrain. This is not yet a global cardinality propagator or connectivity
+solver; those remain separate domain-level research questions.
 
 The first packaged domain fixture proves the sequential subset with terrain →
 biome → foliage. The selective-settlement fixture expands that proof to

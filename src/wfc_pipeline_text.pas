@@ -37,6 +37,7 @@ const
     WFC_PIPELINE_MAX_RESOURCE_COUNT + WFC_PIPELINE_MAX_PASS_COUNT +
     WFC_PIPELINE_MAX_DEPENDENCY_COUNT + WFC_PIPELINE_MAX_BRIDGE_COUNT +
     WFC_PIPELINE_MAX_REQUIREMENT_COUNT +
+    WFC_PIPELINE_MAX_REQUIREMENT_COUNT +
     WFC_PIPELINE_MAX_TOTAL_REQUIREMENT_TERM_COUNT +
     WFC_PIPELINE_MAX_TOTAL_ALLOWED_TOKEN_COUNT;
 
@@ -374,25 +375,48 @@ begin
 end;
 
 function RequirementKindName(
-  const AKind: TWfcPipelineRequirementKind): String;
+  const AKind: TWfcPipelineRequirementKind;
+  const ACountMode: TGraphPassCountMode): String;
 begin
   case AKind of
     wprqExact:
       Result := 'exact';
     wprqAny:
       Result := 'any';
+    wprqCount:
+      case ACountMode of
+        gpcmMatchingTerms:
+          Result := 'count-terms-v1';
+        gpcmDistinctCells:
+          Result := 'count-cells-v1';
+      else
+        raise ERangeError.Create(
+          'unknown WFC pipeline count requirement mode');
+      end;
   else
     raise ERangeError.Create('unknown WFC pipeline requirement kind');
   end;
 end;
 
-function ParseRequirementKind(
-  const AText: String): TWfcPipelineRequirementKind;
+procedure ParseRequirementKind(const AText: String;
+  out AKind: TWfcPipelineRequirementKind;
+  out ACountMode: TGraphPassCountMode);
 begin
+  ACountMode := gpcmMatchingTerms;
   if AText = 'exact' then
-    Result := wprqExact
+    AKind := wprqExact
   else if AText = 'any' then
-    Result := wprqAny
+    AKind := wprqAny
+  else if AText = 'count-terms-v1' then
+  begin
+    AKind := wprqCount;
+    ACountMode := gpcmMatchingTerms;
+  end
+  else if AText = 'count-cells-v1' then
+  begin
+    AKind := wprqCount;
+    ACountMode := gpcmDistinctCells;
+  end
   else
     TextError('requirement has an unknown kind');
 end;
@@ -545,6 +569,8 @@ begin
   for I := 0 to AModel.RequirementCount - 1 do
   begin
     LRequirement := AModel.RequirementAt(I);
+    if LRequirement.Kind = wprqCount then
+      AddLineCapacity(LExpectedLineCount, 1);
     AddLineCapacity(LExpectedLineCount, Length(LRequirement.Terms));
     for J := 0 to Length(LRequirement.Terms) - 1 do
       AddLineCapacity(LExpectedLineCount,
@@ -651,8 +677,12 @@ begin
       IntToStr(LRequirement.ConsumerPassIndex) + ',' +
       EncodeToken(LRequirement.ConsumerToken) + ',' +
       IntToStr(LRequirement.ProviderPassIndex) + ',' +
-      RequirementKindName(LRequirement.Kind) + ',' +
+      RequirementKindName(LRequirement.Kind, LRequirement.CountMode) + ',' +
       IntToStr(Length(LRequirement.Terms)));
+    if LRequirement.Kind = wprqCount then
+      AppendLine(LLines, LCount, 'count=' + IntToStr(I) + ',' +
+        IntToStr(LRequirement.MinimumCount) + ',' +
+        IntToStr(LRequirement.MaximumCount));
     for J := 0 to Length(LRequirement.Terms) - 1 do
     begin
       LTerm := LRequirement.Terms[J];
@@ -688,6 +718,9 @@ var
   LAllowedTokens: TWfcModelTokens;
   LBridgeCount: Integer;
   LBridges: TWfcPipelineBridges;
+  LCountMaximum: Integer;
+  LCountMinimum: Integer;
+  LCountMode: TGraphPassCountMode;
   LDependencyCount: Integer;
   LDependencies: TWfcPipelineDependencies;
   LFields: TWfcPipelineTextFields;
@@ -918,15 +951,31 @@ begin
       'requirement consumer token');
     LRequirementProviderIndex := ParseCanonicalInteger(LFields[3],
       'requirement provider index');
-    LRequirementKind := ParseRequirementKind(LFields[4]);
+    ParseRequirementKind(LFields[4], LRequirementKind, LCountMode);
     LTermCount := ParseBoundedCount(LFields[5],
       'requirement term count', WFC_PIPELINE_MAX_REQUIREMENT_TERM_COUNT);
     if LTotalRequirementTermCount >
         WFC_PIPELINE_MAX_TOTAL_REQUIREMENT_TERM_COUNT - LTermCount then
       TextError('aggregate requirement-term count exceeds the version-1 limit');
     Inc(LTotalRequirementTermCount, LTermCount);
-    RequireRecordCapacity(LTermCount, 2, LLineIndex, LLines,
+    RequireRecordCapacity(LTermCount + Ord(LRequirementKind = wprqCount),
+      2, LLineIndex, LLines,
       'requirement term');
+    LCountMinimum := 0;
+    LCountMaximum := 0;
+    if LRequirementKind = wprqCount then
+    begin
+      LFields := SplitRecord(ReadValueLine(LLines, LLineIndex,
+        'count=', 'requirement count record'), 3,
+        'requirement count');
+      if ParseCanonicalInteger(LFields[0],
+          'requirement count parent index') <> I then
+        TextError('requirement count parent index is incorrect');
+      LCountMinimum := ParseCanonicalInteger(LFields[1],
+        'requirement minimum count');
+      LCountMaximum := ParseCanonicalInteger(LFields[2],
+        'requirement maximum count');
+    end;
     SetLength(LTerms, LTermCount);
     for J := 0 to LTermCount - 1 do
     begin
@@ -969,9 +1018,15 @@ begin
       LTerms[J] := MakeWfcPipelineRequirementTerm(
         LTermOffsetX, LTermOffsetY, LTermOffsetZ, LAllowedTokens);
     end;
-    LRequirements[I] := MakeWfcPipelineRequirement(
-      LRequirementConsumerIndex, LRequirementConsumerToken,
-      LRequirementProviderIndex, LRequirementKind, LTerms);
+    if LRequirementKind = wprqCount then
+      LRequirements[I] := MakeWfcPipelineCountRequirement(
+        LRequirementConsumerIndex, LRequirementConsumerToken,
+        LRequirementProviderIndex, LTerms, LCountMinimum,
+        LCountMaximum, LCountMode)
+    else
+      LRequirements[I] := MakeWfcPipelineRequirement(
+        LRequirementConsumerIndex, LRequirementConsumerToken,
+        LRequirementProviderIndex, LRequirementKind, LTerms);
   end;
 
   LSignatureText := ReadValueLine(LLines, LLineIndex,

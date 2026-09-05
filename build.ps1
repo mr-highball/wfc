@@ -193,6 +193,52 @@ if ($testExitCode -ne 0) {
   exit $testExitCode
 }
 
+$countDemoDirectory = Join-Path $repositoryRoot 'examples/passes/04_NeighborhoodCounts'
+foreach ($countTestName in @('wfc_pass_count_test', 'wfc_pipeline_count_test', 'wfc_count_demo_test')) {
+  $countTestArguments = @(
+    $CompilerOptions
+    '-B'
+    '-Mdelphi'
+    '-Sa'
+    '-Cr'
+    '-Co'
+    '-Ci'
+    "-Fu$sourceDirectory"
+    "-Fu$countDemoDirectory"
+    "-FU$unitOutputDirectory"
+    "-FE$binaryOutputDirectory"
+    (Join-Path $repositoryRoot "test/$countTestName.lpr")
+  )
+  Write-Host "Building the count-constraint suite '$countTestName'."
+  & $Compiler @countTestArguments
+  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+  $countTestExecutableName = if ($env:OS -eq 'Windows_NT') { "$countTestName.exe" } else { $countTestName }
+  $countTestExecutable = Join-Path $binaryOutputDirectory $countTestExecutableName
+  Write-Host "Running '$countTestExecutable'."
+  & $countTestExecutable
+  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+}
+$countDemoArguments = @(
+  $CompilerOptions
+  '-B'
+  '-Mdelphi'
+  '-Sa'
+  '-Cr'
+  '-Co'
+  '-Ci'
+  "-Fu$sourceDirectory"
+  "-Fu$countDemoDirectory"
+  "-FU$unitOutputDirectory"
+  "-FE$binaryOutputDirectory"
+  (Join-Path $countDemoDirectory 'NeighborhoodCounts.lpr')
+)
+Write-Host 'Building and checking Neighborhood Counts.'
+& $Compiler @countDemoArguments
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+$countDemoName = if ($env:OS -eq 'Windows_NT') { 'NeighborhoodCounts.exe' } else { 'NeighborhoodCounts' }
+& (Join-Path $binaryOutputDirectory $countDemoName) --selftest
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
 $worldTestCompilerArguments = @(
   $CompilerOptions
   '-B'

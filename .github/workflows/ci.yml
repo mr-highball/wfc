@@ -657,6 +657,84 @@ jobs:
             --expect 'data-view-signature=AC7290C0' \
             --expect 'data-face-count=140'
 
+      - name: Build and self-test browser Neighborhood Counts
+        shell: bash
+        run: |
+          PAS2JS="$PAS2JS_ROOT/bin/x86_64-linux/pas2js" bash ./build-browser-counts.sh
+          chrome=''
+          for candidate in google-chrome google-chrome-stable chromium chromium-browser; do
+            if command -v "$candidate" >/dev/null 2>&1; then
+              chrome=$(command -v "$candidate")
+              break
+            fi
+          done
+          if [ -z "$chrome" ]; then
+            echo 'No supported Chrome or Chromium executable was found.' >&2
+            exit 1
+          fi
+
+          server_log=$(mktemp)
+          chrome_log=$(mktemp)
+          dom_file=$(mktemp)
+          profile_directory=$(mktemp -d)
+          server_pid=''
+          cleanup() {
+            if [ -n "$server_pid" ]; then
+              kill "$server_pid" 2>/dev/null || true
+              wait "$server_pid" 2>/dev/null || true
+            fi
+            rm -f -- "$server_log" "$chrome_log" "$dom_file"
+            if [ -n "$profile_directory" ] && [ -d "$profile_directory" ]; then
+              rm -rf -- "$profile_directory"
+            fi
+          }
+          trap cleanup EXIT
+          ./build/native/bin/wfc_serve --port 4176 \
+            --root build/browser/counts/www >"$server_log" 2>&1 &
+          server_pid=$!
+          server_ready=false
+          for _ in $(seq 1 50); do
+            if ! kill -0 "$server_pid" 2>/dev/null; then
+              cat "$server_log" >&2
+              exit 1
+            fi
+            bound=false
+            while IFS= read -r line; do
+              [ "$line" != 'WFC static server: http://127.0.0.1:4176/' ] || bound=true
+            done <"$server_log"
+            if [ "$bound" = true ] && curl --max-time 2 --fail --silent \
+                http://127.0.0.1:4176/index.html >/dev/null 2>&1; then
+              kill -0 "$server_pid" 2>/dev/null || exit 1
+              server_ready=true
+              break
+            fi
+            sleep 0.2
+          done
+          if [ "$server_ready" != true ]; then
+            cat "$server_log" >&2
+            echo 'Timed out waiting for the Neighborhood Counts HTTP server.' >&2
+            exit 1
+          fi
+          if ! timeout 30s "$chrome" --headless --disable-gpu \
+              --disable-dev-shm-usage --no-default-browser-check --no-first-run \
+              --user-data-dir="$profile_directory" --virtual-time-budget=15000 \
+              --dump-dom 'http://127.0.0.1:4176/index.html?selftest=1' \
+              >"$dom_file" 2>"$chrome_log"; then
+            cat "$chrome_log" >&2
+            cat "$server_log" >&2
+            exit 1
+          fi
+          ./build/native/bin/wfc_browser_check --dom "$dom_file" \
+            --expect 'data-state=solved' \
+            --expect 'data-self-test=passed' \
+            --expect 'data-output-key=LLLLLLLLL/.R.R...../....M....' \
+            --expect 'data-lower=passed' \
+            --expect 'data-upper=passed' \
+            --expect 'data-alias=passed' \
+            --expect 'data-repair=passed' \
+            --expect 'data-flood=passed' \
+            --expect 'data-invalidation=passed'
+
   development:
     name: Development FPC (official trunk image)
     runs-on: ubuntu-24.04
