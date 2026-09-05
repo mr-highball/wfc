@@ -198,5 +198,7 @@ Overlapping 3D footprints, orientation-aware token transforms, raw voxel/mesh
 file import, streamed/chunked volume generation, and semantic physical
 validation remain separate extensions. A learned label model is not an authored
 `TVoxel3DKit`; it has no inferred sockets, prototype meshes, support strength,
-or scene identity. Use the existing voxel/building libraries when those
-contracts are required.
+or scene identity. The [model-to-voxel bridge and Learned Terraces](learned-terraces3d.md)
+now compose such a learned public-token provider with explicitly authored
+socket/support structures and spatial foliage. The semantics are authored,
+not inferred by the learner; the owner validates them before commit.

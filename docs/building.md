@@ -16,7 +16,7 @@ pipeline compiler/runtime, immutable public result artifacts, strict run/result
 codecs, the recipe validator and pipeline runner applications, the canonical
 learned-pattern-world recipe/run/result bundle, and voxel-3D
 units and their conformance suites, plus
-the checked voxel pass bridge and multi-pass Building 3D owner/validator,
+the checked voxel pass bridges, learned-volume terrace owner, and multi-pass Building 3D owner/validator,
 pass-aware view, fixed-integer isometric projector, and canonical SVG encoder.
 It also runs seeded smoke checks of the portable console demos, including the
 causal-trace inspector, bounded pass negotiation, negotiated descendant repair,
@@ -27,7 +27,7 @@ The original A-major and manually authored riff studies are also plain FPC
 console programs, with owned MIDI and streaming WAVE export. No submodule,
 external media library, or engine package is needed. The 2D world, three-pass text workbench,
 Building 3D, Training Studio, Music Studio, Ensemble Studio, Voice Studio,
-Neighborhood Counts, and Connected Routes have separate pas2js browser entry
+Neighborhood Counts, Connected Routes, and Learned Terraces have separate pas2js browser entry
 points described below.
 
 FPC 3.2.2 is the supported stable compiler. The current FPC development
@@ -96,7 +96,8 @@ Both scripts rebuild with assertions and range, overflow, and I/O checks, run
 `wfc_connectivity_trace_test`, `wfc_connectivity_demo_test`,
 `wfc_count_demo_test`, `wfc_voxel3d_test`,
 `wfc_voxel3d_isometric_test`,
-`wfc_voxel3d_svg_test`, `wfc_building3d_test`,
+`wfc_voxel3d_svg_test`, `wfc_voxel3d_model_passes_test`,
+`wfc_terraces3d_test`, `wfc_terraces3d_view_test`, `wfc_building3d_test`,
 `wfc_building3d_view_test`, `wfc_midi_smf_test`,
 `wfc_music_test`, `wfc_music_studies_test`,
 `wfc_music_graph_test`, `wfc_music_midi_test`, `wfc_music_passes_test`,
@@ -146,7 +147,9 @@ no-overwrite publication, and a competing destination created during export;
 the multi-pass and
 selective-settlement worlds also run with their default seeds. Finally, the
 native `Building3DSvg` host generates and validates
-`build/native/bin/building3d-seed-zero.svg`.
+`build/native/bin/building3d-seed-zero.svg`. The learned-volume host also
+writes `build/native/bin/terraces3d.svg`; its three passes, transaction checks,
+and deterministic presentation are covered by the same native gate.
 The two original music studies are built as `simple_a_major` and
 `simple_song_riffs`. Their shared `wfc_music_studies_test` runs on FPC and
 pas2js; the FPC `wfc_music_studies_process_test` checks command arguments,
@@ -343,6 +346,17 @@ Success leaves the body with `data-state="solved"`,
 the three models, projection maps, solver, renderer, validator, trace
 projection, and self-test remain project-owned Pascal.
 
+## pas2js Learned Terraces
+
+Build `build-browser-terraces.ps1` or `bash ./build-browser-terraces.sh`, then
+serve `build/browser/terraces/www` with the included FPC server. The page
+provides seed and dimension inputs, per-cell terrain/foliage constraints,
+scoped repair, rotation, and SVG download. Its `?selftest=1` page verifies
+scene `1:6D695B99:2D23CF62`, view `C3D25917`, invalidation, selective
+preservation, failure recovery, and new-session generation. See the
+[demo guide](../examples/3D/04_LearnedTerraces/README.md) and
+[library contract](learned-terraces3d.md).
+
 ## pas2js browser Building 3D
 
 The graphical Building 3D workbench has its own dependency-free staging
@@ -529,7 +543,7 @@ not assertions that every console fixture has a browser host.
 The hosted workflow runs the checked native gate with FPC 3.2.2 on Linux,
 macOS, and Windows. The Linux lane also builds the FPM and Lazarus packages,
 runs the core Lazarus project, and verifies that generation leaves the checkout
-clean. A separate Linux lane builds all nine browser demos and executes
+clean. A separate Linux lane builds all ten browser demos and executes
 standalone demo self-tests plus portable browser conformance (including the
 Ensemble Studio and Voice Studio controllers) in headless Chrome using the included FPC
 development tools. A canary runs

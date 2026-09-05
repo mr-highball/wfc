@@ -188,6 +188,13 @@ function OppositeModelDirection(
 
 function WfcModelTokenIsValid(const AToken: TWfcModelToken): Boolean;
 
+{ Collision-hard comparison of a model with one exact graph pass. The graph
+  must use the model's boundary policy and a shape compatible with its rank.
+  Pass requirements, entry locks, and caller domains are additive and are not
+  part of the local model definition. }
+function WfcModelDefinitionMatchesGraph(const AModel: TWfcModel;
+  const AGraph: TGraph): Boolean;
+
 procedure ApplyModelToGraph(const AModel: TWfcModel; const AGraph: TGraph);
 
 implementation
@@ -521,6 +528,154 @@ begin
       Result := gdUp;
   else
     raise ERangeError.Create('unknown model direction');
+  end;
+end;
+
+function WfcModelDefinitionMatchesGraph(const AModel: TWfcModel;
+  const AGraph: TGraph): Boolean;
+type
+  TGraphDirectionArray = array of TGraphDirection;
+  TGraphDirectionMatrix = array of TGraphDirectionArray;
+var
+  D: TWfcModelDirection;
+  I, J, K, LExpectedCount: Integer;
+  LDirections: TGraphDirectionMatrix;
+  LExpectedDenied: TGraphDirections;
+  LGraphDirection: TGraphDirection;
+  LGraphValues, LRegistered: TGraphValues;
+  LGroup: TGraphRuleGroup;
+  LRule: TGraphRule;
+
+  procedure EnsureDirection(const AValue: Integer;
+    const ADirection: TGraphDirection);
+  var
+    LIndex: Integer;
+  begin
+    for LIndex := 0 to High(LDirections[AValue]) do
+      if LDirections[AValue][LIndex] = ADirection then
+        Exit;
+    LIndex := Length(LDirections[AValue]);
+    SetLength(LDirections[AValue], Succ(LIndex));
+    LDirections[AValue][LIndex] := ADirection;
+  end;
+
+begin
+  Result := False;
+  try
+    if (not Assigned(AModel)) or (not Assigned(AGraph)) or
+        AGraph.Running then
+      Exit;
+    if (AGraph.CurrentPassIndex < 0) or
+        (AGraph.CurrentPassIndex >= AGraph.TotalPassCount) or
+        (AGraph.PassGraph[AGraph.CurrentPassIndex] <> AGraph) then
+      Exit;
+    if (AGraph.Dimension.Width = 0) or
+        (AGraph.Dimension.Height = 0) or
+        (AGraph.Dimension.Depth = 0) then
+      Exit;
+    case AModel.Rank of
+      1:
+        if (AGraph.Dimension.Height <> 1) or
+            (AGraph.Dimension.Depth <> 1) then
+          Exit;
+      2:
+        if AGraph.Dimension.Depth <> 1 then
+          Exit;
+      3:
+        ;
+    else
+      Exit;
+    end;
+    if AGraph.WrapNeighbors <> (AModel.Boundary = wmbWrap) then
+      Exit;
+
+    LRegistered := AGraph.CopyRegisteredValues;
+    if (Length(LRegistered) <> AModel.ValueCount) or
+        (AGraph.RuleGroups.Count <> AModel.ValueCount) then
+      Exit;
+    SetLength(LGraphValues, AModel.ValueCount);
+    for I := 0 to Pred(AModel.ValueCount) do
+    begin
+      LGraphValues[I] := ModelTokenToGraphValue(AModel.TokenAt(I));
+      if (Length(LGraphValues[I]) = 0) or
+          (GraphValueToModelToken(LGraphValues[I]) <> AModel.TokenAt(I)) or
+          (LRegistered[I] <> LGraphValues[I]) then
+        Exit;
+      for J := 0 to Pred(I) do
+        if LGraphValues[I] = LGraphValues[J] then
+          Exit;
+    end;
+
+    { Reproduce the adapter's observable direction-slot discovery order. }
+    SetLength(LDirections, AModel.ValueCount);
+    for D := Low(TWfcModelDirection) to High(TWfcModelDirection) do
+      if D in AModel.Directions then
+      begin
+        LGraphDirection := ModelDirectionToGraphDirection(D);
+        for I := 0 to Pred(AModel.ValueCount) do
+          for J := 0 to Pred(AModel.ValueCount) do
+            if AModel.RelationCount(D, I, J) > 0 then
+            begin
+              EnsureDirection(I, LGraphDirection);
+              EnsureDirection(J, InverseOfDir(LGraphDirection));
+            end;
+      end;
+
+    for I := 0 to Pred(AModel.ValueCount) do
+    begin
+      if not AGraph.RuleGroups.ContainsKey(LGraphValues[I]) then
+        Exit;
+      LGroup := AGraph.RuleGroups[LGraphValues[I]];
+      if (not Assigned(LGroup)) or (LGroup.Value <> LGraphValues[I]) or
+          (LGroup.Weight <> AModel.WeightAt(I)) or
+          (Length(LGroup.Rules) <> Length(LDirections[I])) then
+        Exit;
+
+      LExpectedDenied := [];
+      for D := Low(TWfcModelDirection) to High(TWfcModelDirection) do
+        if D in AModel.Directions then
+        begin
+          LExpectedCount := 0;
+          for J := 0 to Pred(AModel.ValueCount) do
+            if AModel.RelationCount(D, I, J) > 0 then
+              Inc(LExpectedCount);
+          if LExpectedCount = 0 then
+            Include(LExpectedDenied, ModelDirectionToGraphDirection(D));
+        end;
+      if LGroup.DeniedDirections <> LExpectedDenied then
+        Exit;
+
+      for J := 0 to High(LDirections[I]) do
+      begin
+        LRule := LGroup.Rules[J];
+        if (LRule.Key <> LDirections[I][J]) or LRule.Info then
+          Exit;
+        LExpectedCount := 0;
+        for D := Low(TWfcModelDirection) to High(TWfcModelDirection) do
+          if (D in AModel.Directions) and
+              (ModelDirectionToGraphDirection(D) = LRule.Key) then
+          begin
+            for K := 0 to Pred(AModel.ValueCount) do
+              if AModel.RelationCount(D, I, K) > 0 then
+                Inc(LExpectedCount);
+            if Length(LRule.Value) <> LExpectedCount then
+              Exit;
+            LExpectedCount := 0;
+            for K := 0 to Pred(AModel.ValueCount) do
+              if AModel.RelationCount(D, I, K) > 0 then
+              begin
+                if LRule.Value[LExpectedCount] <> LGraphValues[K] then
+                  Exit;
+                Inc(LExpectedCount);
+              end;
+            Break;
+          end;
+      end;
+    end;
+    Result := True;
+  except
+    on Exception do
+      Result := False;
   end;
 end;
 

@@ -796,6 +796,9 @@ do
 done
 
 for compiler_artifact_suite in \
+  "$compiler_tools_directory/../test/wfc_voxel3d_model_passes_test.lpr" \
+  "$compiler_tools_directory/../test/wfc_terraces3d_test.lpr" \
+  "$compiler_tools_directory/../test/wfc_terraces3d_view_test.lpr" \
   "$compiler_tools_directory/../test/wfc_learn3d_test.lpr" \
   "$compiler_tools_directory/../test/wfc_model3d_text_test.lpr" \
   "$compiler_tools_directory/../test/wfc_training3d_test.lpr" \
@@ -1472,3 +1475,14 @@ case "$host_system" in
 esac
 "$voices_render_test_executable" "$voices_render_executable" \
   "$compiler_binary_output_directory" || exit $?
+
+printf 'Building and checking the learned-volume terrace SVG demo.\n'
+"$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
+  "-Fu$compiler_source_directory" "-FU$compiler_unit_output_directory" \
+  "-FE$compiler_binary_output_directory" \
+  "$compiler_source_directory/../examples/3D/04_LearnedTerraces/LearnedTerraces.lpr" || exit $?
+terraces_executable="$binary_output_directory/LearnedTerraces"
+case "$host_system" in
+  CYGWIN*|MINGW*|MSYS*) terraces_executable="$terraces_executable.exe" ;;
+esac
+"$terraces_executable" 0 "$compiler_binary_output_directory/terraces3d.svg" || exit $?

@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Learned Terraces · WFC</title><link rel="stylesheet" href="terraces.css"></head>
+<body><main><header><p class="eyebrow">WFC / VOLUME STUDY 04 / MIT</p><h1>Learned Terraces</h1>
+<p class="intro">Learn a landscape. Resolve its structure. Grow into the space it leaves.</p>
+<p class="pipeline">01 Terrain <span>→</span> 02 Structure <span>→</span> 03 Foliage</p></header>
+<div class="workspace"><section class="view"><div id="preview" aria-label="Isometric terrace composition"></div>
+<div class="view-tools"><button id="rotate">Rotate 90°</button><a id="download" aria-disabled="true">Download SVG</a></div>
+<p id="status" role="status">Loading the Pascal application…</p><p class="signature">COMPOSITION <span id="signature">-</span></p></section>
+<aside><section><h2>01 / Session</h2><div class="fields"><label>Seed<input id="seed" value="0" inputmode="numeric"></label>
+<label>Width<input id="width" value="6" inputmode="numeric"></label><label>Height<input id="height" value="5" inputmode="numeric"></label>
+<label>Depth<input id="depth" value="5" inputmode="numeric"></label></div>
+<div class="buttons"><button id="new-session">New session</button><button class="primary" id="generate">Generate</button></div>
+<p>Dimensions are yours. Depth includes the ground floor and air ceiling (minimum 3). Larger volumes need more memory and search time.</p></section>
+<section><h2>02 / Search &amp; repair</h2><div class="fields"><label>Local backtracks<input id="local-budget" value="1024" inputmode="numeric"></label>
+<label>Pass backtracks<input id="pass-budget" value="64" inputmode="numeric"></label></div>
+<div class="buttons"><button id="terrain-repair">Terrain + descendants</button><button id="structure-repair">Structure + foliage</button><button id="foliage-repair">Foliage only</button></div>
+<p>A repair never changes an earlier layer outside its scope. A changed terrain input needs terrain repair or full generation.</p></section>
+<section><h2>03 / Constrain one cell</h2><div class="fields coords"><label>X<input id="x" value="0" inputmode="numeric"></label><label>Y<input id="y" value="0" inputmode="numeric"></label><label>Z<input id="z" value="2" inputmode="numeric"></label></div>
+<label>Layer<select id="edit-kind"><option value="terrain">Terrain</option><option value="foliage">Foliage</option></select></label>
+<label>Value<select id="edit-value"><option value="">Clear cell edit</option><option value="ground">Terrain: ground</option><option value="rock">Terrain: rock</option><option value="soil">Terrain: soil</option><option value="air">Terrain: air</option><option value="none">Foliage: none</option><option value="fern">Foliage: fern</option><option value="flowers">Foliage: flowers</option></select></label>
+<button id="apply">Apply cell constraint</button><p>Coordinates are zero-based. Ferns need grass below; flowers need a flowerbed. Plants cannot occupy solid terrain.</p></section></aside></div>
+<section class="notes"><h2>What is learned—and what is authored?</h2><div class="notes-grid"><p><strong>Observed volumes.</strong> Two independent 3 × 3 × 5 samples teach all six cardinal neighbor directions. Their occupied column heights are shown below. Horizontal D4 symmetry preserves gravity.</p><pre>2 3 4     3 3 2
+3 4 3     4 3 3
+4 3 2     3 2 2</pre><p><strong>Explicit constraints.</strong> Ground and ceiling are pinned; intermediate cells are not a copied blueprint. Structural sockets and vertical support stay active. Foliage reads both the same cell and the structural cell below it.</p></div>
+<p>Every composition is independently validated before commit. The inset plant blocks are presentation glyphs, not botanical meshes. This is cardinal adjacency learning, not structural engineering or an overlapping-volume model.</p></section>
+<footer>Native FPC core · pas2js browser application · included FPC server · no external runtime libraries</footer></main>
+<script src="BrowserTerraces.js"></script><script>rtl.run();</script></body></html>

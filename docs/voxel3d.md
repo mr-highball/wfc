@@ -176,6 +176,18 @@ translating them to private adapter keys. Callers see stable roles, module
 identities, and rotations rather than internal graph values. See the
 [Building 3D contract](building3d.md).
 
+## Learned public-token providers
+
+The additive `...FromModelPass` bridge family accepts learned public tokens
+as source values while its targets remain checked prototype/yaw selectors.
+It verifies a stable source pass against the exact applied model definition,
+preflights complete maps or spatial clauses, and preserves the original
+kit-to-kit bridge semantics/version. All three model ranks are supported
+under rank-appropriate shape checks. See the
+[bridge contract and Learned Terraces owner](learned-terraces3d.md), which
+composes learned volumes, structural sockets/support, and foliage offsets
+inside one independently validated graph transaction.
+
 ## version-one scope
 
 Foundation version 1 is bounded to axis-aligned unit modules, quarter-turn yaw,

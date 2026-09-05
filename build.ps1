@@ -61,6 +61,9 @@ $musicTestSources = @(
   (Join-Path $repositoryRoot 'test/wfc_music_studio_test.lpr')
 )
 $artifactTestSources = @(
+  (Join-Path $repositoryRoot 'test/wfc_voxel3d_model_passes_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_terraces3d_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_terraces3d_view_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_learn3d_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_model3d_text_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_training3d_test.lpr')
@@ -1859,4 +1862,13 @@ foreach ($renderSource in @(
   (Join-Path $binaryOutputDirectory "VoiceStudioRender$toolExecutableSuffix") `
   $binaryOutputDirectory
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+Write-Host 'Building and checking the learned-volume terrace SVG demo.'
+& $Compiler @CompilerOptions -B -Mdelphi -Sa -Cr -Co -Ci `
+  "-Fu$sourceDirectory" "-FU$unitOutputDirectory" "-FE$binaryOutputDirectory" `
+  (Join-Path $repositoryRoot 'examples/3D/04_LearnedTerraces/LearnedTerraces.lpr')
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+& (Join-Path $binaryOutputDirectory "LearnedTerraces$toolExecutableSuffix") `
+  0 (Join-Path $binaryOutputDirectory 'terraces3d.svg')
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
 exit 0

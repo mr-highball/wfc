@@ -589,6 +589,16 @@ cross-pass invariants; the same model and seed match between native and web.
 
 ### 3D structures
 
+- Learned Terraces now connects six-direction volume learning to authored
+  socket/support variants and spatial foliage in a three-pass transaction.
+  Complete model-token-to-voxel maps and world/target-yaw clauses are reusable
+  across ranks; independent final validation, selective preservation,
+  negotiated upstream repair, and shared native/browser SVG are tested.
+  [Contract](docs/learned-terraces3d.md),
+  [experiment](docs/research/model-to-voxel-pass-v1.md).
+  This is full-volume cardinal learning, not overlapping 3D footprints,
+  chunked generation, physics inference, or serialized private consumers.
+
 - Voxel Foundation v1 now provides immutable weighted prototypes, explicit
   symmetric socket pairs, deterministic quarter-turn yaw, vertical support,
   exact six-direction graph compilation, immutable captured scenes, portable

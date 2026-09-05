@@ -60,9 +60,9 @@ try {
     New-Item -ItemType Directory -Force -Path $profile | Out-Null
     $dom = Join-Path $results ($page.BaseName + '.dom')
     $log = Join-Path $results ($page.BaseName + '.log')
-    # Nine real pages retain their individual 15-second virtual deadlines.
+    # Ten real pages retain their individual 15-second virtual deadlines.
     # The browser process still has the same 60-second real-time deadline.
-    $virtualTimeBudget = if ($page.BaseName -eq 'wfc_browser_demo_entries_test') { 140000 } else { 15000 }
+    $virtualTimeBudget = if ($page.BaseName -eq 'wfc_browser_demo_entries_test') { 155000 } else { 15000 }
     $arguments = @('--headless','--disable-gpu','--disable-dev-shm-usage',
       '--no-first-run','--no-default-browser-check',('--user-data-dir="' + $profile + '"'),
       ("--virtual-time-budget=$virtualTimeBudget"),'--dump-dom',("http://127.0.0.1:$Port/" + $page.Name))
@@ -81,7 +81,7 @@ try {
       $assertions = @('--dom', $dom, '--expect', 'data-self-test=passed')
       if ($page.BaseName -eq 'wfc_browser_demo_entries_test') {
         $assertions += @('--expect', 'data-demo-entries-self-test=passed')
-        $assertions += @('--expect', 'data-demo-entries-count=9')
+        $assertions += @('--expect', 'data-demo-entries-count=10')
       }
       if ($page.BaseName -eq 'wfc_music_ensemble_stream_demo_test') {
         # The synchronous harness cannot certify awaited file transactions.

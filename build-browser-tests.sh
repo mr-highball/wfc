@@ -38,7 +38,8 @@ for specification in \
   'counts|build-browser-counts|BrowserNeighborhoodCounts.js|counts.css' \
   'ensemble|build-browser-ensemble|BrowserEnsembleStudio.js|ensemblestudio.css' \
   'voices|build-browser-voices|BrowserVoiceStudio.js|voicestudio.css' \
-  'connectivity|build-browser-connectivity|BrowserConnectedRoutes.js|connectedroutes.css'
+  'connectivity|build-browser-connectivity|BrowserConnectedRoutes.js|connectedroutes.css' \
+  'terraces|build-browser-terraces|BrowserTerraces.js|terraces.css'
 do
   IFS='|' read -r demo script javascript stylesheet <<< "$specification"
   PAS2JS="$compiler" bash "$repository_root/$script.sh"
@@ -48,4 +49,4 @@ do
   cp -- "$entry_source/index.html" "$entry_source/$javascript" \
     "$entry_source/$stylesheet" "$entry_target/"
 done
-echo 'Pascal browser conformance and nine actual demo entries staged under build/browser/tests/www.'
+echo 'Pascal browser conformance and ten actual demo entries staged under build/browser/tests/www.'

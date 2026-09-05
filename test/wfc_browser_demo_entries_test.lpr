@@ -29,7 +29,7 @@ program wfc_browser_demo_entries_test;
 uses SysUtils, JS, Web, wfc_browser_test_host;
 
 const
-  DEMO_COUNT = 9;
+  DEMO_COUNT = 10;
   PAGE_TIMEOUT_MS = 15000;
   POLL_INTERVAL_MS = 25;
 
@@ -101,6 +101,8 @@ begin
   FDemos[7].Bundle := 'BrowserVoiceStudio.js'; FDemos[7].Stylesheet := 'voicestudio.css';
   FDemos[8].Name := 'connectivity';
   FDemos[8].Bundle := 'BrowserConnectedRoutes.js'; FDemos[8].Stylesheet := 'connectedroutes.css';
+  FDemos[9].Name := 'terraces';
+  FDemos[9].Bundle := 'BrowserTerraces.js'; FDemos[9].Stylesheet := 'terraces.css';
 
   for I := 0 to DEMO_COUNT - 1 do
   begin
@@ -199,6 +201,12 @@ begin
   Expect(8, 'data-circulation', 'passed');
   Expect(8, 'data-circulation-repair', 'passed');
   Expect(8, 'data-invalidation', 'passed');
+  Expect(9, 'data-signature', '1:6D695B99:2D23CF62');
+  Expect(9, 'data-view-signature', 'C3D25917');
+  Expect(9, 'data-selective', 'passed');
+  Expect(9, 'data-invalidation', 'passed');
+  Expect(9, 'data-recovery', 'passed');
+  Expect(9, 'data-new-session', 'passed');
 end;
 
 constructor TDemoEntries.Create;
@@ -218,7 +226,7 @@ begin
     provisional generic marker on the first task; only our dedicated marker
     can certify completion of all awaited real pages. }
   document.body.setAttribute('data-self-test', 'pending');
-  WriteLn('Real browser demo entries: nine sequential staged index pages');
+  WriteLn('Real browser demo entries: ten sequential staged index pages');
   OpenNext;
 end;
 

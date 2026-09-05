@@ -45,7 +45,8 @@ $entryDemos = @(
   @('counts', 'build-browser-counts', 'BrowserNeighborhoodCounts.js', 'counts.css'),
   @('ensemble', 'build-browser-ensemble', 'BrowserEnsembleStudio.js', 'ensemblestudio.css'),
   @('voices', 'build-browser-voices', 'BrowserVoiceStudio.js', 'voicestudio.css'),
-  @('connectivity', 'build-browser-connectivity', 'BrowserConnectedRoutes.js', 'connectedroutes.css')
+  @('connectivity', 'build-browser-connectivity', 'BrowserConnectedRoutes.js', 'connectedroutes.css'),
+  @('terraces', 'build-browser-terraces', 'BrowserTerraces.js', 'terraces.css')
 )
 foreach ($demo in $entryDemos) {
   & (Join-Path $repositoryRoot ($demo[1] + '.ps1')) -Compiler $Compiler
@@ -57,4 +58,4 @@ foreach ($demo in $entryDemos) {
     Copy-Item -LiteralPath (Join-Path $entrySource $asset) -Destination $entryTarget -Force
   }
 }
-Write-Host "Pascal browser conformance and nine actual demo entries staged in '$web'."
+Write-Host "Pascal browser conformance and ten actual demo entries staged in '$web'."

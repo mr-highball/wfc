@@ -15,7 +15,7 @@ supports deterministic propagation, weighted observation, backtracking,
 transactional pass DAGs, selective regeneration, and bounded pass negotiation.
 Count-range clauses, rooted port connectivity, and opt-in deterministic restarts extend those contracts
 without changing existing replay behavior. Domain libraries, learners,
-portable artifacts, native tools, and nine interactive browser demos are
+portable artifacts, native tools, and ten interactive browser demos are
 implemented and tested. The [roadmap](ROADMAP.md) records the remaining work
 and explicit exit gates.
 
@@ -105,6 +105,7 @@ The native and browser hosts share Pascal generation and validation code.
 | Domain | Native presentation | Interactive pas2js demo |
 | --- | --- | --- |
 | 2D worlds | Typed terrain, biome, foliage; settlement and repair examples | [2D Pass Workbench](examples/2D/02_BrowserWorld/README.md) |
+| Learned 3D terrain | Learned volume → socket/support structure → spatial foliage; exact SVG | [Learned Terraces](examples/3D/04_LearnedTerraces/README.md) |
 | 3D buildings | Validated multi-floor geometry and deterministic SVG | [Building 3D](examples/3D/03_BrowserBuilding/README.md) |
 | Text | Structure → lexical → punctuation composition | [Text Pass Workbench](examples/text/03_PassComposition/README.md) |
 | Music | Score, MIDI, WAV, streamed arrangements, import/training tools | [Music Studio](examples/music/05_MusicStudio/README.md) |
@@ -163,7 +164,7 @@ The shell equivalents are `bash ./build-browser-music.sh` and
 Set `PAS2JS` to your compiler path when it is not on `PATH`.
 Open `http://127.0.0.1:4177/`; stop the foreground server with Ctrl+C.
 
-The [build guide](docs/building.md) covers all nine browser staging scripts,
+The [build guide](docs/building.md) covers all ten browser staging scripts,
 compiler versions and overrides, package builds, and CI.
 The [development-tool guide](docs/development-tools.md) covers the FPC server,
 browser evidence checker, and browser conformance runner. Generated browser
@@ -176,7 +177,7 @@ code is build output, not a second hand-maintained implementation.
 | Solver and replay | [Reference solver](docs/solver.md), [determinism](docs/determinism.md), [restarts and timing](docs/restarts.md) |
 | Pass composition and diagnosis | [DAGs](docs/pass-dags.md), [counts](docs/pass-counts.md), [negotiation](docs/pass-negotiation.md), [selective negotiation](docs/selective-negotiation.md), [causal traces](docs/traces.md) |
 | Learned representations | [Cardinal models](docs/learning.md), [overlapping patterns](docs/patterns.md), [sequences](docs/sequences.md), [training](docs/training.md) |
-| Spatial domains | [2D worlds](docs/world2d.md), [voxels](docs/voxel3d.md), [Building 3D](docs/building3d.md) |
+| Spatial domains | [2D worlds](docs/world2d.md), [voxels](docs/voxel3d.md), [learned terraces](docs/learned-terraces3d.md), [Building 3D](docs/building3d.md) |
 | Music and text | [Exact music model](docs/music.md), [polyphonic ensembles](docs/music-ensemble.md), [independent voices](docs/music-voices.md), [audio](docs/music-audio.md), [arrangements](docs/music-arrangement.md), [import](docs/music-import.md), [text completion](docs/text.md) |
 | Portable workflow | [Pipeline artifacts and tools](docs/pipeline-artifacts.md), [dependency policy](docs/dependencies.md) |
 
