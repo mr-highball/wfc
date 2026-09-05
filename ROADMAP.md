@@ -205,9 +205,10 @@ It is not yet the finished system described above:
   lint, and general inspection tools remain;
 - the hosted CI definition is present, but its first remote run still needs to
   be observed before the Phase 0 exit gate is claimed complete;
-- the portable music path has no playback or browser UI yet; SoundShop/SDL2
-  remains only in two legacy Lazarus experiments behind an optional GPL-3.0
-  submodule and is not part of the MIT runtime or standard demo;
+- the portable music path now has project-owned PCM/WAVE rendering, native/Node
+  file export, and an interactive browser Music Studio with HTML audio;
+  SoundShop/SDL2 remains only in two legacy Lazarus experiments behind an
+  optional GPL-3.0 submodule and is not part of the MIT runtime or standard demo;
 - Music Foundation v1 and Negotiated Variation v1 prove quantized single-voice
   pitch-class composition, public motif preservation, bounded pass-level
   repair, result replay, and score-to-SMF export. Polyphonic cell projection,
@@ -590,22 +591,29 @@ adapter is optional and cannot be required by the portable ecosystem.
 - The project-owned SMF layer reads and writes format 0 and 1 event streams;
   the score exporter emits deterministic format 0. A semantic score importer
   and event-stream learner remain to be designed.
+- Music Audio v1 now provides exact tempo-to-frame conversion, bounded
+  fixed-point PCM16 synthesis, and a canonical RIFF/WAVE writer. Music Studio
+  connects the persistent pass owner to native/Node artifact exporters and a
+  pas2js lock/repair/piano-roll workbench with user-initiated HTML playback.
+  All corpus phrases and synthesis code are project-owned. Its model remains
+  one monophonic voice over a fixed two-bar form.
 - Extend the pipeline through meter/phrase -> rhythm -> harmony -> melody ->
   bass/voicing -> dynamics/ornamentation, including polyphonic representations,
   key/scale spelling, voice leading, instrument ranges, and locked motifs.
-- Build optional project-owned native playback and a thin WebAudio host from
-  pas2js without making a media backend part of the exact runtime foundation.
+- Extend the current native WAV export and browser HTML-audio presentation
+  with optional embedded native playback or a thin WebAudio host only when
+  needed, without making a media backend part of the exact runtime foundation.
 - Extend motif work from exact public-token locks and pass-level repair to
   phrase-aware coordinate scopes, transformations, and deterministic musical
   objectives.
 
 **Exit gate:** generated measures have valid duration totals, pitches and
 harmonies meet the selected model's constraints, semantic score/MIDI
-round-trips are tested, native and web agree on the event list, optional native
-and WebAudio presentations consume the same validated result, and the standard
-demo has no required GPL dependency. Foundation v1 and Negotiated Variation v1
-satisfy important parts of this gate but not the importer,
-polyphonic/harmonic breadth, browser UI, or playback requirements.
+round-trips are tested, native and web agree on the event list, audio
+presentations consume the same validated result, and the standard demo has no
+required GPL dependency. Foundation v1, Negotiated Variation v1, and Music
+Studio satisfy important parts of this gate, including a browser UI and
+portable audible output, but not the importer or polyphonic/harmonic breadth.
 
 ### Text and sequences
 
@@ -683,6 +691,11 @@ The companion
 fixes the descendant-horizon equation, immutable-provider boundary, comparison
 fixtures, portable transcripts, costs, and negative findings. It makes no
 cell-minimal, conflict-directed, horizon-minimal, or relative-efficiency claim.
+
+The [Music Studio form experiment](docs/research/music-studio-form-v1.md)
+compares short and whole-form rhythm contexts on a fixed 16-seed set. Its
+checked 32-row CSV includes all failures and counters. It explicitly changes
+the model language and therefore makes no equivalent-model efficiency claim.
 
 ### Exit gate
 

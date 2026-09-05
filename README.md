@@ -197,6 +197,11 @@ modular 3D structures, music, text, and other discrete design problems.
   byte codec, and deterministic format-0 score export
 - strict canonical `wfcmusicpass=1` public composition results with no latent
   graph keys or external runtime dependency
+- project-owned fixed-point PCM16 synthesis and canonical RIFF/WAVE export,
+  shared by native FPC and pas2js with matching byte identities
+- an interactive Music Studio with public motif/cell locks, selective
+  negotiated repair, a piano roll, stale-output invalidation, and browser
+  playback; native/Node hosts export the same score, MIDI, and WAV
 - [immutable voxel kits](docs/voxel3d.md) with deterministic yaw variants,
   explicit socket relations, support-aware six-direction graph compilation,
   portable scene signatures, independent connectivity validation, and integer
@@ -306,6 +311,12 @@ For the exact score model, fixed-quantum cells, music pass projection,
 public motif locks and negotiated variation, `wfcmusic=1` and
 `wfcmusicpass=1`, Standard MIDI Files, and the optional playback boundary, see the
 [music foundation](docs/music.md).
+
+For audible output and an interactive composition/repair workflow, start with
+[Music Studio](examples/music/05_MusicStudio/README.md) and the
+[Music Audio API](docs/music-audio.md). The standard path uses project-owned
+Pascal synthesis and original training phrases, with no playback library or
+sample-pack dependency.
 For the reusable footprint-to-props building owner, voxel pass bridge,
 validation, capture, signatures, immutable graphical commands, native SVG,
 and depth-three browser workbench, see

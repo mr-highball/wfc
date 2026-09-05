@@ -51,6 +51,7 @@ begin
     P.Targets.AddUnit('wfc_music_text.pas');
     P.Targets.AddUnit('wfc_midi_smf.pas');
     P.Targets.AddUnit('wfc_music_midi.pas');
+    P.Targets.AddUnit('wfc_music_audio.pas');
     P.Targets.AddUnit('wfc_world2d.pas');
     P.Targets.AddUnit('wfc_world2d_validate.pas');
     P.Targets.AddUnit('wfc_world2d_settlement.pas');

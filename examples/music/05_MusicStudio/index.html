@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Dependency-free Pascal music generation, selective repair, inspection, playback preview, and artifact export.">
+  <title>WFC Music Studio</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="musicstudio.css">
+</head>
+<body data-state="loading" data-self-test="not-requested"
+  data-seed="" data-composition-signature="" data-result-status="none"
+  data-score-signature="" data-midi-signature="" data-wave-signature=""
+  data-strategy="" data-scope="" data-cell-count="0" data-lock-count="0"
+  data-pass-count="0" data-midi-bytes="0" data-wav-bytes="0"
+  data-new-session-invalidation="not-run" data-run-invalidation="not-run"
+  data-failure-clears-output="not-run" data-motif-lock="not-run"
+  data-selective-regeneration="not-run" data-recovery="not-run"
+  data-audio-ready="false" data-audio-play-events="0">
+  <header class="masthead">
+    <div>
+      <p class="eyebrow">WFC / MUSIC LAB 05</p>
+      <h1>Music Studio</h1>
+      <p class="lede">Shape harmony, rhythm, and melody as one deterministic public composition.</p>
+    </div>
+    <div class="transport-note">
+      <strong>16 cells · 120 BPM</strong>
+      <span>Each cell is one half beat. One monophonic melody voice.</span>
+    </div>
+  </header>
+
+  <main>
+    <section class="session-panel" aria-labelledby="session-heading">
+      <div class="section-heading">
+        <div><p class="step">01 / SESSION</p><h2 id="session-heading">Deterministic generation</h2></div>
+        <div class="session-actions">
+          <label><span>Seed</span><input id="seed-input" inputmode="text" value="0" autocomplete="off"></label>
+          <button id="new-session-button" type="button">New session</button>
+          <button id="generate-button" class="primary" type="button">Generate</button>
+        </div>
+      </div>
+      <div class="generation-fields">
+        <label><span>Strategy</span>
+          <select id="strategy-select">
+            <option value="one-way">one-way</option>
+            <option value="negotiated" selected>negotiated</option>
+          </select>
+        </label>
+        <label><span>Repair scope</span>
+          <select id="scope-select">
+            <option value="full">full composition</option>
+            <option value="harmony">harmony + dependents</option>
+            <option value="rhythm">rhythm + dependents</option>
+            <option value="melody">melody only</option>
+          </select>
+        </label>
+        <label><span>Local backtracks</span><input id="backtracks-input" type="number" min="0" max="1024" value="256"></label>
+        <label><span>Pass backtracks</span><input id="pass-backtracks-input" type="number" min="0" max="32" value="16"></label>
+        <label class="check-field"><input id="trace-input" type="checkbox"><span>Capture trace</span></label>
+        <button id="motif-button" type="button">Lock opening 2-cell motif</button>
+      </div>
+      <p class="bounded-claim">Budgets bound search counts, not wall time. A selected repair scope means the named public layer plus its required downstream dependents; the terminal report shows the actual active passes.</p>
+    </section>
+
+    <aside class="status-panel" aria-label="Music workspace status">
+      <div class="status-line"><span class="status-light" aria-hidden="true"></span><div><small>Workspace</small><strong id="status" aria-live="polite">Loading Pascal runtime…</strong></div></div>
+      <dl class="metrics">
+        <div><dt>Seed</dt><dd id="seed-output">—</dd></div>
+        <div><dt>Status</dt><dd id="result-status">not run</dd></div>
+        <div><dt>Strategy</dt><dd id="strategy-output">—</dd></div>
+        <div><dt>Repair scope</dt><dd id="scope-output">—</dd></div>
+        <div><dt>Local backtracks</dt><dd id="local-backtracks-output">0</dd></div>
+        <div><dt>Pass backtracks</dt><dd id="pass-backtracks-output">0</dd></div>
+        <div><dt>Passes executed</dt><dd id="pass-count-output">0</dd></div>
+        <div><dt>Locks</dt><dd id="lock-count-output">0</dd></div>
+        <div class="wide"><dt>Composition signature</dt><dd id="composition-signature">—</dd></div>
+      </dl>
+      <p id="status-detail">No public composition is current.</p>
+    </aside>
+
+    <section class="layers-panel" aria-labelledby="layers-heading">
+      <div class="section-heading">
+        <div><p class="step">02 / PUBLIC LAYERS</p><h2 id="layers-heading">Composition cells</h2></div>
+        <span class="scroll-hint">scroll each row horizontally on narrow screens</span>
+      </div>
+      <div class="layer-row">
+        <div class="layer-name"><strong>Harmony</strong><span>pitch-class plan</span></div>
+        <div class="cell-scroller"><div id="harmony-grid" class="cell-grid" aria-label="Harmony cells"></div></div>
+      </div>
+      <div class="layer-row">
+        <div class="layer-name"><strong>Rhythm</strong><span>attack / hold / rest</span></div>
+        <div class="cell-scroller"><div id="rhythm-grid" class="cell-grid" aria-label="Rhythm cells"></div></div>
+      </div>
+      <div class="layer-row melody-row">
+        <div class="layer-name"><strong>Melody</strong><span>pitch + action</span></div>
+        <div class="cell-scroller"><div id="melody-grid" class="cell-grid" aria-label="Melody cells"></div></div>
+      </div>
+      <p id="layers-placeholder" class="placeholder">Start a session and generate to inspect public tokens.</p>
+    </section>
+
+    <section class="piano-panel" aria-labelledby="piano-heading">
+      <div class="section-heading">
+        <div><p class="step">03 / SCORE VIEW</p><h2 id="piano-heading">Monophonic piano roll</h2></div>
+        <div class="piano-legend"><span class="attack-key">attack</span><span class="hold-key">hold</span><span class="rest-key">rest</span></div>
+      </div>
+      <div class="piano-scroller"><div id="piano-roll" class="piano-roll" role="img" aria-label="Generated melody piano roll"></div></div>
+      <p id="pitch-summary" class="pitch-summary">No melody pitches to display.</p>
+    </section>
+
+    <section class="locks-panel" aria-labelledby="locks-heading">
+      <div class="section-heading">
+        <div><p class="step">04 / CONSTRAINTS</p><h2 id="locks-heading">Public token locks</h2></div>
+        <button id="clear-locks-button" type="button">Clear all locks</button>
+      </div>
+      <div class="lock-fields">
+        <label><span>Layer</span>
+          <select id="lock-layer-select">
+            <option value="harmony">harmony</option>
+            <option value="rhythm">rhythm</option>
+            <option value="melody">melody</option>
+          </select>
+        </label>
+        <label><span>Cell</span><input id="lock-cell-input" type="number" min="0" max="15" value="0"></label>
+        <label class="token-field"><span>Public token</span><select id="lock-token-select"></select></label>
+        <button id="add-lock-button" type="button">Add / replace lock</button>
+      </div>
+      <select id="lock-list" class="lock-list" size="5" aria-label="Configured public locks"></select>
+      <button id="remove-lock-button" type="button">Remove selected lock</button>
+    </section>
+
+    <section class="reports-panel" aria-labelledby="reports-heading">
+      <div class="section-heading"><div><p class="step">05 / REPORT</p><h2 id="reports-heading">Attempt and repair evidence</h2></div></div>
+      <div class="reports">
+        <div><h3>Requested and active scope</h3><pre id="repair-report">No generation attempt.</pre></div>
+        <div><h3>Pass outcomes</h3><pre id="pass-report">No generation attempt.</pre></div>
+        <div><h3>Terminal failure</h3><pre id="failure-report">No terminal failure.</pre></div>
+      </div>
+    </section>
+
+    <section class="preview-panel" aria-labelledby="preview-heading">
+      <div class="section-heading">
+        <div><p class="step">06 / PREVIEW + EXPORT</p><h2 id="preview-heading">Audition and artifacts</h2></div>
+        <strong id="audio-status" class="audio-chip">no preview</strong>
+      </div>
+      <div class="audio-block">
+        <audio id="preview-audio" controls preload="none" aria-label="Generated WAV preview"></audio>
+        <p>Playback uses a simple project-owned synthesized timbre to audition structure. It does not claim instrument realism, and playback never starts automatically.</p>
+      </div>
+      <div class="download-grid">
+        <a id="download-composition-link" class="button-link disabled" aria-disabled="true">Composition text</a>
+        <a id="download-score-link" class="button-link disabled" aria-disabled="true">Score text</a>
+        <a id="download-midi-link" class="button-link disabled" aria-disabled="true">MIDI</a>
+        <a id="download-wav-link" class="button-link disabled" aria-disabled="true">WAV</a>
+      </div>
+      <div class="artifact-inspector">
+        <label><span>Inspect text artifact</span>
+          <select id="artifact-select"><option value="composition">composition</option><option value="score">score</option></select>
+        </label>
+        <textarea id="artifact-output" rows="13" readonly spellcheck="false" aria-label="Selected canonical music artifact"></textarea>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <span>Pascal source → pas2js → browser DOM + WAV Blob</span>
+    <span>Repository units and standard browser playback only · no CDN · no runtime network calls</span>
+  </footer>
+  <script src="BrowserMusicStudio.js"></script>
+  <script>
+    window.addEventListener('load', function () {
+      rtl.run();
+    });
+  </script>
+</body>
+</html>

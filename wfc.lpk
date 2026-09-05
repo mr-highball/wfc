@@ -15,7 +15,7 @@
     <Description Value="Wave Function Collapse, multi-pass generation, and pattern learning library"/>
     <License Value="MIT"/>
     <Version Minor="1"/>
-    <Files Count="56">
+    <Files Count="57">
       <Item1>
         <Filename Value="wfc_package.pas"/>
         <Type Value="Main Unit"/>
@@ -241,6 +241,10 @@
         <Filename Value="src/wfc_training_workspace.pas"/>
         <UnitName Value="wfc_training_workspace"/>
       </Item56>
+      <Item57>
+        <Filename Value="src/wfc_music_audio.pas"/>
+        <UnitName Value="wfc_music_audio"/>
+      </Item57>
     </Files>
     <UsageOptions>
       <UnitPath Value="$(PkgOutDir)"/>

@@ -32,6 +32,8 @@ music_graph_test_source="$repository_root/test/wfc_music_graph_test.lpr"
 music_midi_test_source="$repository_root/test/wfc_music_midi_test.lpr"
 music_passes_test_source="$repository_root/test/wfc_music_passes_test.lpr"
 music_passes_text_test_source="$repository_root/test/wfc_music_passes_text_test.lpr"
+music_audio_test_source="$repository_root/test/wfc_music_audio_test.lpr"
+music_studio_test_source="$repository_root/test/wfc_music_studio_test.lpr"
 text_codec_test_source="$repository_root/test/wfc_text_codec_test.lpr"
 rule_model_test_source="$repository_root/test/wfc_rule_model_test.lpr"
 rule_text_test_source="$repository_root/test/wfc_rule_text_test.lpr"
@@ -50,6 +52,8 @@ training_test_source="$repository_root/test/wfc_training_test.lpr"
 text_training_test_source="$repository_root/test/wfc_text_training_test.lpr"
 training_workspace_test_source="$repository_root/test/wfc_training_workspace_test.lpr"
 training_studio_directory="$repository_root/examples/learning/05_TrainingStudio"
+music_studio_directory="$repository_root/examples/music/05_MusicStudio"
+music_studio_form_fixture="$repository_root/docs/research/music-studio-form-v1.csv"
 training_text_test_source="$repository_root/test/wfc_training_text_test.lpr"
 learn_app_test_source="$repository_root/test/wfc_learn_app_test.lpr"
 training_fixture_directory="$repository_root/examples/learning/04_TrainingDocuments"
@@ -118,6 +122,8 @@ compiler_music_graph_test_source=$music_graph_test_source
 compiler_music_midi_test_source=$music_midi_test_source
 compiler_music_passes_test_source=$music_passes_test_source
 compiler_music_passes_text_test_source=$music_passes_text_test_source
+compiler_music_audio_test_source=$music_audio_test_source
+compiler_music_studio_test_source=$music_studio_test_source
 compiler_text_codec_test_source=$text_codec_test_source
 compiler_rule_model_test_source=$rule_model_test_source
 compiler_rule_text_test_source=$rule_text_test_source
@@ -136,6 +142,7 @@ compiler_training_test_source=$training_test_source
 compiler_text_training_test_source=$text_training_test_source
 compiler_training_workspace_test_source=$training_workspace_test_source
 compiler_training_studio_directory=$training_studio_directory
+compiler_music_studio_directory=$music_studio_directory
 compiler_training_text_test_source=$training_text_test_source
 compiler_learn_app_test_source=$learn_app_test_source
 compiler_training_fixture_directory=$training_fixture_directory
@@ -203,6 +210,8 @@ case "$host_system" in
     compiler_music_midi_test_source=$(cygpath -m "$music_midi_test_source") || exit $?
     compiler_music_passes_test_source=$(cygpath -m "$music_passes_test_source") || exit $?
     compiler_music_passes_text_test_source=$(cygpath -m "$music_passes_text_test_source") || exit $?
+    compiler_music_audio_test_source=$(cygpath -m "$music_audio_test_source") || exit $?
+    compiler_music_studio_test_source=$(cygpath -m "$music_studio_test_source") || exit $?
     compiler_text_codec_test_source=$(cygpath -m "$text_codec_test_source") || exit $?
     compiler_rule_model_test_source=$(cygpath -m "$rule_model_test_source") || exit $?
     compiler_rule_text_test_source=$(cygpath -m "$rule_text_test_source") || exit $?
@@ -221,6 +230,7 @@ case "$host_system" in
     compiler_text_training_test_source=$(cygpath -m "$text_training_test_source") || exit $?
     compiler_training_workspace_test_source=$(cygpath -m "$training_workspace_test_source") || exit $?
     compiler_training_studio_directory=$(cygpath -m "$training_studio_directory") || exit $?
+    compiler_music_studio_directory=$(cygpath -m "$music_studio_directory") || exit $?
     compiler_training_text_test_source=$(cygpath -m "$training_text_test_source") || exit $?
     compiler_learn_app_test_source=$(cygpath -m "$learn_app_test_source") || exit $?
     compiler_training_fixture_directory=$(cygpath -m "$training_fixture_directory") || exit $?
@@ -597,7 +607,9 @@ for compiler_music_suite in \
   "$compiler_music_graph_test_source" \
   "$compiler_music_midi_test_source" \
   "$compiler_music_passes_test_source" \
-  "$compiler_music_passes_text_test_source"
+  "$compiler_music_passes_text_test_source" \
+  "$compiler_music_audio_test_source" \
+  "$compiler_music_studio_test_source"
 do
   music_suite_name=$(basename -- "$compiler_music_suite" .lpr)
   printf "Building the music conformance suite '%s'.\n" "$music_suite_name"
@@ -609,6 +621,7 @@ do
     -Co \
     -Ci \
     "-Fu$compiler_source_directory" \
+    "-Fu$compiler_music_studio_directory" \
     "-FU$compiler_unit_output_directory" \
     "-FE$compiler_binary_output_directory" \
     "$compiler_music_suite" || exit $?
@@ -1142,3 +1155,33 @@ case "$host_system" in
   CYGWIN*|MINGW*|MSYS*) training_studio_executable="${training_studio_executable}.exe" ;;
 esac
 "$training_studio_executable" --selftest || exit $?
+
+printf 'Building and checking Music Studio.\n'
+"$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
+  "-Fu$compiler_source_directory" "-Fu$compiler_music_studio_directory" \
+  "-FU$compiler_unit_output_directory" "-FE$compiler_binary_output_directory" \
+  "$compiler_music_studio_directory/MusicStudio.lpr" || exit $?
+music_studio_executable="$binary_output_directory/MusicStudio"
+case "$host_system" in
+  CYGWIN*|MINGW*|MSYS*) music_studio_executable="${music_studio_executable}.exe" ;;
+esac
+"$music_studio_executable" --selftest || exit $?
+
+printf 'Building and checking the Music Studio form matrix.\n'
+"$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
+  "-Fu$compiler_source_directory" "-Fu$compiler_music_studio_directory" \
+  "-FU$compiler_unit_output_directory" "-FE$compiler_binary_output_directory" \
+  "$compiler_music_studio_directory/MusicStudioFormProbe.lpr" || exit $?
+music_studio_probe_executable="$binary_output_directory/MusicStudioFormProbe"
+case "$host_system" in
+  CYGWIN*|MINGW*|MSYS*) music_studio_probe_executable="${music_studio_probe_executable}.exe" ;;
+esac
+music_studio_probe_actual=$("$music_studio_probe_executable") || exit $?
+music_studio_probe_actual=$(printf '%s' "$music_studio_probe_actual" | \
+  tr -d '\r') || exit $?
+music_studio_probe_expected=$(tr -d '\r' < "$music_studio_form_fixture") || exit $?
+if test "$music_studio_probe_actual" != "$music_studio_probe_expected"; then
+  printf 'Music Studio form probe differs from its checked fixture.\n' >&2
+  exit 1
+fi
+printf 'Music Studio form matrix matches its checked fixture.\n'

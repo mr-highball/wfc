@@ -48,6 +48,8 @@ $musicTestSources = @(
   (Join-Path $repositoryRoot 'test/wfc_music_midi_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_music_passes_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_music_passes_text_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_music_audio_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_music_studio_test.lpr')
 )
 $artifactTestSources = @(
   (Join-Path $repositoryRoot 'test/wfc_text_codec_test.lpr')
@@ -135,6 +137,10 @@ $buildingSvgSource = Join-Path $repositoryRoot `
 $worldCommonDirectory = Join-Path $repositoryRoot 'examples/2D/common'
 $trainingStudioExampleDirectory = Join-Path $repositoryRoot `
   'examples/learning/05_TrainingStudio'
+$musicStudioExampleDirectory = Join-Path $repositoryRoot `
+  'examples/music/05_MusicStudio'
+$musicStudioFormFixture = Join-Path $repositoryRoot `
+  'docs/research/music-studio-form-v1.csv'
 $unitOutputDirectory = Join-Path $repositoryRoot 'build/native/units'
 $binaryOutputDirectory = Join-Path $repositoryRoot 'build/native/bin'
 
@@ -699,6 +705,7 @@ foreach ($musicTestSource in $musicTestSources) {
     '-Co'
     '-Ci'
     "-Fu$sourceDirectory"
+    "-Fu$musicStudioExampleDirectory"
     "-FU$unitOutputDirectory"
     "-FE$binaryOutputDirectory"
     $musicTestSource
@@ -1516,4 +1523,38 @@ $trainingStudioExecutableName = if ($env:OS -eq 'Windows_NT') {
   'TrainingStudio.exe'
 } else { 'TrainingStudio' }
 & (Join-Path $binaryOutputDirectory $trainingStudioExecutableName) --selftest
-exit $LASTEXITCODE
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+Write-Host 'Building and checking Music Studio.'
+& $Compiler @CompilerOptions -B -Mdelphi -Sa -Cr -Co -Ci `
+  "-Fu$sourceDirectory" "-Fu$musicStudioExampleDirectory" `
+  "-FU$unitOutputDirectory" "-FE$binaryOutputDirectory" `
+  (Join-Path $musicStudioExampleDirectory 'MusicStudio.lpr')
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+$musicStudioExecutableName = if ($env:OS -eq 'Windows_NT') {
+  'MusicStudio.exe'
+} else { 'MusicStudio' }
+& (Join-Path $binaryOutputDirectory $musicStudioExecutableName) --selftest
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+Write-Host 'Building and checking the Music Studio form matrix.'
+& $Compiler @CompilerOptions -B -Mdelphi -Sa -Cr -Co -Ci `
+  "-Fu$sourceDirectory" "-Fu$musicStudioExampleDirectory" `
+  "-FU$unitOutputDirectory" "-FE$binaryOutputDirectory" `
+  (Join-Path $musicStudioExampleDirectory 'MusicStudioFormProbe.lpr')
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+$musicStudioProbeExecutableName = if ($env:OS -eq 'Windows_NT') {
+  'MusicStudioFormProbe.exe'
+} else { 'MusicStudioFormProbe' }
+$musicStudioProbeLines = @(
+  & (Join-Path $binaryOutputDirectory $musicStudioProbeExecutableName))
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+$musicStudioProbeActual = ($musicStudioProbeLines -join "`n")
+$musicStudioProbeExpected = [System.IO.File]::ReadAllText(
+  $musicStudioFormFixture).Replace("`r`n", "`n").Replace("`r", "`n").TrimEnd(
+    [char[]] "`n")
+if ($musicStudioProbeActual -cne $musicStudioProbeExpected) {
+  Write-Error 'Music Studio form probe differs from its checked fixture.'
+}
+Write-Host 'Music Studio form matrix matches its checked fixture.'
+exit 0

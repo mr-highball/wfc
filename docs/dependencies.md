@@ -30,7 +30,8 @@ Pascal. This includes:
 - solver and pass-planning algorithms;
 - learners, indexes, projection adapters, and domain analyzers;
 - deterministic random, hashing, signature, and replay behavior;
-- text, model, score, MIDI, mesh, and other interchange codecs;
+- text, model, score, MIDI, PCM/WAVE, mesh, and other interchange codecs;
+- deterministic musical time conversion and preview synthesis;
 - semantic validators and contradiction diagnostics; and
 - the immutable data structures exposed by public APIs.
 

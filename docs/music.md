@@ -320,10 +320,30 @@ tick. End-of-track reaches the exact score length.
 The generic codec can read and write format 1. The score exporter emits only
 format 0, and there is no SMF-to-`TWfcMusicScore` semantic importer yet.
 
+## audible portable Music Studio
+
+[Music Audio v1](music-audio.md) renders a validated score to immutable mono
+PCM16 with exact tempo-to-frame mapping, bounded fixed-point synthesis, and a
+project-owned canonical RIFF/WAVE writer. The same Pascal code produces the
+same bytes on native FPC and pas2js; it has no samples or synthesizer library.
+
+The [Music Studio](../examples/music/05_MusicStudio/README.md) joins this
+renderer to the persistent three-pass owner. Native and Node hosts inspect
+and export composition text, score text, MIDI, and a four-second WAV. A pas2js
+browser workbench adds public-cell and motif locks, ordinary/negotiated
+selective repair, layer grids, a piano roll, failure reports, downloads, and
+user-initiated HTML audio playback. Pending edits and failed attempts unload
+old previews and hide stale artifacts.
+
+Its four original phrases and fixed two-bar rhythmic form are a deliberately
+small, documented model. The [form experiment](research/music-studio-form-v1.md)
+publishes all 32 seed/order cases, including finite-budget failures, without
+claiming general musical quality or solver superiority.
+
 ## dependency and license boundary
 
 The exact score, cell codecs, sequence learning and graph adapters, canonical
-text, raw SMF codec, score exporter, tests, and pass-composition example use
+text, raw SMF codec, score exporter, PCM/WAVE renderer, tests, and portable examples use
 only repository units and the applicable standard FPC/pas2js RTL. They neither
 initialize nor reference a submodule.
 
@@ -334,9 +354,10 @@ from the MIT runtime package, normal build, tests, portable demo, and canonical
 formats. Do not copy its types into the portable API or make it a required
 playback path.
 
-Playback is an edge adapter. A future native synthesizer, WebAudio host, or
-other renderer should consume validated project-owned events and remain
-optional; the score and generated result must stay useful without it.
+Playback remains an edge adapter. Native hosts can write the owned WAV for
+an external player, and the browser uses standard HTML audio. An embedded
+native device or future WebAudio adapter must remain optional; the score and
+generated result stay useful without a playback backend.
 
 ## present limits and research direction
 
@@ -354,8 +375,10 @@ gate. It currently has:
   conflict-directed search, or soft scoring;
 - raw token corpora supplied by the caller, without a semantic MIDI learner;
 - an SMF format-0 score exporter but no score importer;
-- console/Node output only: no browser UI, native playback, or WebAudio
-  playback is claimed.
+- one fixed-corpus browser Studio and native/Node file export, not an
+  arbitrary score/corpus editor or embedded native playback device;
+- a bounded triangle-wave audio preview, not realistic instruments,
+  band-limited synthesis, effects, or mastering.
 
 Negotiated Variation v1 adds exact public motif locks, atomic ordinary and
 bounded negotiated regeneration, explicit selective provider horizons,

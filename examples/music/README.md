@@ -4,10 +4,12 @@ The portable music path is project-owned Pascal and has no external runtime
 dependency. It learns fixed-quantum rhythm, harmony, and melody sequences,
 solves them as named passes, rebuilds an exact score, round-trips canonical
 score and public-composition text, performs bounded full/selective negotiated
-variation with exact public motif locks, and exports Standard MIDI File bytes.
+variation with exact public motif locks, and exports Standard MIDI File and
+project-owned PCM/WAVE bytes. Music Studio adds browser playback and editing.
 
 | Example | Status | Targets | Dependencies |
 | --- | --- | --- | --- |
+| [`05_MusicStudio`](05_MusicStudio/README.md) | Interactive locks, repair, piano roll, playback and export | Native FPC, pas2js/Node, pas2js/browser | Repository units, standard RTL and host APIs only |
 | [`04_NegotiatedVariation`](04_NegotiatedVariation/README.md) | Current reusable repair and replay proof | Native FPC, pas2js/Node | Repository units and standard RTL only |
 | [`03_PassComposition`](03_PassComposition/README.md) | Current tested vertical slice | Native FPC, pas2js/Node | Repository units and standard RTL only |
 | `01_simple_A_major` | Legacy playback experiment | Lazarus/LCL | Optional GPL-3.0 SoundShop submodule and SDL2 |

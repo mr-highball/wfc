@@ -5,7 +5,8 @@ contracts, specialized 2D and settlement, radius-one model-learning,
 overlapping-pattern and projected-pattern passes, sequence, Unicode-scalar
 text completion, three-pass text composition, exact music-score, music
 projection, Standard MIDI File,
-score-export, negotiated music variation/result replay, full and selective
+score-export, deterministic PCM/WAVE rendering, Music Studio,
+negotiated music variation/result replay, full and selective
 pass negotiation, canonical numeric text primitives, immutable authored-rule
 models, declarative pipeline recipes, recipe-bound run artifacts, the closed
 pipeline compiler/runtime, immutable public result artifacts, strict run/result
@@ -21,7 +22,7 @@ variation, the four-pass learned-pattern world, and writes a checked seed-zero
 Building SVG artifact.
 It does not initialize the optional legacy music submodule or build the
 unfinished Castle Game Engine viewer. The 2D world, three-pass text workbench,
-and Building 3D workbench have separate dependency-free pas2js browser entry
+Building 3D, Training Studio, and Music Studio have separate pas2js browser entry
 points described below.
 
 FPC 3.2.2 is the supported stable compiler. The current FPC development
@@ -44,7 +45,8 @@ completion/validation owner follow this boundary. The exact music score,
 fixed-quantum cell codecs,
 cross-model projection maps, persistent pass owner, strict `wfcmusic=1` score
 and `wfcmusicpass=1` result codecs, raw SMF format-0/1 codec, and format-0
-score exporter are also project-owned portable Pascal. The voxel kit, semantic
+score exporter and fixed-point PCM/WAVE renderer are project-owned portable
+Pascal. The voxel kit, semantic
 validator, and integer surface mesh are
 likewise project-owned and expose no engine or renderer type. The voxel pass
 bridge, typed Building 3D owner, cross-layer validator, and shared
@@ -91,7 +93,8 @@ Both scripts rebuild with assertions and range, overflow, and I/O checks, run
 `wfc_building3d_view_test`, `wfc_midi_smf_test`,
 `wfc_music_test`,
 `wfc_music_graph_test`, `wfc_music_midi_test`, `wfc_music_passes_test`,
-`wfc_music_passes_text_test`, `wfc_text_codec_test`, `wfc_rule_model_test`,
+`wfc_music_passes_text_test`, `wfc_music_audio_test`, `wfc_music_studio_test`,
+`wfc_text_codec_test`, `wfc_rule_model_test`,
 `wfc_rule_text_test`, `wfc_pipeline_model_test`, `wfc_pipeline_text_test`,
 `wfc_pipeline_run_test`, `wfc_pipeline_run_text_test`,
 `wfc_pipeline_compile_test`, `wfc_pipeline_result_test`,
@@ -106,7 +109,9 @@ portable console examples with seed `0`, including the bounded/wrapped spatial
 dependency self-check, causal-trace inspector, bounded pass-negotiation proof,
 negotiated descendant repair, anchored text completion, three-pass text
 composition, negotiated music variation, the learned-pattern world, and
-depth-three Building 3D pipeline, and all five Training Studio presets;
+depth-three Building 3D pipeline, all five Training Studio presets, and the
+Music Studio generation/repair/audio self-test. The 32-case Music Studio form
+probe is compared with its checked-in raw CSV;
 the multi-pass and
 selective-settlement worlds also run with their default seeds. Finally, the
 native `Building3DSvg` host generates and validates
@@ -330,9 +335,11 @@ done
 mkdir -p build/pas2js/music-units build/pas2js/music
 for music_test in wfc_midi_smf_test wfc_music_test \
   wfc_music_graph_test wfc_music_midi_test \
-  wfc_music_passes_test wfc_music_passes_text_test
+  wfc_music_passes_test wfc_music_passes_text_test \
+  wfc_music_audio_test wfc_music_studio_test
 do
   pas2js -B -Tnodejs -Mdelphi -Fusrc \
+    -Fuexamples/music/05_MusicStudio \
     -FUbuild/pas2js/music-units -FEbuild/pas2js/music \
     "test/${music_test}.lpr"
   node "build/pas2js/music/${music_test}.js"
@@ -710,17 +717,43 @@ fixture must report `data-state="solved"`, `data-self-test="passed"`,
 See [the Studio guide](training-studio.md) for the editing workflow and the
 bounded synchronous execution policy.
 
+## pas2js browser Music Studio
+
+Music Studio uses the same corpus, persistent pass owner, independent
+validator, exact score, MIDI exporter, and PCM/WAVE renderer as its native
+and Node hosts:
+
+```powershell
+./build-browser-music.ps1 -Compiler 'C:/path/to/pas2js.exe'
+```
+
+```bash
+PAS2JS=/opt/pas2js/bin/pas2js bash ./build-browser-music.sh
+```
+
+Serve `build/browser/music/www` and append `?selftest=1`. Its event-driven
+workflow proves pending-input invalidation, an exact opening motif, an
+ordinary failed edit, bounded selective repair, and recovery. Final body
+attributes include `data-state="solved"`, `data-self-test="passed"`,
+`data-composition-signature="216F6EBB"`, `data-score-signature="4167E7E5"`,
+`data-midi-signature="86E4DCA3"`, `data-wave-signature="64679FF8"`,
+`data-cell-count="16"`, `data-pass-count="3"`, `data-midi-bytes="123"`,
+`data-wav-bytes="352844"`, and `data-audio-play-events="0"`.
+The self-test prepares playable bytes but does not auto-play or save files.
+See [the Studio guide](../examples/music/05_MusicStudio/README.md) for commands,
+controls, limitations, and native/Node export behavior.
+
 ## Hosted pas2js gate
 
 The hosted pas2js gate uses exact official upstream pas2js and FPC-source
 revisions, verifies both source-archive SHA-256 digests, and caches the resulting
 3.3.1 toolchain. It runs every portable conformance source, including the voxel
 foundation, the recipe/run/compiler/runtime/result artifact suites, the token
-lookup, recipe-validator, and pipeline-runner suites, six music suites, three
+lookup, recipe-validator, and pipeline-runner suites, eight music suites, three
 causal-trace suites, and
 the full and selective pass-negotiation suites; the tiled-world, learned-tiles,
 learned-corpus, overlapping-pattern, sequence, anchored-completion,
-three-pass-text, pass-composed-music, negotiated-music-variation,
+three-pass-text, pass-composed-music, negotiated-music-variation, Music Studio,
 spatial-dependency,
 causal-trace-inspector, pass-negotiation, and negotiated-repair smoke tests;
 and the multi-pass and selective-settlement worlds with both seed zero and
@@ -728,7 +761,8 @@ their default seeds under Node.js 22.23.2. The two Node pipeline hosts also run
 the same exact 18-case process suite as the native hosts, using both the small
 CLI fixture set and the learned-pattern-world bundle. The gate then builds
 the Node training host and runs the same 25-case training process suite
-against all four bundled training documents. It also builds all four browser targets,
+against all four bundled training documents. The Music Studio form probe
+checks its full 32-row CSV. It also builds all five browser targets,
 serves each staged site, and checks their exact body-state contracts in
 headless Chrome. A pinned development compiler is used
 because the official 3.2.0 binary release cannot resolve the suite's portable
@@ -744,7 +778,7 @@ token-lookup, recipe-validator, pipeline-runner, 2D, voxel-3D, Building 3D,
 learning, sequence, music, pass-composition, causal-trace, full-negotiation,
 and selective-negotiation pas2js/Node.js gate, including the negotiated-repair
 host, the text-training/workspace suites and five Studio presets, plus all
-four real browser self-tests in headless Chrome. A canary runs
+five real browser self-tests in headless Chrome. A canary runs
 against the current official FPC development image and records the image digest
 and compiler revision in the job log. Submodules are deliberately disabled for
 every gate.

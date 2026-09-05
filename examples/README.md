@@ -6,6 +6,7 @@ the [roadmap](../ROADMAP.md).
 
 | Area | Entry point | Targets | Current proof and dependencies |
 | --- | --- | --- | --- |
+| Music Studio | [music/05_MusicStudio](music/05_MusicStudio/README.md) | Native FPC, pas2js/Node, pas2js/browser | Original training phrases, public locks, selective negotiated repair, piano roll, project-owned PCM/WAV synthesis, user-initiated browser playback, and exact score/MIDI/WAV exports without a third-party runtime. |
 | Spatial pass constraints | `passes/01_SpatialDependencies/SpatialDependencies.lpr` and `SpatialDependenciesNode.lpr` | Native FPC, pas2js/Node | Solves terrain before settlement and foliage, checks exact-offset AND clauses plus finite any-neighbor OR clauses, contrasts bounded and wrapped edges, rejects an out-of-bounds probe, and replays portable signatures using only repository units and the standard RTL. |
 | Causal trace inspector | `passes/02_TraceInspector/TraceInspector.lpr` and `TraceInspectorNode.lpr` | Native FPC, pas2js/Node | Captures and validates a deterministic terrain -> settlement -> foliage transaction, prints its portable trace hash, pass slices, and all 27 events, then follows a rejected foliage candidate back to its settlement provider event. Both hosts emit the same event stream using only repository units and the standard RTL. |
 | Bounded pass negotiation | `passes/03_PassNegotiation/PassNegotiation.lpr` and `PassNegotiationNode.lpr` | Native FPC, pas2js/Node | Proves ordinary one-way staging fails for `marsh`, then excludes that exact provider assignment and reopens terrain to commit `meadow|cottage` in two deterministic rounds. Both hosts enforce the same counters and transcript using only repository units and the standard RTL. |
@@ -430,6 +431,19 @@ fpc -B -Mdelphi -Sa -Cr -Co -Ci -Fusrc -Fuexamples/3D/01_SimpleBuildingKit/castl
 ```
 
 These commands keep new compiler output under the ignored `build` tree.
+
+## Music Studio
+
+The [Music Studio guide](music/05_MusicStudio/README.md) is the entry point
+for audible, interactive music generation. Its shared Pascal owner trains
+four original short phrases, exposes harmony/rhythm/melody public locks,
+preserves motifs through bounded selective negotiation, and independently
+validates every current composition. Native and Node hosts export score and
+composition text, MIDI, and the same project-owned four-second PCM/WAV.
+The pas2js browser host adds layer grids, a piano roll, public-token editing,
+failure evidence, user-initiated playback, and downloads. Build it with
+`build-browser-music.ps1` or `build-browser-music.sh`; serve
+`build/browser/music/www` and append `?selftest=1` for the checked workflow.
 
 ## isolated legacy music experiments
 
