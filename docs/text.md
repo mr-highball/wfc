@@ -220,15 +220,56 @@ fragments without host formatting rules. Construction rejects a punctuation
 model unless every public token is a canonical fragment, so rendering cannot
 discover an unversioned surface vocabulary only after a successful solve.
 
-After solving, the owner captures all three public-token/state-index paths and
-checks them independently against their immutable models, extents, current
-caller domains/locks, copied maps, and rendered text. Each layer validates its
-model/graph identity once, then checks the complete caller-domain path without
-repeating that adapter proof per token. When causal tracing is
-enabled, it first validates the core trace, then publishes text-domain events
-containing public tokens and numeric state identities. Private model-qualified
-`@wfcs` graph keys are
-removed from the returned solve report and never become text-domain output.
+After a complete candidate has been copied into the live entries, but before
+the graph commits it, the owner captures all three public-token/state-index
+paths and checks them independently against their immutable models, extents,
+current caller domains/locks, copied maps, and rendered text. This work runs in
+the graph's final commit hook while its entry and random-stream snapshots are
+still available. Each layer validates its model/graph identity once, then
+checks the complete caller-domain path without repeating that adapter proof per
+token. Only a validated pending result is transferred to the caller after the
+graph reports success.
+
+If capture, rendering, or independent validation rejects an active layer,
+`TryGenerate` or `TryRegenerateFrom` returns `False` with a default empty
+result. `TWfcTextPassReport.Status` remains `wtpsCaptureFailed` or
+`wtpsValidationFailed`, and `FailedLayer` plus the corresponding `Capture` or
+`Validation` record identifies the public failure. The nested generic report
+records `gssContradiction` with `gckFinalValidation`; this describes rejection
+of that complete candidate, not a proof that every assignment for the models
+is impossible.
+
+The rejected transaction restores every pass entry's value, empty/generated
+ownership, the root and pass-local random streams, and the selected-pass and
+running state. Caller-authored configuration is input rather than transaction
+output: rule edits, domains, dependencies, and graph-shape edits remain until
+the caller repairs them. Owner-level constraint edits also remain, and their
+earliest dirty layer is cleared only by a successful owner transaction.
+
+The exposed `Graph` is an advanced inspection and editing surface for the
+owner's three configured layers. The commit validator always checks all three.
+If a selective call reuses an earlier layer that an advanced graph edit has
+made invalid, the core raises `EInvalidOperation` instead of widening the
+requested scope or blaming an active descendant; entry and random-stream
+rollback still completes. Adding another graph pass is likewise rejected
+inside the rollback boundary because this owner has exactly three public
+models. Repair the graph edit and request the appropriate earlier root, or use
+the owner-level constraint methods for ordinary editing.
+
+When causal tracing is enabled, the owner validates the complete core
+chronology and publishes text-domain events containing public tokens and
+numeric state identities. A final-validation failure ends in a rollback event.
+Private model-qualified `@wfcs` graph keys are stripped from the nested solve
+report before any fallible public projection and never become text-domain
+output. If an advanced graph edit also makes token projection of the optional
+trace impossible, the capture/validation status remains the primary failure;
+the projected trace stays empty and `TraceValidation` records the secondary
+problem. With trace capture disabled, the public trace and hash remain empty.
+
+The [transaction regression suite](../test/wfc_text_pass_transaction_test.lpr)
+exercises real rule and projection edits, selective rollback, retries, and
+private trace handling. The [research record](research/text-pass-publication-v1.md)
+preserves the original counterexample and the exact acceptance boundary.
 
 The portable
 [`03_PassComposition`](../examples/text/03_PassComposition/README.md) fixture

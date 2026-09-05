@@ -17,6 +17,7 @@ for source in test/*_test.lpr; do
     -Fuexamples/passes/04_NeighborhoodCounts \
     -Fuexamples/passes/05_DeterministicRestarts \
     -Fuexamples/passes/02_TraceInspector \
+    -Fuexamples/text/03_PassComposition \
     -Fuexamples/passes/06_ConnectedRoutes \
     -Fuexamples/music/06_EnsembleStudio \
     -Fuexamples/music/07_VoiceStudio \

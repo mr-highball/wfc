@@ -23,8 +23,10 @@ $patternPassTestSource = Join-Path $repositoryRoot `
   'test/wfc_pattern2d_passes_test.lpr'
 $sequenceTestSource = Join-Path $repositoryRoot 'test/wfc_sequence_test.lpr'
 $textTestSource = Join-Path $repositoryRoot 'test/wfc_text_test.lpr'
-$textPassTestSource = Join-Path $repositoryRoot `
-  'test/wfc_text_passes_test.lpr'
+$textPassTestSources = @(
+  (Join-Path $repositoryRoot 'test/wfc_text_passes_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_text_pass_transaction_test.lpr')
+)
 $negotiationTestSource = Join-Path $repositoryRoot `
   'test/wfc_negotiation_test.lpr'
 $selectiveNegotiationTestSource = Join-Path $repositoryRoot `
@@ -624,40 +626,42 @@ if ($textTestExitCode -ne 0) {
   exit $textTestExitCode
 }
 
-$textPassTestCompilerArguments = @(
-  $CompilerOptions
-  '-B'
-  '-Mdelphi'
-  '-Sa'
-  '-Cr'
-  '-Co'
-  '-Ci'
-  "-Fu$sourceDirectory"
-  "-FU$unitOutputDirectory"
-  "-FE$binaryOutputDirectory"
-  $textPassTestSource
-)
+foreach ($textPassTestSource in $textPassTestSources) {
+  $textPassTestCompilerArguments = @(
+    $CompilerOptions
+    '-B'
+    '-Mdelphi'
+    '-Sa'
+    '-Cr'
+    '-Co'
+    '-Ci'
+    "-Fu$sourceDirectory"
+    "-Fu$textPassExampleDirectory"
+    "-FU$unitOutputDirectory"
+    "-FE$binaryOutputDirectory"
+    $textPassTestSource
+  )
 
-Write-Host 'Building the multi-pass text conformance suite.'
-& $Compiler @textPassTestCompilerArguments
-$textPassTestCompilerExitCode = $LASTEXITCODE
-if ($textPassTestCompilerExitCode -ne 0) {
-  exit $textPassTestCompilerExitCode
-}
+  Write-Host "Building the multi-pass text suite '$textPassTestSource'."
+  & $Compiler @textPassTestCompilerArguments
+  $textPassTestCompilerExitCode = $LASTEXITCODE
+  if ($textPassTestCompilerExitCode -ne 0) {
+    exit $textPassTestCompilerExitCode
+  }
 
-$textPassTestExecutableName = if ($env:OS -eq 'Windows_NT') {
-  'wfc_text_passes_test.exe'
-} else {
-  'wfc_text_passes_test'
-}
-$textPassTestExecutable = Join-Path $binaryOutputDirectory `
-  $textPassTestExecutableName
+  $textPassTestExecutableName = [IO.Path]::GetFileNameWithoutExtension($textPassTestSource)
+  if ($env:OS -eq 'Windows_NT') {
+    $textPassTestExecutableName += '.exe'
+  }
+  $textPassTestExecutable = Join-Path $binaryOutputDirectory `
+    $textPassTestExecutableName
 
-Write-Host "Running '$textPassTestExecutable'."
-& $textPassTestExecutable
-$textPassTestExitCode = $LASTEXITCODE
-if ($textPassTestExitCode -ne 0) {
-  exit $textPassTestExitCode
+  Write-Host "Running '$textPassTestExecutable'."
+  & $textPassTestExecutable
+  $textPassTestExitCode = $LASTEXITCODE
+  if ($textPassTestExitCode -ne 0) {
+    exit $textPassTestExitCode
+  }
 }
 
 $negotiationTestCompilerArguments = @(

@@ -190,6 +190,11 @@ type
     FModels: TWfcTextPassModels;
     FTokenLength: Integer;
     FDirtyFromIndex: Integer;
+    FPendingResult: TWfcTextPassResult;
+    FPendingCapture: TWfcTextPassCaptureReports;
+    FPendingValidation: TWfcTextPassValidationReport;
+    FPendingFailedLayer: TWfcTextPassLayer;
+    FPendingStatus: TWfcTextPassStatus;
     FBaselineDomains:
       array[TWfcTextPassLayer] of TWfcTextPassGraphValueDomains;
     FBaselineHasDomains:
@@ -202,10 +207,15 @@ type
     procedure Initialize(const AConfig: TWfcTextPassConfig);
     procedure CaptureBaselineDomains;
     procedure MarkDirty(const ALayer: TWfcTextPassLayer);
+    procedure ClearPendingCommit;
+    function CapturePendingCommit: Boolean;
     function FinishGeneration(const ASolved: Boolean;
       const ARawSolve: TGraphSolveReport;
       out AResult: TWfcTextPassResult;
       out AReport: TWfcTextPassReport): Boolean;
+  private
+    function ValidatePendingCommit(out AFailedPassIndex,
+      AFailedEntryIndex: Integer): Boolean;
   public
     constructor Create(const AConfig: TWfcTextPassConfig);
     destructor Destroy; override;
@@ -273,11 +283,49 @@ function DescribeWfcTextPassValidationIssue(
 implementation
 
 uses
+  Classes,
   wfc_text_codec;
+
+type
+  { Capture and public validation belong inside the graph's entry/RNG
+    transaction, while its snapshots still exist. Child pass graphs retain
+    the same owner when an advanced caller starts solving from a pass. }
+  TWfcTextPassCommitGraph = class(TGraph)
+  private
+    FOwner: TWfcTextPassPipeline;
+  strict protected
+    function DoValidateCommit(out AFailedPassIndex,
+      AFailedEntryIndex: Integer): Boolean; override;
+  public
+    constructor CreatePass(const ARoot: TGraph;
+      const APassIndex: Integer); override;
+    property Owner: TWfcTextPassPipeline read FOwner write FOwner;
+  end;
 
 const
   WFC_TEXT_PASS_FRAGMENT_PREFIX = '@wfctf1:';
   WFC_TEXT_PASS_FRAGMENT_ARTIFACT = 'WFC text pass fragment';
+
+constructor TWfcTextPassCommitGraph.CreatePass(const ARoot: TGraph;
+  const APassIndex: Integer);
+begin
+  inherited CreatePass(ARoot, APassIndex);
+  if not (ARoot is TWfcTextPassCommitGraph) then
+    raise EWfcTextPasses.Create('text pass graph root has the wrong runtime type');
+  FOwner := TWfcTextPassCommitGraph(ARoot).Owner;
+end;
+
+function TWfcTextPassCommitGraph.DoValidateCommit(
+  out AFailedPassIndex, AFailedEntryIndex: Integer): Boolean;
+begin
+  if not Assigned(FOwner) then
+  begin
+    AFailedPassIndex := Ord(wtplStructure);
+    AFailedEntryIndex := -1;
+    Exit(False);
+  end;
+  Result := FOwner.ValidatePendingCommit(AFailedPassIndex, AFailedEntryIndex);
+end;
 
 function SequenceExtentIsValid(const AExtent: TWfcSequenceExtent): Boolean;
 var
@@ -448,7 +496,8 @@ begin
   FMaps.PunctuationFromStructure := CopyProjectionRules(
     AConfig.Maps.PunctuationFromStructure);
 
-  FGraph := TGraph.Create;
+  FGraph := TWfcTextPassCommitGraph.Create;
+  TWfcTextPassCommitGraph(FGraph).Owner := Self;
   try
     FGraph.Reshape(FTokenLength, 1, 1);
     FGraph.WrapNeighbors := FExtent = wseWrap;
@@ -805,18 +854,41 @@ begin
     Ord(wtplPunctuation):
       Result := AModels.Punctuation;
   else
-    raise EWfcTextPasses.CreateFmt(
-      'text trace references an unknown pass [%d]', [APassIndex]);
+    Result := nil;
   end;
 end;
 
-procedure ProjectTextPassTrace(const AModels: TWfcTextPassModels;
-  const AEvents: TGraphTraceEvents; out AProjected: TWfcTextPassTraceEvents);
+function ProjectTextPassTrace(const AModels: TWfcTextPassModels;
+  const AEvents: TGraphTraceEvents; out AProjected: TWfcTextPassTraceEvents;
+  var AValidation: TGraphTraceValidationReport): Boolean;
 var
   I: Integer;
   LModel: TWfcSequenceModel;
 begin
   AProjected := nil;
+  //Validate the public projection before allocating or publishing any events.
+  //An advanced caller can register graph values absent from the owned model.
+  for I := 0 to High(AEvents) do
+    if AEvents[I].ValueIndex >= 0 then
+    begin
+      LModel := TraceModel(AModels, AEvents[I].PassIndex);
+      if not Assigned(LModel) then
+      begin
+        AValidation.Valid := False;
+        AValidation.Issue.Kind := gtvikPassIndex;
+        AValidation.Issue.EventIndex := I;
+        AValidation.Issue.PassIndex := AEvents[I].PassIndex;
+        Exit(False);
+      end;
+      if AEvents[I].ValueIndex >= LModel.StateCount then
+      begin
+        AValidation.Valid := False;
+        AValidation.Issue.Kind := gtvikValueIndex;
+        AValidation.Issue.EventIndex := I;
+        AValidation.Issue.PassIndex := AEvents[I].PassIndex;
+        Exit(False);
+      end;
+    end;
   SetLength(AProjected, Length(AEvents));
   for I := 0 to Length(AEvents) - 1 do
   begin
@@ -831,9 +903,6 @@ begin
     if AEvents[I].ValueIndex >= 0 then
     begin
       LModel := TraceModel(AModels, AEvents[I].PassIndex);
-      if AEvents[I].ValueIndex >= LModel.StateCount then
-        raise EWfcTextPasses.CreateFmt(
-          'text trace state index is out of bounds [%d]', [I]);
       AProjected[I].Token :=
         LModel.ProjectStateToken(AEvents[I].ValueIndex);
     end;
@@ -846,6 +915,7 @@ begin
     AProjected[I].DomainCountBefore := AEvents[I].DomainCountBefore;
     AProjected[I].DomainCountAfter := AEvents[I].DomainCountAfter;
   end;
+  Result := True;
 end;
 
 function PublishTextPassSolveReport(const AGraph: TGraph;
@@ -854,8 +924,21 @@ function PublishTextPassSolveReport(const AGraph: TGraph;
 var
   I: Integer;
   LTraceLayout: TGraphTraceLayout;
+  LProjected: TWfcTextPassTraceEvents;
 begin
   AReport.Solve := ARaw;
+  //Never expose private graph strings, including if validation or allocation
+  //raises. Detach pass summaries before clearing their legacy slice fields so
+  //the original chronological report remains intact for layout validation.
+  AReport.Solve.TraceCaptured := False;
+  AReport.Solve.TraceHash := 0;
+  AReport.Solve.Trace := nil;
+  AReport.Solve.Passes := Copy(ARaw.Passes, 0, Length(ARaw.Passes));
+  for I := 0 to Length(AReport.Solve.Passes) - 1 do
+  begin
+    AReport.Solve.Passes[I].TraceStart := -1;
+    AReport.Solve.Passes[I].TraceCount := 0;
+  end;
   AReport.TraceCaptured := ARaw.TraceCaptured;
   AReport.TraceHash := ARaw.TraceHash;
   AReport.Trace := nil;
@@ -866,60 +949,38 @@ begin
     Result := TryBuildGraphTraceLayout(AGraph, ARaw, LTraceLayout,
       AReport.TraceValidation);
     if Result then
-      ProjectTextPassTrace(AModels, ARaw.Trace, AReport.Trace);
-  end;
-
-  { The generic trace contains private graph values. Keep numeric solve
-    counters, but publish event data only through the sanitized text-domain
-    projection above. The stripped generic report must retain its ordinary
-    capture-disabled invariants. }
-  AReport.Solve.TraceCaptured := False;
-  AReport.Solve.TraceHash := 0;
-  AReport.Solve.Trace := nil;
-  for I := 0 to Length(AReport.Solve.Passes) - 1 do
-  begin
-    AReport.Solve.Passes[I].TraceStart := -1;
-    AReport.Solve.Passes[I].TraceCount := 0;
+      Result := ProjectTextPassTrace(AModels, ARaw.Trace, LProjected,
+        AReport.TraceValidation);
+    if Result then AReport.Trace := LProjected;
   end;
 end;
 
-function TWfcTextPassPipeline.FinishGeneration(const ASolved: Boolean;
-  const ARawSolve: TGraphSolveReport; out AResult: TWfcTextPassResult;
-  out AReport: TWfcTextPassReport): Boolean;
+procedure TWfcTextPassPipeline.ClearPendingCommit;
+begin
+  FPendingResult := Default(TWfcTextPassResult);
+  FPendingCapture := Default(TWfcTextPassCaptureReports);
+  InitializeValidationReport(FPendingValidation);
+  FPendingFailedLayer := wtplStructure;
+  FPendingStatus := wtpsNotRun;
+end;
+
+function TWfcTextPassPipeline.CapturePendingCommit: Boolean;
 var
   LLayer: TWfcTextPassLayer;
   LPendingResult: TWfcTextPassResult;
   LSequence: TWfcGeneratedSequence;
 begin
-  AResult := Default(TWfcTextPassResult);
   LPendingResult := Default(TWfcTextPassResult);
-  AReport := Default(TWfcTextPassReport);
-  AReport.Status := wtpsNotRun;
-  AReport.FailedLayer := wtplStructure;
-
-  if not PublishTextPassSolveReport(FGraph, FModels,
-      ARawSolve, AReport) then
-  begin
-    AReport.Status := wtpsTraceFailed;
-    Exit(False);
-  end;
-  if not ASolved then
-  begin
-    AReport.Status := wtpsSolveFailed;
-    if (ARawSolve.FailedPassIndex >= Ord(Low(TWfcTextPassLayer))) and
-        (ARawSolve.FailedPassIndex <= Ord(High(TWfcTextPassLayer))) then
-      AReport.FailedLayer :=
-        TWfcTextPassLayer(ARawSolve.FailedPassIndex);
-    Exit(False);
-  end;
-
+  if FGraph.TotalPassCount <> 3 then
+    raise EInvalidOperation.Create(
+      'text pass owner requires exactly its three configured passes');
   for LLayer := Low(TWfcTextPassLayer) to High(TWfcTextPassLayer) do
   begin
     if not CaptureSolvedSequence(GetModel(LLayer), GetLayerGraph(LLayer),
-        FExtent, LSequence, AReport.Capture[LLayer]) then
+        FExtent, LSequence, FPendingCapture[LLayer]) then
     begin
-      AReport.Status := wtpsCaptureFailed;
-      AReport.FailedLayer := LLayer;
+      FPendingStatus := wtpsCaptureFailed;
+      FPendingFailedLayer := LLayer;
       Exit(False);
     end;
     case LLayer of
@@ -932,17 +993,94 @@ begin
     end;
   end;
 
-  LPendingResult.Text := RenderWfcTextPassFragments(
-    LPendingResult.Punctuation.Tokens);
-  if not Validate(LPendingResult, AReport.Validation) then
+  try
+    LPendingResult.Text := RenderWfcTextPassFragments(
+      LPendingResult.Punctuation.Tokens);
+  except
+    on EWfcTextPasses do
+    begin
+      SetValidationIssue(FPendingValidation, wtpvikRendering,
+        wtplPunctuation, -1, wtprNone);
+      FPendingStatus := wtpsValidationFailed;
+      FPendingFailedLayer := wtplPunctuation;
+      Exit(False);
+    end;
+  end;
+  if not Validate(LPendingResult, FPendingValidation) then
   begin
-    AReport.Status := wtpsValidationFailed;
-    AReport.FailedLayer := AReport.Validation.Issue.Layer;
+    FPendingStatus := wtpsValidationFailed;
+    FPendingFailedLayer := FPendingValidation.Issue.Layer;
     Exit(False);
   end;
 
-  AResult := LPendingResult;
+  FPendingResult := LPendingResult;
+  FPendingStatus := wtpsCompleted;
+  Result := True;
+end;
+
+function TWfcTextPassPipeline.ValidatePendingCommit(
+  out AFailedPassIndex, AFailedEntryIndex: Integer): Boolean;
+begin
+  ClearPendingCommit;
+  Result := CapturePendingCommit;
+  if Result then
+  begin
+    AFailedPassIndex := -1;
+    AFailedEntryIndex := -1;
+    Exit;
+  end;
+  AFailedPassIndex := Ord(FPendingFailedLayer);
+  if FPendingStatus = wtpsCaptureFailed then
+    AFailedEntryIndex := FPendingCapture[FPendingFailedLayer].Issue.Position
+  else
+    AFailedEntryIndex := FPendingValidation.Issue.Position;
+end;
+
+function TWfcTextPassPipeline.FinishGeneration(const ASolved: Boolean;
+  const ARawSolve: TGraphSolveReport; out AResult: TWfcTextPassResult;
+  out AReport: TWfcTextPassReport): Boolean;
+var
+  LTraceValid: Boolean;
+begin
+  AResult := Default(TWfcTextPassResult);
+  AReport := Default(TWfcTextPassReport);
+  AReport.Status := wtpsNotRun;
+  AReport.FailedLayer := wtplStructure;
+  LTraceValid := PublishTextPassSolveReport(FGraph, FModels, ARawSolve, AReport);
+  //Keep domain failure evidence primary even if an advanced graph edit also
+  //makes its optional public-token trace impossible to project.
+  if not ASolved and (ARawSolve.Contradiction.Kind = gckFinalValidation) and
+    (FPendingStatus in [wtpsCaptureFailed, wtpsValidationFailed]) then
+  begin
+    AReport.Capture := FPendingCapture;
+    AReport.Validation := FPendingValidation;
+    AReport.FailedLayer := FPendingFailedLayer;
+    AReport.Status := FPendingStatus;
+    Exit(False);
+  end;
+  if not LTraceValid then
+  begin
+    AReport.Status := wtpsTraceFailed;
+    if ASolved then
+      raise EWfcTextPasses.Create('text graph committed with an invalid trace');
+    Exit(False);
+  end;
+  if not ASolved then
+  begin
+    AReport.Status := wtpsSolveFailed;
+    if (ARawSolve.FailedPassIndex >= Ord(Low(TWfcTextPassLayer))) and
+        (ARawSolve.FailedPassIndex <= Ord(High(TWfcTextPassLayer))) then
+      AReport.FailedLayer := TWfcTextPassLayer(ARawSolve.FailedPassIndex);
+    Exit(False);
+  end;
+  if FPendingStatus <> wtpsCompleted then
+    raise EWfcTextPasses.Create(
+      'text graph committed without a validated pending result');
+  AReport.Capture := FPendingCapture;
+  AReport.Validation := FPendingValidation;
   AReport.Status := wtpsCompleted;
+  AResult := FPendingResult;
+  FPendingResult := Default(TWfcTextPassResult);
   Result := True;
 end;
 
@@ -955,10 +1093,15 @@ var
 begin
   AResult := Default(TWfcTextPassResult);
   AReport := Default(TWfcTextPassReport);
-  LSolved := FGraph.TrySolve(AOptions, LRawSolve);
-  Result := FinishGeneration(LSolved, LRawSolve, AResult, AReport);
-  if Result then
-    FDirtyFromIndex := -1;
+  ClearPendingCommit;
+  try
+    LSolved := FGraph.TrySolve(AOptions, LRawSolve);
+    Result := FinishGeneration(LSolved, LRawSolve, AResult, AReport);
+    if Result then
+      FDirtyFromIndex := -1;
+  finally
+    ClearPendingCommit;
+  end;
 end;
 
 function TWfcTextPassPipeline.TryGenerate(out AResult: TWfcTextPassResult;
@@ -986,11 +1129,16 @@ begin
   if (FDirtyFromIndex >= Ord(Low(TWfcTextPassLayer))) and
       (FDirtyFromIndex < Ord(LEffectiveLayer)) then
     LEffectiveLayer := TWfcTextPassLayer(FDirtyFromIndex);
-  LSolved := FGraph.TryRegenerateFrom(WfcTextPassLayerName(LEffectiveLayer),
-    AOptions, LRawSolve);
-  Result := FinishGeneration(LSolved, LRawSolve, AResult, AReport);
-  if Result then
-    FDirtyFromIndex := -1;
+  ClearPendingCommit;
+  try
+    LSolved := FGraph.TryRegenerateFrom(WfcTextPassLayerName(LEffectiveLayer),
+      AOptions, LRawSolve);
+    Result := FinishGeneration(LSolved, LRawSolve, AResult, AReport);
+    if Result then
+      FDirtyFromIndex := -1;
+  finally
+    ClearPendingCommit;
+  end;
 end;
 
 function TWfcTextPassPipeline.TryRegenerateFrom(

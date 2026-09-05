@@ -16,6 +16,7 @@ pattern_pass_test_source="$repository_root/test/wfc_pattern2d_passes_test.lpr"
 sequence_test_source="$repository_root/test/wfc_sequence_test.lpr"
 text_test_source="$repository_root/test/wfc_text_test.lpr"
 text_pass_test_source="$repository_root/test/wfc_text_passes_test.lpr"
+text_pass_transaction_test_source="$repository_root/test/wfc_text_pass_transaction_test.lpr"
 negotiation_test_source="$repository_root/test/wfc_negotiation_test.lpr"
 selective_negotiation_test_source="$repository_root/test/wfc_selective_negotiation_test.lpr"
 voxel_test_source="$repository_root/test/wfc_voxel3d_test.lpr"
@@ -108,6 +109,7 @@ compiler_pattern_pass_test_source=$pattern_pass_test_source
 compiler_sequence_test_source=$sequence_test_source
 compiler_text_test_source=$text_test_source
 compiler_text_pass_test_source=$text_pass_test_source
+compiler_text_pass_transaction_test_source=$text_pass_transaction_test_source
 compiler_negotiation_test_source=$negotiation_test_source
 compiler_selective_negotiation_test_source=$selective_negotiation_test_source
 compiler_voxel_test_source=$voxel_test_source
@@ -198,6 +200,7 @@ case "$host_system" in
     compiler_sequence_test_source=$(cygpath -m "$sequence_test_source") || exit $?
     compiler_text_test_source=$(cygpath -m "$text_test_source") || exit $?
     compiler_text_pass_test_source=$(cygpath -m "$text_pass_test_source") || exit $?
+    compiler_text_pass_transaction_test_source=$(cygpath -m "$text_pass_transaction_test_source") || exit $?
     compiler_negotiation_test_source=$(cygpath -m "$negotiation_test_source") || exit $?
     compiler_selective_negotiation_test_source=$(cygpath -m "$selective_negotiation_test_source") || exit $?
     compiler_voxel_test_source=$(cygpath -m "$voxel_test_source") || exit $?
@@ -560,26 +563,32 @@ esac
 printf "Running '%s'.\n" "$text_test_executable"
 "$text_test_executable" || exit $?
 
-printf "Building the multi-pass text conformance suite.\n"
-"$compiler" "$@" \
-  -B \
-  -Mdelphi \
-  -Sa \
-  -Cr \
-  -Co \
-  -Ci \
-  "-Fu$compiler_source_directory" \
-  "-FU$compiler_unit_output_directory" \
-  "-FE$compiler_binary_output_directory" \
-  "$compiler_text_pass_test_source" || exit $?
+for compiler_text_pass_suite in \
+  "$compiler_text_pass_test_source" \
+  "$compiler_text_pass_transaction_test_source"
+do
+  printf "Building the multi-pass text suite '%s'.\n" "$compiler_text_pass_suite"
+  "$compiler" "$@" \
+    -B \
+    -Mdelphi \
+    -Sa \
+    -Cr \
+    -Co \
+    -Ci \
+    "-Fu$compiler_source_directory" \
+    "-Fu$compiler_text_pass_example_directory" \
+    "-FU$compiler_unit_output_directory" \
+    "-FE$compiler_binary_output_directory" \
+    "$compiler_text_pass_suite" || exit $?
 
-text_pass_test_executable="$binary_output_directory/wfc_text_passes_test"
-case "$host_system" in
-  CYGWIN*|MINGW*|MSYS*) text_pass_test_executable="${text_pass_test_executable}.exe" ;;
-esac
+  text_pass_test_executable="$binary_output_directory/$(basename "$compiler_text_pass_suite" .lpr)"
+  case "$host_system" in
+    CYGWIN*|MINGW*|MSYS*) text_pass_test_executable="${text_pass_test_executable}.exe" ;;
+  esac
 
-printf "Running '%s'.\n" "$text_pass_test_executable"
-"$text_pass_test_executable" || exit $?
+  printf "Running '%s'.\n" "$text_pass_test_executable"
+  "$text_pass_test_executable" || exit $?
+done
 
 printf "Building the bounded pass-negotiation conformance suite.\n"
 "$compiler" "$@" \

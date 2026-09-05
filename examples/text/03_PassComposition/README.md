@@ -74,16 +74,47 @@ the body with `data-state="solved"`, `data-self-test="passed"`,
 `data-trace-hash="2412171679"`, and
 `data-output="A sun rises brightly!"`.
 
-## current semantic boundary
+## transaction and semantic boundary
 
-This is an atomic, one-way staged cascade. A failed downstream pass rolls the
-whole attempted transaction back, and callers may change constraints or
-selectively regenerate a dependency closure. Public constraint edits mark their
-owner dirty; a later-only regeneration request automatically widens to the
-earliest edited provider so stale upstream state is never reused. The v1 solver does not negotiate
-backward and ask a previously solved provider to choose a different value
-during the same solve. Bounded inter-pass negotiation is a separate research
-milestone, not an implied property of this example.
+This is an atomic, one-way staged cascade through public-result validation. After all
+active passes stage a candidate, `TWfcTextPassPipeline` captures the three
+latent/public paths, renders the surface, and runs independent validation in
+the graph's final commit hook. Capture or validation failure returns `False`
+with an empty result and `wtpsCaptureFailed` or `wtpsValidationFailed`. The
+nested solve report records `gssContradiction` and `gckFinalValidation`; the
+failed public layer and position remain in the owner report.
+
+Such a rejection restores entry values and empty/generated ownership, every
+root and pass-local random stream, and the graph's selected-pass/running state.
+It does not erase caller-authored rule or domain edits. Public constraint edits
+mark their owner dirty, and a later-only regeneration request automatically
+widens to the earliest edited provider so stale upstream state is never reused.
+The dirty root remains after failure and clears only after successful owner
+publication.
+
+The `Graph` property is an advanced surface for inspecting or editing the
+owner's existing three layers. A corrupt reused provider discovered during a
+later-only selective call raises `EInvalidOperation`: the core rolls back the
+active attempt but does not silently widen its scope or attribute the failure
+to another layer. The owner also rejects an added fourth pass inside that
+rollback boundary. Repair the advanced graph edit and solve from the affected
+provider (or run the full transaction) before reuse.
+
+With trace capture enabled, final-validation rejection publishes a sanitized
+public chronology ending in rollback. Private graph values are removed from
+the nested solve report before trace projection. If an advanced graph edit
+prevents public-token projection, the capture/validation diagnosis remains
+primary, while the projected trace is empty and its validation report records
+the secondary issue.
+
+The [transaction tests](../../../test/wfc_text_pass_transaction_test.lpr) cover
+these failures and repaired retries on native FPC and pas2js. The original
+successful composition and trace signatures above remain unchanged; see the
+[boundary research record](../../../docs/research/text-pass-publication-v1.md).
+
+The v1 solver does not negotiate backward and ask a previously solved provider
+to choose a different value during the same ordinary solve. Bounded inter-pass
+negotiation is a separate facility, not an implied property of this example.
 
 The showcase corpora and cross-vocabulary semantic maps are author-supplied.
 The sequence learner discovers exact local structure inside each token stream;

@@ -100,6 +100,7 @@ The repository already contains the beginnings of the ecosystem:
 - a reusable three-pass text owner with separate structure, lexical, and
   punctuation sequence models; atomic N-source public projection maps;
   exact versioned surface fragments; independent cross-layer validation;
+  capture and semantic validation inside the entry/random-state transaction;
   private-key-safe causal traces; matching native/pas2js fixtures; and an
   interactive dependency-free browser workbench;
 - a project-owned Music Foundation v1 with an immutable exact score IR,
