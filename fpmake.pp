@@ -29,6 +29,7 @@ begin
     P.Targets.AddUnit('wfc_timing.pas');
     P.Targets.AddUnit('wfc.pas');
     P.Targets.AddUnit('wfc_trace.pas');
+    P.Targets.AddUnit('wfc_trace_stream.pas');
     P.Targets.AddUnit('wfc_model.pas');
     P.Targets.AddUnit('wfc_learn.pas');
     P.Targets.AddUnit('wfc_learn3d.pas');

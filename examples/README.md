@@ -12,7 +12,7 @@ the [roadmap](../ROADMAP.md).
 | Neighborhood counts | [passes/04_NeighborhoodCounts](passes/04_NeighborhoodCounts/README.md) | Native FPC, pas2js/browser | Composes terrain and roads into a local market probe with lower/upper count ranges, explicit matching-offset versus distinct-cell modes, flood rejection, bounded selective road repair, and stale-output invalidation. |
 | Connected routes | [passes/06_ConnectedRoutes](passes/06_ConnectedRoutes/README.md) | Native FPC/SVG, pas2js/browser | Uses solver-propagated reciprocal ports for terrain → roads → housing and multi-floor circulation, with independent BFS, alternative crossings, upstream-preserving repair, and explicit optional-component semantics. |
 | Deterministic restarts | [passes/05_DeterministicRestarts](passes/05_DeterministicRestarts/README.md) | Native FPC; shared browser conformance | Checks complete ordinary and negotiated attempts, effective seeds, fixed/capped-doubling budgets, rollback, independently sampled outputs, and replay transcripts. Optional timing is diagnostic only. |
-| Causal trace inspector | `passes/02_TraceInspector/TraceInspector.lpr` | Native FPC | Captures and validates a deterministic terrain -> settlement -> foliage transaction, prints its portable trace hash, derived pass ranges, and all 27 events, then follows a rejected foliage candidate back to its settlement provider event. A second real late-commit rejection proves rollback and a split earlier-pass layout without changing the solved golden. |
+| Causal trace inspector | [passes/02_TraceInspector](passes/02_TraceInspector/README.md) | Native FPC; shared browser conformance | Validates terrain -> settlement -> foliage, prints its hash, pass ranges and all 27 events, and follows a rejection to its provider. Proves a real late-commit rollback, then compares full capture with live delivery retaining only five events and explicitly marks outside-window causes. |
 | Bounded pass negotiation | `passes/03_PassNegotiation/PassNegotiation.lpr` | Native FPC | Proves ordinary one-way staging fails for `marsh`, then excludes that exact provider assignment and reopens terrain to commit `meadow|cottage` in two deterministic rounds. The host enforces the same counters and transcript using only repository units and the standard RTL. |
 | Multi-pass 2D world | `2D/01_MultiPassWorld/MultiPassWorld.lpr` | Native FPC | Uses the reusable 2D units, solves terrain → biome → foliage atomically, independently validates every cell/relation, and prints matching portable signatures without external dependencies. |
 | Interactive browser world | `2D/02_BrowserWorld/BrowserWorld.lpr` | pas2js/browser | Runs the same model and validator in a responsive three-layer canvas UI with seeds, wrapping, cell locks, and an exact headless-browser fixture. |
@@ -41,11 +41,12 @@ the [roadmap](../ROADMAP.md).
 
 The 2D field instrument and Building 3D workbench exercise the real browser
 target and document host. The causal-trace console inspector now proves
-portable event capture, validation, hashing, derived pass ranges, and backward
+portable event capture, live delivery, bounded windows, validation, hashing,
+derived pass ranges, and backward
 cause links. The text pass workbench adds public three-layer lineage, locks, and
 contradiction/recovery inspection. Interactive trace stepping, live global
-domain views, richer failed-clause/minimal-core explanations, streaming
-capture, and an arbitrary-corpus completion editor remain roadmap work. The
+domain views, richer failed-clause/minimal-core explanations, persisted trace
+artifacts, and an arbitrary-corpus completion editor remain roadmap work. The
 unfinished engine shell has been removed; the standard Building 3D graphical
 path is the project-owned native SVG and pas2js/Canvas2D implementation.
 
@@ -117,7 +118,10 @@ build/trace-inspector/native/bin/TraceInspector
 
 Both produce the 27-event seed-zero trace hash `73C4B9A2`, validate the report,
 and print the same backward chain from foliage event `15` to settlement event
-`13`. See [causal solve traces](../docs/traces.md) for the event schema,
+`13`. The streaming comparison delivers the same events and hash while retaining
+only IDs `22..26`; it prints dropped counts and identifies causes outside the
+window without changing their IDs. See [causal solve traces](../docs/traces.md)
+and [streaming inspection](../docs/trace-streaming.md) for the event schema,
 signature contract, query helpers, and current limits.
 
 The bounded pass-negotiation example makes the one-way failure and repaired

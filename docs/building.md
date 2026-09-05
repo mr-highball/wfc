@@ -57,8 +57,9 @@ likewise project-owned and expose no engine or renderer type. The voxel pass
 bridge, typed Building 3D owner, cross-layer validator, and shared
 native/pas2js demonstration are project-owned as well. The immutable Building
 view, fixed-integer command projection, hit testing, and SVG encoder are also
-portable project units. Causal capture, hashing, formatting, query, and
-validation are likewise project-owned Pascal in `wfc` and `wfc_trace`.
+portable project units. Causal capture, live delivery, bounded recent-event
+windows, hashing, formatting, query, and validation are likewise project-owned
+Pascal in `wfc`, `wfc_trace`, and `wfc_trace_stream`.
 The `wfcpipeline=1`, `wfcpipeline-run=1`, and `wfcpipeline-result=1` codecs,
 recipe compiler, transactional runtime, result capture, validator application,
 and command-line parsing are also shared native/pas2js Pascal. Native
@@ -127,8 +128,9 @@ Both scripts rebuild with assertions and range, overflow, and I/O checks, run
 `wfc_training_volume_workspace_test`,
 `wfc_text_training_test`, `wfc_training_workspace_test`,
 `wfc_learned_pattern_world_bundle_test`,
-`wfc_trace_reference_test`,
-`wfc_trace_test`, `wfc_trace_utility_test`, `wfc_trace_layout_test`, and
+`wfc_trace_reference_test`, `wfc_trace_reference_stream_test`,
+`wfc_trace_test`, `wfc_trace_stream_test`, `wfc_trace_window_test`,
+`wfc_trace_utility_test`, `wfc_trace_layout_test`, and
 `wfc_trace_inspector_test`, then compile and smoke-test the
 portable console examples with seed `0`, including the bounded/wrapped spatial
 dependency self-check, causal-trace inspector, bounded pass-negotiation proof,

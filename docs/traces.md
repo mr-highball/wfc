@@ -79,7 +79,7 @@ begin
 end;
 ```
 
-`DefaultGraphSolveOptions` sets `CaptureTrace` to `False`. A disabled report
+`DefaultGraphSolveOptions` sets `CaptureTrace` to `False`. A capture-disabled report
 has `TraceCaptured = False`, `TraceHash = 0`, an empty `Trace`, and a
 `TraceStart` of `-1` with `TraceCount = 0` for every pass. Its derived layout
 has no event ranges and uses `-1` for the terminal event index. With no event
@@ -87,6 +87,14 @@ chronology to inspect, validation checks those capture-disabled sentinels; it
 does not independently attest the aggregate solve lifecycle. A report returned
 by the solver retains the same assignments, counters, status, and random-stream
 position as the pre-trace solver path.
+
+Live observation is independent of retained capture. Attach a borrowed
+`TGraph.TraceSink` to receive the same events synchronously, with delivery
+counts and the whole-stream hash in `Report.TraceDelivery`. A sink does not
+change the capture-disabled fields above. The project-owned
+`TGraphTraceWindowSink` can retain a caller-sized recent suffix without retaining
+the full search. See [streaming traces](trace-streaming.md) for ownership,
+observer failures, per-attempt boundaries, and explicit window completeness.
 
 Always initialize a local `TGraphSolveOptions` with
 `DefaultGraphSolveOptions` before overriding fields. Local Pascal records are
@@ -336,16 +344,28 @@ build/trace-inspector/native/bin/TraceInspector
 
 The solved golden remains 27 events with trace hash `73C4B9A2`. The separate
 late-rejection fixture retains trace hash `B27D0AE0`.
+The inspector also delivers the original 27-event solve live with full capture
+disabled, retains only IDs `22..26`, and reports 22 dropped events plus the
+unchanged whole-stream hash. Cause IDs outside that window stay intact and are
+labelled as unavailable; the suffix is never presented as a complete trace.
 The [research record](research/chronological-trace-layout-v1.md) preserves the
 counterexample, unchanged hashes, finite tests, and representation tradeoff.
 
 ## cost and current limits
 
-Disabled capture does not allocate trace arrays or per-cell causal storage.
-Enabled kernel and public traces grow geometrically and are trimmed to their
-exact event count before publication. Memory use is therefore proportional to
-the full attempted search, including candidates restored from abandoned
-branches.
+With both capture disabled and no sink, no trace arrays or per-cell causal
+storage are allocated; the graph uses only a fixed-size recorder object.
+Full public capture grows geometrically and is trimmed to its exact event
+count before publication. It no longer duplicates the entire kernel trace.
+Retained memory is still proportional to the full attempted search, including
+candidates restored from abandoned branches. Direct numeric-kernel callers can
+also opt into full kernel capture independently.
+
+Sink-only observation retains no kernel/public event arrays or event-sized
+local/global mapping. Trace-related preparation and causal summaries require
+O(cells × values + cells + passes) storage, independent of event count. This
+does not remove the solver's ordinary model/domain/trail costs. An optional
+recent-event window adds storage proportional to its chosen capacity.
 
 Building a layout performs linear scans over the published events and owns
 only detached pass/range arrays. Its worst-case range count is proportional to
@@ -360,9 +380,10 @@ rejected report is retained. Whole-assignment chronological enumeration can be
 exponential, so production callers should set both solver and pass budgets
 before enabling complete attempt traces.
 
-Version 1 intentionally has no event cap, streaming sink, compressed artifact,
-timing data, minimal-unsatisfiable-core extraction, or counterfactual repair.
-Callers should leave capture disabled for very large production searches unless
-they intend to retain the complete evidence. Future limits or streaming must
-remain deterministic and explicitly versioned; silently dropping events would
-make a trace look complete when it is not.
+Trace v1 has no arbitrary event cap, but its IDs/counts retain their checked
+`Integer` capacity. [Delivery v1 and Window v1](trace-streaming.md) add live
+observation and explicit suffix retention without changing those event or hash
+contracts. Compressed persisted artifacts, interactive stepping, per-event
+timing, minimal-unsatisfiable-core extraction, and counterfactual repair remain
+future work. For very large searches, leave full capture disabled and choose a
+sink whose own memory and output costs fit the application.

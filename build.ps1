@@ -35,7 +35,10 @@ $voxelTestSource = Join-Path $repositoryRoot 'test/wfc_voxel3d_test.lpr'
 $buildingTestSource = Join-Path $repositoryRoot 'test/wfc_building3d_test.lpr'
 $traceTestSources = @(
   (Join-Path $repositoryRoot 'test/wfc_trace_reference_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_trace_reference_stream_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_trace_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_trace_stream_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_trace_window_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_trace_utility_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_trace_layout_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_trace_inspector_test.lpr')

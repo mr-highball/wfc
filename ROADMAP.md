@@ -59,9 +59,16 @@ The repository already contains the beginnings of the ecosystem:
   versioned derived ranges for late earlier-pass commit failures,
   provider-pass cause links, stable portable hashes, public query/validation
   helpers, and matching native/pas2js conformance fixtures;
+- synchronous Trace Delivery v1, independent of full capture, with streaming
+  through the kernel and public graph without retaining event history;
+  isolated observer failures, per-attempt hashes/counts, and a caller-sized
+  recent-event window that preserves original IDs and reports dropped evidence
+  explicitly (see [streaming traces](docs/trace-streaming.md));
 - a dependency-free shared native/pas2js console inspector that validates and
   prints a terrain -> settlement -> foliage trace, then follows a rejected
-  downstream candidate backward to its provider-pass event;
+  downstream candidate backward to its provider-pass event, demonstrates a real
+  late earlier-pass rollback, and compares full capture with live five-event
+  suffix retention on the same validated fixture;
 - a dependency-free native/pas2js Pipeline v2 fixture that contrasts bounded
   and wrapped spatial reads, independently validates terrain -> settlement and
   foliage clauses, and rejects an out-of-bounds requirement;
@@ -197,7 +204,7 @@ It is not yet the finished system described above:
   whole-transaction restart policies add local-budget recovery and elapsed
   timing, but more scalable domain representations, local-pass or selectively
   scoped restart policies, richer failed-clause/minimal-core explanations,
-  interactive stepping, and bounded or streaming trace capture remain;
+  interactive stepping, and compressed persisted trace artifacts remain;
 - pass DAGs, named overlay layers, same-coordinate and exact signed-offset
   requirements, finite any-of-neighborhood reads, selective regeneration, and
   structured dependency diagnostics are now operational; sequence maps now
@@ -406,8 +413,11 @@ lock, transactional rollback, independent validation, exact recovery, and
 matching native/pas2js layer signatures. Pass inspection and richer causal
 explanations now have a first checked vertical slice: Causal Trace v1 records
 chronological eliminations and provider links, and the console inspector walks
-one chain across passes. Interactive stepping, live domain views, complete
-failed-clause evidence, minimal contradiction sets, and streaming remain open.
+one chain across passes. Delivery v1 now emits those same events synchronously
+without retaining search history; Window v1 keeps an explicitly incomplete,
+caller-sized suffix. Interactive stepping, live domain views, complete
+failed-clause evidence, minimal contradiction sets, and persisted trace
+artifacts remain open.
 A focused spatial fixture additionally proves bounded out-of-bounds rejection
 and wrapped edge sampling for terrain consumers without adding domain knowledge
 or a runtime dependency to the core.
@@ -793,6 +803,12 @@ and stopping rule. Multi-pass models should be compared with equivalent
 flattened single-pass models using rule/state count, validation success,
 propagations, contradictions, backtracks, runtime, memory, and edit locality.
 Raw results and negative findings belong in `docs/research/` beside the prose.
+
+The [streaming trace record](docs/research/streaming-causal-traces-v1.md)
+describes event-history-free observation with unchanged causal identities and
+explicitly incomplete recent windows. It documents the bounded bookkeeping
+argument and finite native/browser comparisons, not a new search algorithm or
+an unmeasured runtime advantage.
 
 The first [Pass Negotiation v1 record](docs/research/pass-negotiation-v1.md)
 publishes its algorithm, fixed fixtures, seed set, counters, portable goldens,

@@ -22,6 +22,9 @@ selective_negotiation_test_source="$repository_root/test/wfc_selective_negotiati
 voxel_test_source="$repository_root/test/wfc_voxel3d_test.lpr"
 building_test_source="$repository_root/test/wfc_building3d_test.lpr"
 trace_reference_test_source="$repository_root/test/wfc_trace_reference_test.lpr"
+trace_reference_stream_test_source="$repository_root/test/wfc_trace_reference_stream_test.lpr"
+trace_stream_test_source="$repository_root/test/wfc_trace_stream_test.lpr"
+trace_window_test_source="$repository_root/test/wfc_trace_window_test.lpr"
 trace_test_source="$repository_root/test/wfc_trace_test.lpr"
 trace_utility_test_source="$repository_root/test/wfc_trace_utility_test.lpr"
 trace_layout_test_source="$repository_root/test/wfc_trace_layout_test.lpr"
@@ -115,6 +118,9 @@ compiler_selective_negotiation_test_source=$selective_negotiation_test_source
 compiler_voxel_test_source=$voxel_test_source
 compiler_building_test_source=$building_test_source
 compiler_trace_reference_test_source=$trace_reference_test_source
+compiler_trace_reference_stream_test_source=$trace_reference_stream_test_source
+compiler_trace_stream_test_source=$trace_stream_test_source
+compiler_trace_window_test_source=$trace_window_test_source
 compiler_trace_test_source=$trace_test_source
 compiler_trace_utility_test_source=$trace_utility_test_source
 compiler_trace_layout_test_source=$trace_layout_test_source
@@ -206,6 +212,9 @@ case "$host_system" in
     compiler_voxel_test_source=$(cygpath -m "$voxel_test_source") || exit $?
     compiler_building_test_source=$(cygpath -m "$building_test_source") || exit $?
     compiler_trace_reference_test_source=$(cygpath -m "$trace_reference_test_source") || exit $?
+    compiler_trace_reference_stream_test_source=$(cygpath -m "$trace_reference_stream_test_source") || exit $?
+    compiler_trace_stream_test_source=$(cygpath -m "$trace_stream_test_source") || exit $?
+    compiler_trace_window_test_source=$(cygpath -m "$trace_window_test_source") || exit $?
     compiler_trace_test_source=$(cygpath -m "$trace_test_source") || exit $?
     compiler_trace_utility_test_source=$(cygpath -m "$trace_utility_test_source") || exit $?
     compiler_trace_layout_test_source=$(cygpath -m "$trace_layout_test_source") || exit $?
@@ -700,6 +709,9 @@ printf "Running '%s'.\n" "$building_test_executable"
 
 for compiler_trace_suite in \
   "$compiler_trace_reference_test_source" \
+  "$compiler_trace_reference_stream_test_source" \
+  "$compiler_trace_stream_test_source" \
+  "$compiler_trace_window_test_source" \
   "$compiler_trace_test_source" \
   "$compiler_trace_utility_test_source" \
   "$compiler_trace_layout_test_source" \

@@ -88,7 +88,10 @@ schema records. With capture disabled there is no chronology to attest.
 
 The layout is an in-memory index, not a streaming trace sink or persisted
 artifact format. Full trace storage and the graph's checked index capacity
-remain real resource constraints. Streaming capture, richer clause evidence,
-and domain-state reconstruction are separate work.
+remain real resource constraints. The later, separate
+[streaming delivery and bounded-window contract](../trace-streaming.md) removes
+full-history retention from sink-only observation without changing this
+layout's complete-report validation boundary. Richer clause evidence,
+persisted artifacts, and domain-state reconstruction remain separate work.
 
 See the [API contract](../traces.md) for exact fields and usage.

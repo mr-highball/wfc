@@ -84,6 +84,8 @@ const
   WFC_TRACE_VERSION = 1;
   //Identifies the portable integer encoding used by trace signatures.
   WFC_TRACE_HASH_VERSION = 1;
+  //Delivery is separate from the unchanged Trace-v1 event/hash contract.
+  WFC_TRACE_DELIVERY_VERSION = 1;
   //Identifies the opt-in chronological pass-assignment negotiation protocol.
   //The ordinary one-way pipeline remains independently versioned above.
   WFC_PASS_NEGOTIATION_ALGORITHM_VERSION = 1;
@@ -503,6 +505,46 @@ type
 
   TGraphTraceEvents = array of TGraphTraceEvent;
 
+  TGraphTraceHeader = record
+    DeliveryVersion: Integer;
+    TraceVersion: Integer;
+    TraceHashVersion: Integer;
+    Seed: TGraphSeed;
+    RandomAlgorithmVersion: Integer;
+    SolverAlgorithmVersion: Integer;
+    GraphModelVersion: Integer;
+    PipelineAlgorithmVersion: Integer;
+    PassCount: Integer;
+  end;
+
+  TGraphTraceDeliveryStatus = (gtdsDisabled, gtdsComplete,
+    gtdsSinkFailed, gtdsInterrupted);
+  TGraphTraceDeliveryPhase = (gtdpNone, gtdpBegin, gtdpEvent, gtdpEnd);
+  TGraphTraceDelivery = record
+    Version: Integer;
+    Status: TGraphTraceDeliveryStatus;
+    //Production continues after observer failure; delivered is the accepted
+    //event prefix, not a claim that the whole transaction was delivered.
+    ProducedEventCount: Integer;
+    DeliveredEventCount: Integer;
+    TraceHash: TGraphTraceSignature;
+    FailurePhase: TGraphTraceDeliveryPhase;
+    FailureEventId: Integer;
+    FailureMessage: String;
+  end;
+
+  //Borrowed, synchronous observation. Do not mutate, draw randomness from,
+  //reenter, or destroy the graph from these callbacks. Each ordinary solve
+  //attempt (including negotiation/restart rounds) has its own Begin/End.
+  //A callback exception detaches delivery for that attempt only; it does not
+  //turn a solved graph into a contradiction or discard a retained full trace.
+  TGraphTraceSink = class
+  public
+    procedure BeginTrace(const AHeader: TGraphTraceHeader); virtual; abstract;
+    procedure AppendEvent(const AEvent: TGraphTraceEvent); virtual; abstract;
+    procedure EndTrace(const ADelivery: TGraphTraceDelivery); virtual; abstract;
+  end;
+
   TGraphPassSolveReport = record
     Decisions: Integer;
     Propagations: Integer;
@@ -536,6 +578,9 @@ type
     TraceCaptured: Boolean;
     TraceHash: TGraphTraceSignature;
     Trace: TGraphTraceEvents;
+    //Independent observation metadata. Legacy Trace fields remain empty/zero
+    //when CaptureTrace=False, even when a sink receives all events live.
+    TraceDelivery: TGraphTraceDelivery;
   end;
 
   //Pass negotiation is deliberately separate from ordinary solve status.
@@ -762,6 +807,10 @@ type
     FPassDependencies: TPassDependencies;
     FTransformSourceIndex: Integer;
     FConnectivity: TGraphConnectivityConstraints;
+    FTraceSink: TGraphTraceSink;
+
+    function GetTraceSink: TGraphTraceSink;
+    procedure SetTraceSink(const AValue: TGraphTraceSink);
 
     function AddUInt32(const A, B: Cardinal): Cardinal;
     function MultiplyUInt32(const A, B: Cardinal): Cardinal;
@@ -958,6 +1007,7 @@ type
     //True while the root pipeline is executing. PassGraph instances forward
     //this state so adapters can reject multi-step imports before any mutation.
     property Running: Boolean read GetRunning;
+    property TraceSink: TGraphTraceSink read GetTraceSink write SetTraceSink;
 
     (*
       dimension of the graph
@@ -1237,6 +1287,59 @@ type
   TGraphTraversalFrame = record
     Entry: TGraphEntry;
     NextDirection: Integer;
+  end;
+
+  TGraphValueMatrix = array of TGraphValues;
+  TGraphTraceCauseArray = array of TGraphTraceCauseKind;
+  TGraphStreamCause = record
+    EventId: Integer;
+    Kind: TGraphTraceCauseKind;
+    DependencyPassIndex: Integer;
+    ConstraintIndex: Integer;
+  end;
+  TGraphStreamCauses = array of TGraphStreamCause;
+
+  //One attempt owns this recorder. Streaming retains causal summaries per
+  //cell and per pass, never an event-index map or a hidden full event buffer.
+  TGraphTraceRecorder = class
+  private
+    FCapture: Boolean;
+    FEnabled: Boolean;
+    FSink: TGraphTraceSink;
+    FHeader: TGraphTraceHeader;
+    FDelivery: TGraphTraceDelivery;
+    FEvents: TGraphTraceEvents;
+    FCount: Integer;
+    FHash: TGraphTraceSignature;
+    FStarts: TGraphPassIndices;
+    FCounts: TGraphPassIndices;
+    FLastPassEvents: TGraphPassIndices;
+    FPassIndex: Integer;
+    FPassBeginEvent: Integer;
+    FLocalBase: Integer;
+    FValues: TGraphValues;
+    FInitialCauses: TGraphTraceCauseArray;
+    FInitialDependencies: TReferenceIntegerArray;
+    FCellCauses: TGraphStreamCauses;
+    FBacktrackCause: TGraphStreamCause;
+    procedure SinkFailed(const APhase: TGraphTraceDeliveryPhase;
+      const AEventId: Integer; const AMessage: String);
+  public
+    constructor Create(const ACapture: Boolean; const ASink: TGraphTraceSink;
+      const AReport: TGraphSolveReport);
+    procedure BeginDelivery;
+    function Append(const ASource: TGraphTraceEvent): Integer;
+    procedure ReserveTerminal;
+    function LastPassEvent(const APassIndex: Integer): Integer;
+    procedure ConfigurePass(const APassIndex, APassBeginEvent,
+      ACellCount: Integer; const AValues: TGraphValues;
+      const AInitialCauses: TGraphTraceCauseArray;
+      const AInitialDependencies: TReferenceIntegerArray);
+    procedure ReceiveReferenceEvent(const AEvent: TReferenceTraceEvent);
+    procedure Finish(var AReport: TGraphSolveReport;
+      const AInterrupted: Boolean);
+    property Enabled: Boolean read FEnabled;
+    property EventCount: Integer read FCount;
   end;
 
 {$IFNDEF PAS2JS}
@@ -1788,6 +1891,315 @@ begin
   GraphTraceHashCardinal(Result, Cardinal(Length(AReport.Passes)));
   for I := 0 to High(AReport.Trace) do
     MixGraphTraceEvent(Result, AReport.Trace[I]);
+end;
+
+constructor TGraphTraceRecorder.Create(const ACapture: Boolean;
+  const ASink: TGraphTraceSink; const AReport: TGraphSolveReport);
+var
+  I: Integer;
+begin
+  inherited Create;
+  FCapture := ACapture;
+  FSink := ASink;
+  FEnabled := ACapture or Assigned(ASink);
+  FDelivery := Default(TGraphTraceDelivery);
+  FDelivery.Version := WFC_TRACE_DELIVERY_VERSION;
+  FDelivery.FailureEventId := -1;
+  if Assigned(ASink) then
+    FDelivery.Status := gtdsComplete;
+  FHeader.DeliveryVersion := WFC_TRACE_DELIVERY_VERSION;
+  FHeader.TraceVersion := WFC_TRACE_VERSION;
+  FHeader.TraceHashVersion := WFC_TRACE_HASH_VERSION;
+  FHeader.Seed := AReport.Seed;
+  FHeader.RandomAlgorithmVersion := AReport.RandomAlgorithmVersion;
+  FHeader.SolverAlgorithmVersion := AReport.SolverAlgorithmVersion;
+  FHeader.GraphModelVersion := AReport.GraphModelVersion;
+  FHeader.PipelineAlgorithmVersion := AReport.PipelineAlgorithmVersion;
+  FHeader.PassCount := Length(AReport.Passes);
+  if not FEnabled then
+    Exit;
+  SetLength(FStarts, FHeader.PassCount);
+  SetLength(FCounts, FHeader.PassCount);
+  SetLength(FLastPassEvents, FHeader.PassCount);
+  for I := 0 to Pred(FHeader.PassCount) do
+  begin
+    FStarts[I] := -1;
+    FLastPassEvents[I] := -1;
+  end;
+  FHash := Cardinal(2166136261);
+  GraphTraceHashText(FHash, 'wfc-graph-trace');
+  GraphTraceHashCardinal(FHash, WFC_TRACE_VERSION);
+  GraphTraceHashCardinal(FHash, WFC_TRACE_HASH_VERSION);
+  GraphTraceHashCardinal(FHash, AReport.Seed);
+  GraphTraceHashCardinal(FHash, Cardinal(AReport.RandomAlgorithmVersion));
+  GraphTraceHashCardinal(FHash, Cardinal(AReport.SolverAlgorithmVersion));
+  GraphTraceHashCardinal(FHash, Cardinal(AReport.GraphModelVersion));
+  GraphTraceHashCardinal(FHash, Cardinal(AReport.PipelineAlgorithmVersion));
+  GraphTraceHashCardinal(FHash, Cardinal(FHeader.PassCount));
+end;
+
+procedure TGraphTraceRecorder.SinkFailed(
+  const APhase: TGraphTraceDeliveryPhase; const AEventId: Integer;
+  const AMessage: String);
+begin
+  FSink := nil;
+  FDelivery.Status := gtdsSinkFailed;
+  FDelivery.FailurePhase := APhase;
+  FDelivery.FailureEventId := AEventId;
+  FDelivery.FailureMessage := AMessage;
+end;
+
+procedure TGraphTraceRecorder.BeginDelivery;
+begin
+  if not Assigned(FSink) then
+    Exit;
+  try
+    FSink.BeginTrace(FHeader);
+  except
+    on E: Exception do SinkFailed(gtdpBegin, -1, E.Message);
+    else SinkFailed(gtdpBegin, -1, 'non-Pascal observer exception');
+  end;
+end;
+
+function TGraphTraceRecorder.Append(
+  const ASource: TGraphTraceEvent): Integer;
+var
+  LCapacity: Integer;
+  LEvent: TGraphTraceEvent;
+begin
+  Result := -1;
+  if not FEnabled then
+    Exit;
+  if FCount = High(Integer) then
+    raise ERangeError.Create('TrySolve::trace event identity is too large');
+  if FCapture and (FCount = Length(FEvents)) then
+  begin
+    LCapacity := Length(FEvents);
+    if LCapacity < 64 then
+      LCapacity := 64
+    else if LCapacity > High(Integer) div 2 then
+      LCapacity := High(Integer)
+    else
+      LCapacity := LCapacity * 2;
+    SetLength(FEvents, LCapacity);
+  end;
+  LEvent := ASource;
+  LEvent.EventId := FCount;
+  if (LEvent.PassIndex >= 0) and (LEvent.PassIndex < Length(FCounts)) then
+  begin
+    if FCounts[LEvent.PassIndex] = 0 then
+      FStarts[LEvent.PassIndex] := FCount;
+    Inc(FCounts[LEvent.PassIndex]);
+    FLastPassEvents[LEvent.PassIndex] := FCount;
+  end;
+  if FCapture then
+    FEvents[FCount] := LEvent;
+  Result := FCount;
+  Inc(FCount);
+  MixGraphTraceEvent(FHash, LEvent);
+  if FDelivery.Status <> gtdsDisabled then
+  begin
+    FDelivery.ProducedEventCount := FCount;
+    FDelivery.TraceHash := FHash;
+  end;
+  if not Assigned(FSink) then
+    Exit;
+  try
+    FSink.AppendEvent(LEvent);
+    Inc(FDelivery.DeliveredEventCount);
+  except
+    on E: Exception do SinkFailed(gtdpEvent, LEvent.EventId, E.Message);
+    else SinkFailed(gtdpEvent, LEvent.EventId, 'non-Pascal observer exception');
+  end;
+end;
+
+procedure TGraphTraceRecorder.ReserveTerminal;
+begin
+  if not FEnabled then
+    Exit;
+  if FCount = High(Integer) then
+    raise ERangeError.Create('TrySolve::trace event identity is too large');
+  if FCapture then
+    SetLength(FEvents, Succ(FCount));
+end;
+
+function TGraphTraceRecorder.LastPassEvent(const APassIndex: Integer): Integer;
+begin
+  Result := -1;
+  if (APassIndex >= 0) and (APassIndex < Length(FLastPassEvents)) then
+    Result := FLastPassEvents[APassIndex];
+end;
+
+procedure TGraphTraceRecorder.ConfigurePass(const APassIndex,
+  APassBeginEvent, ACellCount: Integer; const AValues: TGraphValues;
+  const AInitialCauses: TGraphTraceCauseArray;
+  const AInitialDependencies: TReferenceIntegerArray);
+var
+  I: Integer;
+begin
+  if not FEnabled then
+    Exit;
+  FPassIndex := APassIndex;
+  FPassBeginEvent := APassBeginEvent;
+  FLocalBase := FCount;
+  FValues := AValues;
+  FInitialCauses := AInitialCauses;
+  FInitialDependencies := AInitialDependencies;
+  SetLength(FCellCauses, ACellCount);
+  for I := 0 to High(FCellCauses) do
+    FCellCauses[I].EventId := -1;
+  FBacktrackCause.EventId := -1;
+end;
+
+procedure TGraphTraceRecorder.ReceiveReferenceEvent(
+  const AEvent: TReferenceTraceEvent);
+var
+  LEvent: TGraphTraceEvent;
+  LCause: TGraphStreamCause;
+  LInitialIndex: Integer;
+begin
+  if not FEnabled then
+    Exit;
+  if AEvent.EventId <> FCount - FLocalBase then
+    raise EInvalidOperation.Create('TrySolve::reference stream is not consecutive');
+  LEvent := Default(TGraphTraceEvent);
+  LEvent.EventId := -1;
+  LEvent.CauseEventId := -1;
+  LEvent.DependencyPassIndex := -1;
+  LEvent.PassIndex := FPassIndex;
+  LEvent.EntryIndex := AEvent.EntryIndex;
+  LEvent.ValueIndex := AEvent.ValueIndex;
+  LEvent.NeighborIndex := AEvent.NeighborIndex;
+  LEvent.ConstraintIndex := AEvent.ConstraintIndex;
+  case AEvent.Kind of
+    rtekInitialCandidateRemoved: LEvent.Kind := gtekInitialCandidateRemoved;
+    rtekDecision: LEvent.Kind := gtekDecision;
+    rtekCandidateRemoved: LEvent.Kind := gtekCandidateRemoved;
+    rtekContradiction: LEvent.Kind := gtekContradiction;
+    rtekBacktrack: LEvent.Kind := gtekBacktrack;
+    rtekCandidateRestored: LEvent.Kind := gtekCandidateRestored;
+    rtekSolved: LEvent.Kind := gtekPassStaged;
+  else
+    raise ERangeError.Create('TrySolve::invalid reference trace event');
+  end;
+  case AEvent.CauseKind of
+    rtckNone: LEvent.CauseKind := gtckNone;
+    rtckInitialDomain: LEvent.CauseKind := gtckCallerDomain;
+    rtckLock: LEvent.CauseKind := gtckCallerLock;
+    rtckDecision: LEvent.CauseKind := gtckDecision;
+    rtckAdjacency: LEvent.CauseKind := gtckAdjacency;
+    rtckRequiredSupport: LEvent.CauseKind := gtckRequiredSupport;
+    rtckBacktrack: LEvent.CauseKind := gtckBacktrack;
+    rtckFinalValidation: LEvent.CauseKind := gtckFinalValidation;
+    rtckExcludedAssignment: LEvent.CauseKind := gtckExactAssignmentExclusion;
+    rtckConnectivity: LEvent.CauseKind := gtckConnectivity;
+  else
+    raise ERangeError.Create('TrySolve::invalid reference trace cause');
+  end;
+  if (AEvent.CauseEventId >= 0) and (AEvent.CauseEventId < AEvent.EventId) then
+    LEvent.CauseEventId := FLocalBase + AEvent.CauseEventId;
+  if (AEvent.ValueIndex >= 0) and (AEvent.ValueIndex < Length(FValues)) then
+    LEvent.Value := FValues[AEvent.ValueIndex];
+  LEvent.HasDirection := (AEvent.Direction >= Ord(Low(TGraphDirection)))
+    and (AEvent.Direction <= Ord(High(TGraphDirection)));
+  if LEvent.HasDirection then
+    LEvent.Direction := TGraphDirection(AEvent.Direction);
+  if AEvent.DecisionDepth >= 0 then
+    LEvent.DecisionDepth := AEvent.DecisionDepth;
+  if AEvent.DomainCountBefore >= 0 then
+    LEvent.DomainCountBefore := AEvent.DomainCountBefore;
+  if AEvent.DomainCountAfter >= 0 then
+    LEvent.DomainCountAfter := AEvent.DomainCountAfter;
+  if AEvent.Kind = rtekInitialCandidateRemoved then
+  begin
+    LInitialIndex := AEvent.EntryIndex * Length(FValues) + AEvent.ValueIndex;
+    if (LInitialIndex >= 0) and (LInitialIndex < Length(FInitialCauses)) then
+    begin
+      LEvent.CauseKind := FInitialCauses[LInitialIndex];
+      LEvent.DependencyPassIndex := FInitialDependencies[LInitialIndex];
+      if LEvent.CauseKind = gtckPassDependency then
+      begin
+        LEvent.CauseEventId := LastPassEvent(LEvent.DependencyPassIndex);
+        if LEvent.CauseEventId < 0 then
+          LEvent.CauseEventId := FPassBeginEvent;
+      end;
+    end;
+  end;
+  //Only decisions and initial contradictions inherit a refined public cause.
+  //Their causes are the last change of this cell or the retained backtrack
+  //summary; arbitrary history lookup is neither needed nor retained.
+  if (LEvent.CauseEventId >= 0) and ((AEvent.Kind = rtekDecision) or
+    ((AEvent.Kind = rtekContradiction) and
+      (AEvent.CauseKind in [rtckInitialDomain, rtckLock]))) then
+  begin
+    LCause.EventId := -1;
+    if (AEvent.EntryIndex >= 0) and (AEvent.EntryIndex < Length(FCellCauses)) then
+      LCause := FCellCauses[AEvent.EntryIndex];
+    if LCause.EventId <> LEvent.CauseEventId then
+      LCause := FBacktrackCause;
+    if LCause.EventId <> LEvent.CauseEventId then
+      raise EInvalidOperation.Create('TrySolve::reference stream cause summary is missing');
+    LEvent.CauseKind := LCause.Kind;
+    if AEvent.Kind = rtekDecision then
+      LEvent.ConstraintIndex := LCause.ConstraintIndex
+    else if LEvent.CauseKind = gtckPassDependency then
+      LEvent.DependencyPassIndex := LCause.DependencyPassIndex;
+  end;
+  if AEvent.Kind = rtekSolved then
+  begin
+    LEvent.CauseKind := gtckTransaction;
+    LEvent.EntryIndex := -1;
+    LEvent.ValueIndex := -1;
+    LEvent.Value := TGraphValue.Empty;
+    LEvent.NeighborIndex := -1;
+    LEvent.HasDirection := False;
+    LEvent.Direction := gdNorth;
+    LEvent.DependencyPassIndex := -1;
+    LEvent.DecisionDepth := 0;
+    LEvent.DomainCountBefore := 0;
+    LEvent.DomainCountAfter := 0;
+    LEvent.ConstraintIndex := -1;
+  end;
+  LCause.EventId := Append(LEvent);
+  LCause.Kind := LEvent.CauseKind;
+  LCause.DependencyPassIndex := LEvent.DependencyPassIndex;
+  LCause.ConstraintIndex := LEvent.ConstraintIndex;
+  if AEvent.Kind in [rtekInitialCandidateRemoved, rtekCandidateRemoved,
+    rtekCandidateRestored] then
+    FCellCauses[AEvent.EntryIndex] := LCause
+  else if AEvent.Kind = rtekBacktrack then
+    FBacktrackCause := LCause;
+end;
+
+procedure TGraphTraceRecorder.Finish(var AReport: TGraphSolveReport;
+  const AInterrupted: Boolean);
+var
+  I: Integer;
+begin
+  if FCapture then
+  begin
+    SetLength(FEvents, FCount);
+    AReport.Trace := FEvents;
+    AReport.TraceHash := FHash;
+    for I := 0 to High(AReport.Passes) do
+    begin
+      AReport.Passes[I].TraceStart := FStarts[I];
+      AReport.Passes[I].TraceCount := FCounts[I];
+    end;
+  end;
+  if Assigned(FSink) then
+  begin
+    if AInterrupted then
+      FDelivery.Status := gtdsInterrupted;
+    FDelivery.TraceHash := FHash;
+    try
+      FSink.EndTrace(FDelivery);
+    except
+      on E: Exception do SinkFailed(gtdpEnd, -1, E.Message);
+      else SinkFailed(gtdpEnd, -1, 'non-Pascal observer exception');
+    end;
+  end;
+  AReport.TraceDelivery := FDelivery;
 end;
 
 function CalculateGraphNegotiationTranscriptHash(
@@ -3927,6 +4339,26 @@ begin
     Result := FRunning;
 end;
 
+function TGraph.GetTraceSink: TGraphTraceSink;
+begin
+  if Assigned(FPassRoot) then
+    Result := FPassRoot.FTraceSink
+  else
+    Result := FTraceSink;
+end;
+
+procedure TGraph.SetTraceSink(const AValue: TGraphTraceSink);
+begin
+  if Assigned(FPassRoot) then
+  begin
+    FPassRoot.SetTraceSink(AValue);
+    Exit;
+  end;
+  if FRunning then
+    raise EInvalidOperation.Create('TraceSink::cannot change while the pipeline is running');
+  FTraceSink := AValue;
+end;
+
 function TGraph.GetSelectionCallback: TValueSelectionCallback;
 begin
   Result := GetActivePassGraph.FSel;
@@ -5952,8 +6384,6 @@ function TGraph.TrySolveAttempt(const AOptions: TGraphSolveOptions;
   out AAssignments: TValueIndexMatrix;
   out AReport: TGraphSolveReport): Boolean;
 type
-  TGraphValueMatrix = array of TGraphValues;
-  TGraphTraceCauseArray = array of TGraphTraceCauseKind;
   TRandomStateArray = array of TRandomState;
   TEntryState = record
     Value: TGraphValue;
@@ -5993,9 +6423,10 @@ var
   LNeighborSnapshots: TPassNeighborStates;
   LStaged: TGraphValueMatrix;
   LTraceCauseEventId: Integer;
-  LTraceCount: Integer;
+  LTraceRecorder: TGraphTraceRecorder;
+  LTraceInterrupted: Boolean;
+  LReferenceSink: TReferenceTraceEventSink;
   LTraceEvent: TGraphTraceEvent;
-  LTraceHash: TGraphTraceSignature;
   LRequirementFailureNamed: TReferenceByteArray;
   LRequirementFailurePass: TReferenceIntegerArray;
 
@@ -6007,21 +6438,6 @@ var
     if (A <> 0) and (B > High(Integer) div A) then
       raise ERangeError.Create(ALabel + ' is too large');
     Result := A * B;
-  end;
-
-  procedure TraceHashCardinal(const AValue: Cardinal);
-  begin
-    GraphTraceHashCardinal(LTraceHash, AValue);
-  end;
-
-  procedure TraceHashText(const AValue: String);
-  begin
-    GraphTraceHashText(LTraceHash, AValue);
-  end;
-
-  procedure HashTraceEvent(const AEvent: TGraphTraceEvent);
-  begin
-    MixGraphTraceEvent(LTraceHash, AEvent);
   end;
 
   function NewTraceEvent(const AKind: TGraphTraceEventKind;
@@ -6047,66 +6463,14 @@ var
     Result.ConstraintIndex := -1;
   end;
 
-  function AppendTraceEvent(
-    const ASource: TGraphTraceEvent): Integer;
-  var
-    LCapacity: Integer;
-    LEvent: TGraphTraceEvent;
-    LGraphForEvent: TGraph;
-    LIndex: Integer;
+  function AppendTraceEvent(const ASource: TGraphTraceEvent): Integer;
   begin
-    Result := -1;
-    if not AOptions.CaptureTrace then
-      Exit;
-
-    LEvent := ASource;
-    if LTraceCount = High(Integer) then
-      raise ERangeError.Create('TrySolve::trace is too large');
-    if LTraceCount = Length(AReport.Trace) then
-    begin
-      LCapacity := Length(AReport.Trace);
-      if LCapacity < 64 then
-        LCapacity := 64
-      else if LCapacity > High(Integer) div 2 then
-        LCapacity := High(Integer)
-      else
-        LCapacity := LCapacity * 2;
-      SetLength(AReport.Trace, LCapacity);
-    end;
-    LIndex := LTraceCount;
-    LEvent.EventId := LIndex;
-    if (LEvent.PassIndex >= 0)
-      and (LEvent.PassIndex < FPasses.Count) then
-    begin
-      LGraphForEvent := FPasses[LEvent.PassIndex];
-      if (LEvent.ValueIndex >= 0)
-        and (LEvent.ValueIndex < Length(LGraphForEvent.FValues)) then
-        LEvent.Value := LGraphForEvent.FValues[LEvent.ValueIndex]
-      else
-        LEvent.Value := TGraphValue.Empty;
-      if AReport.Passes[LEvent.PassIndex].TraceCount = 0 then
-        AReport.Passes[LEvent.PassIndex].TraceStart := LIndex;
-      Inc(AReport.Passes[LEvent.PassIndex].TraceCount);
-    end
-    else
-      LEvent.Value := TGraphValue.Empty;
-
-    AReport.Trace[LIndex] := LEvent;
-    Inc(LTraceCount);
-    HashTraceEvent(LEvent);
-    AReport.TraceHash := LTraceHash;
-    Result := LIndex;
+    Result := LTraceRecorder.Append(ASource);
   end;
 
   procedure ReserveTerminalTraceSlot;
   begin
-    if not AOptions.CaptureTrace then
-      Exit;
-    if LTraceCount = High(Integer) then
-      raise ERangeError.Create('TrySolve::trace is too large');
-    //Resize before live entry mutation. The terminal append then overwrites
-    //this initialized spare slot and cannot trigger a post-commit allocation.
-    SetLength(AReport.Trace, Succ(LTraceCount));
+    LTraceRecorder.ReserveTerminal;
   end;
 
   procedure InitializeReport;
@@ -6133,7 +6497,9 @@ var
     AReport.TraceCaptured := AOptions.CaptureTrace;
     AReport.TraceHash := 0;
     SetLength(AReport.Trace, 0);
-    LTraceCount := 0;
+    AReport.TraceDelivery := Default(TGraphTraceDelivery);
+    AReport.TraceDelivery.Version := WFC_TRACE_DELIVERY_VERSION;
+    AReport.TraceDelivery.FailureEventId := -1;
     for I := 0 to High(AReport.Passes) do
     begin
       AReport.Passes[I].Decisions := 0;
@@ -6146,21 +6512,6 @@ var
       AReport.Passes[I].Disposition := gpdNotRun;
       AReport.Passes[I].TraceStart := -1;
       AReport.Passes[I].TraceCount := 0;
-    end;
-    LTraceHash := 0;
-    if AOptions.CaptureTrace then
-    begin
-      LTraceHash := Cardinal(2166136261);
-      TraceHashText('wfc-graph-trace');
-      TraceHashCardinal(WFC_TRACE_VERSION);
-      TraceHashCardinal(WFC_TRACE_HASH_VERSION);
-      TraceHashCardinal(AReport.Seed);
-      TraceHashCardinal(Cardinal(AReport.RandomAlgorithmVersion));
-      TraceHashCardinal(Cardinal(AReport.SolverAlgorithmVersion));
-      TraceHashCardinal(Cardinal(AReport.GraphModelVersion));
-      TraceHashCardinal(Cardinal(AReport.PipelineAlgorithmVersion));
-      TraceHashCardinal(Cardinal(Length(AReport.Passes)));
-      AReport.TraceHash := LTraceHash;
     end;
   end;
 
@@ -6550,7 +6901,7 @@ var
     SetLength(AModel.LockedValues, AModel.CellCount);
     SetLength(ARequirementFailurePass, AModel.CellCount);
     SetLength(ARequirementFailureNamed, AModel.CellCount);
-    if AOptions.CaptureTrace then
+    if LTraceRecorder.Enabled then
     begin
       SetLength(AInitialTraceCauses, LCellValueCount);
       SetLength(AInitialTraceDependencyPasses, LCellValueCount);
@@ -6717,14 +7068,14 @@ var
         LTraceIndex := (LCell * AModel.ValueCount) + LValue;
         LValueFailurePass := -1;
         LAllowed := (LLockValue < 0) or (LLockValue = LValue);
-        if AOptions.CaptureTrace and (not LAllowed) then
+        if LTraceRecorder.Enabled and (not LAllowed) then
           AInitialTraceCauses[LTraceIndex] := gtckCallerLock;
         if LAllowed and AGraph.FEntries[LCell].FHasAllowedValues then
         begin
           LAllowed := ContainsGraphValue(
             AGraph.FEntries[LCell].FAllowedValues,
             AGraph.FValues[LValue]);
-          if AOptions.CaptureTrace and (not LAllowed) then
+          if LTraceRecorder.Enabled and (not LAllowed) then
             AInitialTraceCauses[LTraceIndex] := gtckCallerDomain;
         end;
         LGroup := AGraph.FRuleGroups[AGraph.FValues[LValue]];
@@ -6777,7 +7128,7 @@ var
             end;
           end;
           LAllowed := LRequirementsAllowed;
-          if AOptions.CaptureTrace and (not LAllowed) then
+          if LTraceRecorder.Enabled and (not LAllowed) then
           begin
             AInitialTraceCauses[LTraceIndex] := gtckPassDependency;
             AInitialTraceDependencyPasses[LTraceIndex] :=
@@ -6828,190 +7179,9 @@ var
     end;
   end;
 
-  function PublicTraceEventKind(
-    const AKind: TReferenceTraceEventKind): TGraphTraceEventKind;
-  begin
-    case AKind of
-      rtekInitialCandidateRemoved:
-        Result := gtekInitialCandidateRemoved;
-      rtekDecision:
-        Result := gtekDecision;
-      rtekCandidateRemoved:
-        Result := gtekCandidateRemoved;
-      rtekContradiction:
-        Result := gtekContradiction;
-      rtekBacktrack:
-        Result := gtekBacktrack;
-      rtekCandidateRestored:
-        Result := gtekCandidateRestored;
-      rtekSolved:
-        Result := gtekPassStaged;
-    else
-      raise ERangeError.Create('TrySolve::invalid reference trace event');
-    end;
-  end;
-
-  function PublicTraceCauseKind(
-    const AKind: TReferenceTraceCauseKind): TGraphTraceCauseKind;
-  begin
-    case AKind of
-      rtckNone:
-        Result := gtckNone;
-      rtckInitialDomain:
-        Result := gtckCallerDomain;
-      rtckLock:
-        Result := gtckCallerLock;
-      rtckDecision:
-        Result := gtckDecision;
-      rtckAdjacency:
-        Result := gtckAdjacency;
-      rtckRequiredSupport:
-        Result := gtckRequiredSupport;
-      rtckBacktrack:
-        Result := gtckBacktrack;
-      rtckFinalValidation:
-        Result := gtckFinalValidation;
-      rtckExcludedAssignment:
-        Result := gtckExactAssignmentExclusion;
-      rtckConnectivity:
-        Result := gtckConnectivity;
-    else
-      raise ERangeError.Create('TrySolve::invalid reference trace cause');
-    end;
-  end;
-
   function LastPassTraceEvent(const APassIndex: Integer): Integer;
   begin
-    Result := -1;
-    if (APassIndex < 0) or (APassIndex >= Length(AReport.Passes))
-      or (AReport.Passes[APassIndex].TraceCount = 0) then
-      Exit;
-    Result := AReport.Passes[APassIndex].TraceStart
-      + Pred(AReport.Passes[APassIndex].TraceCount);
-  end;
-
-  procedure MapReferenceTrace(const APassIndex, APassBeginEvent: Integer;
-    const AGraph: TGraph; const AReference: TReferenceSolveReport;
-    const AInitialCauses: TGraphTraceCauseArray;
-    const AInitialDependencyPasses: TReferenceIntegerArray);
-  var
-    I: Integer;
-    LInitialIndex: Integer;
-    LLocalToGlobal: TReferenceIntegerArray;
-    LReferenceEvent: TReferenceTraceEvent;
-    LTraceEvent: TGraphTraceEvent;
-  begin
-    if not AOptions.CaptureTrace then
-      Exit;
-    SetLength(LLocalToGlobal, Length(AReference.Trace));
-    for I := 0 to High(LLocalToGlobal) do
-      LLocalToGlobal[I] := -1;
-
-    for I := 0 to High(AReference.Trace) do
-    begin
-      LReferenceEvent := AReference.Trace[I];
-      LTraceEvent := NewTraceEvent(
-        PublicTraceEventKind(LReferenceEvent.Kind),
-        PublicTraceCauseKind(LReferenceEvent.CauseKind), APassIndex);
-      if (LReferenceEvent.CauseEventId >= 0)
-        and (LReferenceEvent.CauseEventId < I) then
-        LTraceEvent.CauseEventId :=
-          LLocalToGlobal[LReferenceEvent.CauseEventId]
-      else
-        LTraceEvent.CauseEventId := -1;
-      LTraceEvent.EntryIndex := LReferenceEvent.EntryIndex;
-      LTraceEvent.ValueIndex := LReferenceEvent.ValueIndex;
-      LTraceEvent.NeighborIndex := LReferenceEvent.NeighborIndex;
-      LTraceEvent.ConstraintIndex := LReferenceEvent.ConstraintIndex;
-      if (LReferenceEvent.Direction >= Ord(Low(TGraphDirection)))
-        and (LReferenceEvent.Direction <= Ord(High(TGraphDirection))) then
-      begin
-        LTraceEvent.HasDirection := True;
-        LTraceEvent.Direction :=
-          TGraphDirection(LReferenceEvent.Direction);
-      end;
-      if LReferenceEvent.DecisionDepth >= 0 then
-        LTraceEvent.DecisionDepth := LReferenceEvent.DecisionDepth;
-      if LReferenceEvent.DomainCountBefore >= 0 then
-        LTraceEvent.DomainCountBefore :=
-          LReferenceEvent.DomainCountBefore;
-      if LReferenceEvent.DomainCountAfter >= 0 then
-        LTraceEvent.DomainCountAfter :=
-          LReferenceEvent.DomainCountAfter;
-
-      if LReferenceEvent.Kind = rtekInitialCandidateRemoved then
-      begin
-        LInitialIndex := (LReferenceEvent.EntryIndex
-          * Length(AGraph.FValues)) + LReferenceEvent.ValueIndex;
-        if (LInitialIndex >= 0)
-          and (LInitialIndex < Length(AInitialCauses)) then
-        begin
-          LTraceEvent.CauseKind := AInitialCauses[LInitialIndex];
-          LTraceEvent.DependencyPassIndex :=
-            AInitialDependencyPasses[LInitialIndex];
-          if LTraceEvent.CauseKind = gtckPassDependency then
-          begin
-            LTraceEvent.CauseEventId := LastPassTraceEvent(
-              LTraceEvent.DependencyPassIndex);
-            if LTraceEvent.CauseEventId < 0 then
-              LTraceEvent.CauseEventId := APassBeginEvent;
-          end;
-        end;
-      end;
-
-      //Initial-domain causes are refined above into caller-domain or
-      //pass-dependency causes. A decision can point at one of those refined
-      //events, so inherit the public cause kind from the mapped event instead
-      //of retaining the kernel's less-specific initial-domain classification.
-      //Retry decisions similarly inherit the mapped backtrack classification.
-      if (LReferenceEvent.Kind = rtekDecision)
-        and (LTraceEvent.CauseEventId >= 0)
-        and (LTraceEvent.CauseEventId < Length(AReport.Trace)) then
-      begin
-        LTraceEvent.CauseKind :=
-          AReport.Trace[LTraceEvent.CauseEventId].CauseKind;
-        LTraceEvent.ConstraintIndex :=
-          AReport.Trace[LTraceEvent.CauseEventId].ConstraintIndex;
-      end;
-
-      //An initialization contradiction inherits the kernel classification of
-      //its final removal. That removal may have been refined above from the
-      //generic initial-domain cause into a pass dependency, so carry the
-      //public classification and provider through to the contradiction too.
-      if (LReferenceEvent.Kind = rtekContradiction)
-        and (LReferenceEvent.CauseKind in
-          [rtckInitialDomain, rtckLock])
-        and (LTraceEvent.CauseEventId >= 0)
-        and (LTraceEvent.CauseEventId < Length(AReport.Trace)) then
-      begin
-        LTraceEvent.CauseKind :=
-          AReport.Trace[LTraceEvent.CauseEventId].CauseKind;
-        if LTraceEvent.CauseKind = gtckPassDependency then
-          LTraceEvent.DependencyPassIndex :=
-            AReport.Trace[LTraceEvent.CauseEventId].DependencyPassIndex;
-      end;
-
-      //The kernel's solved marker carries the last changed cell as useful
-      //internal context. The public event represents pass-level staging, so
-      //keep only its causal link and normalize all cell-domain fields.
-      if LReferenceEvent.Kind = rtekSolved then
-      begin
-        LTraceEvent.CauseKind := gtckTransaction;
-        LTraceEvent.EntryIndex := -1;
-        LTraceEvent.ValueIndex := -1;
-        LTraceEvent.Value := TGraphValue.Empty;
-        LTraceEvent.NeighborIndex := -1;
-        LTraceEvent.HasDirection := False;
-        LTraceEvent.Direction := gdNorth;
-        LTraceEvent.DependencyPassIndex := -1;
-        LTraceEvent.DecisionDepth := 0;
-        LTraceEvent.DomainCountBefore := 0;
-        LTraceEvent.DomainCountAfter := 0;
-        LTraceEvent.ConstraintIndex := -1;
-      end;
-
-      LLocalToGlobal[I] := AppendTraceEvent(LTraceEvent);
-    end;
+    Result := LTraceRecorder.LastPassEvent(APassIndex);
   end;
 
   procedure CopyPassReport(const APassIndex: Integer;
@@ -7370,18 +7540,28 @@ begin
     begin
       StageExistingPass(I, FPasses[I]);
       AReport.Passes[I].Disposition := gpdReused;
-      LTraceEvent := NewTraceEvent(gtekPassSkipped,
-        gtckTransaction, I);
-      AppendTraceEvent(LTraceEvent);
     end;
   LSavedPassIndex := FCurPassIndex;
   LRootRandomState := FRandomState;
   SetLength(LRandomStates, FPasses.Count);
   for I := 0 to Pred(FPasses.Count) do
     LRandomStates[I] := FPasses[I].FRandomState;
+  LTraceRecorder := TGraphTraceRecorder.Create(AOptions.CaptureTrace,
+    FTraceSink, AReport);
+  LTraceInterrupted := False;
   FRunning := True;
   FExecutingPassIndex := -1;
   try
+   try
+    LTraceRecorder.BeginDelivery;
+    //Reused-provider events are still the same chronological prefix, but
+    //observers now run inside the non-reentrant transaction boundary.
+    for I := 0 to Pred(FPasses.Count) do
+      if ADirty[I] = 0 then
+      begin
+        LTraceEvent := NewTraceEvent(gtekPassSkipped, gtckTransaction, I);
+        AppendTraceEvent(LTraceEvent);
+      end;
     EnsureSeedInitialized;
     for I := 0 to Pred(FPasses.Count) do
       if ADirty[I] <> 0 then
@@ -7497,13 +7677,16 @@ begin
             Length(AExclusions[LPassIndex][I]));
       end;
 
+      LTraceRecorder.ConfigurePass(LPassIndex, LPassBeginEvent,
+        LGraph.FEntries.Count, LGraph.FValues, LInitialTraceCauses,
+        LInitialTraceDependencyPasses);
+      LReferenceSink := nil;
+      if LTraceRecorder.Enabled then
+        LReferenceSink := LTraceRecorder.ReceiveReferenceEvent;
       if not SolveReferenceModel(LModel, AOptions.MaxBacktracks,
-        AOptions.CaptureTrace, LGraph.RandomIndex,
+        False, LReferenceSink, LGraph.RandomIndex,
         LAssignment, LReferenceReport) then
       begin
-        MapReferenceTrace(LPassIndex, LPassBeginEvent, LGraph,
-          LReferenceReport, LInitialTraceCauses,
-          LInitialTraceDependencyPasses);
         CopyPassReport(LPassIndex, LReferenceReport);
         SetReferenceFailure(LPassIndex, LReferenceReport);
         LTraceEvent := NewTraceEvent(gtekPassFailed,
@@ -7512,9 +7695,6 @@ begin
         AppendTraceEvent(LTraceEvent);
         Exit(False);
       end;
-      MapReferenceTrace(LPassIndex, LPassBeginEvent, LGraph,
-        LReferenceReport, LInitialTraceCauses,
-        LInitialTraceDependencyPasses);
       CopyPassReport(LPassIndex, LReferenceReport);
       AReport.Passes[LPassIndex].Disposition := gpdSolved;
 
@@ -7613,28 +7793,48 @@ begin
     AReport.Contradiction.DependencyPassIndex := -1;
     LTraceEvent := NewTraceEvent(gtekPipelineCommit,
       gtckTransaction, -1);
-    LTraceEvent.CauseEventId := Pred(LTraceCount);
+    LTraceEvent.CauseEventId := Pred(LTraceRecorder.EventCount);
     AppendTraceEvent(LTraceEvent);
     Result := True;
+   except
+    LTraceInterrupted := True;
+    raise;
+   end;
   finally
-    if not LCommitted then
-    begin
-      LTraceEvent := NewTraceEvent(gtekPipelineRollback,
-        gtckTransaction, -1);
-      LTraceEvent.CauseEventId := Pred(LTraceCount);
-      AppendTraceEvent(LTraceEvent);
-      FRandomState := LRootRandomState;
-      for I := 0 to Pred(FPasses.Count) do
-        FPasses[I].FRandomState := LRandomStates[I];
+    try
+      try
+        try
+          if not LCommitted then
+          begin
+            LTraceEvent := NewTraceEvent(gtekPipelineRollback,
+              gtckTransaction, -1);
+            LTraceEvent.CauseEventId := Pred(LTraceRecorder.EventCount);
+            AppendTraceEvent(LTraceEvent);
+          end;
+        except
+          LTraceInterrupted := True;
+          raise;
+        end;
+      finally
+        //An exhausted event identity cannot encode another rollback event,
+        //but the delivery footer must still identify the interrupted prefix.
+        LTraceRecorder.Finish(AReport, LTraceInterrupted);
+      end;
+    finally
+      //Observer failures are contained above, and even a producer allocation
+      //or event-identity exception cannot strand RNG or Running state here.
+      if not LCommitted then
+      begin
+        FRandomState := LRootRandomState;
+        for I := 0 to Pred(FPasses.Count) do
+          FPasses[I].FRandomState := LRandomStates[I];
+      end;
+      FExecutingPassIndex := -1;
+      FCurPassIndex := LSavedPassIndex;
+      FCurPass := PassLabelFromIndex(LSavedPassIndex);
+      FRunning := False;
+      LTraceRecorder.Free;
     end;
-    if AOptions.CaptureTrace then
-      SetLength(AReport.Trace, LTraceCount)
-    else
-      AReport.Trace := nil;
-    FExecutingPassIndex := -1;
-    FCurPassIndex := LSavedPassIndex;
-    FCurPass := PassLabelFromIndex(LSavedPassIndex);
-    FRunning := False;
   end;
 end;
 

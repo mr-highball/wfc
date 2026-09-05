@@ -29,7 +29,7 @@ uses
   wfc_music_ensemble_stream, wfc_music_ensemble_audio, wfc_midi_stream,
   wfc_music_ensemble_midi, wfc_music_voices_graph, wfc_music_voices_training,
   wfc_music_voices_stream, wfc_connectivity_reference, wfc_learn3d,
-  wfc_terraces3d, wfc_terraces3d_view;
+  wfc_terraces3d, wfc_terraces3d_view, wfc_trace_stream;
 
 implementation
 

@@ -34,7 +34,8 @@ implementation
 uses
   SysUtils,
   wfc,
-  wfc_trace;
+  wfc_trace,
+  wfc_trace_stream;
 
 const
   DEMO_WIDTH = 4;
@@ -42,6 +43,7 @@ const
   EXPECTED_TRACE_HASH = TGraphTraceSignature($73C4B9A2);
   LATE_FAILURE_SEED = TGraphSeed(55);
   EXPECTED_LATE_FAILURE_HASH = TGraphTraceSignature($B27D0AE0);
+  STREAM_WINDOW_CAPACITY = 5;
 
   PASS_TERRAIN = 'terrain';
   PASS_SETTLEMENT = 'settlement';
@@ -59,6 +61,12 @@ const
 
 type
   ETraceInspector = class(Exception);
+
+  TInspectorLiveSink = class(TGraphTraceWindowSink)
+  public
+    Graph: TGraph;
+    procedure AppendEvent(const AEvent: TGraphTraceEvent); override;
+  end;
 
   TInspectorRejectingGraph = class(TGraph)
   protected
@@ -80,6 +88,16 @@ procedure Require(const ACondition: Boolean; const AMessage: String);
 begin
   if not ACondition then
     raise ETraceInspector.Create(AMessage);
+end;
+
+procedure TInspectorLiveSink.AppendEvent(const AEvent: TGraphTraceEvent);
+begin
+  inherited AppendEvent(AEvent);
+  Require(Assigned(Graph) and Graph.Running,
+    'stream callback was not delivered during the guarded transaction');
+  //This is called while the solver is working, not by replaying Report.Trace.
+  //The inherited sink retains only the newest configured number of events.
+  WriteLn('  live ', FormatGraphTraceEvent(AEvent));
 end;
 
 function TInspectorRejectingGraph.DoValidateCommit(
@@ -355,7 +373,8 @@ begin
     (A.DependencyPassIndex = B.DependencyPassIndex) and
     (A.DecisionDepth = B.DecisionDepth) and
     (A.DomainCountBefore = B.DomainCountBefore) and
-    (A.DomainCountAfter = B.DomainCountAfter);
+    (A.DomainCountAfter = B.DomainCountAfter) and
+    (A.ConstraintIndex = B.ConstraintIndex);
 end;
 
 procedure RequireDeterministicReplay(const A, B: TInspectorRun);
@@ -524,6 +543,111 @@ begin
     ' event=', ARun.ChainProviderEventId);
 end;
 
+procedure RunStreamingWindowExample(const AOracle: TInspectorRun);
+var
+  LGraph: TGraph;
+  LSink: TInspectorLiveSink;
+  LOptions: TGraphSolveOptions;
+  LReport: TGraphSolveReport;
+  LEvents: TGraphTraceEvents;
+  I, LFirstEventId, LOutsideCauses: Integer;
+begin
+  Require((Length(AOracle.Report.Trace) = 27) and
+      (AOracle.Report.TraceHash = EXPECTED_TRACE_HASH),
+    'the small full-trace comparison fixture changed');
+  LGraph := TGraph.Create;
+  LSink := nil;
+  try
+    ConfigureGraph(LGraph);
+    LSink := TInspectorLiveSink.Create(STREAM_WINDOW_CAPACITY);
+    LSink.Graph := LGraph;
+    LGraph.TraceSink := LSink;
+    LOptions := DefaultGraphSolveOptions;
+    LOptions.CaptureTrace := False;
+
+    WriteLn('Live stream: terrain -> settlement -> foliage');
+    WriteLn('  capture=false window-capacity=', LSink.Capacity,
+      ' (synchronous callbacks, not an interactive stepper)');
+    Require(LGraph.TrySolve(LOptions, LReport),
+      'streamed pass pipeline did not solve');
+    ValidateLayers(LGraph);
+    Require((CaptureLayer(LGraph, 0) = AOracle.Terrain) and
+        (CaptureLayer(LGraph, 1) = AOracle.Settlement) and
+        (CaptureLayer(LGraph, 2) = AOracle.Foliage),
+      'stream observation changed a solved layer');
+    Require(not LReport.TraceCaptured and (Length(LReport.Trace) = 0) and
+        (LReport.TraceHash = 0),
+      'streamed attempt unexpectedly retained legacy full-trace history');
+    for I := 0 to High(LReport.Passes) do
+      Require((LReport.Passes[I].TraceStart = -1) and
+          (LReport.Passes[I].TraceCount = 0),
+        'capture-disabled stream unexpectedly populated a legacy pass slice');
+    Require((LReport.TraceDelivery.Status = gtdsComplete) and
+        (LReport.TraceDelivery.ProducedEventCount = 27) and
+        (LReport.TraceDelivery.DeliveredEventCount = 27) and
+        (LReport.TraceDelivery.TraceHash = AOracle.Report.TraceHash),
+      'stream production did not match the full-trace oracle');
+    Require((LSink.Header.Seed = DEMO_SEED) and (LSink.Header.PassCount = 3) and
+        (LSink.Header.TraceVersion = WFC_TRACE_VERSION) and
+        (LSink.Header.TraceHashVersion = WFC_TRACE_HASH_VERSION),
+      'stream header did not identify the actual transaction');
+    Require((LSink.Delivery.Status = gtdsComplete) and
+        (LSink.Delivery.ProducedEventCount = 27) and
+        (LSink.Delivery.DeliveredEventCount = 27) and
+        (LSink.Delivery.TraceHash = AOracle.Report.TraceHash),
+      'the bounded sink did not receive the complete delivery summary');
+    Require((LSink.RetainedEventCount = STREAM_WINDOW_CAPACITY) and
+        (LSink.DroppedEventCount = 22) and not LSink.Complete,
+      'the bounded suffix was mislabeled as a complete retained trace');
+    LEvents := LSink.CopyEvents;
+    Require(Length(LEvents) = STREAM_WINDOW_CAPACITY,
+      'copied window length differs from retained event count');
+    LFirstEventId := 22;
+    for I := 0 to High(LEvents) do
+    begin
+      Require(LEvents[I].EventId = LFirstEventId + I,
+        'window rewrote an original chronological event ID');
+      Require(SameTraceEvent(LEvents[I], AOracle.Report.Trace[LFirstEventId + I]),
+        'window altered a retained event or its original cause');
+    end;
+
+    WriteLn('Stream summary: produced=', LReport.TraceDelivery.ProducedEventCount,
+      ' delivered=', LReport.TraceDelivery.DeliveredEventCount,
+      ' hash=', GraphTraceSignatureHex(LReport.TraceDelivery.TraceHash));
+    WriteLn('  report-trace-events=', Length(LReport.Trace),
+      ' report-trace-hash=', GraphTraceSignatureHex(LReport.TraceHash),
+      ' layers-match=true');
+    WriteLn('  retained=', LSink.RetainedEventCount,
+      ' dropped=', LSink.DroppedEventCount,
+      ' delivery-complete=true window-complete=', BooleanName(LSink.Complete));
+    WriteLn('Retained suffix: original event IDs 22..26');
+    LOutsideCauses := 0;
+    for I := 0 to High(LEvents) do
+    begin
+      WriteLn('  ', FormatGraphTraceEvent(LEvents[I]));
+      if LEvents[I].CauseEventId < 0 then
+        WriteLn('    cause=external-model-input')
+      else if LEvents[I].CauseEventId < LFirstEventId then
+      begin
+        Inc(LOutsideCauses);
+        WriteLn('    cause=', LEvents[I].CauseEventId,
+          ' outside-window (not retained; original ID preserved)');
+      end
+      else
+        WriteLn('    cause=', LEvents[I].CauseEventId, ' retained');
+    end;
+    Require(LOutsideCauses > 0,
+      'the streaming fixture no longer demonstrates an outside-window cause');
+    WriteLn('  The earlier full 27-event fixture is a comparison oracle;');
+    WriteLn('  this streamed attempt retains only its newest five events.');
+  finally
+    //The graph borrows its sink. Detach before freeing the caller-owned sink.
+    LGraph.TraceSink := nil;
+    LSink.Free;
+    LGraph.Free;
+  end;
+end;
+
 procedure RunTraceInspector;
 var
   LGraph: TGraph;
@@ -559,6 +683,7 @@ begin
       ' valid=true');
     WriteLn('Deterministic replay: identical layers and event stream');
     RunLateCommitLayoutExample;
+    RunStreamingWindowExample(LRun);
     WriteLn('Self-check: passed');
   finally
     LReplayGraph.Free;
