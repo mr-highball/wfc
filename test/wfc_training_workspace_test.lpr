@@ -69,7 +69,7 @@ begin
   try
     Check(not W.HasRecipe and not W.HasRun and not W.HasResult,
       'new workspace has no derived artifacts');
-    for I := 0 to TRAINING_STUDIO_PRESET_COUNT - 1 do
+    for I := 0 to High(SOURCE_SIGNATURES) do
     begin
       W.SetSourceText(TrainingStudioPresetText(I));
       Check(not W.HasRecipe and not W.HasRun and not W.HasResult,

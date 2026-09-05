@@ -31,10 +31,11 @@ uses
   wfc_model;
 
 const
-  { Version 1 remains the canonical representation of a one-sample model.
-    Version 2 adds an ordered sample-shape corpus and is canonical only when
-    that corpus contains at least two samples. }
-  WFC_MODEL_TEXT_VERSION = 2;
+  { Version 1 remains the canonical representation of a one-sample rank-1/2
+    model. Version 2 adds an ordered rank-1/2 sample-shape corpus and is
+    canonical only when that corpus contains at least two samples. Version 3
+    is canonical only for rank-3 models and records every sample depth. }
+  WFC_MODEL_TEXT_VERSION = 3;
   WFC_MODEL_MAX_ENCODED_TEXT_LENGTH = 16777216;
   WFC_MODEL_MAX_TEXT_LINE_COUNT = 262144;
 
@@ -93,10 +94,17 @@ begin
   end;
 end;
 
-function CheckedRelationSlotCount(const AValueCount: Integer): Integer;
+function CheckedRelationSlotCount(const AValueCount, ARank: Integer): Integer;
 var
+  LDirectionCount: Integer;
+  LLimit: Integer;
   LSquare: Integer;
 begin
+  LDirectionCount := WfcModelStoredDirectionCount(ARank);
+  if ARank = 3 then
+    LLimit := WFC_MODEL_3D_MAX_RELATION_SLOT_COUNT
+  else
+    LLimit := WFC_MODEL_MAX_RELATION_SLOT_COUNT;
   if AValueCount < 0 then
     raise ERangeError.Create('WFC model value count cannot be negative');
   if AValueCount > WFC_MODEL_MAX_VALUE_COUNT then
@@ -106,12 +114,16 @@ begin
     (AValueCount > (High(Integer) div AValueCount)) then
     raise ERangeError.Create('WFC model relation table is too large');
   LSquare := AValueCount * AValueCount;
-  if LSquare > (High(Integer) div 4) then
+  if LSquare > (High(Integer) div LDirectionCount) then
     raise ERangeError.Create('WFC model relation table is too large');
-  Result := LSquare * 4;
-  if Result > WFC_MODEL_MAX_RELATION_SLOT_COUNT then
-    raise ERangeError.Create(
-      'WFC model relation table exceeds the version-1 slot limit');
+  Result := LSquare * LDirectionCount;
+  if Result > LLimit then
+    if ARank = 3 then
+      raise ERangeError.Create(
+        'WFC model relation table exceeds the rank-3 slot limit')
+    else
+      raise ERangeError.Create(
+        'WFC model relation table exceeds the version-1 slot limit');
 end;
 
 function CheckedLineCount(const AValueCount, ARelationCount,
@@ -141,11 +153,18 @@ begin
             'WFC model text version 2 requires multiple samples');
         LFixedLineCount := 9;
       end;
+    3:
+      begin
+        if ASampleCount < 1 then
+          raise ERangeError.Create(
+            'WFC model text version 3 requires at least one sample');
+        LFixedLineCount := 9;
+      end;
   else
     raise ERangeError.Create('unsupported WFC model text version');
   end;
 
-  if (AFormatVersion = 2) then
+  if AFormatVersion in [2, 3] then
   begin
     if ASampleCount > (High(Integer) - LFixedLineCount) then
       raise ERangeError.Create('WFC model text has too many lines');
@@ -162,7 +181,7 @@ begin
       'WFC model text exceeds the version-1 line-count limit');
 end;
 
-function CheckedSampleCells(const AWidth, AHeight,
+function CheckedSampleCells(const AWidth, AHeight, ADepth, ARank,
   ASampleIndex: Integer): Integer;
 begin
   if (AWidth < 1) or (AHeight < 1) then
@@ -175,14 +194,27 @@ begin
     TextError(Format(
       'sample %d cells exceed the version-1 limit', [ASampleIndex]));
   Result := AWidth * AHeight;
+  if ARank = 3 then
+  begin
+    if ADepth < 1 then
+      TextError('sample dimensions must be positive');
+    if ADepth > WFC_MODEL_MAX_SAMPLE_DIMENSION then
+      TextError(Format(
+        'sample %d dimension exceeds the rank-3 limit', [ASampleIndex]));
+    if Result > WFC_MODEL_MAX_SAMPLE_CELL_COUNT div ADepth then
+      TextError(Format(
+        'sample %d cells exceed the rank-3 limit', [ASampleIndex]));
+    Result := Result * ADepth;
+  end;
 end;
 
 procedure AccumulateSampleCells(var ATotal: Integer;
-  const AWidth, AHeight, ASampleIndex: Integer);
+  const AWidth, AHeight, ADepth, ARank, ASampleIndex: Integer);
 var
   LCells: Integer;
 begin
-  LCells := CheckedSampleCells(AWidth, AHeight, ASampleIndex);
+  LCells := CheckedSampleCells(AWidth, AHeight, ADepth, ARank,
+    ASampleIndex);
   if ATotal > WFC_MODEL_MAX_TOTAL_SAMPLE_CELL_COUNT - LCells then
     TextError('aggregate sample cells exceed the version-1 limit');
   Inc(ATotal, LCells);
@@ -222,6 +254,10 @@ begin
       Result := 'S';
     wmdWest:
       Result := 'W';
+    wmdUp:
+      Result := 'U';
+    wmdDown:
+      Result := 'D';
   else
     raise ERangeError.Create('unknown WFC model direction');
   end;
@@ -269,6 +305,10 @@ begin
       LDirection := wmdSouth
     else if LPart = 'W' then
       LDirection := wmdWest
+    else if LPart = 'U' then
+      LDirection := wmdUp
+    else if LPart = 'D' then
+      LDirection := wmdDown
     else
       TextError('directions contains an unknown name');
     if Ord(LDirection) <= LPreviousOrdinal then
@@ -303,6 +343,10 @@ begin
       Result := 'none';
     wmsD4:
       Result := 'd4';
+    wmsCubeRotations:
+      Result := 'cube24';
+    wmsCubeFull:
+      Result := 'cube48';
   else
     raise ERangeError.Create('unknown WFC model symmetry');
   end;
@@ -356,10 +400,12 @@ begin
 end;
 
 procedure ParseSampleLine(const ALine: String;
-  const AExpectedIndex: Integer; out AShape: TWfcModelSampleShape);
+  const AExpectedIndex, AFormatVersion, ARank: Integer;
+  out AShape: TWfcModelSampleShape);
 var
   LComma1: Integer;
   LComma2: Integer;
+  LComma3: Integer;
   LIndex: Integer;
 begin
   if Copy(ALine, 1, 2) <> 's=' then
@@ -370,8 +416,21 @@ begin
   LComma2 := FindCharacter(ALine, ',', LComma1 + 1);
   if LComma2 = 0 then
     TextError('sample-shape record is missing fields');
-  if FindCharacter(ALine, ',', LComma2 + 1) <> 0 then
-    TextError('sample-shape record has extra fields');
+  LComma3 := FindCharacter(ALine, ',', LComma2 + 1);
+  if AFormatVersion = 2 then
+  begin
+    if LComma3 <> 0 then
+      TextError('sample-shape record has extra fields');
+  end
+  else if AFormatVersion = 3 then
+  begin
+    if LComma3 = 0 then
+      TextError('sample-shape record is missing fields');
+    if FindCharacter(ALine, ',', LComma3 + 1) <> 0 then
+      TextError('sample-shape record has extra fields');
+  end
+  else
+    TextError('sample-shape record uses an unsupported format version');
 
   LIndex := ParseCanonicalInteger(Copy(ALine, 3,
     LComma1 - 3), 'sample index');
@@ -379,14 +438,26 @@ begin
     TextError('sample indices must be complete and ordered');
   AShape.Width := ParseCanonicalInteger(Copy(ALine, LComma1 + 1,
     LComma2 - LComma1 - 1), 'sample width');
-  AShape.Height := ParseCanonicalInteger(Copy(ALine, LComma2 + 1,
-    Length(ALine) - LComma2), 'sample height');
-  CheckedSampleCells(AShape.Width, AShape.Height, AExpectedIndex);
+  if AFormatVersion = 2 then
+  begin
+    AShape.Height := ParseCanonicalInteger(Copy(ALine, LComma2 + 1,
+      Length(ALine) - LComma2), 'sample height');
+    AShape.Depth := 1;
+  end
+  else
+  begin
+    AShape.Height := ParseCanonicalInteger(Copy(ALine, LComma2 + 1,
+      LComma3 - LComma2 - 1), 'sample height');
+    AShape.Depth := ParseCanonicalInteger(Copy(ALine, LComma3 + 1,
+      Length(ALine) - LComma3), 'sample depth');
+  end;
+  CheckedSampleCells(AShape.Width, AShape.Height, AShape.Depth,
+    ARank, AExpectedIndex);
 end;
 
 procedure ParseRelationLine(const ALine: String;
   const AValueCount, APreviousSlot: Integer;
-  const ADirections: TWfcModelDirections;
+  const AFormatVersion: Integer; const ADirections: TWfcModelDirections;
   out ASlot, ACount: Integer);
 var
   LComma1: Integer;
@@ -416,6 +487,10 @@ begin
     LDirection := wmdSouth
   else if LDirectionName = 'W' then
     LDirection := wmdWest
+  else if (AFormatVersion = 3) and (LDirectionName = 'U') then
+    LDirection := wmdUp
+  else if (AFormatVersion = 3) and (LDirectionName = 'D') then
+    LDirection := wmdDown
   else
     TextError('relation has an unknown direction');
   if not (LDirection in ADirections) then
@@ -457,14 +532,17 @@ begin
   if AModel.SampleCount < 1 then
     raise ERangeError.Create('WFC model must contain at least one sample');
 
-  if AModel.SampleCount = 1 then
+  if AModel.Rank = 3 then
+    LFormatVersion := 3
+  else if AModel.SampleCount = 1 then
     LFormatVersion := 1
   else
-    LFormatVersion := WFC_MODEL_TEXT_VERSION;
+    LFormatVersion := 2;
 
-  CheckedRelationSlotCount(AModel.ValueCount);
+  CheckedRelationSlotCount(AModel.ValueCount, AModel.Rank);
   LRelationCount := 0;
-  for LDirection := Low(TWfcModelDirection) to High(TWfcModelDirection) do
+  for LDirection := wmdNorth to
+    TWfcModelDirection(WfcModelStoredDirectionCount(AModel.Rank) - 1) do
     for LSource := 0 to AModel.ValueCount - 1 do
       for LTarget := 0 to AModel.ValueCount - 1 do
       begin
@@ -504,11 +582,15 @@ begin
     for LSample := 0 to AModel.SampleCount - 1 do
     begin
       LSampleShape := AModel.SampleShapeAt(LSample);
-      if (LSampleShape.Width <= 0) or (LSampleShape.Height <= 0) then
+      if (LSampleShape.Width <= 0) or (LSampleShape.Height <= 0) or
+          ((LFormatVersion = 3) and (LSampleShape.Depth <= 0)) then
         raise ERangeError.Create('WFC model sample dimensions must be positive');
       LLines[LLineIndex] := 's=' + IntToStr(LSample) + ',' +
         IntToStr(LSampleShape.Width) + ',' +
         IntToStr(LSampleShape.Height);
+      if LFormatVersion = 3 then
+        LLines[LLineIndex] := LLines[LLineIndex] + ',' +
+          IntToStr(LSampleShape.Depth);
       Inc(LLineIndex);
     end;
   end;
@@ -534,7 +616,8 @@ begin
 
   LLines[LLineIndex] := 'relations=' + IntToStr(LRelationCount);
   Inc(LLineIndex);
-  for LDirection := Low(TWfcModelDirection) to High(TWfcModelDirection) do
+  for LDirection := wmdNorth to
+    TWfcModelDirection(WfcModelStoredDirectionCount(AModel.Rank) - 1) do
     for LSource := 0 to AModel.ValueCount - 1 do
       for LTarget := 0 to AModel.ValueCount - 1 do
       begin
@@ -561,6 +644,7 @@ var
   LRank: Integer;
   LWidth: Integer;
   LHeight: Integer;
+  LDepth: Integer;
   LSampleCount: Integer;
   LSample: Integer;
   LSampleCells: Integer;
@@ -593,16 +677,24 @@ begin
     LFormatVersion := 1
   else if LLines[LLineIndex] = 'wfcm=2' then
     LFormatVersion := 2
+  else if LLines[LLineIndex] = 'wfcm=3' then
+    LFormatVersion := 3
   else
     TextError('unsupported or noncanonical format version');
   Inc(LLineIndex);
 
   if ((LFormatVersion = 1) and (Length(LLines) < 10)) or
-    ((LFormatVersion = 2) and (Length(LLines) < 3)) then
+    ((LFormatVersion in [2, 3]) and (Length(LLines) < 3)) then
     TextError('document is incomplete');
   LRank := ParseCanonicalInteger(ValueAfterPrefix(LLines[LLineIndex],
     'rank=', 'rank'), 'rank');
   Inc(LLineIndex);
+  if (LRank < 1) or (LRank > 3) then
+    TextError('rank must be 1, 2, or 3');
+  if (LFormatVersion in [1, 2]) and (LRank = 3) then
+    TextError('rank-3 models require format version 3');
+  if (LFormatVersion = 3) and (LRank <> 3) then
+    TextError('format version 3 requires a rank-3 model');
 
   if LFormatVersion = 1 then
   begin
@@ -612,23 +704,27 @@ begin
     LHeight := ParseCanonicalInteger(ValueAfterPrefix(LLines[LLineIndex],
       'height=', 'height'), 'height');
     Inc(LLineIndex);
-    LSampleCells := CheckedSampleCells(LWidth, LHeight, 0);
+    LDepth := 1;
+    LSampleCells := CheckedSampleCells(LWidth, LHeight, LDepth, LRank, 0);
     if LSampleCells > WFC_MODEL_MAX_TOTAL_SAMPLE_CELL_COUNT then
       TextError('aggregate sample cells exceed the version-1 limit');
     SetLength(LSampleShapes, 1);
     LSampleShapes[0].Width := LWidth;
     LSampleShapes[0].Height := LHeight;
+    LSampleShapes[0].Depth := 1;
   end
   else
   begin
     LSampleCount := ParseCanonicalInteger(ValueAfterPrefix(
       LLines[LLineIndex], 'samples=', 'samples'), 'samples');
     Inc(LLineIndex);
-    if LSampleCount < 2 then
+    if (LFormatVersion = 2) and (LSampleCount < 2) then
       TextError('version 2 requires at least two samples');
+    if (LFormatVersion = 3) and (LSampleCount < 1) then
+      TextError('version 3 requires at least one sample');
     if LSampleCount > WFC_MODEL_MAX_SAMPLE_COUNT then
       TextError('sample count exceeds the version-1 limit');
-    { Nine non-sample lines are required by version 2. Check the
+    { Nine non-sample lines are required by versions 2 and 3. Check the
       declaration against the physical document before allocating. }
     if LSampleCount > (Length(LLines) - 9) then
       TextError('sample-shape records are incomplete');
@@ -636,11 +732,11 @@ begin
     LTotalSampleCells := 0;
     for LSample := 0 to LSampleCount - 1 do
     begin
-      ParseSampleLine(LLines[LLineIndex], LSample,
+      ParseSampleLine(LLines[LLineIndex], LSample, LFormatVersion, LRank,
         LSampleShapes[LSample]);
       AccumulateSampleCells(LTotalSampleCells,
         LSampleShapes[LSample].Width, LSampleShapes[LSample].Height,
-        LSample);
+        LSampleShapes[LSample].Depth, LRank, LSample);
       Inc(LLineIndex);
     end;
   end;
@@ -661,13 +757,23 @@ begin
     LSymmetry := wmsNone
   else if LTextValue = 'd4' then
     LSymmetry := wmsD4
+  else if LTextValue = 'cube24' then
+    LSymmetry := wmsCubeRotations
+  else if LTextValue = 'cube48' then
+    LSymmetry := wmsCubeFull
   else
     TextError('symmetry has an unknown value');
   Inc(LLineIndex);
+  if (LFormatVersion in [1, 2]) and
+      (LSymmetry in [wmsCubeRotations, wmsCubeFull]) then
+    TextError('cube symmetry requires format version 3');
 
   LDirections := ParseDirections(ValueAfterPrefix(LLines[LLineIndex],
     'directions=', 'directions'));
   Inc(LLineIndex);
+  if (LFormatVersion in [1, 2]) and
+      ((wmdUp in LDirections) or (wmdDown in LDirections)) then
+    TextError('vertical directions require format version 3');
   LValueCount := ParseCanonicalInteger(ValueAfterPrefix(
     LLines[LLineIndex], 'values=', 'values'), 'values');
   Inc(LLineIndex);
@@ -675,7 +781,7 @@ begin
     TextError('values must be positive');
   if LValueCount > WFC_MODEL_MAX_VALUE_COUNT then
     TextError('value count exceeds the version-1 limit');
-  LRelationSlots := CheckedRelationSlotCount(LValueCount);
+  LRelationSlots := CheckedRelationSlotCount(LValueCount, LRank);
   { The relations field and end marker remain after the value records. }
   if LValueCount > Length(LLines) - LLineIndex - 2 then
     TextError('value records are incomplete');
@@ -706,7 +812,7 @@ begin
   for LRelation := 0 to LRelationCount - 1 do
   begin
     ParseRelationLine(LLines[LLineIndex], LValueCount,
-      LPreviousSlot, LDirections, LSlot, LCount);
+      LPreviousSlot, LFormatVersion, LDirections, LSlot, LCount);
     LRelations[LSlot] := LCount;
     LPreviousSlot := LSlot;
     Inc(LLineIndex);

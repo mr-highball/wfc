@@ -840,7 +840,8 @@ begin
       for I := 0 to 5 do
         for J := 0 to 5 do
           if LModel.RelationCount(D, I, J) <>
-            ExpectedD4SixRelation(I, J) then
+            Ord(D in [wmdNorth, wmdEast, wmdSouth, wmdWest]) *
+              ExpectedD4SixRelation(I, J) then
             LExact := False;
     Check(LExact,
       'asymmetric 3x2 D4 aggregation has exact cardinal relations');
@@ -2124,8 +2125,8 @@ var
   LNoteModel: TWfcModel;
   LPunctuationModel: TWfcModel;
 begin
-  Check(WFC_MODEL_TEXT_VERSION = 2,
-    'the canonical model text format publishes version 2');
+  Check(WFC_MODEL_TEXT_VERSION = 3,
+    'the canonical model text codec supports version 3');
   LModel := LearnModel1D(Tokens('A', 'B', 'A'), wmbWrap);
   try
     LEncoded := EncodeWfcModelText(LModel);

@@ -31,6 +31,8 @@ uses wfc_model;
 
 function TrainingStudioOutputIsValid(const APreset, AWidth, AHeight: Integer;
   const ATokens: TWfcModelTokens): Boolean;
+function TrainingStudioVolumeOutputIsValid(const AWidth, AHeight,
+  ADepth: Integer; const ATokens: TWfcModelTokens): Boolean;
 procedure RunTrainingStudioDemo;
 
 implementation
@@ -79,12 +81,42 @@ begin
   end;
 end;
 
+function TrainingStudioVolumeOutputIsValid(const AWidth, AHeight,
+  ADepth: Integer; const ATokens: TWfcModelTokens): Boolean;
+var
+  X, Y, Z, I, LArea: Integer;
+begin
+  Result := False;
+  if (AWidth < 1) or (AHeight < 1) or (ADepth < 1) then Exit;
+  if AWidth > High(Integer) div AHeight then Exit;
+  LArea := AWidth * AHeight;
+  if LArea > High(Integer) div ADepth then Exit;
+  if Length(ATokens) <> LArea * ADepth then Exit;
+  { Independently check all three wrapped positive-axis edges, not a
+    prediction of the solver's seed choice or its private token order. }
+  for Z := 0 to ADepth - 1 do
+    for Y := 0 to AHeight - 1 do
+      for X := 0 to AWidth - 1 do
+      begin
+        I := X + AWidth * Y + LArea * Z;
+        if (ATokens[I] <> 'A') and (ATokens[I] <> 'B') then Exit;
+        if ATokens[I] = ATokens[(X + 1) mod AWidth + AWidth * Y +
+          LArea * Z] then Exit;
+        if ATokens[I] = ATokens[X + AWidth * ((Y + 1) mod AHeight) +
+          LArea * Z] then Exit;
+        if ATokens[I] = ATokens[X + AWidth * Y +
+          LArea * ((Z + 1) mod ADepth)] then Exit;
+      end;
+  Result := True;
+end;
+
 procedure RunOne(const APreset: Integer; const ASeed: TGraphSeed);
 var
   LWorkspace: TWfcTrainingWorkspace;
   LOptions: TWfcTrainingSolveOptions;
   LTokens: TWfcModelTokens;
-  I: Integer;
+  I, LDepth: Integer;
+  LValid: Boolean;
 begin
   LWorkspace := TWfcTrainingWorkspace.Create(
     InteractiveWfcTrainingWorkspaceLimits);
@@ -93,12 +125,18 @@ begin
     LWorkspace.Train;
     LOptions := TrainingStudioPresetOptions(APreset);
     LOptions.Seed := ASeed;
-    LWorkspace.ConfigureRun(LOptions, nil, nil);
+    LDepth := TrainingStudioPresetDepth(APreset);
+    if LWorkspace.Rank = 3 then
+      LWorkspace.ConfigureVolumeRun(LOptions, LDepth, nil, nil)
+    else LWorkspace.ConfigureRun(LOptions, nil, nil);
     LWorkspace.Solve;
     LTokens := LWorkspace.OutputTokens;
-    if (LWorkspace.ResultStatus <> wprsSolved) or
-        (not TrainingStudioOutputIsValid(APreset, LOptions.Width,
-        LOptions.Height, LTokens)) then
+    if LWorkspace.Rank = 3 then
+      LValid := TrainingStudioVolumeOutputIsValid(LOptions.Width,
+        LOptions.Height, LDepth, LTokens)
+    else LValid := TrainingStudioOutputIsValid(APreset, LOptions.Width,
+      LOptions.Height, LTokens);
+    if (LWorkspace.ResultStatus <> wprsSolved) or not LValid then
       raise Exception.Create('training studio independent output validation failed');
     WriteLn('preset=', APreset, ' ', TrainingStudioPresetName(APreset));
     WriteLn('seed=', ASeed, ' source=', LWorkspace.TrainingSignatureText,
@@ -108,6 +146,8 @@ begin
       LWorkspace.SourceTokenCount, ' model-items=', LWorkspace.ModelItemCount);
     for I := 0 to Length(LTokens) - 1 do
     begin
+      if (LDepth > 1) and (I mod (LOptions.Width * LOptions.Height) = 0) then
+        WriteLn('z=', I div (LOptions.Width * LOptions.Height));
       if I mod LOptions.Width <> 0 then Write(' ');
       Write(WfcTextEncodeToken(LTokens[I], 'studio demo'));
       if I mod LOptions.Width = LOptions.Width - 1 then WriteLn;
@@ -129,7 +169,7 @@ begin
     Exit;
   end;
   if ParamCount > 2 then
-    raise Exception.Create('usage: TrainingStudio [preset 0..4] [decimal seed] | --selftest');
+    raise Exception.Create('usage: TrainingStudio [preset 0..5] [decimal seed] | --selftest');
   LPreset := 2;
   LSeed := 0;
   if ParamCount >= 1 then

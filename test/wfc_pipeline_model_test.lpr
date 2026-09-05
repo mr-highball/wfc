@@ -263,6 +263,63 @@ begin
   end;
 end;
 
+function MaximumValueRank3ModelDocument: String;
+var
+  I: Integer;
+  LModel: TWfcModel;
+  LRelations: TWfcModelIntegerArray;
+  LTokens: TWfcModelTokens;
+  LWeights: TWfcModelIntegerArray;
+begin
+  Result := '';
+  SetLength(LTokens, WFC_MODEL_MAX_VALUE_COUNT);
+  SetLength(LWeights, WFC_MODEL_MAX_VALUE_COUNT);
+  for I := 0 to WFC_MODEL_MAX_VALUE_COUNT - 1 do
+  begin
+    LTokens[I] := TWfcModelToken('volume-') + IntToStr(I);
+    LWeights[I] := 1;
+  end;
+  SetLength(LRelations, WfcModelStoredDirectionCount(3) *
+    WFC_MODEL_MAX_VALUE_COUNT * WFC_MODEL_MAX_VALUE_COUNT);
+  LModel := TWfcModel.Create(3, WFC_MODEL_MAX_VALUE_COUNT, 1, 1,
+    wmbOpen, wmsNone,
+    [wmdNorth, wmdEast, wmdSouth, wmdWest, wmdUp, wmdDown],
+    LTokens, LWeights, LRelations);
+  LTokens := nil;
+  LWeights := nil;
+  LRelations := nil;
+  try
+    Result := EncodeWfcModelText(LModel);
+  finally
+    LModel.Free;
+  end;
+end;
+
+function BuildRank3ResourceInputs(const AModelText: String;
+  const AResourceCount: Integer): TRecipeInputs;
+var
+  I: Integer;
+begin
+  Result := Default(TRecipeInputs);
+  Result.Metadata := MakeWfcPipelineMetadata('Volume slot boundary',
+    'MIT', 'project-authored conformance fixture', 'fixture:rank3-slots');
+  Result.Versions := CurrentWfcPipelineVersions;
+  Result.Rank := 3;
+  Result.WrapNeighbors := False;
+  Result.RunMode := rmBottomUp;
+  SetLength(Result.Resources, AResourceCount);
+  for I := 0 to AResourceCount - 1 do
+    Result.Resources[I] := MakeWfcPipelineResource(
+      TWfcModelToken('volume-') + IntToStr(I), wprkModel,
+      AModelText, 'rank-3 relation-slot boundary fixture', 'MIT', '');
+  SetLength(Result.Passes, 1);
+  Result.Passes[0] := MakeWfcPipelinePass('output', wppvPublic,
+    gpmOverlay, WFC_PIPELINE_NO_INDEX, wpakModel, 0, False, wseWhole);
+  Result.Dependencies := nil;
+  Result.Bridges := nil;
+  Result.Requirements := nil;
+end;
+
 function BuildPatternRecipeInputs: TRecipeInputs;
 var
   LModelText: String;
@@ -509,6 +566,7 @@ var
   LDenseSlotCount: Integer;
   LInputs: TRecipeInputs;
   LRecipe: TWfcPipelineModel;
+  LRank3ModelText: String;
   LResourceCount: Integer;
   LSequenceText: String;
 begin
@@ -625,6 +683,39 @@ begin
   Check(RecipeRejected(LInputs,
     'aggregate typed-resource relation slots exceed'),
     'aggregate typed-resource expansion has a fixed version-1 boundary');
+
+  LRank3ModelText := MaximumValueRank3ModelDocument;
+  LDenseSlotCount := WfcModelStoredDirectionCount(3) *
+    WFC_MODEL_MAX_VALUE_COUNT * WFC_MODEL_MAX_VALUE_COUNT;
+  Check((WfcModelStoredDirectionCount(3) = 6) and
+    (2 * LDenseSlotCount <=
+      WFC_PIPELINE_MAX_TOTAL_RESOURCE_RELATION_SLOT_COUNT) and
+    (3 * LDenseSlotCount >
+      WFC_PIPELINE_MAX_TOTAL_RESOURCE_RELATION_SLOT_COUNT),
+    'rank-3 aggregate accounting uses all six dense direction planes');
+
+  LInputs := BuildRank3ResourceInputs(LRank3ModelText, 2);
+  LRecipe := NewRecipe(LInputs);
+  try
+    Check((LRecipe.Rank = 3) and (LRecipe.ResourceCount = 2) and
+      (LRecipe.PassCount = 1) and
+      (LRecipe.BorrowModelResource(0).ValueCount =
+        WFC_MODEL_MAX_VALUE_COUNT) and
+      (LRecipe.BorrowModelResource(1).Rank = 3),
+      'two maximum-vocabulary rank-3 resources fit the aggregate slot limit');
+  finally
+    LRecipe.Free;
+  end;
+  LInputs.Resources := nil;
+  LInputs.Passes := nil;
+
+  LInputs := BuildRank3ResourceInputs(LRank3ModelText, 3);
+  Check(RecipeRejected(LInputs,
+    'aggregate typed-resource relation slots exceed'),
+    'three rank-3 resources reject the six-plane aggregate slot count');
+  LInputs.Resources := nil;
+  LInputs.Passes := nil;
+  LRank3ModelText := '';
 end;
 
 procedure TestPassAndTopologyGuards;

@@ -719,7 +719,7 @@ begin
 end;
 
 function CheckedDenseRelationSlotCount(const AStateCount: Integer;
-  const ALabel: String): Integer;
+  const ALabel: String; const ADirectionCount: Integer = 4): Integer;
 var
   LSquare: Integer;
 begin
@@ -729,9 +729,9 @@ begin
       (AStateCount > High(Integer) div AStateCount) then
     raise EWfcPipelineModel.Create(ALabel + ' dimensions overflow Integer');
   LSquare := AStateCount * AStateCount;
-  if LSquare > High(Integer) div 4 then
+  if LSquare > High(Integer) div ADirectionCount then
     raise EWfcPipelineModel.Create(ALabel + ' dimensions overflow Integer');
-  Result := 4 * LSquare;
+  Result := ADirectionCount * LSquare;
 end;
 
 function TokenIndex(const AValues: TWfcModelTokens;
@@ -1216,7 +1216,8 @@ begin
               DecodeWfcModelText(AResources[I].Document);
             LCurrentRelationSlotCount := CheckedDenseRelationSlotCount(
               FModelResources[I].ValueCount,
-              Format('resource %d model relation slots', [I]));
+              Format('resource %d model relation slots', [I]),
+              WfcModelStoredDirectionCount(FModelResources[I].Rank));
             if EncodeWfcModelText(FModelResources[I]) <>
                 AResources[I].Document then
               raise EWfcPipelineModel.CreateFmt(

@@ -46,6 +46,7 @@ type
   TWfcModelSampleShape = record
     Width: Integer;
     Height: Integer;
+    Depth: Integer;
   end;
   TWfcModelSampleShapes = array of TWfcModelSampleShape;
 
@@ -53,18 +54,21 @@ type
     wmdNorth,
     wmdEast,
     wmdSouth,
-    wmdWest
+    wmdWest,
+    wmdUp,
+    wmdDown
   );
   TWfcModelDirections = set of TWfcModelDirection;
   TWfcModelBoundary = (wmbOpen, wmbWrap);
-  TWfcModelSymmetry = (wmsNone, wmsD4);
+  TWfcModelSymmetry = (wmsNone, wmsD4, wmsCubeRotations, wmsCubeFull);
 
   { TWfcModel }
 
   (*
     Immutable, one-layer learned-model data. Source samples retain their
-    ordered shapes; SampleWidth and SampleHeight remain compatibility views of
-    shape zero. Relation storage is dense and direction-major:
+    ordered shapes; SampleWidth, SampleHeight, and SampleDepth report shape
+    zero. Legacy ranks normalize depth to one. Relation storage keeps four
+    planes for ranks 1/2 and six for rank 3, dense and direction-major:
 
       ((Ord(direction) * ValueCount) + source) * ValueCount + target
 
@@ -85,6 +89,7 @@ type
     function GetSampleCount: Integer;
     function GetSampleWidth: Integer;
     function GetSampleHeight: Integer;
+    function GetSampleDepth: Integer;
     function GetValueCount: Integer;
     function RelationIndex(const ADirection: TWfcModelDirection;
       const ASourceValue, ATargetValue: Integer): Integer;
@@ -111,6 +116,12 @@ type
       const ADirections: TWfcModelDirections;
       const ATokens: TWfcModelTokens;
       const AWeights, ARelations: TWfcModelIntegerArray); overload;
+    constructor Create(const ARank, ASampleWidth, ASampleHeight,
+      ASampleDepth: Integer; const ABoundary: TWfcModelBoundary;
+      const ASymmetry: TWfcModelSymmetry;
+      const ADirections: TWfcModelDirections;
+      const ATokens: TWfcModelTokens;
+      const AWeights, ARelations: TWfcModelIntegerArray); overload;
 
     function SampleShapeAt(
       const ASampleIndex: Integer): TWfcModelSampleShape;
@@ -129,6 +140,7 @@ type
     property SampleCount: Integer read GetSampleCount;
     property SampleWidth: Integer read GetSampleWidth;
     property SampleHeight: Integer read GetSampleHeight;
+    property SampleDepth: Integer read GetSampleDepth;
     property Boundary: TWfcModelBoundary read FBoundary;
     property Symmetry: TWfcModelSymmetry read FSymmetry;
     property Directions: TWfcModelDirections read FDirections;
@@ -148,6 +160,10 @@ const
   WFC_MODEL_MAX_TOTAL_SAMPLE_CELL_COUNT = 4194304;
   WFC_MODEL_MAX_VALUE_COUNT = 1024;
   WFC_MODEL_MAX_RELATION_SLOT_COUNT = 4194304;
+  { Volumes add two direction planes without lowering the existing token
+    envelope. Rank-1/2 storage and its version-1 limit remain unchanged. }
+  WFC_MODEL_3D_LIMITS_VERSION = 1;
+  WFC_MODEL_3D_MAX_RELATION_SLOT_COUNT = 6291456;
 
   WFC_MODEL_MERGE_ALGORITHM_VERSION = 1;
   //Identifies the conversion from immutable model relations to the public
@@ -157,7 +173,13 @@ const
   WFC_MODEL_GRAPH_ADAPTER_VERSION = 1;
 
 function MakeWfcModelSampleShape(const AWidth,
-  AHeight: Integer): TWfcModelSampleShape;
+  AHeight: Integer): TWfcModelSampleShape; overload;
+function MakeWfcModelSampleShape(const AWidth, AHeight,
+  ADepth: Integer): TWfcModelSampleShape; overload;
+
+{ The legacy public dense array keeps four planes, including rank-1 inactive
+  north/south rows. Volumes have six planes in enum order. }
+function WfcModelStoredDirectionCount(const ARank: Integer): Integer;
 
 function MergeWfcModels(const AModels: TWfcModels): TWfcModel;
 
@@ -175,12 +197,33 @@ const
     [wmdNorth, wmdEast, wmdSouth, wmdWest];
   WFC_MODEL_HORIZONTAL_DIRECTIONS: TWfcModelDirections =
     [wmdEast, wmdWest];
+  WFC_MODEL_VOLUME_DIRECTIONS: TWfcModelDirections =
+    [wmdNorth, wmdEast, wmdSouth, wmdWest, wmdUp, wmdDown];
 
 function MakeWfcModelSampleShape(const AWidth,
   AHeight: Integer): TWfcModelSampleShape;
 begin
   Result.Width := AWidth;
   Result.Height := AHeight;
+  Result.Depth := 1;
+end;
+
+function MakeWfcModelSampleShape(const AWidth, AHeight,
+  ADepth: Integer): TWfcModelSampleShape;
+begin
+  Result.Width := AWidth;
+  Result.Height := AHeight;
+  Result.Depth := ADepth;
+end;
+
+function WfcModelStoredDirectionCount(const ARank: Integer): Integer;
+begin
+  case ARank of
+    1, 2: Result := 4;
+    3: Result := 6;
+  else
+    raise EWfcModel.CreateFmt('model rank must be 1, 2, or 3 [%d]', [ARank]);
+  end;
 end;
 
 function OppositeModelDirection(
@@ -195,15 +238,24 @@ begin
       Result := wmdNorth;
     wmdWest:
       Result := wmdEast;
+    wmdUp:
+      Result := wmdDown;
+    wmdDown:
+      Result := wmdUp;
   else
     raise ERangeError.Create('unknown model direction');
   end;
 end;
 
-function CheckedRelationLength(const AValueCount: Integer): Integer;
+function CheckedRelationLength(const AValueCount, ARank: Integer): Integer;
 var
   LSquare: Integer;
+  LDirections: Integer;
+  LLimit: Integer;
 begin
+  LDirections := WfcModelStoredDirectionCount(ARank);
+  if ARank = 3 then LLimit := WFC_MODEL_3D_MAX_RELATION_SLOT_COUNT
+  else LLimit := WFC_MODEL_MAX_RELATION_SLOT_COUNT;
   if AValueCount < 1 then
     raise EWfcModel.Create('model must contain at least one token');
   if AValueCount > WFC_MODEL_MAX_VALUE_COUNT then
@@ -213,13 +265,13 @@ begin
   if AValueCount > High(Integer) div AValueCount then
     raise EWfcModel.Create('model relation dimensions overflow Integer');
   LSquare := AValueCount * AValueCount;
-  if LSquare > High(Integer) div 4 then
+  if LSquare > High(Integer) div LDirections then
     raise EWfcModel.Create('model relation dimensions overflow Integer');
-  Result := 4 * LSquare;
-  if Result > WFC_MODEL_MAX_RELATION_SLOT_COUNT then
+  Result := LDirections * LSquare;
+  if Result > LLimit then
     raise EWfcModel.CreateFmt(
       'model relation slots exceed the version-1 limit [%d > %d]',
-      [Result, WFC_MODEL_MAX_RELATION_SLOT_COUNT]);
+      [Result, LLimit]);
 end;
 
 function CheckedSampleShapeCount(
@@ -241,8 +293,14 @@ begin
 end;
 
 function CheckedSampleCellCount(const AShape: TWfcModelSampleShape;
-  const AShapeIndex: Integer): Integer;
+  const AShapeIndex, ARank: Integer): Integer;
 begin
+  {$IFDEF PAS2JS}
+  if (ARank = 3) and ((AShape.Width <> Trunc(AShape.Width)) or
+      (AShape.Height <> Trunc(AShape.Height)) or
+      (AShape.Depth <> Trunc(AShape.Depth))) then
+    raise EWfcModel.Create('volume sample dimensions must be exact integers');
+  {$ENDIF}
   if (AShape.Width < 1) or (AShape.Height < 1) then
     raise EWfcModel.CreateFmt(
       'model sample dimensions must be positive [%d: %d x %d]',
@@ -257,6 +315,15 @@ begin
       'model sample cells exceed the version-1 limit [%d: %d x %d]',
       [AShapeIndex, AShape.Width, AShape.Height]);
   Result := AShape.Width * AShape.Height;
+  if ARank = 3 then
+  begin
+    if (AShape.Depth < 1) or (AShape.Depth > WFC_MODEL_MAX_SAMPLE_DIMENSION) then
+      raise EWfcModel.CreateFmt('model sample depth is outside its positive dimension range [%d: %d]',
+        [AShapeIndex, AShape.Depth]);
+    if Result > WFC_MODEL_MAX_SAMPLE_CELL_COUNT div AShape.Depth then
+      raise EWfcModel.CreateFmt('model volume cells exceed the sample limit [%d]', [AShapeIndex]);
+    Result := Result * AShape.Depth;
+  end;
 end;
 
 function CheckedModelCount(const AModels: TWfcModels): Integer;
@@ -448,6 +515,10 @@ begin
       Result := gdSouth;
     wmdWest:
       Result := gdEast;
+    wmdUp:
+      Result := gdDown;
+    wmdDown:
+      Result := gdUp;
   else
     raise ERangeError.Create('unknown model direction');
   end;
@@ -468,6 +539,11 @@ end;
 function TWfcModel.GetSampleHeight: Integer;
 begin
   Result := FSampleShapes[0].Height;
+end;
+
+function TWfcModel.GetSampleDepth: Integer;
+begin
+  Result := FSampleShapes[0].Depth;
 end;
 
 function TWfcModel.GetValueCount: Integer;
@@ -493,7 +569,7 @@ function TWfcModel.RelationIndex(const ADirection: TWfcModelDirection;
   const ASourceValue, ATargetValue: Integer): Integer;
 begin
   case ADirection of
-    wmdNorth, wmdEast, wmdSouth, wmdWest:
+    wmdNorth, wmdEast, wmdSouth, wmdWest, wmdUp, wmdDown:
       ;
   else
     raise ERangeError.CreateFmt('unknown model direction [%d]',
@@ -514,6 +590,8 @@ var
   LSampleShapes: TWfcModelSampleShapes;
 begin
   inherited Create;
+  if ARank = 3 then
+    raise EWfcModel.Create('rank-3 model construction requires an explicit sample depth');
   SetLength(LSampleShapes, 1);
   LSampleShapes[0] := MakeWfcModelSampleShape(ASampleWidth,
     ASampleHeight);
@@ -530,6 +608,22 @@ constructor TWfcModel.Create(const ARank: Integer;
 begin
   inherited Create;
   Initialize(ARank, ASampleShapes, ABoundary, ASymmetry, ADirections,
+    ATokens, AWeights, ARelations);
+end;
+
+constructor TWfcModel.Create(const ARank, ASampleWidth, ASampleHeight,
+  ASampleDepth: Integer; const ABoundary: TWfcModelBoundary;
+  const ASymmetry: TWfcModelSymmetry;
+  const ADirections: TWfcModelDirections; const ATokens: TWfcModelTokens;
+  const AWeights, ARelations: TWfcModelIntegerArray);
+var LShapes: TWfcModelSampleShapes;
+begin
+  inherited Create;
+  if (ARank <> 3) and (ASampleDepth <> 1) then
+    raise EWfcModel.Create('rank-1/2 model depth must be one');
+  SetLength(LShapes, 1);
+  LShapes[0] := MakeWfcModelSampleShape(ASampleWidth, ASampleHeight, ASampleDepth);
+  Initialize(ARank, LShapes, ABoundary, ASymmetry, ADirections,
     ATokens, AWeights, ARelations);
 end;
 
@@ -559,20 +653,21 @@ begin
       [Ord(ABoundary)]);
   end;
   case ASymmetry of
-    wmsNone, wmsD4:
+    wmsNone, wmsD4, wmsCubeRotations, wmsCubeFull:
       ;
   else
     raise EWfcModel.CreateFmt('unknown model symmetry [%d]',
       [Ord(ASymmetry)]);
   end;
-  if (ARank <> 1) and (ARank <> 2) then
-    raise EWfcModel.CreateFmt('model rank must be 1 or 2 [%d]', [ARank]);
+  WfcModelStoredDirectionCount(ARank);
+  if (ARank <> 3) and (ASymmetry in [wmsCubeRotations, wmsCubeFull]) then
+    raise EWfcModel.Create('cube symmetry requires a rank-3 model');
   LSampleCount := CheckedSampleShapeCount(ASampleShapes);
   LTotalSampleCells := 0;
   for LShapeIndex := 0 to LSampleCount - 1 do
   begin
     LSampleCells := CheckedSampleCellCount(
-      ASampleShapes[LShapeIndex], LShapeIndex);
+      ASampleShapes[LShapeIndex], LShapeIndex, ARank);
     if LTotalSampleCells > WFC_MODEL_MAX_TOTAL_SAMPLE_CELL_COUNT -
         LSampleCells then
       raise EWfcModel.Create(
@@ -592,12 +687,14 @@ begin
     if ASymmetry = wmsD4 then
       raise EWfcModel.Create('rank-1 model does not support D4 symmetry');
   end
-  else if ADirections <> WFC_MODEL_CARDINAL_DIRECTIONS then
+  else if (ARank = 2) and (ADirections <> WFC_MODEL_CARDINAL_DIRECTIONS) then
     raise EWfcModel.Create(
       'rank-2 model directions must contain every cardinal direction');
+  if (ARank = 3) and (ADirections <> WFC_MODEL_VOLUME_DIRECTIONS) then
+    raise EWfcModel.Create('rank-3 model directions must contain all six directions');
 
   LValueCount := Length(ATokens);
-  LExpectedRelations := CheckedRelationLength(LValueCount);
+  LExpectedRelations := CheckedRelationLength(LValueCount, ARank);
   if Length(AWeights) <> LValueCount then
     raise EWfcModel.CreateFmt(
       'model weight count must match token count [%d <> %d]',
@@ -625,7 +722,8 @@ begin
       raise EWfcModel.CreateFmt(
         'model relation count must be nonnegative [%d]', [I]);
 
-  for D := Low(TWfcModelDirection) to High(TWfcModelDirection) do
+  for D := Low(TWfcModelDirection) to
+    TWfcModelDirection(WfcModelStoredDirectionCount(ARank) - 1) do
     for I := 0 to Pred(LValueCount) do
       for J := 0 to Pred(LValueCount) do
       begin
@@ -649,7 +747,13 @@ begin
   FRank := ARank;
   SetLength(FSampleShapes, LSampleCount);
   for I := 0 to LSampleCount - 1 do
-    FSampleShapes[I] := ASampleShapes[I];
+    if ARank = 3 then
+      FSampleShapes[I] := ASampleShapes[I]
+    else
+      //Older callers constructed Width/Height records before Depth existed.
+      //Do not inspect that new field for legacy ranks; normalize owned data.
+      FSampleShapes[I] := MakeWfcModelSampleShape(ASampleShapes[I].Width,
+        ASampleShapes[I].Height);
   FBoundary := ABoundary;
   FSymmetry := ASymmetry;
   FDirections := ADirections;
@@ -689,7 +793,9 @@ end;
 function TWfcModel.RelationCount(const ADirection: TWfcModelDirection;
   const ASourceValue, ATargetValue: Integer): Integer;
 begin
-  Result := FRelations[RelationIndex(ADirection, ASourceValue, ATargetValue)];
+  Result := RelationIndex(ADirection, ASourceValue, ATargetValue);
+  if (FRank <> 3) and (ADirection in [wmdUp, wmdDown]) then Exit(0);
+  Result := FRelations[Result];
 end;
 
 function TWfcModel.FindToken(const AToken: TWfcModelToken): Integer;
@@ -819,7 +925,7 @@ begin
     for LSampleIndex := 0 to LModel.SampleCount - 1 do
     begin
       LSampleShape := LModel.SampleShapeAt(LSampleIndex);
-      LSampleCells := CheckedSampleCellCount(LSampleShape, LSampleIndex);
+      LSampleCells := CheckedSampleCellCount(LSampleShape, LSampleIndex, LModel.Rank);
       if LTotalSampleCells > WFC_MODEL_MAX_TOTAL_SAMPLE_CELL_COUNT -
           LSampleCells then
         raise EWfcModel.Create(
@@ -855,7 +961,7 @@ begin
   end;
 
   SetLength(LWeights, Length(LTokens));
-  SetLength(LRelations, CheckedRelationLength(Length(LTokens)));
+  SetLength(LRelations, CheckedRelationLength(Length(LTokens), LBase.Rank));
   for LModelIndex := 0 to LModelCount - 1 do
   begin
     LModel := AModels[LModelIndex];
@@ -870,7 +976,8 @@ begin
         'merged model weight');
     end;
 
-    for D := Low(TWfcModelDirection) to High(TWfcModelDirection) do
+    for D := Low(TWfcModelDirection) to
+      TWfcModelDirection(WfcModelStoredDirectionCount(LBase.Rank) - 1) do
       for I := 0 to Pred(LModel.ValueCount) do
         for J := 0 to Pred(LModel.ValueCount) do
         begin

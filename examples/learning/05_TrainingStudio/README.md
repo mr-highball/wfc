@@ -17,7 +17,7 @@ bash ./build-browser-training.sh
 ```
 
 The scripts stage `build/browser/training/www` and do not commit generated
-JavaScript. Serve that directory with an ordinary static server:
+JavaScript. Serve that directory with the included FPC server:
 
 ```text
 build/native/bin/wfc_serve --root build/browser/training/www --port 4176
@@ -31,6 +31,12 @@ then try editing its token records, changing seed/size, adding two adjacent
 same-token locks, and clearing the conflict. Recipe/run/result exports can be
 replayed through the existing validator and runner.
 
+Select **Volume checkerboard / six neighbors** for a 3D corpus. Width, height,
+and depth control the requested volume; output is displayed in labeled Z
+slices. Click any slice cell to copy X/Y/Z, add a lock, and solve again. With
+this wrapped alternating corpus, even extents solve while odd wrapped cycles
+contradict; increasing the search budget cannot repair an impossible cycle.
+
 Imported canonical source must use LF and exactly one final LF. Raw text is a
 separate explicit Unicode-scalar import; it preserves whitespace and treats
 the whole provided text as one sample. Source/license fields are declarations
@@ -41,15 +47,16 @@ explicit CR or CRLF tokens without textarea normalization.
 
 ## Native demonstrations
 
-The checked native build (`build.ps1` or `build.sh`) also runs all five
+The checked native build (`build.ps1` or `build.sh`) also runs all six
 presets. Manually:
 
 ```text
 build/native/bin/TrainingStudio --selftest
 build/native/bin/TrainingStudio 2 0
+build/native/bin/TrainingStudio 5 0
 ```
 
-Use `TrainingStudio.exe` on Windows. Arguments are preset index 0–4 and
+Use `TrainingStudio.exe` on Windows. Arguments are preset index 0–5 and
 an optional unsigned decimal seed; default is preset 2, seed 0. The native
 demonstration is a self-checking console view, not an interactive native window.
 For arbitrary file-based training and replay, use `wfc_learn`/`wfc_run`.
@@ -69,11 +76,16 @@ and trace disabled:
 | 2 — overlapping checkerboard | Same board through private patterns | `947C4AFD` |
 | 3 — whole token phrases | `red fox .` | `920A363A` |
 | 4 — raw Unicode-scalar text | `a cat.` | `F65D4875` |
+| 5 — volume checkerboard | 4×4×4, alternating along X/Y/Z | `CBDC737A` |
 
 The first four presets reproduce the editable source/model/recipe bytes from
 [TrainingDocuments](../04_TrainingDocuments/README.md). Their run/result
 signatures differ from those earlier locked examples because these defaults
 use no locks and a smaller budget.
+
+The fifth training-document bundle (`adjacency3d`) exactly matches Studio
+preset 5, including its unlocked 1,024-backtrack run. Its source and recipe
+signatures are `C6E52736` and `4B8C29E4`.
 
 At `?selftest=1`, the browser returns to preset 2 and publishes:
 
@@ -94,3 +106,6 @@ training remains model-only in the CLI and cannot export a Studio recipe.
 See the [workspace and raw-text guide](../../../docs/training-studio.md) for
 API ownership, exact invalidation behavior, provenance, policy limits, and
 remaining scope.
+
+See [volume learning](../../../docs/volume-learning.md) for the six-direction
+learner, gravity-preserving versus cube symmetries, and format compatibility.

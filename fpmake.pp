@@ -31,6 +31,7 @@ begin
     P.Targets.AddUnit('wfc_trace.pas');
     P.Targets.AddUnit('wfc_model.pas');
     P.Targets.AddUnit('wfc_learn.pas');
+    P.Targets.AddUnit('wfc_learn3d.pas');
     P.Targets.AddUnit('wfc_text_codec.pas');
     P.Targets.AddUnit('wfc_model_text.pas');
     P.Targets.AddUnit('wfc_pattern2d.pas');

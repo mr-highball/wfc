@@ -51,7 +51,8 @@ type
     wtkAdjacency1D,
     wtkAdjacency2D,
     wtkPattern2D,
-    wtkSequence
+    wtkSequence,
+    wtkAdjacency3D
   );
 
   TWfcTrainingSample = record
@@ -59,6 +60,9 @@ type
     Width: Integer;
     Height: Integer;
     Tokens: TWfcModelTokens;
+    { Appended for source compatibility. Legacy training kinds normalize this
+      field to one without reading caller-owned, manually constructed records. }
+    Depth: Integer;
   end;
   TWfcTrainingSamples = array of TWfcTrainingSample;
 
@@ -108,7 +112,11 @@ function MakeWfcTrainingMetadata(const AName, ALicenseIdentifier,
 
 function MakeWfcTrainingSample(const AName: TWfcModelToken;
   const AWidth, AHeight: Integer;
-  const ATokens: TWfcModelTokens): TWfcTrainingSample;
+  const ATokens: TWfcModelTokens): TWfcTrainingSample; overload;
+
+function MakeWfcTrainingSample(const AName: TWfcModelToken;
+  const AWidth, AHeight, ADepth: Integer;
+  const ATokens: TWfcModelTokens): TWfcTrainingSample; overload;
 
 function MakeWfcTrainingOptions(const AKind: TWfcTrainingKind;
   const ABoundary: TWfcModelBoundary;
@@ -129,6 +137,7 @@ implementation
 uses
   wfc,
   wfc_learn,
+  wfc_learn3d,
   wfc_model_text,
   wfc_pattern2d,
   wfc_pattern2d_learn,
@@ -141,6 +150,8 @@ uses
 const
   FNV_OFFSET_BASIS = Cardinal(2166136261);
   D4_TRANSFORM_COUNT = 8;
+  CUBE_ROTATION_TRANSFORM_COUNT = 24;
+  CUBE_FULL_TRANSFORM_COUNT = 48;
 
 type
   TTrainingStringSet = record
@@ -161,22 +172,28 @@ begin
     Result[I] := ASource[I];
 end;
 
-function CloneSample(const ASource: TWfcTrainingSample): TWfcTrainingSample;
+function CloneSample(const ASource: TWfcTrainingSample;
+  const AIncludeDepth: Boolean): TWfcTrainingSample;
 begin
   Result.Name := ASource.Name;
   Result.Width := ASource.Width;
   Result.Height := ASource.Height;
   Result.Tokens := CloneTokens(ASource.Tokens);
+  if AIncludeDepth then
+    Result.Depth := ASource.Depth
+  else
+    Result.Depth := 1;
 end;
 
-function CloneSamples(const ASource: TWfcTrainingSamples): TWfcTrainingSamples;
+function CloneSamples(const ASource: TWfcTrainingSamples;
+  const AIncludeDepth: Boolean): TWfcTrainingSamples;
 var
   I: Integer;
 begin
   Result := nil;
   SetLength(Result, Length(ASource));
   for I := 0 to Length(ASource) - 1 do
-    Result[I] := CloneSample(ASource[I]);
+    Result[I] := CloneSample(ASource[I], AIncludeDepth);
 end;
 
 procedure HashByte(var AHash: Cardinal; const AValue: Byte);
@@ -226,6 +243,8 @@ begin
       Result := 'pattern2d';
     wtkSequence:
       Result := 'sequence';
+    wtkAdjacency3D:
+      Result := 'adjacency3d';
   else
     raise EWfcTraining.Create('unknown training kind');
   end;
@@ -250,6 +269,10 @@ begin
       Result := 'none';
     wmsD4:
       Result := 'd4';
+    wmsCubeRotations:
+      Result := 'cube24';
+    wmsCubeFull:
+      Result := 'cube48';
   else
     raise EWfcTraining.Create('unknown training symmetry');
   end;
@@ -263,8 +286,16 @@ var
   J: Integer;
 begin
   Result := FNV_OFFSET_BASIS;
-  HashAscii(Result, 'wfclearn-v1');
-  HashAscii(Result, IntToStr(WFC_TRAINING_VERSION));
+  if AOptions.Kind = wtkAdjacency3D then
+  begin
+    HashAscii(Result, 'wfclearn-v2');
+    HashAscii(Result, '2');
+  end
+  else
+  begin
+    HashAscii(Result, 'wfclearn-v1');
+    HashAscii(Result, IntToStr(WFC_TRAINING_VERSION));
+  end;
   HashAscii(Result, CanonicalToken(AMetadata.Name));
   HashAscii(Result, CanonicalToken(AMetadata.LicenseIdentifier));
   HashAscii(Result, CanonicalToken(AMetadata.SourceDescription));
@@ -280,6 +311,8 @@ begin
     HashAscii(Result, CanonicalToken(ASamples[I].Name));
     HashAscii(Result, IntToStr(ASamples[I].Width));
     HashAscii(Result, IntToStr(ASamples[I].Height));
+    if AOptions.Kind = wtkAdjacency3D then
+      HashAscii(Result, IntToStr(ASamples[I].Depth));
     HashAscii(Result, IntToStr(Length(ASamples[I].Tokens)));
     for J := 0 to Length(ASamples[I].Tokens) - 1 do
       HashAscii(Result, CanonicalToken(ASamples[I].Tokens[J]));
@@ -287,15 +320,21 @@ begin
 end;
 
 function CalculateSampleSignature(
-  const ASample: TWfcTrainingSample): Cardinal;
+  const ASample: TWfcTrainingSample;
+  const AIncludeDepth: Boolean): Cardinal;
 var
   I: Integer;
 begin
   Result := FNV_OFFSET_BASIS;
-  HashAscii(Result, 'wfclearn-sample-v1');
+  if AIncludeDepth then
+    HashAscii(Result, 'wfclearn-sample-v2')
+  else
+    HashAscii(Result, 'wfclearn-sample-v1');
   HashAscii(Result, CanonicalToken(ASample.Name));
   HashAscii(Result, IntToStr(ASample.Width));
   HashAscii(Result, IntToStr(ASample.Height));
+  if AIncludeDepth then
+    HashAscii(Result, IntToStr(ASample.Depth));
   HashAscii(Result, IntToStr(Length(ASample.Tokens)));
   for I := 0 to Length(ASample.Tokens) - 1 do
     HashAscii(Result, CanonicalToken(ASample.Tokens[I]));
@@ -430,6 +469,9 @@ begin
       end;
     wtkAdjacency2D:
       begin
+        if not (AOptions.Symmetry in [wmsNone, wmsD4]) then
+          raise EWfcTraining.Create(
+            'adjacency2d training symmetry must be none or d4');
         if (AOptions.PatternWidth <> 0) or
             (AOptions.PatternHeight <> 0) then
           raise EWfcTraining.Create(
@@ -440,6 +482,9 @@ begin
       end;
     wtkPattern2D:
       begin
+        if not (AOptions.Symmetry in [wmsNone, wmsD4]) then
+          raise EWfcTraining.Create(
+            'pattern2d training symmetry must be none or d4');
         if AOptions.Order <> 0 then
           raise EWfcTraining.Create('pattern2d training order must be 0');
         if (AOptions.PatternWidth < 1) or
@@ -471,6 +516,16 @@ begin
           raise EWfcTraining.Create(
             'sequence training order is outside the version-1 limit');
       end;
+    wtkAdjacency3D:
+      begin
+        if (AOptions.PatternWidth <> 0) or
+            (AOptions.PatternHeight <> 0) then
+          raise EWfcTraining.Create(
+            'adjacency3d training footprint must be 0,0');
+        if AOptions.Order <> 0 then
+          raise EWfcTraining.Create(
+            'adjacency3d training order must be 0');
+      end;
   end;
 end;
 
@@ -493,7 +548,8 @@ var
 begin
   case AOptions.Kind of
     wtkAdjacency1D,
-    wtkAdjacency2D:
+    wtkAdjacency2D,
+    wtkAdjacency3D:
       LTokenLimit := WFC_MODEL_MAX_VALUE_COUNT;
     wtkPattern2D:
       LTokenLimit := WFC_PATTERN_2D_MAX_PALETTE_COUNT;
@@ -581,10 +637,18 @@ begin
   ATotalTokenCount := 0;
   LVisits := 0;
   InitializeStringSet(LSampleNames, WFC_TRAINING_MAX_SAMPLE_COUNT);
-  if AOptions.Symmetry = wmsD4 then
-    LTransformCount := D4_TRANSFORM_COUNT
+  case AOptions.Symmetry of
+    wmsNone:
+      LTransformCount := 1;
+    wmsD4:
+      LTransformCount := D4_TRANSFORM_COUNT;
+    wmsCubeRotations:
+      LTransformCount := CUBE_ROTATION_TRANSFORM_COUNT;
+    wmsCubeFull:
+      LTransformCount := CUBE_FULL_TRANSFORM_COUNT;
   else
-    LTransformCount := 1;
+    raise EWfcTraining.Create('unknown training symmetry');
+  end;
   if AOptions.Kind = wtkPattern2D then
     LFootprintCells := CheckedMultiply(AOptions.PatternWidth,
       AOptions.PatternHeight, WFC_TRAINING_MAX_FOOTPRINT_CELL_COUNT,
@@ -602,12 +666,24 @@ begin
       raise EWfcTraining.CreateFmt(
         'training sample names must be unique [%d]', [I]);
 
+    {$IFDEF PAS2JS}
+    if (AOptions.Kind = wtkAdjacency3D) and
+        ((ASamples[I].Width <> Trunc(ASamples[I].Width)) or
+        (ASamples[I].Height <> Trunc(ASamples[I].Height)) or
+        (ASamples[I].Depth <> Trunc(ASamples[I].Depth))) then
+      raise EWfcTraining.Create('volume sample dimensions must be exact integers');
+    {$ENDIF}
     if (ASamples[I].Width < 1) or (ASamples[I].Height < 1) or
         (ASamples[I].Width > WFC_TRAINING_MAX_DIMENSION) or
         (ASamples[I].Height > WFC_TRAINING_MAX_DIMENSION) then
       raise EWfcTraining.CreateFmt(
         'training sample dimensions are outside the version-1 limit [%d]',
         [I]);
+    if (AOptions.Kind = wtkAdjacency3D) and
+        ((ASamples[I].Depth < 1) or
+        (ASamples[I].Depth > WFC_TRAINING_MAX_DIMENSION)) then
+      raise EWfcTraining.CreateFmt(
+        'training sample depth is outside the version-1 limit [%d]', [I]);
     if ((AOptions.Kind = wtkAdjacency1D) or
         (AOptions.Kind = wtkSequence)) and (ASamples[I].Height <> 1) then
       raise EWfcTraining.CreateFmt(
@@ -615,6 +691,10 @@ begin
     LSampleCells := CheckedMultiply(ASamples[I].Width,
       ASamples[I].Height, WFC_TRAINING_MAX_TOTAL_TOKEN_COUNT,
       'training sample cell count');
+    if AOptions.Kind = wtkAdjacency3D then
+      LSampleCells := CheckedMultiply(LSampleCells, ASamples[I].Depth,
+        WFC_TRAINING_MAX_TOTAL_TOKEN_COUNT,
+        'training sample volume cell count');
     if Length(ASamples[I].Tokens) <> LSampleCells then
       raise EWfcTraining.CreateFmt(
         'training sample %d has %d tokens; expected %d',
@@ -629,7 +709,8 @@ begin
 
     case AOptions.Kind of
       wtkAdjacency1D,
-      wtkAdjacency2D:
+      wtkAdjacency2D,
+      wtkAdjacency3D:
         LBaseVisits := CheckedMultiply(LSampleCells, LTransformCount,
           WFC_TRAINING_MAX_VISIT_COUNT,
           'training observation visit count');
@@ -682,10 +763,18 @@ function MakeWfcTrainingSample(const AName: TWfcModelToken;
   const AWidth, AHeight: Integer;
   const ATokens: TWfcModelTokens): TWfcTrainingSample;
 begin
+  Result := MakeWfcTrainingSample(AName, AWidth, AHeight, 1, ATokens);
+end;
+
+function MakeWfcTrainingSample(const AName: TWfcModelToken;
+  const AWidth, AHeight, ADepth: Integer;
+  const ATokens: TWfcModelTokens): TWfcTrainingSample;
+begin
   Result.Name := AName;
   Result.Width := AWidth;
   Result.Height := AHeight;
   Result.Tokens := CloneTokens(ATokens);
+  Result.Depth := ADepth;
 end;
 
 function MakeWfcTrainingOptions(const AKind: TWfcTrainingKind;
@@ -720,7 +809,7 @@ begin
   ValidateTrainingInput(AMetadata, AOptions, ASamples, LTotalTokenCount);
   FMetadata := AMetadata;
   FOptions := AOptions;
-  FSamples := CloneSamples(ASamples);
+  FSamples := CloneSamples(ASamples, AOptions.Kind = wtkAdjacency3D);
   FTotalTokenCount := LTotalTokenCount;
   FSignature := CalculateTrainingSignature(FMetadata, FOptions, FSamples);
 end;
@@ -751,12 +840,28 @@ function TWfcTrainingDocument.SampleAt(
   const AIndex: Integer): TWfcTrainingSample;
 begin
   ValidateSampleIndex(AIndex);
-  Result := CloneSample(FSamples[AIndex]);
+  Result := CloneSample(FSamples[AIndex], True);
 end;
 
 function TWfcTrainingDocument.CopySamples: TWfcTrainingSamples;
 begin
-  Result := CloneSamples(FSamples);
+  Result := CloneSamples(FSamples, True);
+end;
+
+function BuildLearnVolumeSamples(
+  const ADocument: TWfcTrainingDocument): TWfcLearnVolumeSamples;
+var
+  I: Integer;
+  LSample: TWfcTrainingSample;
+begin
+  Result := nil;
+  SetLength(Result, ADocument.SampleCount);
+  for I := 0 to ADocument.SampleCount - 1 do
+  begin
+    LSample := ADocument.SampleAt(I);
+    Result[I] := MakeLearnSample3D(LSample.Tokens, LSample.Width,
+      LSample.Height, LSample.Depth);
+  end;
 end;
 
 function BuildLearnSamples(
@@ -802,6 +907,7 @@ var
   LSamples: TWfcLearnSamples;
   LSequence: TWfcSequenceModel;
   LSequenceSamples: TWfcSequenceSamples;
+  LVolumeSamples: TWfcLearnVolumeSamples;
 begin
   if ADocument = nil then
     raise EWfcTraining.Create('training document cannot be nil');
@@ -851,6 +957,17 @@ begin
           LSequence.Free;
         end;
       end;
+    wtkAdjacency3D:
+      begin
+        LVolumeSamples := BuildLearnVolumeSamples(ADocument);
+        LModel := LearnModel3DCorpus(LVolumeSamples, LOptions.Boundary,
+          LOptions.Symmetry);
+        try
+          Result := EncodeWfcModelText(LModel);
+        finally
+          LModel.Free;
+        end;
+      end;
   else
     raise EWfcTraining.Create('unknown training kind');
   end;
@@ -862,9 +979,11 @@ var
   I: Integer;
   LEncoded: String;
   LMetadata: TWfcTrainingMetadata;
+  LOptions: TWfcTrainingOptions;
   LSample: TWfcTrainingSample;
 begin
   LMetadata := ADocument.CopyMetadata;
+  LOptions := ADocument.CopyOptions;
   Result := LMetadata.SourceDescription + ' | samples=';
   for I := 0 to ADocument.SampleCount - 1 do
   begin
@@ -873,8 +992,12 @@ begin
     LSample := ADocument.SampleAt(I);
     Result := Result + TWfcModelToken(IntToStr(I) + ':' +
       CanonicalToken(LSample.Name) + ':' + IntToStr(LSample.Width) + 'x' +
-      IntToStr(LSample.Height) + ':' +
-      WfcTrainingSignatureHex(CalculateSampleSignature(LSample)));
+      IntToStr(LSample.Height));
+    if LOptions.Kind = wtkAdjacency3D then
+      Result := Result + TWfcModelToken('x' + IntToStr(LSample.Depth));
+    Result := Result + TWfcModelToken(':' +
+      WfcTrainingSignatureHex(CalculateSampleSignature(LSample,
+        LOptions.Kind = wtkAdjacency3D)));
   end;
   LEncoded := WfcTextEncodeToken(Result,
     'WFC training recipe source description');
@@ -909,8 +1032,12 @@ begin
       'pattern2d recipe export currently requires wrapped training input');
 
   LMetadata := ADocument.CopyMetadata;
-  LFingerprint := TWfcModelToken('wfclearn-v1/' +
-    WfcTrainingSignatureHex(ADocument.Signature));
+  if LOptions.Kind = wtkAdjacency3D then
+    LFingerprint := TWfcModelToken('wfclearn-v2/' +
+      WfcTrainingSignatureHex(ADocument.Signature))
+  else
+    LFingerprint := TWfcModelToken('wfclearn-v1/' +
+      WfcTrainingSignatureHex(ADocument.Signature));
   LSourceDescription := BuildSourceDescription(ADocument);
   { Recipe-specific provenance capacity is known from the immutable input.
     Reject it before dispatching the potentially expensive learner. }
@@ -921,7 +1048,8 @@ begin
   SetLength(LResources, 1);
   case LOptions.Kind of
     wtkAdjacency1D,
-    wtkAdjacency2D:
+    wtkAdjacency2D,
+    wtkAdjacency3D:
       LResourceKind := wprkModel;
     wtkPattern2D:
       LResourceKind := wprkPattern2D;
@@ -948,6 +1076,14 @@ begin
     wtkAdjacency2D:
       begin
         LRank := 2;
+        SetLength(LPasses, 1);
+        LPasses[0] := MakeWfcPipelinePass('output', wppvPublic,
+          gpmOverlay, WFC_PIPELINE_NO_INDEX, wpakModel, 0,
+          False, wseWhole);
+      end;
+    wtkAdjacency3D:
+      begin
+        LRank := 3;
         SetLength(LPasses, 1);
         LPasses[0] := MakeWfcPipelinePass('output', wppvPublic,
           gpmOverlay, WFC_PIPELINE_NO_INDEX, wpakModel, 0,

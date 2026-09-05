@@ -1,6 +1,6 @@
 # Editable training documents
 
-Four small, project-authored MIT corpora exercise the same portable training
+Five small, project-authored MIT corpora exercise the same portable training
 workflow on native FPC. No media, tokenizer, playback, or
 third-party library is needed.
 
@@ -10,6 +10,7 @@ third-party library is needed.
 | `adjacency2d` | 2×2 and 4×2 checkerboards, wrapped D4 | 4×4 checkerboard beginning with A | `6F432E54` |
 | `pattern2d` | Same grids, wrapped 2×2 footprints with D4 | Same public 4×4 checkerboard, private pattern pass | `0FA2C5EA` |
 | `sequence` | `red fox .` and `café fox .`, open order 2 | `red fox .`, private sequence pass | `62C511AF` |
+| `adjacency3d` | 2×2×2 alternating cube, wrapped cube24 | 4×4×4 six-neighbor checkerboard | `C6E52736` |
 
 Each profile includes five files: editable `.wfclearn`, generated
 `.wfcpipeline`, standalone `.model` (the existing canonical model format),
@@ -18,10 +19,15 @@ retain the source/license and ordered sample-content fingerprints. The
 standalone model must travel with its source document or recipe to retain
 that provenance.
 
-The run files pin seed 0, one-way solving, a 65,536 local backtrack budget,
+The original four run files pin seed 0, one-way solving, a 65,536 local backtrack budget,
 no trace, and a public `output` lock at the first cell: A for grids and red
 for the sequence. The projection examples use bridge v2 to lower that public
 lock into the private source pass.
+
+The volume bundle uses Studio preset 5: seed 0, 4×4×4, one-way, local budget
+1,024, no locks or trace. Its recipe/result signatures are `4B8C29E4` and
+`CBDC737A`. Source depth belongs to `wfclearn=2`; the standalone six-direction
+model uses `wfcm=3`. Existing four bundles remain byte-identical.
 
 ## Native FPC
 

@@ -92,7 +92,7 @@ Version 1 recognizes four embedded resource kinds:
 | Kind | Payload | Pass adapter |
 | --- | --- | --- |
 | `rules` | `wfcrules=1` | exact hand-authored local rules |
-| `model` | `wfcm=1` or `wfcm=2` | learned local adjacency |
+| `model` | `wfcm=1`, `wfcm=2`, or rank-3 `wfcm=3` | learned local adjacency |
 | `pattern2d` | `wfcp=1` | private overlapping-pattern states |
 | `sequence` | `wfcs=1` | private bounded-sequence states |
 

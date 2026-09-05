@@ -72,6 +72,9 @@ type
     FModelItemCount: Integer;
     procedure Initialize(const ALimits: TWfcTrainingWorkspaceLimits);
     procedure ClearTraining;
+    procedure ConfigureRunDepth(const AOptions: TWfcTrainingSolveOptions;
+      const ADepth: Integer; const ALocks: TWfcPipelineCellLocks;
+      const ADomains: TWfcPipelineCellDomains);
     procedure RequireRecipe;
     procedure RequireRun;
     procedure RequireResult;
@@ -94,6 +97,9 @@ type
     procedure ClearRun;
     procedure ConfigureRun(const AOptions: TWfcTrainingSolveOptions;
       const ALocks: TWfcPipelineCellLocks;
+      const ADomains: TWfcPipelineCellDomains);
+    procedure ConfigureVolumeRun(const AOptions: TWfcTrainingSolveOptions;
+      const ADepth: Integer; const ALocks: TWfcPipelineCellLocks;
       const ADomains: TWfcPipelineCellDomains);
     procedure Solve;
 
@@ -305,16 +311,48 @@ procedure TWfcTrainingWorkspace.ConfigureRun(
 begin
   ClearRun;
   RequireRecipe;
+  if FRecipe.Rank = 3 then
+    raise EWfcTrainingWorkspace.Create(
+      'volume recipes require ConfigureVolumeRun with explicit depth');
+  ConfigureRunDepth(AOptions, 1, ALocks, ADomains);
+end;
+
+procedure TWfcTrainingWorkspace.ConfigureVolumeRun(
+  const AOptions: TWfcTrainingSolveOptions; const ADepth: Integer;
+  const ALocks: TWfcPipelineCellLocks;
+  const ADomains: TWfcPipelineCellDomains);
+begin
+  ClearRun;
+  RequireRecipe;
+  if FRecipe.Rank <> 3 then
+    raise EWfcTrainingWorkspace.Create('volume runs require a rank-3 recipe');
+  {$IFDEF PAS2JS}
+  if (AOptions.Width <> Trunc(AOptions.Width)) or
+      (AOptions.Height <> Trunc(AOptions.Height)) or
+      (ADepth <> Trunc(ADepth)) then
+    raise EWfcTrainingWorkspace.Create('volume run dimensions must be exact integers');
+  {$ENDIF}
+  ConfigureRunDepth(AOptions, ADepth, ALocks, ADomains);
+end;
+
+procedure TWfcTrainingWorkspace.ConfigureRunDepth(
+  const AOptions: TWfcTrainingSolveOptions; const ADepth: Integer;
+  const ALocks: TWfcPipelineCellLocks;
+  const ADomains: TWfcPipelineCellDomains);
+begin
   CheckLimit(AOptions.Width, FLimits.MaxOutputCells, False, 'output width');
   CheckLimit(AOptions.Height, FLimits.MaxOutputCells, False, 'output height');
+  CheckLimit(ADepth, FLimits.MaxOutputCells, False, 'output depth');
   if AOptions.Width > FLimits.MaxOutputCells div AOptions.Height then
+    raise EWfcTrainingWorkspace.Create('output cell count exceeds workspace limit');
+  if AOptions.Width * AOptions.Height > FLimits.MaxOutputCells div ADepth then
     raise EWfcTrainingWorkspace.Create('output cell count exceeds workspace limit');
   CheckLimit(AOptions.MaxBacktracks, FLimits.MaxBacktracks,
     True, 'local backtrack budget');
   CheckLimit(AOptions.MaxPassBacktracks, FLimits.MaxPassBacktracks,
     True, 'pass backtrack budget');
   FRun := TWfcPipelineRun.Create(FRecipe, AOptions.Width, AOptions.Height,
-    1, AOptions.Seed, AOptions.Strategy, AOptions.MaxBacktracks,
+    ADepth, AOptions.Seed, AOptions.Strategy, AOptions.MaxBacktracks,
     AOptions.MaxPassBacktracks, AOptions.CaptureTrace, ALocks, ADomains);
 end;
 

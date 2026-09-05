@@ -666,7 +666,7 @@ begin
   for I := 0 to LPatternCount - 1 do
     LTokens[I] := PatternKey(I);
   SetLength(LRelations, LRelationLength);
-  for D := Low(TWfcModelDirection) to High(TWfcModelDirection) do
+  for D := wmdNorth to wmdWest do
     for I := 0 to LPatternCount - 1 do
       for J := 0 to LPatternCount - 1 do
         if PatternsCompatible(I, J, D) then

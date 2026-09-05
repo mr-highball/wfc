@@ -78,6 +78,11 @@ The repository already contains the beginnings of the ecosystem:
   heterogeneous ordered samples, open/wrapped boundaries, explicit D4
   augmentation, checked model merging, strict canonical `.wfcm` text I/O, and
   native/pas2js learning demonstrations;
+- additive [full-volume cardinal learning](docs/volume-learning.md) with
+  explicit source depth, six-direction observations, gravity-preserving D4
+  and cube policies, exact observation-orbit aggregation, literal-transform
+  oracles, compatible merging, depth-aware source/model artifacts and
+  provenance, XYZ workspace constraints, and native/browser Z-slice inspection;
 - an immutable overlapping-pattern 2D model with heterogeneous extraction,
   exact structural compatibility, latent assignment capture, independently
   checked projection, strict canonical `.wfcp` text I/O, and a portable seeded
@@ -221,8 +226,8 @@ It is not yet the finished system described above:
   structurally compatible overlapping 2D footprints, and bounded order-N
   sequences with explicit projection; Unicode-scalar text tokenization and
   exact completion domains now sit above that sequence layer, while a
-  project-owned versioned word-boundary table, wrapped sequence training, 3D
-  neighborhoods, structured multi-license provenance, media import and
+  project-owned versioned word-boundary table, wrapped sequence training,
+  overlapping 3D footprints, structured multi-license provenance, media import and
   word-oriented text import, larger/background browser training, artifact-family
   lint, and general inspection tools remain;
 - the hosted CI definition is present, but its first remote run still needs to
@@ -465,6 +470,11 @@ support open/wrapped boundaries and explicit D4 augmentation, checked-merge
 compatible models, store ordered source shapes in immutable model data, adapt
 representable models to `TGraph`, and round-trip strict canonical `.wfcm`
 documents using the `wfcm=1` and `wfcm=2` profiles on native FPC and pas2js.
+The additive volume learner extends the same IR to explicit depth and six
+directions with `wfcm=3`, while retaining legacy dense arrays and bytes.
+Its exact group-orbit counts match an independently materialized transform
+oracle for open/wrapped rectangles and singleton axes. Cube symmetries act
+on coordinates, not token meanings, and do not encode scalar chirality.
 The graph adapter now maps active zero-support rows to explicit denial instead
 of rejecting or widening them. Portable single-sample and corpus fixtures
 prove those vertical slices. The
@@ -507,11 +517,14 @@ options, source/license labels and content fingerprints while exporting
 cardinal, overlapping-pattern, or whole-sequence recipes. Four bundled corpora
 replay exact source-to-result artifacts on native FPC.
 Training Studio now connects editable corpora and explicit Unicode-scalar raw
-text to that workflow through one reusable invalidation-aware workspace, five
-native presets, and a browser lock/inspection/export workbench. Its
+text to that workflow through one reusable invalidation-aware workspace, six
+native presets, and a browser lock/inspection/export workbench. Full-volume
+training uses `wfclearn=2`, depth-sensitive provenance, XYZ locks/domains, and
+labeled browser Z slices. A fifth exact CLI bundle replays the volume preset.
+Its
 interactive envelope is bounded and synchronous; raw media/voxel/music
 extraction, larger background jobs, and general recipe authoring remain open.
-Word-boundary tables, wrapped sequence training, higher-dimensional extraction,
+Word-boundary tables, wrapped sequence training, overlapping 3D extraction,
 broader artifact lint/inspection, and the complete exit gate remain open.
 
 ### Deliverables

@@ -378,7 +378,7 @@ begin
   LModel := OpenNineModel;
   try
     LExact := True;
-    for D := Low(TWfcModelDirection) to High(TWfcModelDirection) do
+    for D := wmdNorth to wmdWest do
       for I := 0 to LModel.PatternCount - 1 do
         for J := 0 to LModel.PatternCount - 1 do
         begin

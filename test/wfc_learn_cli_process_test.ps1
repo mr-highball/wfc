@@ -191,7 +191,7 @@ foreach ($executable in @($Learner, $Validator, $Runner)) {
 Assert-Condition (-not (Test-Path -LiteralPath $missingInput)) `
   "missing-input sentinel unexpectedly exists: $missingInput"
 
-foreach ($profile in @('adjacency1d', 'adjacency2d', 'pattern2d', 'sequence')) {
+foreach ($profile in @('adjacency1d', 'adjacency2d', 'pattern2d', 'sequence', 'adjacency3d')) {
   $training = Join-Path $fixtureDirectory "$profile.wfclearn"
   $recipe = Join-Path $fixtureDirectory "$profile.wfcpipeline"
   $model = Join-Path $fixtureDirectory "$profile.model"
@@ -223,7 +223,7 @@ Check-Case -Executable $Learner -Arguments @('--quiet', $training) `
   -DiagnosticPrefix '' -Name 'quiet training'
 Check-Case -Executable $Learner -Arguments @('--version') `
   -StandardInput $emptyInput -ExpectedExitCode 0 `
-  -ExpectedOutput ($ascii.GetBytes("wfc-learn 1 (wfclearn=1)`n")) `
+  -ExpectedOutput ($ascii.GetBytes("wfc-learn 2 (wfclearn=1,2)`n")) `
   -DiagnosticPrefix '' -Name 'learner version'
 Check-Case -Executable $Learner -Arguments @($missingInput) `
   -StandardInput $emptyInput -ExpectedExitCode 3 -ExpectedOutput $null `

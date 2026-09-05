@@ -1,0 +1,14 @@
+wfcpipeline-run=1
+recipe-signature=4B8C29E4
+width=4
+height=4
+depth=4
+seed=0
+strategy=one-way
+max-backtracks=1024
+max-pass-backtracks=0
+trace=false
+locks=0
+domains=0
+signature=68FBC280
+end

@@ -26,6 +26,11 @@ This is the first training primitive for the wider ecosystem. A tile, note,
 word, voxel label, or other discrete symbol uses the same frequency and
 adjacency representation.
 
+For full volumes, use the additive `wfc_learn3d` unit. The
+[volume learning guide](volume-learning.md) covers explicit depth, all six
+directions, gravity-preserving D4, 24 cube rotations, corpus merging, and
+the native/browser Studio workflow.
+
 ## basic use
 
 ```pascal
@@ -207,9 +212,9 @@ positive relations are written in direction/source/target order. Tokens are
 UTF-8 percent encoded with uppercase hexadecimal; only ASCII letters, digits,
 `-`, `.`, `_`, and `~` remain unescaped.
 
-The latest reader/writer version is 2, but encoding deliberately selects the
-smallest canonical profile. A one-sample model keeps its byte-identical
-`wfcm=1` representation. A model with two or more samples uses `wfcm=2`, which
+The latest reader/writer version is 3, but encoding deliberately selects the
+smallest canonical profile. A one-sample rank-1/2 model keeps its byte-identical
+`wfcm=1` representation. A rank-1/2 model with two or more samples uses `wfcm=2`, which
 replaces the singular width and height with ordered shape records:
 
 ```text
@@ -287,7 +292,7 @@ topology, solve options, and solver/random algorithm versions.
 ## current scope
 
 The current learner handles ordered heterogeneous pretokenized corpora of
-single-layer 1D or 2D samples with cardinal radius-one relations. The separate
+single-layer 1D, 2D, or 3D samples with cardinal radius-one relations. The separate
 pattern layer extracts overlapping multi-cell 2D footprints, and the sequence
 layer learns bounded order-N latent states from pretokenized UTF-8 corpora.
 Wrapped depth-one pattern assignments can now project into a same-sized public
@@ -298,7 +303,8 @@ exact suffix/prefix compatibility intentionally permits recombination. These
 generic learners retain their explicit token boundary; the specialized
 [text foundation](text.md) now converts raw in-memory documents with a
 project-owned Unicode-scalar tokenizer or caller callback. The ecosystem does
-not yet stream raw files, learn 3D neighborhoods, smooth unseen relations,
-attach provenance or semantic tags, or implement a probabilistic language
-model. Those are deliberate extension points built on stable explicit IR
-rather than hidden behavior.
+not yet stream spatial corpora, extract overlapping 3D footprints, smooth
+unseen relations, infer semantic tags, or implement a probabilistic language
+model. Training documents and recipes retain declared source/license provenance;
+standalone models retain observations, not those declarations. These are
+explicit contracts rather than hidden behavior.

@@ -32,7 +32,7 @@ uses
   wfc_training_text;
 
 const
-  WFC_LEARN_CLI_VERSION = 1;
+  WFC_LEARN_CLI_VERSION = 2;
 
   WFC_LEARN_EXIT_SUCCESS = 0;
   WFC_LEARN_EXIT_INVALID_TRAINING = 1;
@@ -102,7 +102,7 @@ begin
     '  wfc-learn --help'#10 +
     '  wfc-learn --version'#10 +
     #10 +
-    'INPUT is one canonical wfclearn=1 file path, or - to read standard ' +
+    'INPUT is one canonical wfclearn=1 or wfclearn=2 file path, or - to read standard ' +
       'input.'#10 +
     'By default, training emits a canonical wfcpipeline=1 recipe.'#10 +
     '--model emits the learned standalone wfcm, wfcp, or wfcs model.'#10 +
@@ -112,7 +112,7 @@ end;
 function WfcLearnVersionText: String;
 begin
   Result := 'wfc-learn ' + IntToStr(WFC_LEARN_CLI_VERSION) +
-    ' (wfclearn=1)'#10;
+    ' (wfclearn=1,2)'#10;
 end;
 
 function WfcLearnFailureExitCode(

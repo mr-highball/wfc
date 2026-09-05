@@ -122,6 +122,8 @@ Both scripts rebuild with assertions and range, overflow, and I/O checks, run
 `wfc_pipeline_result_text_test`, `wfc_pipeline_runtime_test`,
 `wfc_token_lookup_test`, `wfc_validate_app_test`, `wfc_run_app_test`,
 `wfc_training_test`, `wfc_training_text_test`, `wfc_learn_app_test`,
+`wfc_learn3d_test`, `wfc_model3d_text_test`, `wfc_training3d_test`,
+`wfc_training_volume_workspace_test`,
 `wfc_text_training_test`, `wfc_training_workspace_test`,
 `wfc_learned_pattern_world_bundle_test`,
 `wfc_trace_reference_test`,
@@ -131,7 +133,7 @@ portable console examples with seed `0`, including the bounded/wrapped spatial
 dependency self-check, causal-trace inspector, bounded pass-negotiation proof,
 negotiated descendant repair, anchored text completion, three-pass text
 composition, negotiated music variation, the learned-pattern world, and
-depth-three Building 3D pipeline, all five Training Studio presets, and the
+depth-three Building 3D pipeline, all six Training Studio presets, and the
 Music Studio generation/repair/audio self-test. The Deterministic Restarts
 console host checks four policies, exact transcripts, independently sampled
 outputs, and failed-attempt rollback; its shared helper also runs in the
@@ -158,8 +160,8 @@ canonical files in `test/fixtures/pipeline-cli` and
 exact validator and result bytes (including the domain-sized bundle), quiet
 output, and the documented invalid, usage, I/O, solved, and non-solved exit
 classes are all exercised.
-A second, 25-case process suite checks `wfc_learn`, `wfc_validate`, and
-`wfc_run` against all four source/model/recipe/run/result bundles in
+A second, 30-case process suite checks `wfc_learn`, `wfc_validate`, and
+`wfc_run` against all five source/model/recipe/run/result bundles in
 `examples/learning/04_TrainingDocuments`. It covers file/stdin training,
 standalone output, recipe validation, solved replay, quiet/version behavior,
 and invalid/usage/I/O diagnostics. The native training-text suite requires
@@ -376,7 +378,8 @@ PAS2JS=/opt/pas2js/bin/pas2js bash ./build-browser-training.sh
 ```
 
 Serve `build/browser/training/www` and append `?selftest=1`. The test exercises
-all five presets, source/run invalidation, public-token locks, contradiction
+all six presets, full-depth volume slices and XYZ locks, source/run invalidation,
+public-token locks, contradiction
 recovery, and stale-import rejection. The final overlapping-checkerboard
 fixture must report `data-state="solved"`, `data-self-test="passed"`,
 `data-source-signature="0FA2C5EA"`, `data-recipe-signature="DBCBA621"`,

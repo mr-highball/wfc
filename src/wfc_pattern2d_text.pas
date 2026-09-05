@@ -551,7 +551,7 @@ begin
   LPatternCount := Length(APatterns);
   if Length(ARelations) <> CheckedRelationSlotCount(LPatternCount) then
     TextError('relation table has the wrong size');
-  for D := Low(TWfcModelDirection) to High(TWfcModelDirection) do
+  for D := wmdNorth to wmdWest do
     for I := 0 to LPatternCount - 1 do
       for J := 0 to LPatternCount - 1 do
       begin
@@ -594,7 +594,7 @@ begin
       (AModel.CompiledModel.Directions <>
         [wmdNorth, wmdEast, wmdSouth, wmdWest]) then
     TextError('compiled model metadata does not match the pattern model');
-  for D := Low(TWfcModelDirection) to High(TWfcModelDirection) do
+  for D := wmdNorth to wmdWest do
     for I := 0 to AModel.PatternCount - 1 do
       for J := 0 to AModel.PatternCount - 1 do
       begin
@@ -805,7 +805,7 @@ begin
   ValidateCompiledRelations(AModel, LPatterns);
 
   LRelationCount := 0;
-  for D := Low(TWfcModelDirection) to High(TWfcModelDirection) do
+  for D := wmdNorth to wmdWest do
     for I := 0 to AModel.PatternCount - 1 do
       for J := 0 to AModel.PatternCount - 1 do
         if PayloadsCompatible(LPatterns[I], LPatterns[J],
@@ -861,7 +861,7 @@ begin
   end;
   LLines[LLineIndex] := 'relations=' + IntToStr(LRelationCount);
   Inc(LLineIndex);
-  for D := Low(TWfcModelDirection) to High(TWfcModelDirection) do
+  for D := wmdNorth to wmdWest do
     for I := 0 to AModel.PatternCount - 1 do
       for J := 0 to AModel.PatternCount - 1 do
         if PayloadsCompatible(LPatterns[I], LPatterns[J],

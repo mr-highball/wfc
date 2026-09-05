@@ -7,7 +7,7 @@ pas2js. The browser is a presentation edge over that same code, not another
 solver or learner.
 
 The [Studio example](../examples/learning/05_TrainingStudio/README.md) includes a
-browser workbench and a native demonstration of five independently checked
+browser workbench and a native demonstration of six independently checked
 presets. For file-oriented automation, use [wfc-learn](training.md) and the
 [recipe validator/runner](pipeline-artifacts.md).
 
@@ -128,6 +128,13 @@ must follow strict public-vocabulary order. One-way solving requires a zero
 pass-backtrack budget. See [run artifacts](pipeline-artifacts.md) for the
 complete canonical input contract.
 
+Rank-3 training uses `ConfigureVolumeRun(Options, Depth, Locks, Domains)`.
+Depth is explicit: the older `ConfigureRun` rejects rank 3 rather than silently
+flattening it. Conversely, `ConfigureVolumeRun` rejects non-volume recipes.
+Width and height remain in the unchanged solve-options record. XYZ lock/domain
+coordinates and X-fast flattened output are preserved through exported run and
+result artifacts. Invalid volume edits discard the old invocation and result.
+
 `HasRecipe`, `HasRun`, and `HasResult` distinguish availability; accessors
 requiring a missing artifact raise `EWfcTrainingWorkspace`. Underlying
 training, codec, and pipeline exceptions keep their existing types.
@@ -153,15 +160,16 @@ The interactive constructor used by the demo limits source text to 262,144
 characters, source tokens to 512, samples to 64, learned model items to 128,
 output cells to 512, local backtracks to 4,096, and pass backtracks to 64.
 “Model items” means cardinal values, distinct patterns, or sequence states,
-not source observations. Output is rank 1 or 2 and depth one, matching the
-training recipe profiles.
+not source observations. Output follows the training rank: rank 1/2 uses depth
+one, while rank 3 requires an explicit positive depth. The 512-cell interactive
+policy bounds the complete `width*height*depth`, not each slice independently.
 Rank-1 runs require height one; choose output width/height for the particular
 corpus rather than assuming every learned model supports every extent.
 
 Source-token/sample limits are checked after bounded source decoding but before
 learning. Learned model-item limits are checked after extraction and before any
 runtime graph is allocated. Pattern extraction still observes the underlying
-pattern learner's own capacity limits. Output area and search budgets are
+pattern learner's own capacity limits. Output volume and search budgets are
 checked before run construction. These are data/search-count bounds, not a
 wall-clock guarantee or a multi-tenant sandbox. The browser executes
 synchronously and does not claim background workers or mid-solve cancellation.
@@ -176,6 +184,8 @@ public tokens, add/remove locks, see pass visibility and terminal counters,
 and view/download source, model, recipe, run, and result artifacts.
 The token grid uses canonical percent encoding to make spaces, line breaks,
 and supplementary Unicode unambiguous; each cell retains its full token label.
+Volumes appear as labeled Z slices. A clicked cell copies all three lock
+coordinates; locks at the same X/Y on different slices remain separate.
 
 Source edits invalidate training and clear locks; run-field and lock edits
 invalidate the invocation/result. A displayed contradiction is not replaced by
@@ -193,12 +203,18 @@ authoring, and large-corpus/batch management remain separate work.
 
 ## Verification
 
-The workspace suite pins all five source/recipe/result identities, validates
+The legacy workspace suite pins the original five source/recipe/result identities, validates
 public outputs independently, round-trips exported provenance chains, proves
 detached arrays, and checks invalidation, contradiction, empty-domain behavior,
 recovery, and resource-policy rejection on FPC and pas2js. Text-import tests
 cover exact Unicode/whitespace, sample boundaries, metadata retention, and
 capacity errors.
+
+The volume suite additionally checks full-depth replay, nonzero-Z locks and
+domains, API rank separation, volume-size/budget rejection, and stale-output
+invalidation. Preset 5 is checked independently for all three wrapped axes;
+the browser self-test checks its pinned artifacts, slice rendering, XYZ clicks,
+contradiction, and recovery before restoring the unchanged preset-2 fixture.
 
 The browser's `?selftest=1` path exercises real controls and checks solved,
 edited, contradictory, and recovered states before restoring the exact seeded

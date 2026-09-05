@@ -128,6 +128,10 @@ begin
   Expect(3, 'data-contradiction', 'passed');
   Expect(3, 'data-recovery', 'passed');
   Expect(3, 'data-preset-sweep', 'passed');
+  Expect(3, 'data-volume-dimensions', 'passed');
+  Expect(3, 'data-volume-lock', 'passed');
+  Expect(3, 'data-volume-contradiction', 'passed');
+  Expect(3, 'data-volume-recovery', 'passed');
   Expect(3, 'data-import-race', 'passed');
   Expect(4, 'data-seed', '0');
   Expect(4, 'data-composition-signature', '216F6EBB');

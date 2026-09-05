@@ -30,16 +30,17 @@ interface
 uses wfc_training_workspace;
 
 const
-  TRAINING_STUDIO_PRESET_COUNT = 5;
+  TRAINING_STUDIO_PRESET_COUNT = 6;
 
 function TrainingStudioPresetName(const AIndex: Integer): String;
 function TrainingStudioPresetText(const AIndex: Integer): String;
 function TrainingStudioPresetOptions(
   const AIndex: Integer): TWfcTrainingSolveOptions;
+function TrainingStudioPresetDepth(const AIndex: Integer): Integer;
 
 implementation
 
-uses SysUtils, wfc_training, wfc_training_text, wfc_text_training;
+uses SysUtils, wfc_model, wfc_training, wfc_training_text, wfc_text_training;
 
 const
   PRESET_0 =
@@ -152,6 +153,7 @@ begin
     2: Result := 'Overlapping checkerboard';
     3: Result := 'Whole token phrases';
     4: Result := 'Raw text / Unicode scalars';
+    5: Result := 'Volume checkerboard / six neighbors';
   end;
 end;
 
@@ -159,6 +161,10 @@ function TrainingStudioPresetText(const AIndex: Integer): String;
 var
   LSamples: TWfcTextTrainingSamples;
   LDocument: TWfcTrainingDocument;
+  LVolumeSamples: TWfcTrainingSamples;
+  LOptions: TWfcTrainingOptions;
+  LTokens: TWfcModelTokens;
+  X, Y, Z: Integer;
 begin
   CheckIndex(AIndex);
   case AIndex of
@@ -166,6 +172,29 @@ begin
     1: Exit(PRESET_1);
     2: Exit(PRESET_2);
     3: Exit(PRESET_3);
+  end;
+  if AIndex = 5 then
+  begin
+    SetLength(LTokens, 8);
+    for Z := 0 to 1 do
+      for Y := 0 to 1 do
+        for X := 0 to 1 do
+          if (X + Y + Z) mod 2 = 0 then
+            LTokens[X + 2 * Y + 4 * Z] := 'A'
+          else LTokens[X + 2 * Y + 4 * Z] := 'B';
+    LOptions := MakeWfcTrainingOptions(wtkAdjacency3D, wmbWrap,
+      wmsCubeRotations, 0, 0, 0);
+    SetLength(LVolumeSamples, 1);
+    LVolumeSamples[0] := MakeWfcTrainingSample('cube', 2, 2, 2, LTokens);
+    LDocument := TWfcTrainingDocument.Create(
+      MakeWfcTrainingMetadata('volume-checkerboard', 'MIT',
+        'project-authored training studio example'), LOptions, LVolumeSamples);
+    try
+      Result := EncodeWfcTrainingText(LDocument);
+    finally
+      LDocument.Free;
+    end;
+    Exit;
   end;
   SetLength(LSamples, 2);
   LSamples[0] := MakeWfcTextTrainingSample('first', 'a cat.');
@@ -190,6 +219,12 @@ begin
     3: begin Result.Width := 3; Result.Height := 1 end;
     4: begin Result.Width := 6; Result.Height := 1 end;
   end;
+end;
+
+function TrainingStudioPresetDepth(const AIndex: Integer): Integer;
+begin
+  CheckIndex(AIndex);
+  if AIndex = 5 then Result := 4 else Result := 1;
 end;
 
 end.

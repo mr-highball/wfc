@@ -47,6 +47,7 @@ type
     FLocks: TWfcPipelineCellLocks;
     FVocabulary: TWfcModelTokens;
     FConfiguredOptions: TWfcTrainingSolveOptions;
+    FConfiguredDepth: Integer;
     FSelectedCell: Integer;
     FFileReader: TJSFileReader;
     FSourceDownloadUrl: String;
@@ -80,6 +81,7 @@ type
     FSolveButton: TJSHTMLButtonElement;
     FWidthInput: TJSHTMLInputElement;
     FHeightInput: TJSHTMLInputElement;
+    FDepthInput: TJSHTMLInputElement;
     FSeedInput: TJSHTMLInputElement;
     FStrategySelect: TJSHTMLSelectElement;
     FBacktracksInput: TJSHTMLInputElement;
@@ -88,6 +90,7 @@ type
 
     FLockXInput: TJSHTMLInputElement;
     FLockYInput: TJSHTMLInputElement;
+    FLockZInput: TJSHTMLInputElement;
     FLockTokenSelect: TJSHTMLSelectElement;
     FAddLockButton: TJSHTMLButtonElement;
     FLockList: TJSHTMLSelectElement;
@@ -109,7 +112,8 @@ type
     procedure BindDocument;
     procedure BindEvents;
     procedure PopulatePresets;
-    procedure WriteOptions(const AOptions: TWfcTrainingSolveOptions);
+    procedure WriteOptions(const AOptions: TWfcTrainingSolveOptions;
+      const ADepth: Integer);
     procedure LoadPreset(const AIndex: Integer);
     procedure ApplySourceText(const AText: String);
     procedure TrainWorkspace;
@@ -124,7 +128,7 @@ type
       const AName: String; const AMaximum: Integer): Integer;
     function SelectedVocabularyIndex: Integer;
     function FindVocabularyToken(const AToken: TWfcModelToken): Integer;
-    procedure AddOrReplaceLock(const AX, AY: Integer;
+    procedure AddOrReplaceLock(const AX, AY, AZ: Integer;
       const AToken: TWfcModelToken);
     procedure SortLocks;
 
@@ -193,10 +197,14 @@ uses
 const
   MAX_SEED = Cardinal($FFFFFFFF);
   INITIAL_PRESET = 2;
+  VOLUME_PRESET = 5;
   RAW_TEXT_STORAGE_LIMIT = 2048;
   BASELINE_SOURCE_SIGNATURE = '0FA2C5EA';
   BASELINE_RECIPE_SIGNATURE = 'DBCBA621';
   BASELINE_RESULT_SIGNATURE = '947C4AFD';
+  VOLUME_SOURCE_SIGNATURE = 'C6E52736';
+  VOLUME_RECIPE_SIGNATURE = '4B8C29E4';
+  VOLUME_RESULT_SIGNATURE = 'CBDC737A';
 
 constructor TBrowserTrainingStudioApplication.Create;
 begin
@@ -207,6 +215,7 @@ begin
   FLocks := nil;
   FVocabulary := nil;
   FConfiguredOptions := DefaultWfcTrainingSolveOptions;
+  FConfiguredDepth := 1;
   FSelectedCell := -1;
   FFileReader := nil;
   FSourceDownloadUrl := '';
@@ -263,6 +272,7 @@ begin
   FSolveButton := TJSHTMLButtonElement(RequireElement('solve-button'));
   FWidthInput := TJSHTMLInputElement(RequireElement('width-input'));
   FHeightInput := TJSHTMLInputElement(RequireElement('height-input'));
+  FDepthInput := TJSHTMLInputElement(RequireElement('depth-input'));
   FSeedInput := TJSHTMLInputElement(RequireElement('seed-input'));
   FStrategySelect := TJSHTMLSelectElement(RequireElement('strategy-select'));
   FBacktracksInput := TJSHTMLInputElement(RequireElement('backtracks-input'));
@@ -272,6 +282,7 @@ begin
 
   FLockXInput := TJSHTMLInputElement(RequireElement('lock-x-input'));
   FLockYInput := TJSHTMLInputElement(RequireElement('lock-y-input'));
+  FLockZInput := TJSHTMLInputElement(RequireElement('lock-z-input'));
   FLockTokenSelect := TJSHTMLSelectElement(
     RequireElement('lock-token-select'));
   FAddLockButton := TJSHTMLButtonElement(RequireElement('add-lock-button'));
@@ -304,6 +315,7 @@ begin
 
   FWidthInput.oninput := @HandleRunInput;
   FHeightInput.oninput := @HandleRunInput;
+  FDepthInput.oninput := @HandleRunInput;
   FSeedInput.oninput := @HandleRunInput;
   FStrategySelect.onchange := @HandleRunInput;
   FBacktracksInput.oninput := @HandleRunInput;
@@ -334,10 +346,12 @@ begin
 end;
 
 procedure TBrowserTrainingStudioApplication.WriteOptions(
-  const AOptions: TWfcTrainingSolveOptions);
+  const AOptions: TWfcTrainingSolveOptions; const ADepth: Integer);
 begin
   FWidthInput.value := IntToStr(AOptions.Width);
   FHeightInput.value := IntToStr(AOptions.Height);
+  FDepthInput.value := IntToStr(ADepth);
+  FLockZInput.value := '0';
   FSeedInput.value := UIntToStr(AOptions.Seed);
   if AOptions.Strategy = wpssNegotiated then
     FStrategySelect.value := 'negotiated'
@@ -351,7 +365,8 @@ end;
 procedure TBrowserTrainingStudioApplication.LoadPreset(const AIndex: Integer);
 begin
   FPresetSelect.value := IntToStr(AIndex);
-  WriteOptions(TrainingStudioPresetOptions(AIndex));
+  WriteOptions(TrainingStudioPresetOptions(AIndex),
+    TrainingStudioPresetDepth(AIndex));
   ApplySourceText(TrainingStudioPresetText(AIndex));
   SetState('source-dirty', 'Preset loaded; train to continue.',
     TrainingStudioPresetName(AIndex) + ' is the current editable source.');
@@ -385,6 +400,7 @@ end;
 
 procedure TBrowserTrainingStudioApplication.SolveWorkspace;
 var
+  LDepth: Integer;
   LOptions: TWfcTrainingSolveOptions;
   LStatus: TWfcPipelineResultStatus;
 begin
@@ -394,8 +410,19 @@ begin
   FSelectedCell := -1;
   RefreshAll;
   LOptions := ReadOptions;
-  FWorkspace.ConfigureRun(LOptions, FLocks, nil);
+  LDepth := ReadBoundedInteger(FDepthInput, 'depth', 1,
+    FLimits.MaxOutputCells);
+  if FWorkspace.Rank = 3 then
+    FWorkspace.ConfigureVolumeRun(LOptions, LDepth, FLocks, nil)
+  else
+  begin
+    if LDepth <> 1 then
+      raise EConvertError.Create(
+        'depth must be 1 unless the trained recipe has rank 3');
+    FWorkspace.ConfigureRun(LOptions, FLocks, nil);
+  end;
   FConfiguredOptions := LOptions;
+  FConfiguredDepth := LDepth;
   FWorkspace.Solve;
   RefreshAll;
   LStatus := FWorkspace.ResultStatus;
@@ -535,22 +562,22 @@ begin
 end;
 
 procedure TBrowserTrainingStudioApplication.AddOrReplaceLock(
-  const AX, AY: Integer; const AToken: TWfcModelToken);
+  const AX, AY, AZ: Integer; const AToken: TWfcModelToken);
 var
   I: Integer;
 begin
   for I := 0 to Length(FLocks) - 1 do
     if (FLocks[I].X = AX) and (FLocks[I].Y = AY) and
-        (FLocks[I].Z = 0) then
+        (FLocks[I].Z = AZ) then
     begin
       FLocks[I] := MakeWfcPipelineCellLock(FWorkspace.PublicPassIndex,
-        AX, AY, 0, AToken);
+        AX, AY, AZ, AToken);
       SortLocks;
       Exit;
     end;
   SetLength(FLocks, Length(FLocks) + 1);
   FLocks[High(FLocks)] := MakeWfcPipelineCellLock(
-    FWorkspace.PublicPassIndex, AX, AY, 0, AToken);
+    FWorkspace.PublicPassIndex, AX, AY, AZ, AToken);
   SortLocks;
 end;
 
@@ -621,6 +648,7 @@ var
   LRecipeSignature: String;
   LResultSignature: String;
   LCellCount: Integer;
+  LOutputDepth: Integer;
   LTokens: TWfcModelTokens;
 begin
   LProfile := '';
@@ -629,6 +657,7 @@ begin
   LRecipeSignature := '';
   LResultSignature := '';
   LCellCount := 0;
+  LOutputDepth := 0;
   LPasses := nil;
 
   if FWorkspace.HasRecipe then
@@ -663,6 +692,7 @@ begin
     begin
       LTokens := FWorkspace.OutputTokens;
       LCellCount := Length(LTokens);
+      LOutputDepth := FConfiguredDepth;
     end;
   end
   else
@@ -677,6 +707,7 @@ begin
   document.body.setAttribute('data-result-status', LResultStatus);
   document.body.setAttribute('data-output-count', IntToStr(LCellCount));
   document.body.setAttribute('data-cell-count', IntToStr(LCellCount));
+  document.body.setAttribute('data-output-depth', IntToStr(LOutputDepth));
   document.body.setAttribute('data-pass-count', IntToStr(Length(LPasses)));
   document.body.setAttribute('data-lock-count', IntToStr(Length(FLocks)));
 end;
@@ -729,7 +760,8 @@ begin
     LOption := TJSHTMLOptionElement(document.createElement('option'));
     LOption.value := IntToStr(I);
     LOption.textContent := 'x=' + IntToStr(FLocks[I].X) +
-      ' y=' + IntToStr(FLocks[I].Y) + ' token=' +
+      ' y=' + IntToStr(FLocks[I].Y) +
+      ' z=' + IntToStr(FLocks[I].Z) + ' token=' +
       DisplayToken(FLocks[I].Token);
     FLockList.appendChild(LOption);
   end;
@@ -743,7 +775,6 @@ end;
 procedure TBrowserTrainingStudioApplication.ClearOutput;
 begin
   FOutputGrid.textContent := '';
-  FOutputGrid.setAttribute('style', '--grid-columns:1');
   FOutputPlaceholder.removeAttribute('hidden');
   FSelectedCell := -1;
 end;
@@ -753,7 +784,11 @@ var
   I: Integer;
   LX: Integer;
   LY: Integer;
+  LZ: Integer;
   LButton: TJSHTMLButtonElement;
+  LHeading: TJSElement;
+  LSlice: TJSElement;
+  LSliceGrid: TJSElement;
   LStatus: TWfcPipelineResultStatus;
   LTokens: TWfcModelTokens;
 begin
@@ -777,24 +812,50 @@ begin
   end;
 
   LTokens := FWorkspace.OutputTokens;
-  FOutputGrid.setAttribute('style', '--grid-columns:' +
-    IntToStr(FConfiguredOptions.Width));
-  for I := 0 to Length(LTokens) - 1 do
+  if Length(LTokens) <> FConfiguredOptions.Width *
+      FConfiguredOptions.Height * FConfiguredDepth then
+    raise EWfcTrainingWorkspace.Create(
+      'terminal output shape does not match its configured volume');
+  for LZ := 0 to FConfiguredDepth - 1 do
   begin
-    LX := I mod FConfiguredOptions.Width;
-    LY := I div FConfiguredOptions.Width;
-    LButton := TJSHTMLButtonElement(document.createElement('button'));
-    LButton._type := 'button';
-    LButton.className := 'output-cell';
-    LButton.textContent := DisplayToken(LTokens[I]);
-    LButton.setAttribute('data-index', IntToStr(I));
-    LButton.setAttribute('data-x', IntToStr(LX));
-    LButton.setAttribute('data-y', IntToStr(LY));
-    LButton.setAttribute('role', 'gridcell');
-    LButton.setAttribute('aria-label', 'x ' + IntToStr(LX) +
-      ', y ' + IntToStr(LY) + ', token ' + DisplayToken(LTokens[I]));
-    LButton.onclick := @HandleOutputClick;
-    FOutputGrid.appendChild(LButton);
+    LSlice := document.createElement('section');
+    LSlice.className := 'output-slice';
+    LSlice.setAttribute('data-z', IntToStr(LZ));
+    LSlice.setAttribute('aria-label', 'Output slice Z ' + IntToStr(LZ));
+    LHeading := document.createElement('h3');
+    LHeading.textContent := 'Z = ' + IntToStr(LZ);
+    LSlice.appendChild(LHeading);
+    LSliceGrid := document.createElement('div');
+    LSliceGrid.className := 'output-slice-grid';
+    LSliceGrid.setAttribute('style', '--grid-columns:' +
+      IntToStr(FConfiguredOptions.Width));
+    LSliceGrid.setAttribute('role', 'rowgroup');
+    for LY := 0 to FConfiguredOptions.Height - 1 do
+      for LX := 0 to FConfiguredOptions.Width - 1 do
+      begin
+        I := (LZ * FConfiguredOptions.Height + LY) *
+          FConfiguredOptions.Width + LX;
+        LButton := TJSHTMLButtonElement(document.createElement('button'));
+        LButton._type := 'button';
+        LButton.id := 'output-cell-' + IntToStr(LX) + '-' +
+          IntToStr(LY) + '-' + IntToStr(LZ);
+        LButton.className := 'output-cell';
+        LButton.textContent := DisplayToken(LTokens[I]);
+        LButton.setAttribute('data-index', IntToStr(I));
+        LButton.setAttribute('data-x', IntToStr(LX));
+        LButton.setAttribute('data-y', IntToStr(LY));
+        LButton.setAttribute('data-z', IntToStr(LZ));
+        LButton.setAttribute('data-xyz', IntToStr(LX) + ',' +
+          IntToStr(LY) + ',' + IntToStr(LZ));
+        LButton.setAttribute('role', 'gridcell');
+        LButton.setAttribute('aria-label', 'x ' + IntToStr(LX) +
+          ', y ' + IntToStr(LY) + ', z ' + IntToStr(LZ) +
+          ', token ' + DisplayToken(LTokens[I]));
+        LButton.onclick := @HandleOutputClick;
+        LSliceGrid.appendChild(LButton);
+      end;
+    LSlice.appendChild(LSliceGrid);
+    FOutputGrid.appendChild(LSlice);
   end;
   FOutputPlaceholder.setAttribute('hidden', '');
 end;
@@ -964,6 +1025,7 @@ begin
     wtkAdjacency2D: Result := 'adjacency2d';
     wtkPattern2D: Result := 'pattern2d';
     wtkSequence: Result := 'sequence';
+    wtkAdjacency3D: Result := 'adjacency3d';
   else
     Result := 'unknown';
   end;
@@ -1086,7 +1148,7 @@ begin
     LOptions := DefaultWfcTrainingSolveOptions;
     LOptions.Width := LSample.Width;
     LOptions.Height := 1;
-    WriteOptions(LOptions);
+    WriteOptions(LOptions, 1);
   finally
     LDocument.Free;
   end;
@@ -1168,6 +1230,8 @@ var
   I: Integer;
   LBaselineRecipe: String;
   LBaselineResult: String;
+  LCellElement: TJSElement;
+  LNodes: TJSNodeList;
   LResultText: String;
   LStaleReader: TJSFileReader;
   LTokenIndex: Integer;
@@ -1181,6 +1245,10 @@ begin
   document.body.setAttribute('data-recovery', 'pending');
   document.body.setAttribute('data-preset-sweep', 'pending');
   document.body.setAttribute('data-import-race', 'pending');
+  document.body.setAttribute('data-volume-dimensions', 'pending');
+  document.body.setAttribute('data-volume-lock', 'pending');
+  document.body.setAttribute('data-volume-contradiction', 'pending');
+  document.body.setAttribute('data-volume-recovery', 'pending');
   try
     AssertTest(FWorkspace.HasResult and
       (FWorkspace.ResultStatus = wprsSolved),
@@ -1218,6 +1286,105 @@ begin
     DispatchDomEvent(FSolveButton, 'click');
     AssertTest(FWorkspace.ResultSignatureText = LBaselineResult,
       'preset sweep did not restore the baseline');
+
+    AssertTest((VOLUME_PRESET < TRAINING_STUDIO_PRESET_COUNT) and
+      (TrainingStudioPresetDepth(VOLUME_PRESET) = 4),
+      'volume preset depth contract changed');
+    FPresetSelect.value := IntToStr(VOLUME_PRESET);
+    DispatchDomEvent(FLoadPresetButton, 'click');
+    DispatchDomEvent(FTrainButton, 'click');
+    DispatchDomEvent(FSolveButton, 'click');
+    LTokens := FWorkspace.OutputTokens;
+    LNodes := document.querySelectorAll('#output-grid .output-slice');
+    AssertTest((FWorkspace.Rank = 3) and FWorkspace.HasResult and
+      (FWorkspace.ResultStatus = wprsSolved) and
+      (FWorkspace.TrainingSignatureText = VOLUME_SOURCE_SIGNATURE) and
+      (FWorkspace.RecipeSignatureText = VOLUME_RECIPE_SIGNATURE) and
+      (FWorkspace.ResultSignatureText = VOLUME_RESULT_SIGNATURE) and
+      (FDepthInput.value = '4') and (FConfiguredDepth = 4) and
+      (Length(LTokens) = 64) and (LNodes.length = 4) and
+      (document.querySelectorAll('#output-grid .output-cell').length = 64) and
+      (document.body.getAttribute('data-output-depth') = '4') and
+      Assigned(document.getElementById('output-cell-0-0-1')),
+      'volume preset did not render four labeled, unique XYZ slices');
+    document.body.setAttribute('data-volume-dimensions', 'passed');
+
+    LTokenIndex := FindVocabularyToken('A');
+    AssertTest(LTokenIndex >= 0, 'volume token A is unavailable');
+    FLockTokenSelect.value := IntToStr(LTokenIndex);
+    FLockXInput.value := '0';
+    FLockYInput.value := '0';
+    FLockZInput.value := '1';
+    DispatchDomEvent(FAddLockButton, 'click');
+    AssertTest((Length(FLocks) = 1) and (FLocks[0].X = 0) and
+      (FLocks[0].Y = 0) and (FLocks[0].Z = 1) and
+      (FLocks[0].Token = 'A'),
+      'volume lock did not retain its nonzero Z coordinate');
+    DispatchDomEvent(FSolveButton, 'click');
+    LTokens := FWorkspace.OutputTokens;
+    AssertTest((Length(LTokens) = 64) and (LTokens[16] = 'A'),
+      'nonzero-Z public lock was not enforced');
+    LCellElement := document.getElementById('output-cell-0-0-1');
+    AssertTest(Assigned(LCellElement),
+      'nonzero-Z output cell is missing from the DOM');
+    DispatchDomEvent(LCellElement, 'click');
+    AssertTest((FLockXInput.value = '0') and (FLockYInput.value = '0') and
+      (FLockZInput.value = '1'),
+      'output click did not copy all three coordinates');
+
+    LTokenIndex := FindVocabularyToken('B');
+    AssertTest(LTokenIndex >= 0, 'volume token B is unavailable');
+    FLockTokenSelect.value := IntToStr(LTokenIndex);
+    FLockXInput.value := '0';
+    FLockYInput.value := '0';
+    FLockZInput.value := '0';
+    DispatchDomEvent(FAddLockButton, 'click');
+    AssertTest((Length(FLocks) = 2) and (FLocks[0].Z = 0) and
+      (FLocks[0].Token = 'B') and (FLocks[1].Z = 1) and
+      (FLocks[1].Token = 'A'),
+      'lock sorting did not preserve distinct Z coordinates');
+
+    LTokenIndex := FindVocabularyToken('A');
+    FLockTokenSelect.value := IntToStr(LTokenIndex);
+    FLockXInput.value := '1';
+    FLockYInput.value := '0';
+    FLockZInput.value := '1';
+    DispatchDomEvent(FAddLockButton, 'click');
+    AssertTest((Length(FLocks) = 3) and (FLocks[2].Z = 1) and
+      (FLocks[2].X = 1) and (FLocks[2].Token = 'A'),
+      'adjacent volume lock was not retained after sorted insertion');
+    document.body.setAttribute('data-volume-lock', 'passed');
+    DispatchDomEvent(FSolveButton, 'click');
+    AssertTest(FWorkspace.HasResult and
+      (FWorkspace.ResultStatus = wprsContradiction) and
+      (Length(FWorkspace.OutputTokens) = 0) and
+      (document.querySelectorAll('#output-grid .output-cell').length = 0),
+      'adjacent equal locks did not produce a clean volume contradiction');
+    document.body.setAttribute('data-volume-contradiction', 'passed');
+
+    FLockList.selectedIndex := 2;
+    DispatchDomEvent(FRemoveLockButton, 'click');
+    DispatchDomEvent(FSolveButton, 'click');
+    LTokens := FWorkspace.OutputTokens;
+    AssertTest(FWorkspace.HasResult and
+      (FWorkspace.ResultStatus = wprsSolved) and
+      (Length(LTokens) = 64) and (LTokens[16] = 'A') and
+      (Length(FLocks) = 2) and (FLocks[0].Z = 0) and (FLocks[1].Z = 1),
+      'removing the contradictory volume lock did not recover XYZ state');
+    DispatchDomEvent(FClearLocksButton, 'click');
+    DispatchDomEvent(FSolveButton, 'click');
+    AssertTest(FWorkspace.HasResult and
+      (FWorkspace.ResultStatus = wprsSolved) and
+      (Length(FWorkspace.OutputTokens) = 64),
+      'clearing volume locks did not restore an unconstrained volume');
+    document.body.setAttribute('data-volume-recovery', 'passed');
+
+    FPresetSelect.value := IntToStr(INITIAL_PRESET);
+    DispatchDomEvent(FLoadPresetButton, 'click');
+    DispatchDomEvent(FTrainButton, 'click');
+    DispatchDomEvent(FSolveButton, 'click');
+    AssertTest(FWorkspace.ResultSignatureText = LBaselineResult,
+      'volume scenario did not restore the unchanged baseline');
 
     FArtifactSelect.value := 'result';
     DispatchDomEvent(FArtifactSelect, 'change');
@@ -1448,8 +1615,10 @@ var
   I: Integer;
   LOptions: TWfcTrainingSolveOptions;
   LTokenIndex: Integer;
+  LDepth: Integer;
   LX: Integer;
   LY: Integer;
+  LZ: Integer;
 begin
   Result := False;
   try
@@ -1458,14 +1627,20 @@ begin
     if not FWorkspace.HasRecipe then
       raise EWfcTrainingWorkspace.Create('train the current source first');
     LOptions := ReadOptions;
+    LDepth := ReadBoundedInteger(FDepthInput, 'depth', 1,
+      FLimits.MaxOutputCells);
+    if (FWorkspace.Rank <> 3) and (LDepth <> 1) then
+      raise EConvertError.Create(
+        'depth must be 1 unless the trained recipe has rank 3');
     LX := ReadLockCoordinate(FLockXInput, 'lock x', LOptions.Width);
     LY := ReadLockCoordinate(FLockYInput, 'lock y', LOptions.Height);
+    LZ := ReadLockCoordinate(FLockZInput, 'lock z', LDepth);
     LTokenIndex := SelectedVocabularyIndex;
-    AddOrReplaceLock(LX, LY, FVocabulary[LTokenIndex]);
+    AddOrReplaceLock(LX, LY, LZ, FVocabulary[LTokenIndex]);
     RefreshAll;
     for I := 0 to Length(FLocks) - 1 do
       if (FLocks[I].X = LX) and (FLocks[I].Y = LY) and
-          (FLocks[I].Z = 0) then
+          (FLocks[I].Z = LZ) then
       begin
         FLockList.selectedIndex := I;
         Break;
@@ -1530,11 +1705,13 @@ begin
       raise EConvertError.Create('selected output cell index is invalid');
     FLockXInput.value := LElement.getAttribute('data-x');
     FLockYInput.value := LElement.getAttribute('data-y');
+    FLockZInput.value := LElement.getAttribute('data-z');
     LPrevious := document.querySelector('.output-cell.selected');
     if Assigned(LPrevious) then LPrevious.className := 'output-cell';
     LElement.className := 'output-cell selected';
     FStatusDetailElement.textContent := 'Selected public cell x=' +
-      FLockXInput.value + ', y=' + FLockYInput.value + '.';
+      FLockXInput.value + ', y=' + FLockYInput.value + ', z=' +
+      FLockZInput.value + '.';
   except
     on E: Exception do ShowError(E.Message);
   end;

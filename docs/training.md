@@ -14,7 +14,7 @@ size.
 ## Start with a checked example
 
 [TrainingDocuments](../examples/learning/04_TrainingDocuments/README.md) contains
-four source documents and their exact learned models, recipes, run requests, and
+five source documents and their exact learned models, recipes, run requests, and
 solved results. The checked native build creates `build/native/bin/wfc_learn`
 (`.exe` on Windows), `wfc_validate`, and `wfc_run`.
 
@@ -25,7 +25,7 @@ wfc_learn --version
 ```
 
 `INPUT` is a file path, or `-` for standard input. Default output is canonical
-`wfcpipeline=1` text. `--model` emits `wfcm=1`/`wfcm=2`, `wfcp=1`, or `wfcs=1`
+`wfcpipeline=1` text. `--model` emits `wfcm=1`/`wfcm=2`/`wfcm=3`, `wfcp=1`, or `wfcs=1`
 according to the profile. `--quiet` still learns and constructs the recipe,
 but emits nothing. Options are mutually exclusive; `--` allows a path
 beginning with a hyphen.
@@ -40,8 +40,8 @@ The native entry source is `tools/wfc_learn_cli.lpr`; its distinct basename
 avoids an FPC object-file collision with `src/wfc_learn.pas`. Build it with
 `-owfc_learn` (`-owfc_learn.exe` on Windows). The host uses
 `tools/wfc_learn_app.pas` and contains only bounded file/standard-stream I/O.
-The portable units can also be called by a browser program; this milestone
-does not add a training browser editor.
+The portable units also power the [Training Studio](training-studio.md) browser
+editor. CLI version 2 advertises both supported training text profiles.
 
 ## Profiles
 
@@ -49,6 +49,7 @@ does not add a training browser editor.
 | --- | --- | --- | --- |
 | `adjacency1d` | Height 1; open/wrap; symmetry none; footprint 0,0; order 0 | Radius-one east/west adjacency and counts | Rank 1, public `output` |
 | `adjacency2d` | Open/wrap; none/d4; footprint 0,0; order 0 | Cardinal adjacency and counts | Rank 2, public `output` |
+| `adjacency3d` | Explicit positive depth; open/wrap; none/d4/cube24/cube48; footprint 0,0; order 0 | Six-face adjacency and counts | Rank 3, public `output` |
 | `pattern2d` | Open/wrap; none/d4; positive footprint of at most 64 cells; order 0 | Overlapping footprints and counts | Rank 2, private `patterns` → public `output`; wrapped input only |
 | `sequence` | Height 1; open; none; footprint 0,0; order 1–64 | Bounded order-N latent states and counts | Rank 1, private `sequence` → public `output`; whole extent |
 
@@ -72,7 +73,13 @@ run locks/domains on public `output` constrain private candidates before
 solving; private state keys are not user input. Output sizes, seed, locks,
 domains, budgets, and strategy belong to the separate recipe-bound run request.
 
-## Editable wfclearn=1 format
+## Editable training formats
+
+Existing kinds retain byte-identical `wfclearn=1` documents. The additive
+`adjacency3d` kind requires `wfclearn=2` and
+`sample=index,width,height,depth,name`, followed by exactly `width*height*depth`
+tokens in X-fast, then Y, then Z order. No other kind uses version 2. See
+[volume learning](volume-learning.md) for a complete example and symmetry policy.
 
 All records below are required and ordered. The document is ASCII with
 canonical percent-encoded UTF-8 token fields, LF line endings, and exactly one
@@ -130,7 +137,8 @@ Recipe metadata and its learned resource both retain:
 
 - the declared license;
 - the source description plus an ordered sample manifest;
-- a `wfclearn-v1/XXXXXXXX` fingerprint of the validated training contents.
+- a `wfclearn-v1/XXXXXXXX` fingerprint, or `wfclearn-v2/XXXXXXXX` for volumes,
+  of the validated training contents.
 
 The manifest is appended as ` | samples=` followed by comma-separated
 `index:encoded-name:widthxheight:XXXXXXXX` entries. Each sample hash covers
@@ -138,6 +146,9 @@ its name, dimensions, and ordered token contents. The pipeline codec then
 encodes the entire description as one token, including the percent signs in
 encoded sample names. The original `.wfclearn` file should be kept alongside
 the recipe: the manifest identifies input, but does not embed the entire corpus.
+
+Volume manifest shapes are `widthxheightxdepth`. Their sample and training
+hashes include depth, so reshaping identical flat tokens changes provenance.
 
 These 32-bit FNV-1a fingerprints are deterministic replay identities, **not**
 cryptographic integrity checks, proof of provenance, or collision-resistant
@@ -162,9 +173,15 @@ and every token. Both are rendered as eight uppercase hex digits. Changes to
 this extraction/identity contract require a new training version; existing
 recipe adapter/solver versions remain independently pinned.
 
+For `adjacency3d`, the training prefix/version fields become `wfclearn-v2`,
+`2`, the sample prefix becomes `wfclearn-sample-v2`, and each sample inserts
+depth immediately after height in both hashes. Token order becomes
+`x + width*y + width*height*z`. The remaining field order is unchanged;
+version-1 kinds never hash an appended depth field.
+
 ## Limits and failure behavior
 
-Version 1 caps source documents at 8,388,608 encoded ASCII characters and
+The resource envelope, shared by both text profiles, caps source documents at 8,388,608 encoded ASCII characters and
 69,643 lines, with 4,096 samples, 65,536 total source tokens, and dimensions
 of 1–65,536. A token field is at most 65,536 characters in canonical encoded
 form; metadata, sample names, and every token occurrence together may contain
@@ -225,8 +242,8 @@ arrays; callers own returned document/recipe objects. Use
 
 The native build and hosted pas2js gate run immutable-document/learning,
 strict-codec, and shared CLI application tests. Separate process harnesses run
-25 cases against real learner/validator/runner processes, checking exact LF
-stdout, stderr classification, file/stdin parity, all four artifacts, and
+30 cases against real learner/validator/runner processes, checking exact LF
+stdout, stderr classification, file/stdin parity, all five profile bundles, and
 replay results. The supplied checkerboards and phrase outputs are also
 independently asserted by the core tests and pipeline validators.
 

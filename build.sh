@@ -796,6 +796,10 @@ do
 done
 
 for compiler_artifact_suite in \
+  "$compiler_tools_directory/../test/wfc_learn3d_test.lpr" \
+  "$compiler_tools_directory/../test/wfc_model3d_text_test.lpr" \
+  "$compiler_tools_directory/../test/wfc_training3d_test.lpr" \
+  "$compiler_tools_directory/../test/wfc_training_volume_workspace_test.lpr" \
   "$compiler_text_codec_test_source" \
   "$compiler_rule_model_test_source" \
   "$compiler_rule_text_test_source" \

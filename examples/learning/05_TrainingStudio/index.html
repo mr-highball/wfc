@@ -10,15 +10,18 @@
 <body data-state="loading" data-profile="" data-self-test="not-requested"
   data-source-signature="" data-training-signature="" data-recipe-signature=""
   data-result-signature="" data-result-status="none"
-  data-output-count="0" data-cell-count="0" data-pass-count="0" data-lock-count="0"
+  data-output-count="0" data-cell-count="0" data-output-depth="0"
+  data-pass-count="0" data-lock-count="0"
   data-source-invalidation="not-run" data-run-invalidation="not-run"
   data-contradiction="not-run" data-recovery="not-run"
-  data-preset-sweep="not-run" data-import-race="not-run">
+  data-preset-sweep="not-run" data-import-race="not-run"
+  data-volume-dimensions="not-run" data-volume-lock="not-run"
+  data-volume-contradiction="not-run" data-volume-recovery="not-run">
   <header class="masthead">
     <div>
       <p class="eyebrow">WFC / LEARNING LAB 05</p>
       <h1>Training Studio</h1>
-      <p class="lede">Edit a bounded corpus, learn a portable recipe, constrain its public output, and export every replay artifact.</p>
+      <p class="lede">Edit a bounded 1D, 2D, or 3D corpus, learn a portable recipe, constrain its public output, and export every replay artifact.</p>
     </div>
     <div class="flow" aria-label="Training workflow">
       <span>source</span><i aria-hidden="true">→</i><span>model</span>
@@ -84,6 +87,7 @@
       <div class="run-fields">
         <label><span>Width</span><input id="width-input" type="number" min="1" value="4"></label>
         <label><span>Height</span><input id="height-input" type="number" min="1" value="4"></label>
+        <label><span>Depth</span><input id="depth-input" type="number" min="1" value="1"></label>
         <label><span>Seed</span><input id="seed-input" inputmode="text" value="0" autocomplete="off"></label>
         <label><span>Strategy</span><select id="strategy-select"><option value="one-way">one-way</option><option value="negotiated">negotiated</option></select></label>
         <label><span>Local backtracks</span><input id="backtracks-input" type="number" min="0" max="4096" value="1024"></label>
@@ -94,11 +98,12 @@
       <div class="lock-editor">
         <div>
           <h3>Public output locks</h3>
-          <p>Click a solved cell to copy its coordinate, then choose any public token.</p>
+          <p>Click a solved cell to copy its XYZ coordinate, then choose any public token.</p>
         </div>
         <div class="lock-fields">
           <label><span>X</span><input id="lock-x-input" type="number" min="0" value="0"></label>
           <label><span>Y</span><input id="lock-y-input" type="number" min="0" value="0"></label>
+          <label><span>Z</span><input id="lock-z-input" type="number" min="0" value="0"></label>
           <label class="token-field"><span>Token</span><select id="lock-token-select"></select></label>
           <button id="add-lock-button" type="button">Add / replace</button>
         </div>
@@ -115,7 +120,7 @@
         <div><p class="step">03 / RESULT</p><h2 id="result-heading">Public output</h2></div>
         <strong id="result-status" class="result-chip">not run</strong>
       </div>
-      <div id="output-grid" class="output-grid" role="grid" aria-label="Solved public output"></div>
+      <div id="output-grid" class="output-grid" role="grid" aria-label="Solved public output by Z slice"></div>
       <p id="output-placeholder" class="placeholder">Train and solve to inspect public cells.</p>
       <div class="reports">
         <div><h3>Passes and terminal outcomes</h3><pre id="pass-report">No recipe trained.</pre></div>

@@ -250,7 +250,7 @@ begin
   LCommand.Kind := wlckVersion;
   LStatus := WfcLearnExecuteText(LCommand, 'ignored', LOutput, LError);
   Check((LStatus = WFC_LEARN_EXIT_SUCCESS) and (LError = '') and
-    (LOutput = 'wfc-learn 1 (wfclearn=1)'#10),
+    (LOutput = 'wfc-learn 2 (wfclearn=1,2)'#10),
     'version identifies the CLI and training-text contracts');
 end;
 
@@ -298,6 +298,14 @@ begin
     'cardinal one-dimensional training');
   CheckTrainingKind(ADJACENCY_2D_TEXT, 'wfcm=1'#10,
     'cardinal two-dimensional training');
+  LMalformed := StringReplace(ADJACENCY_1D_TEXT, 'wfclearn=1',
+    'wfclearn=2', []);
+  LMalformed := StringReplace(LMalformed, 'kind=adjacency1d',
+    'kind=adjacency3d', []);
+  LMalformed := StringReplace(LMalformed, 'sample=0,2,1,first',
+    'sample=0,1,1,2,first', []);
+  CheckTrainingKind(LMalformed, 'wfcm=3'#10,
+    'six-direction volume training');
   CheckTrainingKind(PATTERN_2D_TEXT, 'wfcp=1'#10,
     'overlapping-pattern training');
   CheckTrainingKind(SEQUENCE_TEXT, 'wfcs=1'#10,
@@ -371,7 +379,7 @@ begin
   Check(WfcLearnFormatFailure(wlfkIo, '') =
     'wfc-learn: I/O error: unspecified failure'#10,
     'empty host failures retain an actionable class');
-  Check((WFC_LEARN_CLI_VERSION = 1) and
+  Check((WFC_LEARN_CLI_VERSION = 2) and
     (WFC_LEARN_MAX_INPUT_LENGTH = 8388608),
     'the CLI and bounded training-input contracts are public');
 end;

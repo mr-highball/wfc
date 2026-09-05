@@ -31,7 +31,7 @@ uses
   wfc_training;
 
 const
-  WFC_TRAINING_TEXT_VERSION = 1;
+  WFC_TRAINING_TEXT_VERSION = 2;
   WFC_TRAINING_MAX_ENCODED_TEXT_LENGTH = 8388608;
   WFC_TRAINING_MAX_TEXT_LINE_COUNT = 11 +
     WFC_TRAINING_MAX_SAMPLE_COUNT + WFC_TRAINING_MAX_TOTAL_TOKEN_COUNT;
@@ -65,6 +65,7 @@ begin
     wtkAdjacency2D: Result := 'adjacency2d';
     wtkPattern2D: Result := 'pattern2d';
     wtkSequence: Result := 'sequence';
+    wtkAdjacency3D: Result := 'adjacency3d';
   end;
   if Result = '' then
     Fail('unknown training kind');
@@ -85,6 +86,8 @@ begin
   case ASymmetry of
     wmsNone: Result := 'none';
     wmsD4: Result := 'd4';
+    wmsCubeRotations: Result := 'cube24';
+    wmsCubeFull: Result := 'cube48';
   else
     Fail('unknown symmetry');
   end;
@@ -101,6 +104,7 @@ var
   LMetadata: TWfcTrainingMetadata;
   LOptions: TWfcTrainingOptions;
   LSample: TWfcTrainingSample;
+  LVersion: Integer;
 
   procedure Add(const ALine: String);
   begin
@@ -126,7 +130,11 @@ begin
   LLength := 0;
   LMetadata := ADocument.CopyMetadata;
   LOptions := ADocument.CopyOptions;
-  Add('wfclearn=1');
+  if LOptions.Kind = wtkAdjacency3D then
+    LVersion := 2
+  else
+    LVersion := 1;
+  Add('wfclearn=' + IntToStr(LVersion));
   Add('name=' + Token(LMetadata.Name));
   Add('license=' + Token(LMetadata.LicenseIdentifier));
   Add('source=' + Token(LMetadata.SourceDescription));
@@ -140,8 +148,13 @@ begin
   for I := 0 to ADocument.SampleCount - 1 do
   begin
     LSample := ADocument.SampleAt(I);
-    Add('sample=' + IntToStr(I) + ',' + IntToStr(LSample.Width) +
-      ',' + IntToStr(LSample.Height) + ',' + Token(LSample.Name));
+    if LVersion = 2 then
+      Add('sample=' + IntToStr(I) + ',' + IntToStr(LSample.Width) +
+        ',' + IntToStr(LSample.Height) + ',' + IntToStr(LSample.Depth) +
+        ',' + Token(LSample.Name))
+    else
+      Add('sample=' + IntToStr(I) + ',' + IntToStr(LSample.Width) +
+        ',' + IntToStr(LSample.Height) + ',' + Token(LSample.Name));
     for J := 0 to Length(LSample.Tokens) - 1 do
       Add('token=' + IntToStr(I) + ',' + IntToStr(J) + ',' +
         Token(LSample.Tokens[J]));
@@ -186,6 +199,7 @@ var
   LSamples: TWfcTrainingSamples;
   LText: String;
   LTotal: Integer;
+  LVersion: Integer;
 
   function ReadLine: String;
   begin
@@ -246,8 +260,13 @@ begin
   WfcTextSplitCanonicalLines(AText, ARTIFACT_NAME, LLines);
   LLine := 0;
   LEncodedTotal := 0;
-  if ReadLine <> 'wfclearn=1' then
-    Fail('expected wfclearn=1 header');
+  LText := ReadLine;
+  if LText = 'wfclearn=1' then
+    LVersion := 1
+  else if LText = 'wfclearn=2' then
+    LVersion := 2
+  else
+    Fail('expected supported wfclearn header');
   LMetadata.Name := Token(ReadValue('name='));
   LMetadata.LicenseIdentifier := Token(ReadValue('license='));
   LMetadata.SourceDescription := Token(ReadValue('source='));
@@ -256,7 +275,12 @@ begin
   else if LText = 'adjacency2d' then LOptions.Kind := wtkAdjacency2D
   else if LText = 'pattern2d' then LOptions.Kind := wtkPattern2D
   else if LText = 'sequence' then LOptions.Kind := wtkSequence
+  else if LText = 'adjacency3d' then LOptions.Kind := wtkAdjacency3D
   else Fail('unknown training kind');
+  if (LVersion = 1) and (LOptions.Kind = wtkAdjacency3D) then
+    Fail('wfclearn=1 cannot encode adjacency3d training')
+  else if (LVersion = 2) and (LOptions.Kind <> wtkAdjacency3D) then
+    Fail('wfclearn=2 requires adjacency3d training');
   LText := ReadValue('boundary=');
   if LText = 'open' then LOptions.Boundary := wmbOpen
   else if LText = 'wrap' then LOptions.Boundary := wmbWrap
@@ -264,7 +288,12 @@ begin
   LText := ReadValue('symmetry=');
   if LText = 'none' then LOptions.Symmetry := wmsNone
   else if LText = 'd4' then LOptions.Symmetry := wmsD4
+  else if LText = 'cube24' then LOptions.Symmetry := wmsCubeRotations
+  else if LText = 'cube48' then LOptions.Symmetry := wmsCubeFull
   else Fail('unknown symmetry');
+  if (LVersion = 1) and
+      not (LOptions.Symmetry in [wmsNone, wmsD4]) then
+    Fail('wfclearn=1 cannot encode cube symmetry');
   Fields(ReadValue('footprint='), 2);
   LOptions.PatternWidth := Number(LFields[0]);
   LOptions.PatternHeight := Number(LFields[1]);
@@ -279,20 +308,41 @@ begin
   LTotal := 0;
   for I := 0 to LCount - 1 do
   begin
-    Fields(ReadValue('sample='), 4);
+    if LVersion = 2 then
+      Fields(ReadValue('sample='), 5)
+    else
+      Fields(ReadValue('sample='), 4);
     if Number(LFields[0]) <> I then
       Fail('sample indices must be contiguous and ordered');
     LSamples[I].Width := Number(LFields[1]);
     LSamples[I].Height := Number(LFields[2]);
-    LSamples[I].Name := Token(LFields[3]);
+    if LVersion = 2 then
+    begin
+      LSamples[I].Depth := Number(LFields[3]);
+      LSamples[I].Name := Token(LFields[4]);
+    end
+    else
+    begin
+      LSamples[I].Depth := 1;
+      LSamples[I].Name := Token(LFields[3]);
+    end;
     if (LSamples[I].Width < 1) or (LSamples[I].Height < 1) or
         (LSamples[I].Width > WFC_TRAINING_MAX_DIMENSION) or
         (LSamples[I].Height > WFC_TRAINING_MAX_DIMENSION) then
       Fail('sample dimensions are outside the version-1 limit');
+    if (LVersion = 2) and ((LSamples[I].Depth < 1) or
+        (LSamples[I].Depth > WFC_TRAINING_MAX_DIMENSION)) then
+      Fail('sample depth is outside the version-1 limit');
     if LSamples[I].Width > WFC_TRAINING_MAX_TOTAL_TOKEN_COUNT div
         LSamples[I].Height then
       Fail('sample area exceeds the version-1 token limit');
     LArea := LSamples[I].Width * LSamples[I].Height;
+    if (LVersion = 2) and
+        (LArea > WFC_TRAINING_MAX_TOTAL_TOKEN_COUNT div
+        LSamples[I].Depth) then
+      Fail('sample volume exceeds the version-1 token limit');
+    if LVersion = 2 then
+      LArea := LArea * LSamples[I].Depth;
     if LArea > WFC_TRAINING_MAX_TOTAL_TOKEN_COUNT - LTotal then
       Fail('aggregate sample area exceeds the version-1 token limit');
     Inc(LTotal, LArea);

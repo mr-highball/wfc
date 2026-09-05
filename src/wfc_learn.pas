@@ -66,7 +66,8 @@ uses
   SysUtils;
 
 const
-  WFC_MODEL_DIRECTION_COUNT = Ord(High(TWfcModelDirection)) + 1;
+  //This unit's 1D/2D profile retains the original four-plane dense layout.
+  WFC_MODEL_DIRECTION_COUNT = Ord(wmdWest) + 1;
   D4_TRANSFORM_COUNT = 8;
 
 type

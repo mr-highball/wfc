@@ -28,7 +28,7 @@ uses
   wfc_music_ensemble_passes, wfc_music_ensemble_training,
   wfc_music_ensemble_stream, wfc_music_ensemble_audio, wfc_midi_stream,
   wfc_music_ensemble_midi, wfc_music_voices_graph, wfc_music_voices_training,
-  wfc_music_voices_stream, wfc_connectivity_reference;
+  wfc_music_voices_stream, wfc_connectivity_reference, wfc_learn3d;
 
 implementation
 
