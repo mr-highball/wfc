@@ -388,10 +388,12 @@ hyphen. Diagnostics are one line on standard error, while canonical artifacts
 are written only to standard output.
 
 The native build drivers and pas2js/Node CI run both hosts as real child
-processes against the committed `test/fixtures/pipeline-cli` artifacts. The
-gate compares canonical and summary output byte for byte, exercises file and
-anonymous-pipe input, and checks quiet, invalid-artifact, usage, I/O, solved,
-and non-solved exit behavior with bounded captures and finite timeouts.
+processes against the committed `test/fixtures/pipeline-cli` artifacts and the
+domain-scale `examples/2D/05_LearnedPatternWorld/pipeline` bundle. The gate
+compares canonical and summary output byte for byte, exercises file and
+anonymous-pipe input, checks quiet, invalid-artifact, usage, I/O, solved, and
+non-solved exit behavior, and replays the learned Pattern2D bridge-v2 result
+with bounded captures and finite timeouts.
 
 ## Scope
 

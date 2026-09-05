@@ -133,7 +133,9 @@ The repository already contains the beginnings of the ecosystem:
 - strict canonical `wfcpipeline-run=1` and `wfcpipeline-result=1` artifacts,
   deterministic one-way and bounded negotiated replay, public-only successful
   layers, structured non-solved results, fixed allocation/encoding limits, and
-  matching native FPC/pas2js fixtures;
+  matching native FPC/pas2js fixtures, including a canonical bridge-v2
+  LearnedPatternWorld recipe/run/result bundle with eight public terrain locks
+  and the established three public layer hashes;
 - a project-owned collision-safe token lookup plus shared Pascal application
   logic for strict recipe validation and headless recipe-plus-run execution,
   with thin bounded-I/O native and pas2js/Node hosts;

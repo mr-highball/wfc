@@ -34,6 +34,56 @@ encoding to be byte-identical. Applications can persist that same canonical
 text; this fixture keeps it in memory so every run proves the full learning
 path.
 
+## portable recipe, run, and result bundle
+
+The [`pipeline`](pipeline) directory packages the same domain as three strict
+portable artifacts:
+
+- [`recipe.wfcpipeline`](pipeline/recipe.wfcpipeline) owns the canonical
+  learned `wfcp=1` resource plus the 104-byte foliage and 90-byte structure
+  `wfcrules=1` resources;
+- [`run.wfcrun`](pipeline/run.wfcrun) pins the wrapped 8 by 6 by 1 shape, seed
+  0, one-way strategy, 65,536 local backtracks, no trace, and eight ordered
+  public terrain locks;
+- [`result.wfcresult`](pipeline/result.wfcresult) is the exact three-layer
+  public result. It contains no private `@p...` pattern key.
+
+The recipe is `patterns (private) -> terrain (public)`, followed by public
+foliage and structure rule passes. A Pattern2D projection bridge v2 lowers the
+terrain locks into intersected private pattern domains before solving. Seven
+exact zero-offset public requirements then constrain each foliage or structure
+token from terrain; neither downstream resource names a private pattern key.
+
+The example-owned
+[`learned_pattern_world_bundle.pas`](learned_pattern_world_bundle.pas) builds
+the same recipe and run through public Pascal APIs. The focused native and
+pas2js test constructs both programmatic and decoded forms, requires one
+semantic identity, executes both, verifies the established rows and layer
+hashes, and round-trips every artifact byte exactly. The native side also
+compares generated text with all three checked-in files. Repository process
+gates run the real native and Node hosts, require validator canonical output,
+and compare runner output with the result file.
+
+| Artifact | Bytes | Signature |
+| --- | ---: | --- |
+| learned Pattern2D resource | `2130` | canonical `wfcp=1` payload |
+| foliage rules | `104` | `EC4261C3` |
+| structure rules | `90` | `2E18E099` |
+| pipeline recipe | `6186` | `DC2030BE` |
+| pipeline run | `327` | `AA80D2AA` |
+| pipeline result | `3000` | `5329DB78` |
+
+After building the repository tools, validate and replay the committed bundle:
+
+```sh
+build/native/bin/wfc_validate recipe examples/2D/05_LearnedPatternWorld/pipeline/recipe.wfcpipeline
+build/native/bin/wfc_run examples/2D/05_LearnedPatternWorld/pipeline/recipe.wfcpipeline examples/2D/05_LearnedPatternWorld/pipeline/run.wfcrun
+```
+
+The first command reports recipe signature `DC2030BE`; the second writes the
+exact canonical result artifact to standard output. All three files are
+ASCII-compatible canonical text with LF endings and a final LF.
+
 Learned pattern keys such as `@p...` are deliberately private. The
 `wfc_pattern2d_graph` adapter preflights the entire bridge before changing the
 target pass: model and source-pass identity, wrapped topology, depth, empty

@@ -13,7 +13,7 @@ the [roadmap](../ROADMAP.md).
 | Interactive browser world | `2D/02_BrowserWorld/BrowserWorld.lpr` | pas2js/browser | Runs the same model and validator in a responsive three-layer canvas UI with seeds, wrapping, cell locks, and an exact headless-browser fixture. |
 | Selective settlement | `2D/03_SelectiveSettlement/SelectiveSettlement.lpr` | Native FPC, pas2js/Node | Solves a six-layer dependency DAG, edits hydrology, regenerates only its dependent closure, independently validates the result, proves rollback and exact recovery, and uses no external dependency. |
 | Negotiated descendant repair | `2D/04_NegotiatedRepair/NegotiatedRepair.lpr` and `NegotiatedRepairNode.lpr` | Native FPC, pas2js/Node | Contrasts a too-narrow housing repair horizon with a successful roads-root horizon, excludes one exact roads assignment, verifies immutable provider values and random streams, and replays separately versioned selective and nested transcripts using only repository units and the standard RTL. |
-| Learned-pattern world | `2D/05_LearnedPatternWorld/LearnedPatternWorld.lpr` and `LearnedPatternWorldNode.lpr` | Native FPC, pas2js/Node | Learns wrapped `2x2` terrain structure at runtime, materializes private pattern anchors as a public pass, composes foliage and structure, independently validates every contribution, and proves exact downstream rollback/recovery using only repository units and the standard RTL. |
+| Learned-pattern world | `2D/05_LearnedPatternWorld/LearnedPatternWorld.lpr` and `LearnedPatternWorldNode.lpr` | Native FPC, pas2js/Node | Learns wrapped `2x2` terrain structure at runtime, materializes private pattern anchors as a public pass, composes foliage and structure, independently validates every contribution, and proves exact downstream rollback/recovery. Its checked `pipeline/` bundle also exercises bridge-v2 inverse lowering from portable public locks. |
 | Learned tiles | `learning/01_LearnTiles/LearnTiles.lpr` | Native FPC, pas2js/Node | Learns weighted cardinal constraints from a tokenized sample, serializes the immutable model canonically, generates a seeded grid, and independently validates every emitted adjacency without external dependencies. |
 | Learned corpus | `learning/02_LearnCorpus/LearnCorpus.lpr` | Native FPC, pas2js/Node | Learns one directed model from two differently sized samples, proves their local wraps and absent cross-sample seams, round-trips canonical `wfcm=2`, and independently validates generated orientation. |
 | Overlapping patterns | `learning/03_LearnPatterns/LearnPatterns.lpr` | Native FPC, pas2js/Node | Learns weighted `2x2` structure from heterogeneous grids with D4 augmentation, round-trips strict `wfcp=1`, solves private latent patterns, independently validates every overlap and projected token contribution, and prints a portable signature without external dependencies. |
@@ -288,7 +288,10 @@ node build/examples/pattern-world/pas2js/bin/LearnedPatternWorldNode.js 0
 Seed zero learns `17` patterns and pins canonical bytes `2130`, model hash
 `9BF802CC`, terrain hash `EBBC9390`, and pipeline hash `38FE98C4`. See the
 [learned-pattern world guide](2D/05_LearnedPatternWorld/README.md) and the
-[experiment record](../docs/research/pattern-projected-passes-v1.md).
+[experiment record](../docs/research/pattern-projected-passes-v1.md). The
+[portable pipeline bundle](2D/05_LearnedPatternWorld/pipeline/recipe.wfcpipeline)
+reconstructs the same three public layers from a canonical recipe and run using
+only repository units and the standard RTL.
 
 The learned-sequence example exercises typed BOS boundaries, raw counts,
 structural order-2 recombination, public-token domains, strict canonical text,

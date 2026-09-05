@@ -410,24 +410,30 @@ development FPC, and pas2js/Node:
   positions, quiet output, and every ordinary exit class while the shared
   codecs retain pinned bytes and signatures on both targets.
 
-The next domain-scale bundle fixture will package the existing
-LearnedPatternWorld pipeline:
+The first domain-scale bundle fixture packages the existing
+[`LearnedPatternWorld`](../../examples/2D/05_LearnedPatternWorld/README.md)
+pipeline:
 
 ```text
 private patterns -> public terrain -> public foliage
                              `-----> public structure
 ```
 
-The pattern resource will be the canonical learned `wfcp=1` artifact. Terrain
-will be materialized by `pattern2d-projection`; foliage and structure will use
-small canonical `wfcrules=1` resources plus public token requirements. The
-bundle will record the sample source and MIT license.
+The pattern resource is the canonical 2,130-byte learned `wfcp=1` artifact.
+Terrain is materialized by `pattern2d-projection` bridge version 2; foliage and
+structure use 104-byte and 90-byte canonical `wfcrules=1` resources plus seven
+exact zero-offset public token requirements. The bundle records the embedded
+sample source and MIT license.
 
-That domain packaging step must additionally establish:
+Its committed recipe, run, and result artifacts establish:
 
-- programmatic and decoded recipes have the same semantic signature;
-- seed zero retains the existing model and layer goldens;
-- no public result contains a private pattern or sequence key.
+- programmatic and decoded recipes share semantic signature `DC2030BE`;
+- the 8 by 6 by 1, seed-zero run uses eight public terrain locks and retains
+  the existing layer hashes `EBBC9390`, `92D4BC87`, and `8FA9D854`;
+- the exact result has signature `5329DB78` and contains no private pattern or
+  sequence key;
+- native FPC and pas2js/Node execute the same public artifacts, while the
+  native suite additionally verifies all three checked-in files byte for byte.
 
 ## Deliberate nonclaims
 

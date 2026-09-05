@@ -46,6 +46,7 @@ pipeline_result_text_test_source="$repository_root/test/wfc_pipeline_result_text
 pipeline_runtime_test_source="$repository_root/test/wfc_pipeline_runtime_test.lpr"
 validate_app_test_source="$repository_root/test/wfc_validate_app_test.lpr"
 run_app_test_source="$repository_root/test/wfc_run_app_test.lpr"
+learned_pattern_world_bundle_test_source="$repository_root/test/wfc_learned_pattern_world_bundle_test.lpr"
 validate_tool_source="$repository_root/tools/wfc_validate.lpr"
 run_tool_source="$repository_root/tools/wfc_run.lpr"
 pipeline_cli_process_test_source="$repository_root/test/wfc_pipeline_cli_process_test.sh"
@@ -123,6 +124,7 @@ compiler_pipeline_result_text_test_source=$pipeline_result_text_test_source
 compiler_pipeline_runtime_test_source=$pipeline_runtime_test_source
 compiler_validate_app_test_source=$validate_app_test_source
 compiler_run_app_test_source=$run_app_test_source
+compiler_learned_pattern_world_bundle_test_source=$learned_pattern_world_bundle_test_source
 compiler_validate_tool_source=$validate_tool_source
 compiler_run_tool_source=$run_tool_source
 compiler_example_source=$example_source
@@ -199,6 +201,7 @@ case "$host_system" in
     compiler_pipeline_runtime_test_source=$(cygpath -m "$pipeline_runtime_test_source") || exit $?
     compiler_validate_app_test_source=$(cygpath -m "$validate_app_test_source") || exit $?
     compiler_run_app_test_source=$(cygpath -m "$run_app_test_source") || exit $?
+    compiler_learned_pattern_world_bundle_test_source=$(cygpath -m "$learned_pattern_world_bundle_test_source") || exit $?
     compiler_validate_tool_source=$(cygpath -m "$validate_tool_source") || exit $?
     compiler_run_tool_source=$(cygpath -m "$run_tool_source") || exit $?
     compiler_example_source=$(cygpath -m "$example_source") || exit $?
@@ -608,7 +611,8 @@ for compiler_artifact_suite in \
   "$compiler_pipeline_result_text_test_source" \
   "$compiler_pipeline_runtime_test_source" \
   "$compiler_validate_app_test_source" \
-  "$compiler_run_app_test_source"
+  "$compiler_run_app_test_source" \
+  "$compiler_learned_pattern_world_bundle_test_source"
 do
   artifact_suite_name=$(basename -- "$compiler_artifact_suite" .lpr)
   printf "Building the portable-artifact suite '%s'.\n" \
@@ -622,6 +626,7 @@ do
     -Ci \
     "-Fu$compiler_source_directory" \
     "-Fu$compiler_tools_directory" \
+    "-Fu$compiler_learned_pattern_world_example_directory" \
     "-FU$compiler_unit_output_directory" \
     "-FE$compiler_binary_output_directory" \
     "$compiler_artifact_suite" || exit $?
@@ -631,7 +636,12 @@ do
     CYGWIN*|MINGW*|MSYS*) artifact_suite_executable="${artifact_suite_executable}.exe" ;;
   esac
   printf "Running '%s'.\n" "$artifact_suite_executable"
-  "$artifact_suite_executable" || exit $?
+  if [[ "$artifact_suite_name" == wfc_learned_pattern_world_bundle_test ]]; then
+    "$artifact_suite_executable" \
+      "$compiler_learned_pattern_world_example_directory/pipeline" || exit $?
+  else
+    "$artifact_suite_executable" || exit $?
+  fi
 done
 
 for compiler_tool_source in \

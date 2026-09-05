@@ -28,9 +28,11 @@ unit learned_pattern_world_demo;
 interface
 
 uses
-  wfc;
+  wfc,
+  wfc_pattern2d;
 
 function ParseLearnedPatternWorldSeed: TGraphSeed;
+function LearnLearnedPatternWorldModel: TWfcOverlappingModel2D;
 procedure RunLearnedPatternWorldDemo(const ASeed: TGraphSeed);
 
 implementation
@@ -39,7 +41,6 @@ uses
   SysUtils,
   wfc_model,
   wfc_learn,
-  wfc_pattern2d,
   wfc_pattern2d_learn,
   wfc_pattern2d_text,
   wfc_pattern2d_graph;
@@ -243,6 +244,15 @@ begin
   Result[1] := MakeLearnSample2D(
     TokensFromRows(SAMPLE_ONE_ROWS, SAMPLE_ONE_WIDTH,
       SAMPLE_ONE_HEIGHT), SAMPLE_ONE_WIDTH, SAMPLE_ONE_HEIGHT);
+end;
+
+function LearnLearnedPatternWorldModel: TWfcOverlappingModel2D;
+var
+  LCorpus: TWfcLearnSamples;
+begin
+  LCorpus := BuildTrainingCorpus;
+  Result := LearnOverlappingModel2DCorpus(LCorpus,
+    PATTERN_WIDTH, PATTERN_HEIGHT, wmbWrap, wmsD4);
 end;
 
 function FindOriginPatternContaining(
@@ -760,7 +770,6 @@ var
   LControlBaseline: TWorldSnapshot;
   LControlRecoveryReport: TGraphSolveReport;
   LControlSolveReport: TGraphSolveReport;
-  LCorpus: TWfcLearnSamples;
   LFailureReport: TGraphSolveReport;
   LFoliageHash: Cardinal;
   LGraph: TLearnedPatternWorldGraph;
@@ -783,10 +792,8 @@ begin
   LGraph := nil;
   LLearned := nil;
   LModel := nil;
-  LCorpus := BuildTrainingCorpus;
   try
-    LLearned := LearnOverlappingModel2DCorpus(LCorpus,
-      PATTERN_WIDTH, PATTERN_HEIGHT, wmbWrap, wmsD4);
+    LLearned := LearnLearnedPatternWorldModel;
     Require(LLearned.PatternCount = EXPECTED_PATTERN_COUNT,
       'the runtime corpus no longer learns 17 nontrivial patterns');
     LCanonical := EncodeWfcPattern2DText(LLearned);

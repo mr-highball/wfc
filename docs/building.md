@@ -9,7 +9,8 @@ score-export, negotiated music variation/result replay, full and selective
 pass negotiation, canonical numeric text primitives, immutable authored-rule
 models, declarative pipeline recipes, recipe-bound run artifacts, the closed
 pipeline compiler/runtime, immutable public result artifacts, strict run/result
-codecs, the recipe validator and pipeline runner applications, and voxel-3D
+codecs, the recipe validator and pipeline runner applications, the canonical
+learned-pattern-world recipe/run/result bundle, and voxel-3D
 units and their conformance suites, plus
 the checked voxel pass bridge and multi-pass Building 3D owner/validator,
 pass-aware view, fixed-integer isometric projector, and canonical SVG encoder.
@@ -96,6 +97,7 @@ Both scripts rebuild with assertions and range, overflow, and I/O checks, run
 `wfc_pipeline_compile_test`, `wfc_pipeline_result_test`,
 `wfc_pipeline_result_text_test`, `wfc_pipeline_runtime_test`,
 `wfc_token_lookup_test`, `wfc_validate_app_test`, `wfc_run_app_test`,
+`wfc_learned_pattern_world_bundle_test`,
 `wfc_trace_reference_test`,
 `wfc_trace_test`, and `wfc_trace_utility_test`, then compile and smoke-test the
 portable console examples with seed `0`, including the bounded/wrapped spatial
@@ -108,9 +110,11 @@ selective-settlement worlds also run with their default seeds. Finally, the
 native `Building3DSvg` host generates and validates
 `build/native/bin/building3d-seed-zero.svg`.
 A checked process suite also runs both native pipeline tools against the
-canonical files in `test/fixtures/pipeline-cli`: file and standard-input paths,
-exact validator and result bytes, quiet output, and the documented invalid,
-usage, I/O, solved, and non-solved exit classes are all exercised.
+canonical files in `test/fixtures/pipeline-cli` and
+`examples/2D/05_LearnedPatternWorld/pipeline`: file and standard-input paths,
+exact validator and result bytes (including the domain-sized bundle), quiet
+output, and the documented invalid, usage, I/O, solved, and non-solved exit
+classes are all exercised.
 A compiler error, failed check,
 or example failure produces a nonzero exit code. Compiler units and binaries
 are written beneath `build/native/`; running the gate does not modify tracked
@@ -326,21 +330,14 @@ for artifact_test in wfc_text_codec_test wfc_rule_model_test \
   wfc_pipeline_run_test wfc_pipeline_run_text_test \
   wfc_pipeline_compile_test wfc_pipeline_result_test \
   wfc_pipeline_result_text_test wfc_pipeline_runtime_test \
-  wfc_token_lookup_test
+  wfc_token_lookup_test wfc_validate_app_test wfc_run_app_test \
+  wfc_learned_pattern_world_bundle_test
 do
-  pas2js -B -Tnodejs -Mdelphi -Fusrc \
+  pas2js -B -Tnodejs -Mdelphi -Fusrc -Futools \
+    -Fuexamples/2D/05_LearnedPatternWorld \
     -FUbuild/pas2js/artifact-units -FEbuild/pas2js/artifact \
     "test/${artifact_test}.lpr"
   node "build/pas2js/artifact/${artifact_test}.js"
-done
-
-mkdir -p build/pas2js/tool-test-units build/pas2js/tool-test
-for tool_test in wfc_validate_app_test wfc_run_app_test
-do
-  pas2js -B -Tnodejs -Mdelphi -Fusrc -Futools \
-    -FUbuild/pas2js/tool-test-units -FEbuild/pas2js/tool-test \
-    "test/${tool_test}.lpr"
-  node "build/pas2js/tool-test/${tool_test}.js"
 done
 ```
 
@@ -687,7 +684,8 @@ spatial-dependency,
 causal-trace-inspector, pass-negotiation, and negotiated-repair smoke tests;
 and the multi-pass and selective-settlement worlds with both seed zero and
 their default seeds under Node.js 22.23.2. The two Node pipeline hosts also run
-the same exact 15-case process suite as the native hosts. The gate then builds
+the same exact 18-case process suite as the native hosts, using both the small
+CLI fixture set and the learned-pattern-world bundle. The gate then builds
 all three browser
 targets,
 serves each staged site, and checks their exact body-state contracts in

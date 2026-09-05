@@ -17,8 +17,14 @@ $solvedRun = Join-Path $fixtureDirectory 'solved.wfcrun'
 $solvedResult = Join-Path $fixtureDirectory 'solved.wfcresult'
 $nonSolvedRun = Join-Path $fixtureDirectory 'nonsolved.wfcrun'
 $nonSolvedResult = Join-Path $fixtureDirectory 'nonsolved.wfcresult'
+$repositoryRoot = Split-Path -Parent $PSScriptRoot
+$learnedFixtureDirectory = Join-Path $repositoryRoot `
+  'examples/2D/05_LearnedPatternWorld/pipeline'
+$learnedRecipe = Join-Path $learnedFixtureDirectory 'recipe.wfcpipeline'
+$learnedRun = Join-Path $learnedFixtureDirectory 'run.wfcrun'
+$learnedResult = Join-Path $learnedFixtureDirectory 'result.wfcresult'
 $missingInput = Join-Path $fixtureDirectory 'missing.wfcpipeline'
-$maximumCapturedLength = 4096
+$maximumCapturedLength = 8192
 $processTimeoutMilliseconds = 30000
 $ascii = [System.Text.Encoding]::ASCII
 $emptyInput = [byte[]] @()
@@ -27,9 +33,14 @@ $recipeBytes = [System.IO.File]::ReadAllBytes($recipe)
 $solvedRunBytes = [System.IO.File]::ReadAllBytes($solvedRun)
 $solvedResultBytes = [System.IO.File]::ReadAllBytes($solvedResult)
 $nonSolvedResultBytes = [System.IO.File]::ReadAllBytes($nonSolvedResult)
+$learnedRecipeBytes = [System.IO.File]::ReadAllBytes($learnedRecipe)
+$learnedResultBytes = [System.IO.File]::ReadAllBytes($learnedResult)
 $validatorSummaryBytes = $ascii.GetBytes(
   'valid canonical wfcpipeline=1 signature=A8FD55BC resources=1 ' +
   'passes=3 dependencies=2 bridges=0 requirements=0' + "`n")
+$learnedValidatorSummaryBytes = $ascii.GetBytes(
+  'valid canonical wfcpipeline=1 signature=DC2030BE resources=3 ' +
+  'passes=4 dependencies=3 bridges=1 requirements=7' + "`n")
 $caseCount = 0
 
 function Assert-Condition {
@@ -197,7 +208,8 @@ function Check-Case {
 
 foreach ($requiredPath in @(
     $Validator, $Runner, $recipe, $solvedRun, $solvedResult,
-    $nonSolvedRun, $nonSolvedResult)) {
+    $nonSolvedRun, $nonSolvedResult, $learnedRecipe, $learnedRun,
+    $learnedResult)) {
   Assert-Condition (Test-Path -LiteralPath $requiredPath -PathType Leaf) `
     "required file is missing: $requiredPath"
 }
@@ -230,6 +242,15 @@ Check-Case -Executable $Validator -Arguments @('recipe', '-') `
   -StandardInput $invalidRecipe -ExpectedExitCode 1 -ExpectedOutput $null `
   -DiagnosticPrefix 'wfc-validate: invalid recipe: ' `
   -Name 'validator invalid recipe'
+Check-Case -Executable $Validator -Arguments @('recipe', $learnedRecipe) `
+  -StandardInput $emptyInput -ExpectedExitCode 0 `
+  -ExpectedOutput $learnedValidatorSummaryBytes -DiagnosticPrefix '' `
+  -Name 'validator learned-pattern bundle'
+Check-Case -Executable $Validator `
+  -Arguments @('recipe', '--emit-canonical', $learnedRecipe) `
+  -StandardInput $emptyInput -ExpectedExitCode 0 `
+  -ExpectedOutput $learnedRecipeBytes -DiagnosticPrefix '' `
+  -Name 'validator learned-pattern canonical output'
 
 Check-Case -Executable $Runner -Arguments @($recipe, $solvedRun) `
   -StandardInput $emptyInput -ExpectedExitCode 0 `
@@ -257,6 +278,10 @@ Check-Case -Executable $Runner `
   -StandardInput $emptyInput -ExpectedExitCode 4 `
   -ExpectedOutput ([byte[]] @()) -DiagnosticPrefix '' `
   -Name 'runner quiet non-solved output'
+Check-Case -Executable $Runner -Arguments @($learnedRecipe, $learnedRun) `
+  -StandardInput $emptyInput -ExpectedExitCode 0 `
+  -ExpectedOutput $learnedResultBytes `
+  -DiagnosticPrefix '' -Name 'runner learned-pattern bundle'
 Check-Case -Executable $Runner `
   -Arguments @($missingInput, $solvedRun) `
   -StandardInput $emptyInput -ExpectedExitCode 3 -ExpectedOutput $null `

@@ -428,9 +428,11 @@ jobs:
             wfc_pipeline_result_text_test \
             wfc_pipeline_runtime_test \
             wfc_validate_app_test \
-            wfc_run_app_test
+            wfc_run_app_test \
+            wfc_learned_pattern_world_bundle_test
           do
             "$pas2js" -B -Tnodejs -Mdelphi -Fusrc -Futools \
+              -Fuexamples/2D/05_LearnedPatternWorld \
               -FU"$artifact_test_units" -FE"$artifact_test_bin" \
               "test/$artifact_test.lpr"
             node "$artifact_test_bin/$artifact_test.js"

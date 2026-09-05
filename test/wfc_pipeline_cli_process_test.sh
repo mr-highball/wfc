@@ -10,8 +10,12 @@ solved_run="$fixture_directory/solved.wfcrun"
 solved_result="$fixture_directory/solved.wfcresult"
 nonsolved_run="$fixture_directory/nonsolved.wfcrun"
 nonsolved_result="$fixture_directory/nonsolved.wfcresult"
+learned_fixture_directory="$repository_root/examples/2D/05_LearnedPatternWorld/pipeline"
+learned_recipe="$learned_fixture_directory/recipe.wfcpipeline"
+learned_run="$learned_fixture_directory/run.wfcrun"
+learned_result="$learned_fixture_directory/result.wfcresult"
 missing_input="$fixture_directory/missing.wfcpipeline"
-maximum_captured_length=4096
+maximum_captured_length=8192
 process_timeout_seconds=30
 
 validator=()
@@ -36,7 +40,8 @@ fi
 
 for required_file in \
   "$recipe" "$solved_run" "$solved_result" \
-  "$nonsolved_run" "$nonsolved_result"
+  "$nonsolved_run" "$nonsolved_result" \
+  "$learned_recipe" "$learned_run" "$learned_result"
 do
   if [[ ! -f "$required_file" ]]; then
     printf 'Pipeline CLI process check failed: required file is missing: %s\n' \
@@ -53,12 +58,16 @@ fi
 argument_recipe=$recipe
 argument_solved_run=$solved_run
 argument_nonsolved_run=$nonsolved_run
+argument_learned_recipe=$learned_recipe
+argument_learned_run=$learned_run
 argument_missing_input=$missing_input
 case "$(uname -s)" in
   CYGWIN*|MINGW*|MSYS*)
     argument_recipe=$(cygpath -m "$recipe") || exit $?
     argument_solved_run=$(cygpath -m "$solved_run") || exit $?
     argument_nonsolved_run=$(cygpath -m "$nonsolved_run") || exit $?
+    argument_learned_recipe=$(cygpath -m "$learned_recipe") || exit $?
+    argument_learned_run=$(cygpath -m "$learned_run") || exit $?
     argument_missing_input=$(cygpath -m "$missing_input") || exit $?
     ;;
 esac
@@ -69,6 +78,7 @@ temporary_directory=$(mktemp -d "$temporary_parent/run.XXXXXX") || exit $?
 standard_output="$temporary_directory/stdout"
 standard_error="$temporary_directory/stderr"
 expected_summary="$temporary_directory/summary"
+expected_learned_summary="$temporary_directory/learned-summary"
 invalid_recipe="$temporary_directory/invalid-recipe"
 producer_error="$temporary_directory/producer-stderr"
 producer_pid_file="$temporary_directory/producer-pid"
@@ -76,7 +86,7 @@ producer_pid_file="$temporary_directory/producer-pid"
 cleanup() {
   rm -f -- \
     "$standard_output" "$standard_error" \
-    "$expected_summary" "$invalid_recipe" \
+    "$expected_summary" "$expected_learned_summary" "$invalid_recipe" \
     "$producer_error" "$producer_pid_file"
   rmdir -- "$temporary_directory" 2>/dev/null || true
 }
@@ -85,6 +95,9 @@ trap cleanup EXIT HUP INT TERM
 printf '%s\n' \
   'valid canonical wfcpipeline=1 signature=A8FD55BC resources=1 passes=3 dependencies=2 bridges=0 requirements=0' \
   >"$expected_summary" || exit $?
+printf '%s\n' \
+  'valid canonical wfcpipeline=1 signature=DC2030BE resources=3 passes=4 dependencies=3 bridges=1 requirements=7' \
+  >"$expected_learned_summary" || exit $?
 printf 'not-a-recipe\n' >"$invalid_recipe" || exit $?
 
 case_count=0
@@ -223,6 +236,13 @@ assert_diagnostic 'wfc-validate: I/O error: cannot read INPUT: ' \
   'validator missing input'
 run_case 1 "$invalid_recipe" "${validator[@]}" recipe -
 assert_diagnostic 'wfc-validate: invalid recipe: ' 'validator invalid recipe'
+run_case 0 '' "${validator[@]}" recipe "$argument_learned_recipe"
+assert_exact_output "$expected_learned_summary" \
+  'validator learned-pattern bundle'
+run_case 0 '' "${validator[@]}" recipe --emit-canonical \
+  "$argument_learned_recipe"
+assert_exact_output "$learned_recipe" \
+  'validator learned-pattern canonical output'
 
 run_case 0 '' "${runner[@]}" "$argument_recipe" "$argument_solved_run"
 assert_exact_output "$solved_result" 'runner solved file input'
@@ -236,6 +256,8 @@ run_case 0 '' "${runner[@]}" --quiet "$argument_recipe" "$argument_solved_run"
 assert_empty_output 'runner quiet solved output'
 run_case 4 '' "${runner[@]}" --quiet "$argument_recipe" "$argument_nonsolved_run"
 assert_empty_output 'runner quiet non-solved output'
+run_case 0 '' "${runner[@]}" "$argument_learned_recipe" "$argument_learned_run"
+assert_exact_output "$learned_result" 'runner learned-pattern bundle'
 run_case 3 '' "${runner[@]}" "$argument_missing_input" "$argument_solved_run"
 assert_diagnostic 'wfc-run: I/O error: cannot read RECIPE: ' \
   'runner missing recipe'

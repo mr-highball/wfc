@@ -64,6 +64,8 @@ $artifactTestSources = @(
   (Join-Path $repositoryRoot 'test/wfc_pipeline_runtime_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_validate_app_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_run_app_test.lpr')
+  (Join-Path $repositoryRoot `
+    'test/wfc_learned_pattern_world_bundle_test.lpr')
 )
 $toolSources = @(
   (Join-Path $repositoryRoot 'tools/wfc_validate.lpr')
@@ -729,6 +731,7 @@ foreach ($artifactTestSource in $artifactTestSources) {
     '-Ci'
     "-Fu$sourceDirectory"
     "-Fu$toolsDirectory"
+    "-Fu$learnedPatternWorldExampleDirectory"
     "-FU$unitOutputDirectory"
     "-FE$binaryOutputDirectory"
     $artifactTestSource
@@ -749,7 +752,12 @@ foreach ($artifactTestSource in $artifactTestSources) {
   $artifactTestExecutable = Join-Path $binaryOutputDirectory `
     $artifactTestExecutableName
   Write-Host "Running '$artifactTestExecutable'."
-  & $artifactTestExecutable
+  if ($artifactTestName -eq 'wfc_learned_pattern_world_bundle_test') {
+    & $artifactTestExecutable `
+      (Join-Path $learnedPatternWorldExampleDirectory 'pipeline')
+  } else {
+    & $artifactTestExecutable
+  }
   $artifactTestExitCode = $LASTEXITCODE
   if ($artifactTestExitCode -ne 0) {
     exit $artifactTestExitCode

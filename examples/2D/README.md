@@ -33,7 +33,10 @@ anchors into an exact public terrain pass, then solves foliage and structure in
 the same atomic DAG. Its native FPC and pas2js/Node self-checks pin model and
 layer signatures, validate every overlap and projected contribution, prove no
 private key escaped, and exercise failed structure-only regeneration with exact
-entry and random-stream rollback.
+entry and random-stream rollback. A checked
+[`wfcpipeline`/`wfcrun`/`wfcresult` bundle](05_LearnedPatternWorld/pipeline/recipe.wfcpipeline)
+uses bridge-v2 inverse lowering to turn eight portable public terrain locks into
+private pattern constraints and reproduces all three canonical layers.
 
 The older [text-rendered tiled world](../text/01_SimpleTiledWorld/SimpleTiledWorld.lpr)
 remains a compact single-pass legacy-`Run` example.

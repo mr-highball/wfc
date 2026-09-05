@@ -150,6 +150,9 @@ modular 3D structures, music, text, and other discrete design problems.
   deterministic bridge-v2 inverse lowering into private Pattern2D and Sequence
   states, pre-publication conflict detection, and project-owned bounded lookup,
   sorting, and intersection shared by native FPC and pas2js
+- a committed LearnedPatternWorld recipe/run/result bundle that constrains the
+  private learned terrain model exclusively through eight public bridge-v2
+  locks and reproduces all three established seed-zero public layer hashes
 - dependency-free recipe-validation and headless-execution application units
   with thin native and Node command-line hosts and documented exit contracts
 - deterministic overlapping 2D pattern extraction with heterogeneous corpora,
@@ -273,7 +276,9 @@ independent validation, and the `.wfcp` format, see
 The self-checking
 [learned-pattern world](examples/2D/05_LearnedPatternWorld/README.md) connects
 that latent model to public terrain, foliage, and structure in one four-pass
-native/pas2js pipeline; its exact hypothesis and nonclaims are in the
+native/pas2js pipeline and now includes canonical recipe, run, and result
+artifacts driven through public terrain locks; its exact hypothesis and
+nonclaims are in the
 [Pattern-Projected Pass Composition v1 record](docs/research/pattern-projected-passes-v1.md).
 For bounded order-N learning, typed BOS boundaries, open and derived wrapped
 generation, pass projection, and canonical `wfcs=1` text, see
