@@ -362,17 +362,17 @@ text, raw SMF codec, score exporter, PCM/WAVE renderer, tests, and portable exam
 only repository units and the applicable standard FPC/pas2js RTL. They neither
 initialize nor reference a submodule.
 
-The older `01_simple_A_major` and `02_simple_song_riffs` experiments remain as
-historical examples. Their Lazarus/LCL UI and SDL2 playback route through the
-optional SoundShop submodule, which is GPL-3.0. That dependency is isolated
-from the MIT runtime package, normal build, tests, portable demo, and canonical
-formats. Do not copy its types into the portable API or make it a required
-playback path.
+The original `01_simple_A_major` and `02_simple_song_riffs` studies retain their
+authored fluent note rules in shared FPC/pas2js Pascal units. Their native hosts
+accept caller-selected seed, note count, and tempo; the riff study also accepts
+the `mary`, `bridge`, and `hot-cross` grammar set. A caller may request one new
+MIDI or streaming WAVE file, but neither host writes an artifact by default.
+The WAVE path uses the project-owned renderer without a preview-duration cap.
 
-Playback remains an edge adapter. Native hosts can write the owned WAV for
-an external player, and the browser uses standard HTML audio. An embedded
-native device or future WebAudio adapter must remain optional; the score and
-generated result stay useful without a playback backend.
+The studies no longer use a GUI toolkit, submodule, or third-party playback
+runtime. Native hosts write owned MIDI or WAVE artifacts for a player, while
+the browser uses standard HTML audio as a host API. The exact score and
+generated result remain useful without a playback device.
 
 ## present limits and research direction
 

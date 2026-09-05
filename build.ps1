@@ -198,6 +198,30 @@ if ($testExitCode -ne 0) {
 }
 
 $countDemoDirectory = Join-Path $repositoryRoot 'examples/passes/04_NeighborhoodCounts'
+$musicStudyDirectory = Join-Path $repositoryRoot 'examples/music'
+$musicStudySources = @(
+  (Join-Path $repositoryRoot 'test/wfc_music_studies_test.lpr')
+  (Join-Path $musicStudyDirectory '01_simple_A_major/simple_a_major.lpr')
+  (Join-Path $musicStudyDirectory '02_simple_song_riffs/simple_song_riffs.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_music_studies_process_test.lpr')
+)
+foreach ($studySource in $musicStudySources) {
+  Write-Host "Building native music study source '$studySource'."
+  & $Compiler @CompilerOptions -B -Mdelphi -Sa -Cr -Co -Ci `
+    "-Fu$sourceDirectory" "-Fu$toolsDirectory" `
+    "-Fu$musicStudyDirectory/common" "-Fu$musicStudyDirectory/01_simple_A_major" `
+    "-Fu$musicStudyDirectory/02_simple_song_riffs" `
+    "-FU$unitOutputDirectory" "-FE$binaryOutputDirectory" $studySource
+  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+}
+$studySuffix = if ($env:OS -eq 'Windows_NT') { '.exe' } else { '' }
+& (Join-Path $binaryOutputDirectory "wfc_music_studies_test$studySuffix")
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+& (Join-Path $binaryOutputDirectory "wfc_music_studies_process_test$studySuffix") `
+  (Join-Path $binaryOutputDirectory "simple_a_major$studySuffix") `
+  (Join-Path $binaryOutputDirectory "simple_song_riffs$studySuffix") $binaryOutputDirectory
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
 foreach ($countTestName in @('wfc_pass_count_test', 'wfc_pipeline_count_test', 'wfc_count_demo_test')) {
   $countTestArguments = @(
     $CompilerOptions

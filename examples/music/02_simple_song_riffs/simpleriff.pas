@@ -23,131 +23,80 @@ SOFTWARE.
 *)
 unit simpleriff;
 
-{$mode delphi}
+{$mode delphi}{$H+}
 
 interface
 
-uses
-  Classes,
-  SysUtils,
-  Forms,
-  Controls,
-  Graphics,
-  Dialogs, ExtCtrls, ComboEx,
-  main,
-  wfc;
+uses SysUtils, main, wfc;
 
 type
+  TSimpleRiffSong = (srsMary, srsBridge, srsHotCross);
+  TSimpleRiffSongs = set of TSimpleRiffSong;
 
-  { TSimpleRiff }
-  (*
-    an example showing how we can use simple songs to manually define
-    our graph's constraints and "riff" on those rules
-  *)
-  TSimpleRiff = class(TSimpleMusicForm)
-    combo_songs: TCheckComboBox;
-    pnl_song_selection: TPanel;
-  private
-    const
-      SONG_MARY = 'Mary Had a Little Lamb';
-      SONG_BRIDGE = 'London Bridge is Falling Down';
-      SONG_HOT_CROSS = 'Hot Cross Buns';
-  private
+  { Original manually inferred neighboring-note rules. Selection unions the
+    authored alternatives; it does not claim to have learned whole songs. }
+  TSimpleRiff = class(TSimpleMusic)
+  strict private
+    FSongs: TSimpleRiffSongs;
   protected
     procedure InitWFC(const AGraph: TGraph); override;
-    procedure DoInitializeSongList(const AItems : TStrings); virtual;
-    procedure DoInitializeWFCForSong(const ASong : String; const AGraph : TGraph); virtual;
+    procedure DoInitializeWFCForSong(const ASong: TSimpleRiffSong;
+      const AGraph: TGraph); virtual;
   public
-    constructor Create(TheOwner: TComponent); override;
+    constructor Create;
+    property Songs: TSimpleRiffSongs read FSongs write FSongs;
   end;
-
-var
-  SimpleRiffForm: TSimpleRiff;
 
 implementation
 
-{$R *.lfm}
-
-{ TSimpleRiff }
+constructor TSimpleRiff.Create;
+begin
+  inherited Create;
+  FSongs := [srsMary, srsBridge, srsHotCross];
+end;
 
 procedure TSimpleRiff.InitWFC(const AGraph: TGraph);
-var
-  I: Integer;
+var LSong: TSimpleRiffSong;
 begin
-  AGraph.Reshape({width = notes} edit_note_count.Value, {height = 0-note/1-duration?} 1, {depth} 1); //todo - should be use height to hold the duration? or would this be better for implementing the passes idea? for now use 1 dimension or use Z?
+  if FSongs = [] then raise EArgumentException.Create('select at least one song grammar');
+  AGraph.Reshape(NoteCount, 1, 1);
   AGraph.WrapNeighbors := False;
-  for I := 0 to Pred(combo_songs.Items.Count) do
-    if combo_songs.Checked[I] then
-      DoInitializeWFCForSong(combo_songs.Items[I], AGraph);
+  for LSong := Low(TSimpleRiffSong) to High(TSimpleRiffSong) do
+    if LSong in FSongs then DoInitializeWFCForSong(LSong, AGraph);
 end;
 
-procedure TSimpleRiff.DoInitializeSongList(const AItems: TStrings);
-begin
-  AItems.Add(SONG_MARY);
-  AItems.Add(SONG_BRIDGE);
-  AItems.Add(SONG_HOT_CROSS);
-end;
-
-procedure TSimpleRiff.DoInitializeWFCForSong(const ASong: String;
+procedure TSimpleRiff.DoInitializeWFCForSong(const ASong: TSimpleRiffSong;
   const AGraph: TGraph);
-
-  (*
-    all possible notes and their neighbors for Mary Had a Little Lamb
-  *)
-  procedure InitMary;
-  begin
-    AGraph
-      .AddValue('E')
-        .NewRule([gdEast, gdWest], 'D')
-        .NewRule([gdEast, gdWest], 'E')
-        .NewRule([gdEast, gdWest], 'G');
-     AGraph.AddValue('D').NewRule([gdEast, gdWest], 'C');
-     AGraph.AddValue('G').NewRule([gdEast, gdWest], 'G');
-  end;
-
-  (*
-    all possible notes and their neighbors for London Bridge is Falling Down
-  *)
-  procedure InitBridge;
-  begin
-    AGraph
-      .AddValue('D')
-        .NewRule([gdEast, gdWest], 'E')
-        .NewRule([gdEast, gdWest], 'C')
-        .NewRule([gdEast, gdWest], 'A')
-        .NewRule([gdEast], 'B');
-    AGraph.Rules['C'].NewRule([gdEast, gdWest], 'B');
-    AGraph.Rules['B'].NewRule([gdWest], 'A');
-  end;
-
-  (*
-    all possible notes and their neighbors for Hot Cross Buns
-  *)
-  procedure InitHotCross;
-  begin
-    AGraph
-      .AddValue('E')
-        .NewRule([gdEast, gdWest], 'D')
-        .NewRule([gdEast, gdWest], 'C');
-    AGraph.Rules['D'].NewRule([gdEast, gdWest], 'C');
-  end;
-
 begin
-  if ASong = SONG_MARY then
-    InitMary
-  else if ASong = SONG_BRIDGE then
-    InitBridge
-  else if ASong = SONG_HOT_CROSS then
-    InitHotCross
-  else
-    ShowMessage('unrecognized song [' + ASong + ']');
-end;
-
-constructor TSimpleRiff.Create(TheOwner: TComponent);
-begin
-  inherited Create(TheOwner);
-  combo_songs.Clear;
-  DoInitializeSongList(combo_songs.Items);
+  case ASong of
+    srsMary:
+      begin
+        AGraph.AddValue('E')
+          .NewRule([gdEast, gdWest], 'D')
+          .NewRule([gdEast, gdWest], 'E')
+          .NewRule([gdEast, gdWest], 'G');
+        AGraph.AddValue('D').NewRule([gdEast, gdWest], 'C');
+        AGraph.AddValue('G').NewRule([gdEast, gdWest], 'G');
+      end;
+    srsBridge:
+      begin
+        AGraph.AddValue('D')
+          .NewRule([gdEast, gdWest], 'E')
+          .NewRule([gdEast, gdWest], 'C')
+          .NewRule([gdEast, gdWest], 'A')
+          .NewRule([gdEast], 'B');
+        AGraph.Rules['C'].NewRule([gdEast, gdWest], 'B');
+        AGraph.Rules['B'].NewRule([gdWest], 'A');
+      end;
+    srsHotCross:
+      begin
+        AGraph.AddValue('E')
+          .NewRule([gdEast, gdWest], 'D')
+          .NewRule([gdEast, gdWest], 'C');
+        AGraph.Rules['D'].NewRule([gdEast, gdWest], 'C');
+      end;
+  else raise EArgumentException.Create('unknown song grammar');
+  end;
 end;
 
 end.

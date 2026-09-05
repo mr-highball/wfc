@@ -303,6 +303,30 @@ printf "Running '%s'.\n" "$test_executable"
 "$test_executable" || exit $?
 
 compiler_count_demo_directory="$compiler_source_directory/../examples/passes/04_NeighborhoodCounts"
+compiler_music_study_directory="$compiler_source_directory/../examples/music"
+for study_source in \
+  "$compiler_source_directory/../test/wfc_music_studies_test.lpr" \
+  "$compiler_music_study_directory/01_simple_A_major/simple_a_major.lpr" \
+  "$compiler_music_study_directory/02_simple_song_riffs/simple_song_riffs.lpr" \
+  "$compiler_source_directory/../test/wfc_music_studies_process_test.lpr"
+do
+  printf "Building native music study source '%s'.\n" "$study_source"
+  "$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
+    "-Fu$compiler_source_directory" "-Fu$compiler_tools_directory" \
+    "-Fu$compiler_music_study_directory/common" \
+    "-Fu$compiler_music_study_directory/01_simple_A_major" \
+    "-Fu$compiler_music_study_directory/02_simple_song_riffs" \
+    "-FU$compiler_unit_output_directory" "-FE$compiler_binary_output_directory" \
+    "$study_source" || exit $?
+done
+study_suffix=''
+case "$host_system" in CYGWIN*|MINGW*|MSYS*) study_suffix='.exe' ;; esac
+"$binary_output_directory/wfc_music_studies_test$study_suffix" || exit $?
+"$binary_output_directory/wfc_music_studies_process_test$study_suffix" \
+  "$compiler_binary_output_directory/simple_a_major$study_suffix" \
+  "$compiler_binary_output_directory/simple_song_riffs$study_suffix" \
+  "$compiler_binary_output_directory" || exit $?
+
 for count_test_name in wfc_pass_count_test wfc_pipeline_count_test wfc_count_demo_test; do
   printf "Building the count-constraint suite '%s'.\n" "$count_test_name"
   "$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \

@@ -23,8 +23,9 @@ causal-trace inspector, bounded pass negotiation, negotiated descendant repair,
 anchored text infill, three-pass text composition, and negotiated music
 variation, the four-pass learned-pattern world, and writes a checked seed-zero
 Building SVG artifact.
-It does not initialize the optional legacy music submodule or build the
-unfinished Castle Game Engine viewer. The 2D world, three-pass text workbench,
+The original A-major and manually authored riff studies are also plain FPC
+console programs, with owned MIDI and streaming WAVE export. No submodule,
+external media library, or engine package is needed. The 2D world, three-pass text workbench,
 Building 3D, Training Studio, Music Studio, Ensemble Studio, Voice Studio,
 Neighborhood Counts, and Connected Routes have separate pas2js browser entry
 points described below.
@@ -63,12 +64,9 @@ recipe compiler, transactional runtime, result capture, validator application,
 and command-line parsing are also shared native/pas2js Pascal. Native
 hosts add only bounded byte I/O and process-exit plumbing.
 
-Playback systems, editors, native window/engine
-adapters, and media backends remain optional edge integrations; none is
-required to learn, serialize, solve, validate, export, mesh, project, or write
-the canonical graphical artifact.
-The GPL-3.0 SoundShop submodule, Lazarus/LCL, and SDL2 occur only in two
-explicitly legacy examples.
+Presentation adapters may use direct host APIs behind project-owned Pascal
+interfaces. A separately fetched media, window, or engine library is not a
+standard demo prerequisite; the former legacy integrations have been removed.
 Here and throughout the build guide, “dependency-free” means no third-party
 runtime library: repository units, the standard compiler RTL, and the selected
 host/toolchain APIs remain present. The full decision and optional-adapter
@@ -100,7 +98,7 @@ Both scripts rebuild with assertions and range, overflow, and I/O checks, run
 `wfc_voxel3d_isometric_test`,
 `wfc_voxel3d_svg_test`, `wfc_building3d_test`,
 `wfc_building3d_view_test`, `wfc_midi_smf_test`,
-`wfc_music_test`,
+`wfc_music_test`, `wfc_music_studies_test`,
 `wfc_music_graph_test`, `wfc_music_midi_test`, `wfc_music_passes_test`,
 `wfc_music_passes_text_test`, `wfc_music_audio_test`, `wfc_music_studio_test`,
 `wfc_music_midi_import_test`, `wfc_music_training_test`,
@@ -147,6 +145,13 @@ the multi-pass and
 selective-settlement worlds also run with their default seeds. Finally, the
 native `Building3DSvg` host generates and validates
 `build/native/bin/building3d-seed-zero.svg`.
+The two original music studies are built as `simple_a_major` and
+`simple_song_riffs`. Their shared `wfc_music_studies_test` runs on FPC and
+pas2js; the FPC `wfc_music_studies_process_test` checks command arguments,
+user-selected note counts and exact fractional-second WAVE timing,
+deterministic MIDI/WAVE files, format errors, and no-overwrite publication.
+See the [A-major](../examples/music/01_simple_A_major/README.md) and
+[riff](../examples/music/02_simple_song_riffs/README.md) usage guides.
 A checked process suite also runs both native pipeline tools against the
 canonical files in `test/fixtures/pipeline-cli` and
 `examples/2D/05_LearnedPatternWorld/pipeline`: file and standard-input paths,
@@ -521,10 +526,9 @@ not assertions that every console fixture has a browser host.
 The hosted workflow runs the checked native gate with FPC 3.2.2 on Linux,
 macOS, and Windows. The Linux lane also builds the FPM and Lazarus packages,
 runs the core Lazarus project, and verifies that generation leaves the checkout
-clean. A separate Linux lane builds all eight browser demos and executes
+clean. A separate Linux lane builds all nine browser demos and executes
 standalone demo self-tests plus portable browser conformance (including the
 Ensemble Studio and Voice Studio controllers) in headless Chrome using the included FPC
 development tools. A canary runs
 against the current official FPC development image and records the image digest
-and compiler revision in the job log. Submodules are deliberately disabled for
-every gate.
+and compiler revision in the job log. The checkout contains no submodules.

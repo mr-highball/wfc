@@ -16,7 +16,7 @@ if (-not $Server) { $Server = Join-Path $repositoryRoot 'build/native/bin/wfc_se
 if (-not $Checker) { $Checker = Join-Path $repositoryRoot 'build/native/bin/wfc_browser_check.exe' }
 $web = Join-Path $repositoryRoot 'build/browser/tests/www'
 $results = Join-Path $repositoryRoot 'build/browser/tests/results'
-$nativeOnly = @('wfc_browser_dom_test','wfc_serve_test','wfc_music_render_process_test','wfc_music_ensemble_render_process_test','wfc_music_ensemble_midi_render_process_test','wfc_music_voices_render_process_test','wfc_connectivity_process_test')
+$nativeOnly = @('wfc_browser_dom_test','wfc_serve_test','wfc_music_render_process_test','wfc_music_ensemble_render_process_test','wfc_music_ensemble_midi_render_process_test','wfc_music_voices_render_process_test','wfc_connectivity_process_test','wfc_music_studies_process_test')
 $sources = @(Get-ChildItem -LiteralPath (Join-Path $repositoryRoot 'test') -Filter '*_test.lpr' |
   Where-Object { $_.BaseName -notin $nativeOnly } | Sort-Object Name)
 if ($TestName) { $sources = @($sources | Where-Object { $_.BaseName -ceq $TestName }) }

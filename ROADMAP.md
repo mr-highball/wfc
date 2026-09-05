@@ -175,10 +175,11 @@ The repository already contains the beginnings of the ecosystem:
 - checked one-command native build gates, an FPM package, a runtime-only
   Lazarus package, and a hosted stable/development CI workflow;
 - single-pass and multi-pass console world examples;
-- two isolated legacy music experiments, including manually inferred note
-  adjacency and optional SoundShop/SDL2 playback;
-- building-kit constraints, a console renderer, and a Castle Game Engine
-  project skeleton;
+- the original A-major and manually inferred riff grammars, now portable Pascal
+  studies with native console hosts, owned MIDI and streaming WAVE output,
+  user-selected note counts, and cross-target conformance tests;
+- the original building-kit constraints and console renderer, alongside the
+  maintained native SVG and browser Building 3D views;
 - native/pas2js conformance runners covering the core, pass contracts, 2D and
   voxel-3D domain semantics, learning, sequence, music, atomic failure, and
   replay signatures, including the reference-kernel, public pipeline, and
@@ -208,7 +209,7 @@ It is not yet the finished system described above:
   props wrapper are now independent of the legacy depth-one building kit and
   have matching native/pas2js textual and mesh output, deterministic native
   SVG, and an interactive browser workbench; there is still no standard-RTL
-  interactive native window, the legacy Castle shell remains unconnected, and
+  interactive native window; the unconnected external-engine shell is removed, and
   arbitrary cameras or intersecting geometry need a later generalized
   visibility/depth renderer;
 - the interactive 2D, three-pass text, and Building 3D pas2js demos and browser
@@ -229,9 +230,8 @@ It is not yet the finished system described above:
 - the portable music path now has project-owned PCM/WAVE rendering, native
   file export, MIDI-to-score import and selected-excerpt training, and an
   interactive browser Music Studio with HTML audio and user-defined-duration
-  streamed arrangements;
-  SoundShop/SDL2 remains only in two legacy Lazarus experiments behind an
-  optional GPL-3.0 submodule and is not part of the MIT runtime or standard demo;
+  streamed arrangements. Both original music studies now use that owned media
+  stack too; the external playback submodule and GUI dependencies are removed;
 - Music Foundation v1 and Negotiated Variation v1 prove quantized single-voice
   pitch-class composition, public motif preservation, bounded pass-level
   repair, result replay, and score-to-SMF export. Ensemble and independent-role
@@ -820,12 +820,9 @@ The project remains under the MIT license. To make that promise meaningful:
   project source;
 - maintain a third-party notice and asset manifest containing origin, author,
   version, license, modifications, and hashes;
-- replace the required SoundShop GPL playback path with a project-owned,
-  MIT-licensed FPC/pas2js implementation; any retained SoundShop integration
-  remains a clearly separate optional GPL adapter outside standard builds and
-  MIT demo binaries;
-- treat SDL2 as an optional media-backend adapter and, when distributing it,
-  document the exact binary source/version or build it reproducibly;
+- keep the project-owned MIT FPC/pas2js media and presentation stack as the
+  standard path; the original music studies have been ported, and the old
+  playback submodule and engine shell are removed, not retained as exceptions;
 - verify or replace sheet-music images, samples, FBX models, icons, fonts, and
   browser assets whose redistribution terms are not recorded;
 - require corpus and learned-model metadata to retain source provenance and

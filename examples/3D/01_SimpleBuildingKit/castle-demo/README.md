@@ -1,13 +1,13 @@
-# Simple Building Kit
+# Simple Building Kit model
 
-Using [Castle Game Engine](https://castle-engine.io/).
+The maintained source in this historical directory is the project-owned
+building-rule unit `code/wfc.buildkit.pas`. It imports the standard runtime and
+`wfc`; it has no engine or renderer types. Its path is retained for source
+compatibility with the native `../tester.lpr` console.
 
-## Building
-
-Compile by:
-
-- [CGE editor](https://castle-engine.io/manual_editor.php). Just use menu item _"Compile"_.
-
-- Or use [CGE command-line build tool](https://github.com/castle-engine/castle-engine/wiki/Build-Tool). Run `castle-engine compile` in this directory.
-
-- Or use [Lazarus](https://www.lazarus-ide.org/). Open in Lazarus `castle_demo_standalone.lpi` file and compile / run from Lazarus. Make sure to first register [CGE Lazarus packages](https://castle-engine.io/documentation.php).
+The former engine launcher was never connected to the generated model and has
+been removed with its project metadata, resources, and UI data. For maintained
+depth-greater-than-one generation and graphical output, use the
+[Multi-pass Building](../../02_MultiPassBuilding/README.md) native example or
+the [Building 3D viewer](../../03_BrowserBuilding/README.md), which shares one
+project-owned command model across native SVG and pas2js/Canvas2D.

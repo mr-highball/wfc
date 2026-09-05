@@ -29,16 +29,15 @@ clipping, picking, and a lineage inspector. Seed zero is pinned to pipeline
 `1:F1EF0EB6`, complete view `AC7290C0`, and `140` faces. See the
 [graphical example guide](03_BrowserBuilding/README.md).
 
-`01_SimpleBuildingKit` contains two separate starting points:
+`01_SimpleBuildingKit/tester.lpr` is a dependency-free native console using the
+original building-kit rules. It currently runs with depth one and renders only
+a textual slice. The pure-Pascal rule unit remains at its historical
+`castle-demo/code/wfc.buildkit.pas` path for source compatibility, but the
+former engine launcher, packages, resources, and UI data are no longer part of
+the example.
 
-- `tester.lpr` is a dependency-free native console using the building-kit
-  rules, but it currently runs with depth one and renders only a textual slice;
-- `castle-demo` is a Castle Game Engine viewer shell that does not yet invoke
-  WFC or turn generated values into geometry.
-
-Neither historical entry is presented as the standard 3D demonstration.
-The standard graphical path is now generated geometry and project-owned
-materials; it does not depend on the shell or its unproven legacy asset.
-Interactive native-window adapters remain optional edge integrations rather
-than a core dependency. Build commands and exact dependency status are in the
-[examples index](../README.md).
+This early console is not presented as the standard 3D demonstration. The
+`02_MultiPassBuilding` native proof and `03_BrowserBuilding` native SVG and
+pas2js/Canvas2D viewers replace the unfinished shell with generated geometry,
+project-owned materials, and checked public lineage. Build commands and exact
+dependency status are in the [examples index](../README.md).

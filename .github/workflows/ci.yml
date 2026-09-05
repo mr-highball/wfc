@@ -120,6 +120,10 @@ jobs:
           lazbuild -B --no-write-project wfc.lpk
           lazbuild -B --no-write-project test/wfc_test.lpi
           ./build/lazarus/test/bin/wfc_test
+          lazbuild -B --no-write-project examples/music/01_simple_A_major/simple_a_major.lpi
+          lazbuild -B --no-write-project examples/music/02_simple_song_riffs/simple_song_riffs.lpi
+          ./build/lazarus/music-studies/bin/simple_a_major --notes 3 --seed 55
+          ./build/lazarus/music-studies/bin/simple_song_riffs --notes 3 --seed 55
           test -z "$(git status --short)"
 
   pas2js:

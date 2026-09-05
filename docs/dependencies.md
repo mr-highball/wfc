@@ -43,9 +43,10 @@ classification, and opaque host serializers must not define portable results.
 
 FPC, pas2js, and their standard runtime units are the toolchain and execution
 substrate, not ecosystem extensions. The browser DOM and Canvas2D, an operating
-system window, an audio device, or a game engine may be used through an
-optional presentation adapter when the host capability itself is the point of
-the adapter.
+system window, or an audio device may be used through direct host APIs behind a
+project-owned presentation adapter when the host capability itself is the point
+of the adapter. A separately fetched window, media, or engine runtime is still
+an external dependency and must pass the admission gate above.
 
 In project documentation, “dependency-free” means free of third-party runtime
 libraries. Repository units, the applicable standard RTL, the selected
@@ -79,12 +80,14 @@ the shared Pascal suites. Native command-line hosts use FPC;
 the JavaScript execution target is the browser, with pas2js and its matching
 RTL staged together. See [development tools](development-tools.md).
 
-## legacy and experimental integrations
+## retired legacy integrations
 
-The Lazarus/LCL, SDL2, SoundShop, and Castle Game Engine experiments are
-optional edges retained for history or presentation work. They are not part of
-the maintained dependency-free runtime path and cannot become prerequisites
-for a standard ecosystem library or demo.
+The former Lazarus/LCL, SDL2, SoundShop, and Castle Game Engine demo paths have
+been removed. The original note-rule studies now use the project-owned score,
+MIDI, and PCM/WAVE stack, and the Building 3D examples provide project-owned
+native SVG and pas2js/Canvas2D presentation. Historical images and explanatory
+material may remain, but a demo's age or presentation role is not an admission
+exception for its former runtime libraries.
 
 New integrations should be adapters over public, validated WFC artifacts.
 They must document their license and installation separately. If an adapter

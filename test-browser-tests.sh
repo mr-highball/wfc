@@ -20,7 +20,7 @@ for source in test/*_test.lpr; do
   name="${source##*/}"
   name="${name%.lpr}"
   if [[ -n "${WFC_BROWSER_TEST:-}" && "$name" != "$WFC_BROWSER_TEST" ]]; then continue; fi
-  case "$name" in wfc_browser_dom_test|wfc_serve_test|wfc_music_render_process_test|wfc_music_ensemble_render_process_test|wfc_music_ensemble_midi_render_process_test|wfc_music_voices_render_process_test|wfc_connectivity_process_test) continue ;; esac
+  case "$name" in wfc_browser_dom_test|wfc_serve_test|wfc_music_render_process_test|wfc_music_ensemble_render_process_test|wfc_music_ensemble_midi_render_process_test|wfc_music_voices_render_process_test|wfc_connectivity_process_test|wfc_music_studies_process_test) continue ;; esac
   sources+=("$name")
   for extension in html js; do
     [[ -f "$web/$name.$extension" ]] || missing+=("$web/$name.$extension")

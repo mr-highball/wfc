@@ -33,10 +33,10 @@ the [roadmap](../ROADMAP.md).
 | Voxel 3D foundation | `../test/wfc_voxel3d_test.lpr` | Native FPC | Proves deterministic yaw variants, exact six-face sockets, vertical support, captured scene signatures, independent entrance/connectivity validation, wrapped seams, and renderer-neutral integer meshes using only repository units and the standard RTL. |
 | Multi-pass Building 3D | `3D/02_MultiPassBuilding/MultiPassBuilding.lpr` | Native FPC | Runs one depth-three footprint -> structure -> envelope/roof -> props DAG, keeps voxel keys private through checked prototype maps, validates support/entrance/reachability and every cross-layer cell independently, captures an integer mesh, and replays a portable public signature without external dependencies. |
 | Graphical Building 3D | `3D/03_BrowserBuilding/Building3DSvg.lpr` and `BrowserBuilding.lpr` | Native FPC/SVG, pas2js/browser | Builds one immutable public-lineage view over the shared four-pass showcase, projects fixed-integer commands through four yaws, writes deterministic SVG, and renders an interactive Canvas2D workbench with picking and an exact seed-zero browser fixture. It uses repository units plus the applicable standard RTL; Canvas2D is only the browser edge. |
-| Building-kit console | `3D/01_SimpleBuildingKit/tester.lpr` | Native FPC | Builds without Castle Game Engine, but its current fixture reaches a no-valid-value failure before rendering. It does not yet prove vertical 3D constraints. |
-| Castle viewer shell | `3D/01_SimpleBuildingKit/castle-demo/` | Native Castle Game Engine | The project shell and assets exist, but its game state does not yet call WFC or render generated building geometry. |
-| A-major music experiment | `music/01_simple_A_major/simple_a_major.lpi` | Native Lazarus/LCL | Legacy optional experiment using the SoundShop submodule and SDL2 playback. |
-| Learned-riff music experiment | `music/02_simple_song_riffs/simple_song_riffs.lpi` | Native Lazarus/LCL | Legacy optional experiment using manually inferred note adjacency, SoundShop, and SDL2 playback. |
+| Building-kit console | `3D/01_SimpleBuildingKit/tester.lpr` | Native FPC | Uses repository units and the standard RTL, but its current fixture reaches a no-valid-value failure before rendering. It does not yet prove vertical 3D constraints. |
+| Building-kit rule model | `3D/01_SimpleBuildingKit/castle-demo/code/wfc.buildkit.pas` | Native FPC | Retains the original fluent building constraints for the console at a source-compatible historical path; it uses only repository units and the standard RTL. |
+| A-major note study | `music/01_simple_A_major/simple_a_major.lpr` | Native FPC; shared FPC/pas2js unit | Preserves the original fluent A-major adjacency rules, builds an exact score, and optionally writes project-owned streaming WAVE or MIDI without a third-party runtime. |
+| Learned-riff note study | `music/02_simple_song_riffs/simple_song_riffs.lpr` | Native FPC; shared FPC/pas2js units | Preserves the manually authored Mary/Bridge/Hot Cross adjacency choices, builds an exact score, and optionally writes project-owned streaming WAVE or MIDI without a third-party runtime. |
 
 The 2D field instrument and Building 3D workbench exercise the real browser
 target and document host. The causal-trace console inspector now proves
@@ -45,9 +45,8 @@ cause links. The text pass workbench adds public three-layer lineage, locks, and
 contradiction/recovery inspection. Interactive trace stepping, live global
 domain views, richer failed-clause/minimal-core explanations, streaming
 capture, and an arbitrary-corpus completion editor remain roadmap work. The
-Castle shell is retained only as an
-optional native-engine edge; the standard 3D graphical path no longer waits
-on it.
+unfinished engine shell has been removed; the standard Building 3D graphical
+path is the project-owned native SVG and pas2js/Canvas2D implementation.
 
 ## dependency-free builds
 
@@ -364,33 +363,21 @@ failure evidence, user-initiated playback, and downloads. Build it with
 `build-browser-music.ps1` or `build-browser-music.sh`; serve
 `build/browser/music/www` and append `?selftest=1` for the checked workflow.
 
-## isolated legacy music experiments
+## original music studies
 
-Initialize their playback dependency only when working on these examples:
+The A-major and learned-riff studies are now dependency-free native hosts over
+shared FPC/pas2js model units. Both accept `--seed N`, `--notes N`, and
+`--tempo-us N`; the riff adds `--songs mary,bridge,hot-cross`. Pass either
+`--wave NEW.wav` or `--midi NEW.mid` to request a new artifact. They write no
+file unless one of those options is present, and streaming WAVE generation has
+no preview-duration cap. See the [music examples](music/README.md) for focused
+guides.
 
-```text
-git submodule update --init --recursive examples/music/SoundShop
-```
+## Building-kit compatibility source
 
-Then build their Lazarus projects with `lazbuild` or open the `.lpi` files in
-Lazarus:
-
-```text
-lazbuild -B --no-write-project examples/music/01_simple_A_major/simple_a_major.lpi
-lazbuild -B --no-write-project examples/music/02_simple_song_riffs/simple_song_riffs.lpi
-```
-
-Both require an SDL2 shared library at runtime. SoundShop is GPL-3.0, so this
-playback integration remains optional and separate from the dependency-free
-MIT path. A standard ecosystem demo must replace it or clearly preserve that
-license boundary.
-
-## Castle shell
-
-The Castle project may be compiled from its own directory with Castle Game
-Engine's editor or `castle-engine compile`, or through its Lazarus project when
-the Castle packages are registered. It is retained as a viewer starting point,
-not presented as a working WFC demonstration. The project-owned native SVG
-and pas2js/Canvas2D paths are the standard graphical examples. Connecting an
-interactive native engine remains an optional adapter task, and the shell's
-legacy asset provenance is still unestablished.
+The former engine shell has been removed. Its pure-Pascal building-rule unit
+remains under `3D/01_SimpleBuildingKit/castle-demo/code` so the early native
+console keeps its existing source path. The maintained replacements are the
+depth-three [Multi-pass Building](3D/02_MultiPassBuilding/README.md) proof and
+the [Building 3D](3D/03_BrowserBuilding/README.md) native SVG and
+pas2js/Canvas2D viewer.

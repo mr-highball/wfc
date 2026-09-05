@@ -15,16 +15,16 @@ scores and explicitly selected training excerpts.
 | [`05_MusicStudio`](05_MusicStudio/README.md) | Interactive locks, repair, piano roll, playback and export | Native FPC, pas2js/browser | Repository units, standard RTL and host APIs only |
 | [`04_NegotiatedVariation`](04_NegotiatedVariation/README.md) | Current reusable repair and replay proof | Native FPC | Repository units and standard RTL only |
 | [`03_PassComposition`](03_PassComposition/README.md) | Current tested vertical slice | Native FPC | Repository units and standard RTL only |
-| `01_simple_A_major` | Legacy playback experiment | Lazarus/LCL | Optional GPL-3.0 SoundShop submodule and SDL2 |
-| `02_simple_song_riffs` | Legacy learned-adjacency experiment | Lazarus/LCL | Optional GPL-3.0 SoundShop submodule and SDL2 |
+| [`01_simple_A_major`](01_simple_A_major/README.md) | Original A-major adjacency study with explicit export | Native FPC; shared FPC/pas2js unit | Repository units and standard RTL only |
+| [`02_simple_song_riffs`](02_simple_song_riffs/README.md) | Original manually authored song-adjacency study with explicit export | Native FPC; shared FPC/pas2js units | Repository units and standard RTL only |
 
-The legacy experiments preserve useful early ideas—explicit pitch adjacency,
-duration metadata, pass-oriented composition questions, and an A-major
-fixture—but their UI and playback stack is not part of the MIT runtime
-foundation. Initializing the
-SoundShop submodule is neither necessary nor recommended for normal builds.
-See [the music foundation](../../docs/music.md) for the exact score, cell,
-artifact, MIDI, and license contracts.
+The original studies preserve their explicit pitch-adjacency rules and A-major
+fixture in portable Pascal. They now build exact scores and use the same
+project-owned MIDI and streaming WAVE implementation as the maintained music
+path; no GUI or playback package is involved. Historical notation images and
+neighbor notes remain explanatory material. See
+[the music foundation](../../docs/music.md) for the exact score, cell,
+artifact, MIDI, and audio contracts.
 
 ## portable examples
 
@@ -75,16 +75,15 @@ playback backend. The focused
 [`04_NegotiatedVariation` guide](04_NegotiatedVariation/README.md) records its
 budgets, repair scope, signatures, and limitations.
 
-## optional legacy playback
+## original note-rule studies
 
-Only initialize this dependency when deliberately examining the old examples:
+Both native hosts accept `--seed N`, `--notes N`, and `--tempo-us N`. The riff
+host additionally accepts a comma-separated
+`--songs mary,bridge,hot-cross` selection. Pass `--wave NEW.wav` or
+`--midi NEW.mid` to request one new artifact; without either option the hosts
+do not write a file. WAVE output is streamed through the owned renderer, so the
+caller-selected note count is not constrained by a preview-duration cap.
 
-```text
-git submodule update --init --recursive examples/music/SoundShop
-lazbuild -B --no-write-project examples/music/01_simple_A_major/simple_a_major.lpi
-lazbuild -B --no-write-project examples/music/02_simple_song_riffs/simple_song_riffs.lpi
-```
-
-They require Lazarus/LCL and an SDL2 shared library at runtime. SoundShop is
-GPL-3.0, so this integration stays isolated from the dependency-free MIT build
-and cannot define the standard ecosystem API.
+The focused [A-major](01_simple_A_major/README.md) and
+[riff](02_simple_song_riffs/README.md) guides give build commands, validation,
+and overwrite behavior.
