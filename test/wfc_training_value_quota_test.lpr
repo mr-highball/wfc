@@ -25,7 +25,7 @@ program wfc_training_value_quota_test;
 {$mode delphi}{$H+}
 
 uses
-  {$IFDEF PAS2JS}wfc_browser_test_host,{$ENDIF}
+  {$IFDEF PAS2JS}wfc_browser_test_host, Web,{$ENDIF}
   SysUtils, wfc, wfc_model, wfc_text_codec, wfc_training, wfc_training_text,
   wfc_training_workspace, wfc_pipeline_model, wfc_pipeline_text,
   wfc_pipeline_run, wfc_pipeline_run_text, wfc_pipeline_result,
@@ -37,7 +37,13 @@ var Checks: Integer;
 procedure Check(const Condition: Boolean; const TextValue: String);
 begin
   Inc(Checks);
-  if not Condition then raise Exception.Create(TextValue);
+  if not Condition then
+  begin
+    {$IFDEF PAS2JS}
+    document.body.setAttribute('data-self-test-message', TextValue);
+    {$ENDIF}
+    raise Exception.Create(TextValue);
+  end;
 end;
 
 function Tokens(const Values: array of TWfcModelToken): TWfcModelTokens;
@@ -82,10 +88,14 @@ begin
 end;
 
 procedure Configure(const W: TWfcTrainingWorkspace;
-  const O: TWfcTrainingSolveOptions; const Depth: Integer);
+  const O: TWfcTrainingSolveOptions; const Depth: Integer;
+  const Preset: Integer = -1);
+var Locks: TWfcPipelineCellLocks;
 begin
-  if W.Rank = 3 then W.ConfigureVolumeRun(O, Depth, nil, nil)
-  else W.ConfigureRun(O, nil, nil);
+  Locks := nil;
+  if Preset >= 0 then Locks := TrainingStudioPresetLocks(Preset, W.PublicPassIndex);
+  if W.Rank = 3 then W.ConfigureVolumeRun(O, Depth, Locks, nil)
+  else W.ConfigureRun(O, Locks, nil);
 end;
 
 procedure CheckNoDerived(const W: TWfcTrainingWorkspace; const Draft: String);
@@ -105,7 +115,7 @@ begin
 end;
 
 procedure CheckFullReplay(const W: TWfcTrainingWorkspace;
-  const O: TWfcTrainingSolveOptions; const Depth: Integer);
+  const O: TWfcTrainingSolveOptions; const Depth, Preset: Integer);
 var Fresh: TWfcTrainingWorkspace; Model: TWfcPipelineModel;
   Run: TWfcPipelineRun; Output, Decoded: TWfcPipelineResult;
   RecipeText, RunText, ResultText: String;
@@ -116,7 +126,7 @@ begin
     Fresh.SetSourceText(W.SourceText); Fresh.Train;
     Check((Fresh.RecipeText = RecipeText) and (Fresh.ValueQuotaCount = W.ValueQuotaCount),
       'source import into an independent workspace retains authored quotas and recipe identity');
-    Configure(Fresh, O, Depth); Fresh.Solve;
+    Configure(Fresh, O, Depth, Preset); Fresh.Solve;
     Check((Fresh.RunText = RunText) and (Fresh.ResultText = ResultText),
       'persisted source replays exact invocation and terminal output');
   finally Fresh.Free; end;
@@ -170,15 +180,21 @@ begin
       OldSource := W.SourceText; OldRecipe := W.RecipeText;
       OldModel := W.ModelText; OldTraining := W.TrainingSignatureText;
       O := TrainingStudioPresetOptions(P); Depth := TrainingStudioPresetDepth(P);
-      Configure(W, O, Depth); W.Solve;
+      Configure(W, O, Depth, P); W.Solve;
       Check(W.ResultStatus = wprsSolved, 'unmodified preset provides a feasible reference');
       Output := W.OutputTokens; Token := Output[0]; N := Count(Output, Token);
       Q := Quotas(Token, N, N); W.ReplaceValueQuotas(Q);
       Check(W.HasRecipe and (not W.HasRun) and (not W.HasResult),
         'quota edit retrains current recipe and invalidates old run/result');
-      Check((Pos('wfclearn=3'#10, W.SourceText) = 1) and
-        (Pos('wfcpipeline=2'#10, W.RecipeText) = 1),
-        'nonempty authoring constraints select versioned source and recipe');
+      //Circular sequence semantics require source v5 even when quotas are
+      //present; the six original presets retain their quota-only v3 format.
+      if P = TRAINING_STUDIO_CIRCULAR_PRESET then
+        Check(Pos('wfclearn=5'#10, W.SourceText) = 1,
+          'circular preset quota preserves wrapped source v5')
+      else Check(Pos('wfclearn=3'#10, W.SourceText) = 1,
+        'original preset quota retains source v3: ' + IntToStr(P));
+      Check(Pos('wfcpipeline=2'#10, W.RecipeText) = 1,
+        'every preset quota selects pipeline v2: ' + IntToStr(P));
       Check((W.ValueQuotaCount = 1) and
         (W.TrainingSignatureText <> OldTraining),
         'authoring changes source identity and retains one descriptor');
@@ -198,10 +214,11 @@ begin
           (Model.ValueQuotaAt(0).PassIndex = W.PublicPassIndex) and
           (Model.PassAt(W.PublicPassIndex).Visibility = wppvPublic),
           'learning binds quota to current public output, never a private state pass');
-        if P in [2, 3, 4] then Check(W.PublicPassIndex = 1, 'projection authoring resolves public pass one')
+        if P in [2, 3, 4, TRAINING_STUDIO_CIRCULAR_PRESET] then
+          Check(W.PublicPassIndex = 1, 'projection authoring resolves public pass one')
         else Check(W.PublicPassIndex = 0, 'direct authoring resolves public pass zero');
       finally Model.Free; end;
-      Configure(W, O, Depth); W.Solve; Output := W.OutputTokens;
+      Configure(W, O, Depth, P); W.Solve; Output := W.OutputTokens;
       Check((W.ResultStatus = wprsSolved) and (Count(Output, Token) = N),
         'hard authored count independently matches every output cell');
       if P = 5 then
@@ -211,16 +228,16 @@ begin
         'authored quota composes with independently validated learned structure');
       ResultText := W.ResultText; W.Solve;
       Check(W.ResultText = ResultText, 'repeating authored solve retains exact output');
-      CheckFullReplay(W, O, Depth); CheckCli(Source, Recipe);
+      CheckFullReplay(W, O, Depth, P); CheckCli(Source, Recipe);
       W.Train;
       Check((W.SourceText = Source) and (W.RecipeText = Recipe) and
         (not W.HasRun) and (not W.HasResult), 'retraining cannot drop persisted constraints');
-      Configure(W, O, Depth); W.Solve;
+      Configure(W, O, Depth, P); W.Solve;
       Check(W.ResultText = ResultText, 'retraining identical source preserves exact seeded replay');
       W.ReplaceValueQuotas(nil);
       Check((W.SourceText = OldSource) and (W.RecipeText = OldRecipe) and
         (W.TrainingSignatureText = OldTraining) and (W.ModelText = OldModel),
-        'removing last quota restores exact legacy v1 or volume-v2 identities');
+        'removing last quota restores exact quota-free source, recipe and model identities');
     end;
   finally W.Free; end;
 end;
@@ -361,7 +378,7 @@ end;
 
 begin
   try
-    Check((Pos('wfclearn=1,2,3,4', WfcLearnVersionText) > 0) and
+    Check((Pos('wfclearn=1,2,3,4,5', WfcLearnVersionText) > 0) and
       (Pos('rejects sources with value quotas or connectivity', WfcLearnHelpText) > 0),
       'CLI help advertises persisted policy sources and model-only rejection');
     TestEveryOutputKind;
