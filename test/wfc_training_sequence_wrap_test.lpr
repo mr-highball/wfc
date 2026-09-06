@@ -367,7 +367,9 @@ var I: Integer; Bad, Text: String;
 begin
   for I := 1 to 4 do Reject(Change(SOURCE_TEXT, 'wfclearn=5', 'wfclearn=' + IntToStr(I)),
     'circular extraction cannot be smuggled into old source version');
-  Reject(Change(SOURCE_TEXT, 'wfclearn=5', 'wfclearn=6'), 'unknown future source version');
+  Reject(Change(SOURCE_TEXT, 'wfclearn=5', 'wfclearn=7'), 'unknown future source version');
+  Reject(Change(SOURCE_TEXT, 'wfclearn=5', 'wfclearn=6'),
+    'v6 cannot be selected by relabeling a circular sequence source');
   Reject(Change(SOURCE_TEXT, 'boundary=wrap', 'boundary=open'), 'v5 cannot encode an old open source');
   Reject(Change(SOURCE_TEXT, 'kind=sequence', 'kind=adjacency1d'), 'v5 is only the circular sequence capability');
   Reject(Change(SOURCE_TEXT, 'boundary=wrap', 'boundary=circular'), 'boundary aliases rejected');

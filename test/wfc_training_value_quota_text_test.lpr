@@ -139,7 +139,9 @@ var
   I: Integer;
   LBad, LText: String;
 begin
-  Reject(Change('wfclearn=3', 'wfclearn=4'), 'unknown header');
+  Reject(Change('wfclearn=3', 'wfclearn=7'), 'unknown header');
+  Reject(Change('wfclearn=3', 'wfclearn=4'),
+    'v4 requires its own nonempty connectivity section');
   Reject(Change('wfclearn=3', 'wfclearn=1'), 'v3 fields cannot enter v1');
   Reject(Change('wfclearn=3', 'wfclearn=2'), 'v2 remains volume-only');
   Reject(Change('value-quota-version=1', 'value-quota-version=2'), 'unknown capability');

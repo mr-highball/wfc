@@ -580,7 +580,9 @@ begin
     LFixture.Free;
   end;
   ExpectDecodeRejected(ReplaceOnce(LEncoded, 'wfcpipeline=1',
-    'wfcpipeline=2'), 'unknown outer versions fail closed');
+    'wfcpipeline=5'), 'unknown outer versions fail closed');
+  ExpectDecodeRejected(ReplaceOnce(LEncoded, 'wfcpipeline=1',
+    'wfcpipeline=2'), 'v2 requires its own nonempty quota section');
   ExpectDecodeRejected(ReplaceOnce(LEncoded, #10, #13#10),
     'CRLF is rejected');
   ExpectDecodeRejected(Copy(LEncoded, 1, Length(LEncoded) - 1),

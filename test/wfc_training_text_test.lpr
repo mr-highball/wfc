@@ -222,7 +222,9 @@ begin
   Reject(ADJACENCY1D_TEXT + #10, 'extra blank line');
   Reject(StringReplace(ADJACENCY1D_TEXT, #10, #13#10, [rfReplaceAll]),
     'CRLF input');
-  Reject(Changed('wfclearn=1', 'wfclearn=2'), 'unknown version');
+  Reject(Changed('wfclearn=1', 'wfclearn=7'), 'unknown version');
+  Reject(Changed('wfclearn=1', 'wfclearn=2'),
+    'v2 cannot be selected by relabeling an adjacency1d source');
   Reject(Changed('name=', 'unknown='), 'unknown field');
   Reject(Changed('kind=adjacency1d', 'kind=voxel3d'), 'unknown kind');
   Reject(Changed('boundary=wrap', 'boundary=periodic'), 'unknown boundary');

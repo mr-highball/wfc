@@ -155,7 +155,9 @@ begin
     Reject(ReplaceOnce(S,'terminal=0,0,1,0,0','terminal=0,0,'+BAD[I]+',0,0'),'exact terminal coordinate');
     Reject(ReplaceOnce(S,'profile=0,0,v0,10,false','profile=0,0,v0,'+BAD[I]+',false'),'exact opening mask');
   end;
-  Reject(ReplaceOnce(S,'wfcpipeline=3','wfcpipeline=4'),'unknown envelope rejected');
+  Reject(ReplaceOnce(S,'wfcpipeline=3','wfcpipeline=5'),'unknown envelope rejected');
+  Reject(ReplaceOnce(S,'wfcpipeline=3','wfcpipeline=4'),
+    'v4 cannot be selected by relabeling a connectivity-only document');
   Reject(ReplaceOnce(S,'wfcpipeline=3','wfcpipeline=2'),'v2 does not carry connectivity');
   Reject(ReplaceOnce(S,'wfcpipeline=3','wfcpipeline=1'),'v1 does not carry extensions');
   Reject(ReplaceOnce(S,'connectivity-version=1','connectivity-version=0'),'nonempty capability required');
