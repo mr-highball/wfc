@@ -917,6 +917,8 @@ for compiler_artifact_suite in \
   "$compiler_source_directory/../test/wfc_pipeline_mapped_result_test.lpr" \
   "$compiler_source_directory/../test/wfc_pipeline_mapped_runtime_test.lpr" \
   "$compiler_source_directory/../test/wfc_pipeline_mapped_artifact_test.lpr" \
+  "$compiler_source_directory/../test/wfc_pipeline_compose_test.lpr" \
+  "$compiler_source_directory/../test/wfc_pipeline_compose_resources_test.lpr" \
   "$compiler_source_directory/../test/wfc_lattice_test.lpr" \
   "$compiler_source_directory/../test/wfc_mapped_passes_test.lpr" \
   "$compiler_source_directory/../test/wfc_pass_bridge_layout_test.lpr" \

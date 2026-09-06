@@ -74,6 +74,8 @@ $artifactTestSources = @(
   (Join-Path $repositoryRoot 'test/wfc_pipeline_mapped_result_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_pipeline_mapped_runtime_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_pipeline_mapped_artifact_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_pipeline_compose_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_pipeline_compose_resources_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_lattice_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_mapped_passes_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_pass_bridge_layout_test.lpr')

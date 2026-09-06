@@ -18,8 +18,8 @@ pipeline without serializing a live `TGraph`:
   outcomes, and complete public output of that invocation; `wfcpipeline-result=2`
   retains the complete per-pass layout table for a version-2 run.
 
-The [mapped extension](portable-mapped-passes.md) is under integration. It is
-explicitly opt-in and does not change existing recipe1–4/run1/result1 bytes.
+The [mapped extension](portable-mapped-passes.md) is explicitly opt-in and does
+not change existing recipe1–4/run1/result1 bytes.
 The fixed-grid Mapped World UI does not yet expose portable import/export.
 
 All four formats are implemented once in portable Pascal and use the same
@@ -35,6 +35,12 @@ To generate a recipe from editable samples, see
 [training documents and wfc-learn](training.md). That workflow preserves
 source/license labels and ordered corpus fingerprints for cardinal, pattern,
 and sequence resources without introducing a file-format dependency.
+
+To assemble multiple complete authored or learned recipes, use
+[immutable pipeline composition](pipeline-composition.md). It preserves each
+fragment's internal constraints and provenance while explicitly remapping names
+and indices. The output uses the existing recipe5/run2/result2 path; composition
+does not introduce a workspace journal format or implicitly connect fragments.
 
 ## Hand-authored rule models
 

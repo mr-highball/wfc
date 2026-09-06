@@ -97,6 +97,9 @@ directories and the selected compiled package directory are supplied with
 The consumer exercises the public graph API, owned music-form configuration
 and phrase validation, portable connectivity recipe/run/result replay, and
 owned mixed-pass layout prefixes plus independent mapped-footprint validation.
+It also assembles two owned [pipeline fragments](pipeline-composition.md),
+checks detached names/provenance and remapped alias/dependency references,
+then executes their differently sized passes through the installed runtime.
 This catches both missing package entries and unusable exported interfaces.
 It is intentionally not named `*_test.lpr`: the source-path conformance runner
 must not silently substitute for this package-only check.

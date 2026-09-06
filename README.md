@@ -32,6 +32,7 @@ and explicit exit gates.
 | Learn models from examples | [Learning](docs/learning.md), [training documents and CLI](docs/training.md) |
 | Learn cyclic text, rhythms or event patterns | [Circular sequence training](docs/sequences.md#circular-source-training), [Training Studio](docs/training-studio.md) |
 | Save and replay a pipeline | [Portable recipes, runs, and results](docs/pipeline-artifacts.md) |
+| Assemble independently authored or learned pipelines | [Immutable fragment composition](docs/pipeline-composition.md) |
 | Check or inspect saved work | [Artifact-family validation, inspection, and exact replay](docs/artifact-tools.md) |
 | Extend or evaluate the system | [Roadmap](ROADMAP.md), [research records](docs/research/README.md) |
 
@@ -99,10 +100,16 @@ count ranges. The [Mapped World workbench](examples/passes/07_MappedWorld/README
 lets you edit domains, locks, housing demands, and sampling on three fixed
 showcase grids. Its [reproducible footprint study](docs/research/mapped-world-footprints-v1.md)
 contrasts a clear corner with an interior blocker and demonstrates explicitly
-authorized upstream repair. An additive [portable mapped pipeline extension](docs/portable-mapped-passes.md)
-is under integration: recipes own per-pass topology and mapped policies, runs
+authorized upstream repair. The additive [portable mapped pipeline extension](docs/portable-mapped-passes.md)
+keeps these concerns separate: recipes own per-pass topology and mapped policies, runs
 own independent extents, and results retain each layer's actual layout. The
 workbench's general layout editing and portable import/export UI remain open.
+
+[Pipeline composition](docs/pipeline-composition.md) combines complete authored
+or learned recipes with explicit names, preserving projection bridges, aliases,
+policies, topology, and resource provenance. It produces an immutable recipe;
+the caller supplies run extents and executes it through the existing runtime.
+It does not yet provide an editable multi-resource workspace or operation journal.
 
 Ordinary solving follows `prepare → solve → validate → commit`. A failed
 reference transaction restores its previous entries and random streams.

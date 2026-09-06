@@ -204,6 +204,10 @@ The repository already contains the beginnings of the ecosystem:
 - a project-owned collision-safe token lookup plus shared Pascal application
   logic for strict recipe validation and headless recipe-plus-run execution,
   with thin bounded-I/O native hosts;
+- [immutable pipeline fragment composition](docs/pipeline-composition.md) with
+  explicit resource/pass names, checked remapping of all seven row families,
+  retained source/license provenance, and recipe5 output for independent run
+  extents; it assembles definitions, not mutable workspaces or replay journals;
 - [saved-artifact validation and inspection](docs/artifact-tools.md) across
   rules, cardinal/pattern/sequence models, training sources, recipes, bound
   runs, and bound results; explicit exact-byte result replay, terminal-safe
@@ -586,11 +590,12 @@ scoped ordinary/negotiated repair and independently checked SVG. Its tutorial
 reproduces an interior blocker; its editable sandbox is not restricted to that
 single uncertain cell. The three showcase grids are fixed, not an editor for
 arbitrary layouts. [Portable mapped pipelines](docs/portable-mapped-passes.md)
-are under integration: recipe5 owns ordered topologies and public mapped
+support recipe5 with ordered topologies and public mapped
 clauses; run2 supplies independent extents; result2 records every pass layout.
 The same terrain/foliage/housing recipe now executes at multiple requested
-extents through the native save/validate/replay tools. Full integration and
-package gates are still required. The editable multi-resource composition
+extents through the native save/validate/replay tools. The [immutable fragment composer](docs/pipeline-composition.md)
+now supplies checked definition assembly and explicit index/name remapping.
+The editable multi-resource composition
 workspace, workbench import/export, broader topology controls and more
 targeted repair strategies remain open. Existing 2D versions and bytes remain unchanged. The
 [research record](docs/research/mapped-world-footprints-v1.md) records focused

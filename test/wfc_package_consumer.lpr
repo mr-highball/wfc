@@ -36,7 +36,7 @@ uses
   wfc_pipeline_result, wfc_pipeline_result_text, wfc_volume_symmetry,
   wfc_pattern3d, wfc_pattern3d_learn, wfc_pattern3d_text, wfc_pattern3d_graph,
   wfc_token_volume_view, wfc_voxel3d_isometric, wfc_voxel3d_svg, wfc_lattice,
-  wfc_pipeline_layout, wfc_pipeline_mapping;
+  wfc_pipeline_layout, wfc_pipeline_mapping, wfc_pipeline_compose;
 
 var Checks: Integer;
 
@@ -108,6 +108,124 @@ begin
     Check(not ValidateWfcPipelineMappedRequirement(Requirement,Table.PassLayoutAt(0),
       Table.PassLayoutAt(1),0,Values),'installed mapped policy rejects unsampled-corner blocker');
   finally Table.Free; end;
+end;
+
+function PackageFragment(const Token, SourceLicense: TWfcModelToken;
+  const WithAlias: Boolean): TWfcPipelineModel;
+var Values: TWfcModelTokens; Weights: TWfcModelIntegerArray;
+  Rules: TWfcRuleModel; Resources: TWfcPipelineResources;
+  Passes: TWfcPipelinePasses; Dependencies: TWfcPipelineDependencies;
+begin
+  SetLength(Values,1); Values[0]:=Token;
+  SetLength(Weights,1); Weights[0]:=1;
+  Rules:=TWfcRuleModel.Create(1,Values,Weights,nil);
+  SetLength(Resources,1);
+  try
+    Resources[0]:=MakeWfcPipelineResource('rules',wprkRules,
+      EncodeWfcRuleText(Rules),'installed composition fixture',
+      SourceLicense,'package-fragment-v1');
+  finally Rules.Free; end;
+  SetLength(Passes,1+Ord(WithAlias));
+  Passes[0]:=MakeWfcPipelinePass('public',wppvPublic,gpmOverlay,-1,
+    wpakRules,0,False,wseWhole);
+  if WithAlias then
+  begin
+    Passes[1]:=MakeWfcPipelinePass('alias',wppvPublic,gpmTransform,0,
+      wpakEmpty,-1,False,wseWhole);
+    SetLength(Dependencies,1);
+    Dependencies[0]:=MakeWfcPipelineDependency(1,0);
+  end;
+  Result:=TWfcPipelineModel.Create(MakeWfcPipelineMetadata(
+    'package fragment','MIT','',''),1,False,rmBottomUp,Resources,
+    Passes,Dependencies,nil,nil);
+end;
+
+procedure UsePipelineComposition;
+var First,Second:TWfcPipelineModel; Inputs:TWfcPipelineFragmentInputs;
+  Copied:TWfcPipelineFragmentInput; Composition:TWfcPipelineComposition;
+  Recipe:TWfcPipelineModel; Run:TWfcPipelineRun; Output:TWfcPipelineResult;
+  Extents:TWfcPipelinePassExtents; Locks:TWfcPipelineCellLocks;
+  Layer:TWfcPipelineResultLayer; FirstText,Saved:String;
+  I,J:Integer; Rejected:Boolean;
+begin
+  First:=nil; Second:=nil; Composition:=nil; Run:=nil; Output:=nil;
+  try
+    First:=PackageFragment('land','MIT',False);
+    Second:=PackageFragment('leaf','CC0-1.0',True);
+    FirstText:=EncodeWfcPipelineModelText(First);
+    SetLength(Inputs,2);
+    Inputs[0].FragmentId:='terrain'; Inputs[0].RecipeText:=FirstText;
+    SetLength(Inputs[0].ResourceIds,1); Inputs[0].ResourceIds[0]:='terrain-rules';
+    SetLength(Inputs[0].PassLabels,1); Inputs[0].PassLabels[0]:='terrain';
+    Inputs[1].FragmentId:='foliage';
+    Inputs[1].RecipeText:=EncodeWfcPipelineModelText(Second);
+    SetLength(Inputs[1].ResourceIds,1); Inputs[1].ResourceIds[0]:='foliage-rules';
+    SetLength(Inputs[1].PassLabels,2);
+    Inputs[1].PassLabels[0]:='foliage'; Inputs[1].PassLabels[1]:='foliage-alias';
+    Composition:=TWfcPipelineComposition.Create(MakeWfcPipelineMetadata(
+      'installed fragment assembly','MIT','',''),Inputs);
+    FreeAndNil(First); FreeAndNil(Second);
+    Inputs[0].RecipeText:='caller-mutated';
+    Inputs[1].ResourceIds[0]:='caller-mutated';
+    Inputs[1].PassLabels[1]:='caller-mutated';
+    Check((WFC_PIPELINE_COMPOSE_VERSION=1) and (Composition.FragmentCount=2),
+      'installed composer owns two complete fragment definitions');
+    Check(Composition.FragmentAt(0).RecipeText=FirstText,
+      'installed composer retains source bytes after source owners are freed');
+    Check(Composition.ResolvePass('foliage','alias')=2,
+      'installed composer resolves original alias label after remapping');
+    Check(Composition.ResolveResource('foliage','rules')=1,
+      'installed composer resolves repeated local resource IDs by fragment');
+    Check(Composition.MapIndex('foliage',wpcosDependency,0)=0,
+      'installed composer exposes an actual remapped policy-row index');
+    Copied:=Composition.FragmentAt(1); Copied.PassLabels[1]:='copy-mutated';
+    Copied.ResourceIds[0]:='copy-mutated';
+    Check((Composition.FragmentAt(1).PassLabels[1]='foliage-alias') and
+      (Composition.FragmentAt(1).ResourceIds[0]='foliage-rules'),
+      'installed fragment inspection returns detached nested name arrays');
+    Recipe:=Composition.BorrowRecipe;
+    Check((Recipe.PassCount=3) and (Recipe.ResourceCount=2) and Recipe.HasPassMapping,
+      'installed composer builds the existing explicit spatial recipe model');
+    Check((Recipe.PassAt(2).TransformSourceIndex=1) and
+      (Recipe.PassAt(1).ResourceIndex=1),
+      'installed composer remaps alias and resource owners, not only names');
+    Check((Recipe.DependencyAt(0).ConsumerPassIndex=2) and
+      (Recipe.DependencyAt(0).ProviderPassIndex=1),
+      'installed composer preserves explicit dependency endpoints');
+    Check((Recipe.ResourceAt(1).SourceLicenseIdentifier='CC0-1.0') and
+      (Recipe.ResourceAt(1).SourceFingerprint='package-fragment-v1'),
+      'installed composition MIT label does not replace source provenance');
+    Rejected:=False;
+    try Composition.ResolvePass('foliage','missing');
+    except on E:EWfcPipelineCompose do Rejected:=True; end;
+    Check(Rejected,'installed composer exposes its typed lookup failure');
+    SetLength(Extents,3);
+    Extents[0]:=MakeWfcLatticeVector(2,1,1);
+    Extents[1]:=MakeWfcLatticeVector(3,1,1); Extents[2]:=Extents[1];
+    SetLength(Locks,1);
+    Locks[0]:=MakeWfcPipelineCellLock(2,1,0,0,'leaf');
+    Run:=TWfcPipelineRun.Create(Recipe,Extents,21,wpssOneWay,64,0,False,Locks,nil);
+    Output:=ExecuteWfcPipeline(Recipe,Run);
+    Check((Output.Status=wprsSolved) and (Output.LayerCount=3),
+      'installed composed recipe executes with unlike pass extents and an alias lock');
+    for I:=0 to Output.LayerCount-1 do
+    begin
+      Layer:=Output.LayerAt(I);
+      Check(Length(Layer.Tokens)=Extents[Layer.PassIndex].X,
+        'installed composed layer retains its actual local extent');
+      for J:=0 to High(Layer.Tokens) do
+        if Layer.PassIndex=0 then Check(Layer.Tokens[J]='land','installed terrain fragment output')
+        else Check(Layer.Tokens[J]='leaf','installed alias/foliage fragment output');
+    end;
+    Saved:=Composition.RecipeText;
+    Check(Pos('wfcpipeline=5'#10,Saved)=1,'installed composition exports canonical recipe5');
+    Output.Free; Output:=nil; Run.Free; Run:=nil;
+    Composition.Free; Composition:=nil;
+    Recipe:=DecodeWfcPipelineModelText(Saved);
+    try Check((Recipe.PassCount=3) and (Recipe.PassAt(2).TransformSourceIndex=1),
+      'exported complete recipe survives destruction of the composer owner');
+    finally Recipe.Free; end;
+  finally Output.Free; Run.Free; Composition.Free; Second.Free; First.Free; end;
 end;
 
 procedure UseMusicForm;
@@ -280,6 +398,7 @@ begin
     UseGraph;
     UseLattice;
     UsePortableMapping;
+    UsePipelineComposition;
     UseMusicForm;
     UsePortableConnectivity;
     UseVolumePatterns;
