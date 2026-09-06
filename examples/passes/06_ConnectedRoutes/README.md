@@ -91,12 +91,15 @@ PAS2JS=/opt/pas2js/bin/pas2js bash ./build-browser-connectivity.sh
 build/native/bin/wfc_serve --root build/browser/connectivity/www --port 4181
 ```
 
-Build the included FPC server with the normal native gate first. It binds only
+Build the included FPC server with the normal native gate first. It defaults
 to `127.0.0.1`; stop the foreground process with Ctrl+C. Open
 `http://127.0.0.1:4181/`. The staging scripts put the compiled program,
 `index.html`, and `connectedroutes.css` under
 `build/browser/connectivity/www`. The page intentionally loads only the
 generated `BrowserConnectedRoutes.js`; its RTL is embedded by the compiler.
+
+For opt-in serving on one trusted-LAN address, see
+[development tools](../../../docs/development-tools.md#access-from-a-trusted-local-network).
 
 Generate establishes the selective-repair baseline. Editing the case resets
 that baseline; editing a portal or connectivity mode invalidates stale public

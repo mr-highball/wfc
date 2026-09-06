@@ -24,7 +24,9 @@ build/native/bin/wfc_serve --root build/browser/training/www --port 4176
 ```
 
 Build the server with the native gate first; use `wfc_serve.exe` on Windows.
-See [development tools](../../../docs/development-tools.md) for its loopback-only serving boundary.
+The server binds to loopback by default. See
+[development tools](../../../docs/development-tools.md#access-from-a-trusted-local-network)
+for opt-in trusted-LAN serving on one explicit address.
 
 Open `http://127.0.0.1:4176/`. Start with the overlapping checkerboard,
 then try editing its token records, changing seed/size, adding two adjacent

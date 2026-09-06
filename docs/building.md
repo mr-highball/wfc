@@ -312,7 +312,9 @@ build/native/bin/wfc_serve --root build/browser/world2d/www --port 8080
 ```
 
 Build the server with the native gate first; use `wfc_serve.exe` on Windows.
-See [development tools](development-tools.md) for its loopback-only serving boundary.
+The server binds to loopback by default. See
+[development tools](development-tools.md#access-from-a-trusted-local-network)
+for opt-in trusted-LAN serving on one explicit address.
 
 Open `http://localhost:8080/` for the interactive viewer. The deterministic
 browser fixture at `http://localhost:8080/?selftest=1` succeeds only when the
@@ -556,7 +558,15 @@ development tools. A canary runs
 against the current official FPC development image and records the image digest
 and compiler revision in the job log. The checkout contains no submodules.
 
-A [dated native verification record](verification/hosted-native-2026-09-06.md)
+On 2026-09-06 UTC, [CI run 34005958438](https://github.com/mr-highball/wfc/actions/runs/34005958438)
+passed all five jobs for `b3bd1aea028ce908075b30d1dbe4731359f4c285`:
+stable FPC 3.2.2 on Linux, macOS, and Windows; development FPC on Linux;
+and the pinned pas2js browser lane. The successful gate includes Linux package
+and clean-checkout checks, native browser completion/rejection fixtures, and
+the real browser demo-entry checks. This is evidence for that revision, not
+a claim that all roadmap work is complete.
+
+The earlier [dated native verification record](verification/hosted-native-2026-09-06.md)
 links the observed compiler matrix, test coverage, package checks, and known
 browser-lane failure at that revision. It is historical evidence, not a
 substitute for the current workflow result.

@@ -193,6 +193,6 @@ equivalent flattened model.
 
 Project-authored source is under the [MIT license](LICENSE). The standard
 runtime and demos use project-owned implementations and the applicable
-compiler RTL. External engines and legacy media adapters remain optional,
-isolated, and subject to their own licenses; see the
+compiler RTL. The former external-engine and media-library demo integrations
+have been removed; see the
 [dependency policy](docs/dependencies.md) and [examples index](examples/README.md).

@@ -57,12 +57,107 @@ begin
 end;
 
 procedure Request(const AValue: String; const AStatus: Integer;
-  const AHead: Boolean = False);
+  const AHead: Boolean = False; const ABindAddress: String = '127.0.0.1');
 var
   LRequest: TWfcServeRequest;
 begin
-  Check(ParseWfcServeRequest(AValue, LRequest) = AStatus, 'request status');
+  Check(ParseWfcServeRequest(AValue, LRequest, ABindAddress) = AStatus,
+    'request status for bind ' + ABindAddress);
   Check(LRequest.HeadOnly = AHead, 'request HEAD flag');
+end;
+
+procedure BindAddressChecks;
+
+  procedure Address(const AValue: String; const AExpected: Boolean);
+  begin
+    Check(ValidWfcServeBindAddress(AValue) = AExpected,
+      'canonical private or loopback bind address: ' + AValue);
+  end;
+
+  procedure Host(const ABindAddress, AHost: String; const AStatus: Integer);
+  begin
+    Request('GET / HTTP/1.1'#13#10'Host: ' + AHost + #13#10#13#10,
+      AStatus, False, ABindAddress);
+  end;
+
+begin
+  Address('127.0.0.1', True);
+  Address('127.0.0.2', True);
+  Address('127.1.2.3', True);
+  Address('10.0.0.1', True);
+  Address('10.255.255.254', True);
+  Address('172.16.0.1', True);
+  Address('172.31.255.254', True);
+  Address('192.168.0.1', True);
+  Address('192.168.255.254', True);
+  Address('', False);
+  Address('0.0.0.0', False);
+  Address('*', False);
+  Address('localhost', False);
+  Address('example.test', False);
+  Address('::1', False);
+  Address('[::1]', False);
+  Address('::ffff:127.0.0.1', False);
+  Address('8.8.8.8', False);
+  Address('9.255.255.254', False);
+  Address('11.0.0.1', False);
+  Address('126.255.255.254', False);
+  Address('128.0.0.1', False);
+  Address('169.254.1.2', False);
+  Address('172.15.255.254', False);
+  Address('172.32.0.1', False);
+  Address('192.167.255.254', False);
+  Address('192.169.0.1', False);
+  Address('224.0.0.1', False);
+  Address('255.255.255.255', False);
+  Address('127.1', False);
+  Address('2130706433', False);
+  Address('0x7f.0.0.1', False);
+  Address('0177.0.0.1', False);
+  Address('127.00.0.1', False);
+  Address('127.0.00.1', False);
+  Address('127.0.0.01', False);
+  Address('127.0.0.256', False);
+  Address('127.0.0.-1', False);
+  Address('127.0.0.+1', False);
+  Address('127.0.0.1.', False);
+  Address('127.0..1', False);
+  Address('.127.0.0.1', False);
+  Address('127.0.0.1:8000', False);
+  Address(' 127.0.0.1', False);
+  Address('127.0.0.1 ', False);
+  Address('127.0.0.1'#0, False);
+  Address('127.0.0.1'#10, False);
+  Host('127.0.0.1', '127.0.0.1', 200);
+  Host('127.0.0.1', 'LOCALHOST:8000', 200);
+  Host('127.0.0.1', '127.0.0.2', 400);
+  Host('127.0.0.1', '192.168.1.20', 400);
+  Host('127.0.0.1', 'remote.example', 400);
+  Host('127.0.0.2', '127.0.0.2', 200);
+  Host('127.0.0.2', '127.0.0.2:1', 200);
+  Host('127.0.0.2', '127.0.0.2:65535', 200);
+  Host('127.0.0.2', '127.0.0.1', 400);
+  Host('127.0.0.2', 'localhost', 400);
+  Host('127.0.0.2', 'LOCALHOST:8000', 400);
+  Host('192.168.1.20', '192.168.1.20:8000', 200);
+  Host('192.168.1.20', '192.168.1.21:8000', 400);
+  Host('192.168.1.20', '192.168.001.20:8000', 400);
+  Host('192.168.1.20', '192.168.1.20.example:8000', 400);
+  Host('192.168.1.20', 'localhost:8000', 400);
+  Host('192.168.1.20', '192.168.1.20:0', 400);
+  Host('192.168.1.20', '192.168.1.20:65536', 400);
+  Host('192.168.1.20', '192.168.1.20:+8000', 400);
+  Host('192.168.1.20', '192.168.1.20:8000:80', 400);
+  Host('10.2.3.4', '10.2.3.4', 200);
+  Host('172.16.2.3', '172.16.2.3', 200);
+  Host('0.0.0.0', '0.0.0.0', 400);
+  Host('8.8.8.8', '8.8.8.8', 400);
+  Host('localhost', 'localhost', 400);
+  Request('GET / HTTP/1.0'#13#10#13#10, 200, False, '127.0.0.2');
+  Request('GET / HTTP/1.1'#13#10#13#10, 400, False, '127.0.0.2');
+  Request('GET / HTTP/1.0'#13#10#13#10, 400, False, '0.0.0.0');
+  Request('GET / HTTP/1.1'#13#10'Host: 127.0.0.2'#13#10 +
+    'Host: 127.0.0.2'#13#10#13#10, 400, False, '127.0.0.2');
 end;
 
 procedure Run;
@@ -72,6 +167,8 @@ var
   LRoot: String;
   LRaised: Boolean;
 begin
+  BindAddressChecks;
+  Check(WFC_SERVE_VERSION = 2, 'explicit bind server version');
   Target('/', '');
   Target('/?seed=1', '');
   Target('/index.html?selftest=1', 'index.html');
@@ -201,7 +298,7 @@ begin
 end;
 
 
-function UnusedLoopbackPort: Integer;
+function UnusedLoopbackPort(const AAddress: String = '127.0.0.1'): Integer;
 var
   LSocket: Integer;
   LAddress: TInetSockAddr;
@@ -214,7 +311,7 @@ begin
     FillChar(LAddress, SizeOf(LAddress), 0);
     {$IFDEF DARWIN}LAddress.sin_len := SizeOf(LAddress);{$ENDIF}
     LAddress.sin_family := AF_INET;
-    LAddress.sin_addr := StrToNetAddr('127.0.0.1');
+    LAddress.sin_addr := StrToNetAddr(AAddress);
     if fpBind(LSocket, @LAddress, SizeOf(LAddress)) <> 0 then
       raise Exception.Create('cannot select unused loopback port');
     LLength := SizeOf(LAddress);
@@ -226,7 +323,8 @@ begin
   end;
 end;
 
-function ConnectClient(const APort: Integer): Integer;
+function ConnectClient(const APort: Integer;
+  const AAddress: String = '127.0.0.1'): Integer;
 var
   LAddress: TInetSockAddr;
   {$IFDEF MSWINDOWS}LTimeout: DWORD;{$ELSE}LTimeout: TTimeVal;{$ENDIF}
@@ -239,7 +337,7 @@ begin
   {$IFDEF DARWIN}LAddress.sin_len := SizeOf(LAddress);{$ENDIF}
   LAddress.sin_family := AF_INET;
   LAddress.sin_port := htons(Word(APort));
-  LAddress.sin_addr := StrToNetAddr('127.0.0.1');
+  LAddress.sin_addr := StrToNetAddr(AAddress);
   if fpConnect(Result, @LAddress, SizeOf(LAddress)) <> 0 then
   begin
     CloseSocket(Result);
@@ -270,13 +368,14 @@ begin
   end;
 end;
 
-function Exchange(const APort: Integer; const ARequest: String): String;
+function Exchange(const APort: Integer; const ARequest: String;
+  const AAddress: String = '127.0.0.1'): String;
 var
   LSocket, LCount, LOffset: Integer;
   LBuffer: array[0..8191] of Char;
   LPart: String;
 begin
-  LSocket := ConnectClient(APort);
+  LSocket := ConnectClient(APort, AAddress);
   if LSocket < 0 then
     raise Exception.Create('cannot connect to owned test server');
   try
@@ -419,11 +518,11 @@ end;
 
 procedure LiveChecks(const AServer, AParent: String);
 var
-  LBase, LRoot, LOutside, LBytes, LResponse, LRequest: String;
+  LBase, LRoot, LOutside, LBytes, LResponse, LRequest, LBindAddress: String;
   LProcess: TProcess;
   LPort, I, LSplit: Integer;
   LStart: QWord;
-  LRaised: Boolean;
+  LRaised, LExplicitBind: Boolean;
 
   procedure StopServer;
   begin
@@ -452,13 +551,18 @@ var
     LProcess.Parameters.Add(LRoot);
     LProcess.Parameters.Add('--port');
     LProcess.Parameters.Add(IntToStr(LPort));
+    if LExplicitBind then
+    begin
+      LProcess.Parameters.Add('--bind');
+      LProcess.Parameters.Add(LBindAddress);
+    end;
     LProcess.Options := [poUsePipes, poNoConsole];
     LProcess.Execute;
     LStarted := GetTickCount64;
     repeat
       if not LProcess.Running then
         raise Exception.Create('owned test server exited during startup');
-      LSocket := ConnectClient(LPort);
+      LSocket := ConnectClient(LPort, LBindAddress);
       if LSocket >= 0 then
       begin
         CloseSocket(LSocket);
@@ -483,6 +587,11 @@ var
       LOther.Parameters.Add(LRoot);
       LOther.Parameters.Add('--port');
       LOther.Parameters.Add(IntToStr(LPort));
+      if LExplicitBind then
+      begin
+        LOther.Parameters.Add('--bind');
+        LOther.Parameters.Add(LBindAddress);
+      end;
       LOther.Options := [poUsePipes, poNoConsole];
       LOther.Execute;
       Check(WaitForOwnedExit(LOther, 5000), 'active listener collision fails promptly');
@@ -495,7 +604,7 @@ var
         'listener collision has a bounded diagnostic');
       SetLength(LError, LLength);
       LOther.Stderr.ReadBuffer(LError[1], LLength);
-      Check(Pos('cannot bind 127.0.0.1:' + IntToStr(LPort), LError) > 0,
+      Check(Pos('cannot bind ' + LBindAddress + ':' + IntToStr(LPort), LError) > 0,
         'listener collision reports the exact occupied loopback address');
       Check(LProcess.Running, 'listener collision leaves owner running');
     finally
@@ -506,12 +615,140 @@ var
     end;
   end;
 
+  procedure VersionCLI;
+  var
+    LOther: TProcess;
+    LText: String;
+    LLength: Integer;
+  begin
+    LOther := TProcess.Create(nil);
+    try
+      LOther.Executable := ExpandFileName(AServer);
+      LOther.Parameters.Add('--version');
+      LOther.Options := [poUsePipes, poNoConsole];
+      LOther.Execute;
+      Check(WaitForOwnedExit(LOther, 5000), 'version CLI exits promptly');
+      Check(LOther.ExitStatus = 0, 'version CLI succeeds');
+      LLength := LOther.Output.NumBytesAvailable;
+      Check((LLength > 0) and (LLength <= 256), 'version CLI has bounded output');
+      SetLength(LText, LLength);
+      LOther.Output.ReadBuffer(LText[1], LLength);
+      Check(Trim(LText) = 'WFC static server 2', 'version CLI reports explicit-bind version');
+      Check(LOther.Stderr.NumBytesAvailable = 0, 'version CLI has no errors');
+    finally
+      try
+        if LOther.Running then
+          LOther.Terminate(0);
+        Check(WaitForOwnedExit(LOther, 5000), 'version CLI post-termination wait completes');
+      finally
+        LOther.Free;
+      end;
+    end;
+  end;
+
+  procedure SeparateAddressListener;
+  var
+    LOther: TProcess;
+    LText: String;
+    LSocket: Integer;
+    LStarted: QWord;
+  begin
+    LOther := TProcess.Create(nil);
+    try
+      { Both listeners are owned by this test. Coexistence on one port
+        proves the selected-address bind is not silently INADDR_ANY. }
+      LOther.Executable := ExpandFileName(AServer);
+      LOther.Parameters.Add('--root');
+      LOther.Parameters.Add(LRoot);
+      LOther.Parameters.Add('--port');
+      LOther.Parameters.Add(IntToStr(LPort));
+      LOther.Options := [poUsePipes, poNoConsole];
+      LOther.Execute;
+      LStarted := GetTickCount64;
+      repeat
+        if not LOther.Running then
+          raise Exception.Create('separate-address listener exited during startup');
+        LSocket := ConnectClient(LPort);
+        if LSocket >= 0 then
+        begin
+          CloseSocket(LSocket);
+          Break;
+        end;
+        if GetTickCount64 - LStarted > 5000 then
+          raise Exception.Create('separate-address listener startup deadline exceeded');
+        Sleep(25);
+      until False;
+      Check(LOther.Running, 'separate-address listener starts on the same port');
+      LText := Exchange(LPort, 'GET / HTTP/1.1'#13#10 +
+        'Host: 127.0.0.1'#13#10#13#10);
+      Check(Pos('HTTP/1.1 200 ', LText) = 1,
+        'separate-address listener serves on the same port');
+      Check(Pos('<p>WFC server fixture</p>', LText) > 0,
+        'separate-address listener serves the owned fixture');
+      Check(LOther.Running and LProcess.Running,
+        'distinct owned addresses coexist on the same port');
+    finally
+      try
+        if LOther.Running then
+          LOther.Terminate(0);
+        Check(WaitForOwnedExit(LOther, 5000), 'separate-address listener exit completes');
+      finally
+        LOther.Free;
+      end;
+    end;
+  end;
+
+  procedure BadBindCLI(const AArguments: array of String);
+  var
+    LOther: TProcess;
+    LError: String;
+    LLength, J: Integer;
+  begin
+    LOther := TProcess.Create(nil);
+    try
+      LOther.Executable := ExpandFileName(AServer);
+      LOther.Parameters.Add('--root');
+      LOther.Parameters.Add(LRoot);
+      LOther.Parameters.Add('--port');
+      LOther.Parameters.Add(IntToStr(LPort));
+      for J := Low(AArguments) to High(AArguments) do
+        LOther.Parameters.Add(AArguments[J]);
+      LOther.Options := [poUsePipes, poNoConsole];
+      LOther.Execute;
+      Check(WaitForOwnedExit(LOther, 5000), 'bad bind CLI exits promptly');
+      Check(LOther.ExitStatus <> 0, 'bad bind CLI fails closed');
+      LLength := LOther.Stderr.NumBytesAvailable;
+      Check((LLength > 0) and (LLength <= 4096), 'bad bind CLI has a bounded diagnostic');
+      SetLength(LError, LLength);
+      LOther.Stderr.ReadBuffer(LError[1], LLength);
+      Check(Pos('bind', LowerCase(LError)) > 0, 'bad bind CLI identifies its argument');
+      Check(Pos('cannot bind ', LowerCase(LError)) = 0,
+        'bad bind CLI is rejected before attempting a socket bind');
+    finally
+      try
+        if LOther.Running then
+          LOther.Terminate(0);
+        Check(WaitForOwnedExit(LOther, 5000), 'bad bind CLI post-termination wait completes');
+      finally
+        LOther.Free;
+      end;
+    end;
+  end;
+
+  procedure LiveHost(const AHost: String; const AStatus: Integer);
+  begin
+    LResponse := Exchange(LPort, 'GET / HTTP/1.1'#13#10'Host: ' +
+      AHost + #13#10#13#10, LBindAddress);
+    Check(Pos('HTTP/1.1 ' + IntToStr(AStatus) + ' ', LResponse) = 1,
+      'live configured-address Host check: ' + AHost);
+  end;
+
   procedure Response(const AMethod, ATarget: String;
     const AStatus: Integer; const ABody: String);
   begin
     LRequest := AMethod + ' ' + ATarget + ' HTTP/1.1'#13#10 +
-      'Host: 127.0.0.1:' + IntToStr(LPort) + #13#10#13#10;
-    LResponse := Exchange(LPort, LRequest);
+      'Host: ' + LBindAddress + ':' + IntToStr(LPort) + #13#10#13#10;
+    LResponse := Exchange(LPort, LRequest, LBindAddress);
     Check(Pos('HTTP/1.1 ' + IntToStr(AStatus) + ' ', LResponse) = 1,
       'live HTTP status: ' + ATarget);
     LSplit := Pos(#13#10#13#10, LResponse);
@@ -531,6 +768,8 @@ begin
     raise Exception.Create('cannot create isolated integration fixture');
   LRoot := LBase + DirectorySeparator + 'www';
   LOutside := LBase + DirectorySeparator + 'outside';
+  LBindAddress := '127.0.0.1';
+  LExplicitBind := False;
   LProcess := nil;
   try
     Check(CreateDir(LRoot), 'create serving root');
@@ -552,9 +791,22 @@ begin
     except on EWfcServe do LRaised := True; end;
     Check(LRaised, 'link cannot be selected as root');
     LPort := UnusedLoopbackPort;
+    VersionCLI;
+    BadBindCLI(['--bind']);
+    BadBindCLI(['--bind', '']);
+    BadBindCLI(['--bind', '0.0.0.0']);
+    BadBindCLI(['--bind', '*']);
+    BadBindCLI(['--bind', 'localhost']);
+    BadBindCLI(['--bind', '8.8.8.8']);
+    BadBindCLI(['--bind', '::1']);
+    BadBindCLI(['--bind', '127.0.0.01']);
+    BadBindCLI(['--bind', '127.0.0.1', '--bind', '127.0.0.2']);
     StartServer;
     Check(not WaitForOwnedExit(LProcess, 0), 'live server is not accepted as stopped');
     ListenerCollision;
+    LiveHost('localhost:' + IntToStr(LPort), 200);
+    LiveHost('127.0.0.2:' + IntToStr(LPort), 400);
+    LiveHost('192.168.1.20:' + IntToStr(LPort), 400);
     Response('GET', '/', 200, '<p>WFC server fixture</p>');
     Response('GET', '/binary.wav', 200, LBytes);
     Check(Pos('Content-Type: audio/wav'#13#10, LResponse) > 0,
@@ -606,6 +858,35 @@ begin
       ListenerCollision;
       Response('GET', '/', 200, '<p>WFC server fixture</p>');
     end;
+    {$ENDIF}
+    StopServer;
+    LExplicitBind := True;
+    LPort := UnusedLoopbackPort;
+    StartServer;
+    ListenerCollision;
+    Response('GET', '/', 200, '<p>WFC server fixture</p>');
+    Response('HEAD', '/binary.wav', 200, '');
+    LiveHost('localhost:' + IntToStr(LPort), 200);
+    LiveHost('127.0.0.2:' + IntToStr(LPort), 400);
+    LiveHost('192.168.1.20:' + IntToStr(LPort), 400);
+    {$IFNDEF DARWIN}
+    { Windows/Linux provide alternate 127/8 loopback addresses without
+      interface setup. Darwin's portable explicit-bind case is above. }
+    StopServer;
+    LBindAddress := '127.0.0.2';
+    LPort := UnusedLoopbackPort(LBindAddress);
+    StartServer;
+    SeparateAddressListener;
+    ListenerCollision;
+    Response('GET', '/', 200, '<p>WFC server fixture</p>');
+    Response('HEAD', '/binary.wav', 200, '');
+    LiveHost('127.0.0.2', 200);
+    LiveHost('127.0.0.1:' + IntToStr(LPort), 400);
+    LiveHost('localhost:' + IntToStr(LPort), 400);
+    LiveHost('192.168.1.20:' + IntToStr(LPort), 400);
+    LiveHost('remote.example', 400);
+    LiveHost('127.0.0.2:' + IntToStr(LPort) + ':80', 400);
+    Check(LProcess.Running, 'explicit-bind server survives foreign Host requests');
     {$ENDIF}
   finally
     StopServer;

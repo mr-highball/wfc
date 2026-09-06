@@ -64,20 +64,21 @@ an external host. Keep unrelated or private files outside its document root.
 ### Server contract
 
 ```text
-wfc_serve --root DIRECTORY [--port 8000] [--max-requests N]
+wfc_serve --root DIRECTORY [--port 8000] [--bind ADDRESS] [--max-requests N]
 wfc_serve --version
 wfc_serve --help
 ```
 
-The root must be an existing ordinary directory. The listener binds only
-`127.0.0.1`; there is no all-interfaces switch. The optional positive
+The root must be an existing ordinary directory. The listener defaults to
+`127.0.0.1`. Version 2 adds an explicit `--bind` address for trusted LAN testing;
+there is still no all-interfaces switch. The optional positive
 `--max-requests` stops after that many accepted connections, including invalid
 requests. Without it, the foreground process keeps serving until stopped.
 
 On Unix, the listener sets `SO_REUSEADDR` before binding so a stopped server
 can restart on the same port while old HTTP connections finish their TCP
 wait state. It does not enable `SO_REUSEPORT`: a second active listener on
-the same loopback address and port must still be refused. Windows binding
+the same address and port must still be refused. Windows binding
 behavior is unchanged. Live tests check both refusal of a competing listener
 and immediate same-port restart after real HTTP traffic.
 
@@ -91,8 +92,10 @@ returns the corresponding headers without a body.
 Request headers are limited to 16 KiB and targets to 2,048 bytes. Header reads
 have a two-second deadline and responses a 15-second send deadline. The server
 is sequential: a slow connection may delay the next one within those bounds.
-HTTP/1.1 requires a `localhost` or `127.0.0.1` Host value. Request bodies and
-transfer encoding are rejected.
+HTTP/1.1 requires a Host matching the selected bind address. `localhost` is also
+accepted only when bound to the default `127.0.0.1`. An optional valid port is
+accepted as before; arbitrary hostnames and other LAN addresses are not.
+Request bodies and transfer encoding are rejected.
 
 The deliberately narrow URL policy decodes once and rejects malformed escapes,
 traversal, backslashes, control bytes, non-ASCII paths, hidden/dot components,
@@ -107,6 +110,43 @@ The implementation and live tests target Windows, Linux, and macOS. Local
 checked FPC 3.2.2/3.3.1 execution verified Windows; the Darwin bindings were
 checked against Apple and compiler sources, but local macOS execution was not
 available. The hosted native lanes are the cross-platform runtime gate.
+
+### Access from a trusted local network
+
+Select this computer's Wi-Fi or Ethernet IPv4 address explicitly. For example,
+if it is `192.168.1.25`:
+
+```powershell
+.\build\native\bin\wfc_serve.exe --root build/browser/ensemble/www --bind 192.168.1.25 --port 4178
+```
+
+Open `http://192.168.1.25:4178/` on a device connected to the same LAN. Use the
+actual address assigned to your computer, not the example address. This
+instance listens only on that address; a separate default-bound instance can
+serve localhost, including on the same port.
+
+The bind address must be canonical dotted-decimal IPv4 in `127.0.0.0/8`,
+`10.0.0.0/8`, `172.16.0.0/12`, or `192.168.0.0/16`. Hostnames, leading-zero
+octets, wildcard `0.0.0.0`, public addresses, IPv6, and other ranges are rejected.
+The operating system must have the selected address assigned. DHCP changes
+may require restarting with the new address.
+
+The server has no login or TLS: everyone who can reach this listener can read
+all ordinary files under its root. Serve only the staged demo directory, use
+a trusted network, and do not add router port forwarding. Binding a private
+address alone is not a remote-client access rule. The server does not change
+firewall settings or network profiles. If the operating-system firewall blocks
+access, explicitly allow only this executable and TCP port, on the intended
+private interface, from the local subnet. Changing Windows firewall rules
+requires an administrator. Guest-network/client isolation may also prevent
+devices from reaching one another; a successful request from the server PC
+does not prove another device can connect.
+
+The ordinary preview and download controls remain available subject to the
+client browser's capabilities. Direct streamed **Save As** depends on the
+browser's file-picker API, which may be unavailable over LAN HTTP. The music
+demos detect that condition and offer their native FPC rendering commands;
+the localhost instance remains available for browsers supporting that API.
 
 ## Check browser evidence
 

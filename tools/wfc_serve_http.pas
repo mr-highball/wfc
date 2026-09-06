@@ -31,7 +31,7 @@ uses
   Classes, SysUtils;
 
 const
-  WFC_SERVE_VERSION = 1;
+  WFC_SERVE_VERSION = 2;
   WFC_SERVE_MAX_HEADER_BYTES = 16384;
   WFC_SERVE_MAX_TARGET_BYTES = 2048;
   WFC_SERVE_HEADER_TIMEOUT_MS = 2000;
@@ -50,8 +50,12 @@ type
   and trailing dot/space aliases are rejected on every supported OS. }
 function DecodeWfcServeTarget(const ATarget: String;
   out ARelativePath: String): Boolean;
+{ Explicit development bind addresses only: canonical dotted-decimal IPv4
+  in loopback or RFC 1918 private ranges. No DNS or wildcard binding. }
+function ValidWfcServeBindAddress(const AAddress: String): Boolean;
 function ParseWfcServeRequest(const AHeaders: String;
-  out ARequest: TWfcServeRequest): Integer;
+  out ARequest: TWfcServeRequest;
+  const ABindAddress: String = '127.0.0.1'): Integer;
 function WfcServeContentType(const AFileName: String): String;
 function WfcServeReason(const AStatus: Integer): String;
 function WfcServeResponseHeader(const AStatus: Integer;
@@ -59,13 +63,15 @@ function WfcServeResponseHeader(const AStatus: Integer;
   const ALocation: String = ''): String;
 function ValidateWfcServeRoot(const ARoot: String): String;
 
-{ Sequential loopback-only development server; zero max requests runs until
-  stopped. No uploads, directory listing, script execution or TLS. Every
+{ Sequential development server, loopback by default; zero max requests runs
+  until stopped. An explicit private bind address enables trusted LAN access.
+  No authentication, uploads, directory listing, script execution or TLS. Every
   connection closes after one GET/HEAD. Link/reparse component checks plus
   final opened-handle containment prevent serving outside the selected root.
   Linux requires /proc/self/fd; macOS uses fcntl(F_GETPATH). }
 procedure RunWfcServe(const ARoot: String; const APort: Integer;
-  const AMaxRequests: Integer = 0);
+  const AMaxRequests: Integer = 0;
+  const ABindAddress: String = '127.0.0.1');
 
 implementation
 
@@ -210,7 +216,45 @@ begin
   Result := True;
 end;
 
-function LocalHost(const AValue: String): Boolean;
+function ValidWfcServeBindAddress(const AAddress: String): Boolean;
+var
+  LOctets: array[0..3] of Integer;
+  I, J, LStart: Integer;
+begin
+  Result := False;
+  if (Length(AAddress) < 7) or (Length(AAddress) > 15) then
+    Exit;
+  I := 1;
+  for J := 0 to 3 do
+  begin
+    LStart := I;
+    LOctets[J] := 0;
+    while (I <= Length(AAddress)) and (AAddress[I] in ['0'..'9']) do
+    begin
+      if I - LStart >= 3 then
+        Exit;
+      LOctets[J] := LOctets[J] * 10 + Ord(AAddress[I]) - Ord('0');
+      Inc(I);
+    end;
+    if (I = LStart) or (LOctets[J] > 255) then
+      Exit;
+    if (I - LStart > 1) and (AAddress[LStart] = '0') then
+      Exit;
+    if J < 3 then
+    begin
+      if (I > Length(AAddress)) or (AAddress[I] <> '.') then
+        Exit;
+      Inc(I);
+    end;
+  end;
+  if I <= Length(AAddress) then
+    Exit;
+  Result := (LOctets[0] = 127) or (LOctets[0] = 10) or
+    ((LOctets[0] = 172) and (LOctets[1] >= 16) and (LOctets[1] <= 31)) or
+    ((LOctets[0] = 192) and (LOctets[1] = 168));
+end;
+
+function AllowedHost(const AValue, ABindAddress: String): Boolean;
 var
   LHost, LPort: String;
   I, LNumber: Integer;
@@ -230,11 +274,12 @@ begin
         (LNumber < 1) or (LNumber > 65535) then
       Exit(False);
   end;
-  Result := (LHost = 'localhost') or (LHost = '127.0.0.1');
+  Result := (LHost = ABindAddress) or
+    ((ABindAddress = '127.0.0.1') and (LHost = 'localhost'));
 end;
 
 function ParseWfcServeRequest(const AHeaders: String;
-  out ARequest: TWfcServeRequest): Integer;
+  out ARequest: TWfcServeRequest; const ABindAddress: String): Integer;
 var
   I, P, Q, LStart: Integer;
   LLine, LMethod, LVersion, LName, LValue: String;
@@ -243,6 +288,8 @@ begin
   ARequest.HeadOnly := False;
   ARequest.Target := '';
   ARequest.RelativePath := '';
+  if not ValidWfcServeBindAddress(ABindAddress) then
+    Exit(400);
   if Length(AHeaders) > WFC_SERVE_MAX_HEADER_BYTES then
     Exit(431);
   Result := 400;
@@ -308,7 +355,7 @@ begin
         Exit;
     if LName = 'host' then
     begin
-      if LHostSeen or not LocalHost(LValue) then
+      if LHostSeen or not AllowedHost(LValue, ABindAddress) then
         Exit;
       LHostSeen := True;
     end
@@ -674,7 +721,8 @@ begin
   Result := True;
 end;
 
-procedure HandleClient(const ASocket: Integer; const ARoot, AFinalRoot: String);
+procedure HandleClient(const ASocket: Integer;
+  const ARoot, AFinalRoot, ABindAddress: String);
 var
   LHeaders, LBody, LPath, LLocation: String;
   LRequest: TWfcServeRequest;
@@ -690,7 +738,7 @@ begin
   LLocation := '';
   LStatus := ReadHeaders(ASocket, LHeaders);
   if LStatus = 200 then
-    LStatus := ParseWfcServeRequest(LHeaders, LRequest);
+    LStatus := ParseWfcServeRequest(LHeaders, LRequest, ABindAddress);
   try
     if LStatus = 200 then
     begin
@@ -765,7 +813,7 @@ begin
 end;
 
 procedure RunWfcServe(const ARoot: String; const APort: Integer;
-  const AMaxRequests: Integer);
+  const AMaxRequests: Integer; const ABindAddress: String);
 var
   LRoot, LFinalRoot: String;
   LRootHandle: THandle;
@@ -773,6 +821,8 @@ var
   LAddress: TInetSockAddr;
   {$IFNDEF MSWINDOWS}LReuseAddress: LongInt; LOptionResult: Integer;{$ENDIF}
 begin
+  if not ValidWfcServeBindAddress(ABindAddress) then
+    raise EWfcServe.Create('bind address must be a canonical loopback or private IPv4 address');
   if (APort < 1) or (APort > 65535) then
     raise EWfcServe.Create('port must be from 1 through 65535');
   if AMaxRequests < 0 then
@@ -789,11 +839,11 @@ begin
       raise EWfcServe.Create('root changed or resolves through an alternate path');
     LListener := fpSocket(AF_INET, SOCK_STREAM, 0);
     if LListener < 0 then
-      raise EWfcServe.Create('cannot create loopback socket');
+      raise EWfcServe.Create('cannot create IPv4 socket');
     {$IFNDEF MSWINDOWS}
     { Restart after our actively closed HTTP connections enter TIME_WAIT.
       This is socket-local SO_REUSEADDR, never SO_REUSEPORT: an existing
-      listener on the exact loopback address must still refuse a new bind.
+      listener on the exact address must still refuse a new bind.
       https://man7.org/linux/man-pages/man7/socket.7.html
       https://developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man2/setsockopt.2.html }
     LReuseAddress := 1;
@@ -802,30 +852,32 @@ begin
         @LReuseAddress, SizeOf(LReuseAddress));
     until (LOptionResult = 0) or (SocketError <> ESysEINTR);
     if LOptionResult <> 0 then
-      raise EWfcServe.Create('cannot configure loopback address reuse');
+      raise EWfcServe.Create('cannot configure listener address reuse');
     {$ENDIF}
     FillChar(LAddress, SizeOf(LAddress), 0);
     {$IFDEF DARWIN}LAddress.sin_len := SizeOf(LAddress);{$ENDIF}
     LAddress.sin_family := AF_INET;
     LAddress.sin_port := htons(Word(APort));
-    LAddress.sin_addr := StrToNetAddr('127.0.0.1');
+    LAddress.sin_addr := StrToNetAddr(ABindAddress);
     if fpBind(LListener, @LAddress, SizeOf(LAddress)) <> 0 then
-      raise EWfcServe.Create('cannot bind 127.0.0.1:' + IntToStr(APort) +
+      raise EWfcServe.Create('cannot bind ' + ABindAddress + ':' + IntToStr(APort) +
         ' (socket error ' + IntToStr(SocketError) + ')');
     if fpListen(LListener, 16) <> 0 then
-      raise EWfcServe.Create('cannot listen on loopback socket');
-    WriteLn('WFC static server: http://127.0.0.1:', APort, '/');
+      raise EWfcServe.Create('cannot listen on IPv4 socket');
+    WriteLn('WFC static server: http://', ABindAddress, ':', APort, '/');
     WriteLn('Root: ', LRoot);
+    if Copy(ABindAddress, 1, 4) <> '127.' then
+      WriteLn('Trusted LAN only: no authentication or TLS. All files in this root are shared.');
     Flush(Output);
     LCount := 0;
     while (AMaxRequests = 0) or (LCount < AMaxRequests) do
     begin
       LClient := fpAccept(LListener, nil, nil);
       if LClient < 0 then
-        raise EWfcServe.Create('loopback accept failed');
+        raise EWfcServe.Create('listener accept failed');
       try
         try
-          HandleClient(LClient, LRoot, LFinalRoot);
+          HandleClient(LClient, LRoot, LFinalRoot, ABindAddress);
         except
           on E: Exception do
             WriteLn(StdErr, 'Request closed: ', E.Message);

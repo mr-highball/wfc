@@ -180,7 +180,7 @@ The repository already contains the beginnings of the ecosystem:
 - a shared editable training workspace with strict source/run/result
   invalidation, detached outputs, explicit interactive resource policy, and
   a project-owned Unicode-scalar raw-text import bridge; Training Studio
-  connects those APIs to a pas2js corpus/lock/export workbench and five
+  connects those APIs to a pas2js corpus/lock/export workbench and six
   independently validated native presets;
 - stack-safe iterative traversal of large planes while preserving the legacy
   solver's north/east/south/west depth-first order;
@@ -237,10 +237,11 @@ It is not yet the finished system described above:
   overlapping 3D footprints, structured multi-license provenance, media import and
   word-oriented text import, larger/background browser training, artifact-family
   lint, and general inspection tools remain;
-- the [hosted native matrix](docs/verification/hosted-native-2026-09-06.md)
-  has passed on stable FPC for Linux/macOS/Windows and development FPC on Linux,
-  including Linux package and clean-checkout checks; the hosted browser lane
-  still needs a fully successful run, and no fully green CI gate is claimed;
+- the [hosted gate at `b3bd1ae`](https://github.com/mr-highball/wfc/actions/runs/34005958438)
+  passed stable FPC on Linux/macOS/Windows, development FPC on Linux, and the
+  pas2js browser lane on 2026-09-06 UTC, including Linux package/clean-checkout
+  checks and native browser completion/rejection fixtures; this verifies that
+  revision, not completion of the remaining roadmap;
 - the portable music path now has project-owned PCM/WAVE rendering, native
   file export, MIDI-to-score import and selected-excerpt training, and an
   interactive browser Music Studio with HTML audio and user-defined-duration

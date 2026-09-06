@@ -101,6 +101,12 @@ project's included FPC server rather than opening `index.html` directly:
 build/native/bin/wfc_serve --root build/browser/ensemble/www --port 4178
 ```
 
+For another device on your trusted Wi-Fi, add `--bind` with this computer's
+private IPv4 address and open that address with port `4178`. The default remains
+localhost-only. See [LAN serving and firewall scope](../../../docs/development-tools.md#access-from-a-trusted-local-network).
+Over LAN HTTP, a browser may not provide the direct streaming file picker;
+the preview, ordinary exports, and native streaming fallback are separate.
+
 Seed or bar edits clear all current score/media immediately and require **New
 session**, which also clears locks and the hidden repair baseline. Strategy,
 scope, allowance, trace, and lock edits also clear visible artifacts, but retain
