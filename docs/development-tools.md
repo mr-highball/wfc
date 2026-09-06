@@ -136,6 +136,14 @@ Quoted markup, raw-text elements, comments, and inert template contents
 cannot supply a forged body marker. This bounded parser is an evidence reader,
 not an HTML sanitizer or a general browser parser.
 
+An attribute mismatch or nonempty self-test message includes a body `data-*`
+state snapshot in the failure diagnostic. The snapshot is limited to 4 KiB,
+prioritizes the main self-test state/message, escapes non-ASCII bytes and
+control characters, and marks truncation. Individual names and values are
+also shortened for display; the underlying assertion still compares complete
+values exactly. This preserves asynchronous phase markers in hosted logs
+without interpreting a pending operation as success.
+
 Harness mode creates a new HTML file beside one local compiled `.js` filename;
 it refuses an existing destination. It calls the embedded Pascal RTL and marks
 success only after a synchronous test returns successfully. It is not a promise
@@ -168,6 +176,21 @@ runner checks this shell version before starting any process.
 PAS2JS=/opt/pas2js/bin/pas2js bash ./build-browser-tests.sh
 WFC_BROWSER=/usr/bin/chromium bash ./test-browser-tests.sh
 ```
+
+The Bash runner's cleanup targets its recorded child PIDs, not whole process
+trees. It polls for two seconds after TERM and another two after KILL before
+reporting a still-live child; it only reaps after that child's liveness is gone.
+The watchdog gets six seconds after TERM so its own timer cleanup can normally
+finish first. A failed or forcibly killed watchdog fails cleanup instead of
+silently accepting a possibly unfinished timer teardown. Cleanup preserves an
+existing failure status and fails an otherwise successful run if teardown fails.
+
+These are bounded polling sequences, not hard wall-clock guarantees under
+arbitrary scheduler delays. The unchanged 60-second browser watchdog starts
+termination; the main browser wait still depends on the operating system
+actually terminating that process. Forced watchdog termination cannot guarantee
+its timer descendant has exited. This Bash path does not establish
+operating-system process-group or job containment.
 
 For diagnosis, select one exact current test basename without changing the
 default full gate:
@@ -220,7 +243,7 @@ with `build-browser-voices.ps1` or `build-browser-voices.sh`, then serve
 
 The actual-page gate additionally requires `data-demo-entries-self-test=passed`
 after all ten pages finish. Each page retains a 15-second virtual deadline;
-this aggregate test receives 140 seconds of accelerated browser virtual time.
+this aggregate test receives 155 seconds of accelerated browser virtual time.
 Its real process deadline remains 60 seconds, as for every other program.
 Pending/missing page evidence never counts as success. This browser-only test
 does not appear in the native gate.

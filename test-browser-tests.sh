@@ -37,24 +37,65 @@ mkdir -p "$results"
 server_pid=''
 browser_pid=''
 watchdog_pid=''
+terminate_owned_child() {
+  local child_pid=$1 child_name=$2 child_status=0 term_polls=20 child_poll
+  # Callers supply only PIDs from this invocation's background launches.
+  # These are bounded direct-child polls, not process-tree containment or a
+  # hard wall-clock guarantee under arbitrary scheduler delays. The watchdog
+  # gets six seconds to finish its own normally four-second timer teardown.
+  if [[ "$child_name" == watchdog ]]; then term_polls=60; fi
+  [[ "$child_pid" =~ ^[1-9][0-9]*$ && "$child_pid" != 1 ]] || {
+    printf 'Refusing invalid owned %s PID: %s.\n' "$child_name" "$child_pid" >&2
+    return 1
+  }
+  if kill -0 "$child_pid" 2>/dev/null; then
+    kill "$child_pid" 2>/dev/null || true
+    for ((child_poll=0; child_poll<term_polls; child_poll++)); do
+      if ! kill -0 "$child_pid" 2>/dev/null; then break; fi
+      sleep 0.1
+    done
+    if kill -0 "$child_pid" 2>/dev/null; then
+      kill -KILL "$child_pid" 2>/dev/null || true
+      for _ in {1..20}; do
+        if ! kill -0 "$child_pid" 2>/dev/null; then break; fi
+        sleep 0.1
+      done
+    fi
+  fi
+  if kill -0 "$child_pid" 2>/dev/null; then
+    printf 'Cleanup deadline exceeded for owned %s PID %s.\n' "$child_name" "$child_pid" >&2
+    return 1
+  fi
+  # Reap only after liveness is gone; never wait indefinitely after TERM.
+  wait "$child_pid" 2>/dev/null || child_status=$?
+  # A cooperatively canceled watchdog exits zero only after its timer cleanup
+  # succeeds. Do not hide timer failures or a forced watchdog KILL; ordinary
+  # terminated browser/server exit codes do not themselves mean cleanup failed.
+  if [[ "$child_name" == watchdog && "$child_status" -ne 0 ]]; then
+    printf 'Owned watchdog teardown failed (exit %s).\n' "$child_status" >&2
+    return 1
+  fi
+  return 0
+}
 stop_watchdog() {
   if [[ -n "$watchdog_pid" ]]; then
-    kill "$watchdog_pid" 2>/dev/null || true
-    wait "$watchdog_pid" 2>/dev/null || true
+    terminate_owned_child "$watchdog_pid" watchdog || return 1
     watchdog_pid=''
   fi
 }
 cleanup() {
-  stop_watchdog
+  local cleanup_status=$? cleanup_failed=0
+  trap - EXIT
+  trap '' INT TERM
+  stop_watchdog || cleanup_failed=1
   if [[ -n "$browser_pid" ]]; then
-    kill "$browser_pid" 2>/dev/null || true
-    kill -KILL "$browser_pid" 2>/dev/null || true
-    wait "$browser_pid" 2>/dev/null || true
+    terminate_owned_child "$browser_pid" browser || cleanup_failed=1
   fi
   if [[ -n "$server_pid" ]]; then
-    kill "$server_pid" 2>/dev/null || true
-    wait "$server_pid" 2>/dev/null || true
+    terminate_owned_child "$server_pid" server || cleanup_failed=1
   fi
+  if (( cleanup_status == 0 && cleanup_failed != 0 )); then cleanup_status=1; fi
+  exit "$cleanup_status"
 }
 trap cleanup EXIT
 trap 'exit 130' INT
@@ -103,7 +144,7 @@ for name in "${sources[@]}"; do
   (
     trap - EXIT
     timer_pid=''
-    trap 'if [[ -n "$timer_pid" ]]; then kill "$timer_pid" 2>/dev/null || true; wait "$timer_pid" 2>/dev/null || true; fi; exit 0' TERM INT
+    trap 'trap "" TERM INT; if [[ -n "$timer_pid" ]]; then terminate_owned_child "$timer_pid" watchdog-timer || exit 1; fi; exit 0' TERM INT
     sleep 60 &
     timer_pid=$!
     wait "$timer_pid" || exit 0

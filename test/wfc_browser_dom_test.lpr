@@ -34,6 +34,69 @@ begin
   try A:=WfcBrowserBodyAttributes(S);except on EWfcBrowserDom do Raised:=True;end;
   A.Free;Check(Raised,'malformed/missing body must reject');
 end;
+procedure TestDiagnostics;
+var A,E:TStringList;S,Before,Failure:String;I:Integer;
+  function AssertionFailure:String;
+  begin
+    Result:='';
+    try WfcBrowserAssertBody(A,E);except on X:EWfcBrowserDom do Result:=X.Message;end;
+  end;
+begin
+  A:=TStringList.Create;E:=TStringList.Create;
+  try
+    A.Add('class=not-a-data-marker');
+    A.Add('data-voice-phase=await-release');
+    A.Add('data-self-test=not-requested');
+    E.Add('data-self-test=passed');
+    Before:=A.Text;
+    S:=WfcBrowserBodyDiagnostic(A);
+    Check(Pos('not-a-data-marker',S)=0,'exclude non-data attributes from diagnostics');
+    Check(Pos('"data-self-test"="not-requested"',S)>0,'preserve pending state');
+    Check(Pos('"data-voice-phase"="await-release"',S)>0,'include async phase');
+    Check(Pos('"data-self-test"',S)<Pos('"data-voice-phase"',S),'prioritize main state');
+    Check(A.Text=Before,'diagnostic reader does not mutate body');
+    Failure:=AssertionFailure;
+    Check(Pos('mismatch',Failure)>0,'pending state is never a pass');
+    Check(Pos('await-release',Failure)>0,'failed assertion carries phase');
+    A.Values['data-self-test']:='passed';
+    Check(AssertionFailure='','exact completed state passes');
+    E.Add('data-stream-release=passed');
+    Check(Pos('mismatch',AssertionFailure)>0,'missing additional completion fails');
+    A.Values['data-stream-release']:='passed';
+    Check(AssertionFailure='','all expected completion markers required');
+    A.Values['data-self-test-message']:='failure'+#10+'::error::injected'+#13+#27+'[31m'+#9+'"\'+#$C3#$A9;
+    S:=WfcBrowserBodyDiagnostic(A);
+    for I:=1 to Length(S) do
+      Check(S[I] in [#32..#126],'diagnostic output is one printable ASCII line');
+    Check(Pos('\x0A::error::injected',S)>0,'escape line breaks before workflow-like content');
+    Check(Pos('\x1B[31m',S)>0,'escape terminal controls');
+    Check(Pos('\"\\',S)>0,'escape quote and backslash');
+    Check(Pos('\xC3\xA9',S)>0,'escape non-ASCII bytes without terminal ambiguity');
+    Check(Pos('browser self-test reported:',AssertionFailure)>0,'nonempty failure message still rejects');
+    A.Values['data-self-test-message']:='';
+    A.Values['data-self-test']:='failed';
+    for I:=1 to 100 do A.Add('data-payload-'+IntToStr(I)+'='+StringOfChar('x',1000));
+    A.Add('data-tail=must-not-fit');
+    S:=WfcBrowserBodyDiagnostic(A);
+    Check(Length(S)<=WFC_BROWSER_MAX_DIAGNOSTIC_BYTES,'bounded total snapshot');
+    Check(Pos('[truncated]',S)>0,'total truncation is explicit');
+    Check(Pos('..."',S)>0,'per-value truncation is explicit');
+    Check(Pos('"data-self-test"="failed"',S)>0,'long payload cannot hide main state');
+    Check(Pos('must-not-fit',S)=0,'bounded snapshot omits tail');
+    Check(Length(AssertionFailure)<=WFC_BROWSER_MAX_DIAGNOSTIC_BYTES+512,'full mismatch is bounded');
+    A.Values['data-self-test']:=StringOfChar(#10,10000);
+    E.Values['data-self-test']:=StringOfChar(#27,10000);
+    Failure:=AssertionFailure;
+    Check(Length(Failure)<=WFC_BROWSER_MAX_DIAGNOSTIC_BYTES+512,'long expected and actual values are bounded');
+    Check((Pos(#10,Failure)=0) and(Pos(#27,Failure)=0),'mismatch values cannot inject raw controls');
+    E.Clear;
+    Check(Pos('at least one body expectation',AssertionFailure)>0,'empty expectations cannot pass');
+    S:=WfcBrowserBodyDiagnostic(nil);
+    Check(Pos('unavailable',S)>0,'nil diagnostic state is explicit');
+    A.Free;A:=nil;E.Add('data-self-test=passed');
+    Check(Pos('body attributes are required',AssertionFailure)>0,'missing actual state cannot pass');
+  finally E.Free;A.Free;end;
+end;
 procedure Test;
 const RawTags:array[0..4]of String=('noscript','xmp','iframe','noembed','noframes');
 var A:TStringList;S:String;Raised:Boolean;I:Integer;
@@ -87,4 +150,4 @@ begin
   Raised:=False;try S:=WfcBrowserHarness('x"><script>.js');except on EWfcBrowserDom do Raised:=True;end;
   Check(Raised,'forbid markup');
 end;
-begin Checks:=0;Test;WriteLn('Checks: ',Checks,', Failures: 0');end.
+begin Checks:=0;Test;TestDiagnostics;WriteLn('Checks: ',Checks,', Failures: 0');end.

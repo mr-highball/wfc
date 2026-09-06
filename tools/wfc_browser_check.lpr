@@ -74,15 +74,7 @@ begin
     end;
     if Expected.Count=0 then raise Exception.Create('at least one --expect is required');
     Actual:=WfcBrowserBodyAttributes(ReadDom(Path));
-    for I:=0 to Expected.Count-1 do
-    begin
-      Key:=Expected.Names[I];P:=Actual.IndexOfName(Key);
-      if(P<0) or(Actual.ValueFromIndex[P]<>Expected.ValueFromIndex[I]) then
-        raise Exception.Create('body '+Key+' mismatch: expected "'+Expected.ValueFromIndex[I]+
-          '", found "'+Actual.Values[Key]+'"');
-    end;
-    if Actual.Values['data-self-test-message']<>'' then
-      raise Exception.Create('browser self-test reported: '+Actual.Values['data-self-test-message']);
+    WfcBrowserAssertBody(Actual,Expected);
     WriteLn('Browser assertions passed: ',Expected.Count);
   finally Actual.Free;Expected.Free;end;
 end;
