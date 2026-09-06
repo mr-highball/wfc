@@ -31,6 +31,16 @@ The repository already contains the beginnings of the ecosystem:
   matching-offset or distinct-cell semantics, duplicate-safe canonicalization,
   zero-count absence, portable recipe encoding, independent validation, and a
   shared native/browser neighborhood inspection and bounded-repair demo;
+- opt-in [mapped passes](docs/mapped-passes.md) with per-pass integer world
+  layouts, exact point/cell/region reads, unique-provider counts, and atomic
+  layout replacement and scoped repair across unlike grids;
+- a shared native/pas2js [Mapped World workbench](examples/passes/07_MappedWorld/README.md)
+  with fixed coarse-terrain/fine-foliage/inset-housing grids, editable domains,
+  locks, demands and sampling, a weighted landscape sandbox, independent
+  footprint inspection, and safe versus explicitly diagnostic SVG export;
+  its [seeded experiment](docs/research/mapped-world-footprints-v1.md) separates
+  weak-model satisfaction from physical clearance and demonstrates bounded,
+  explicitly authorized provider repair, not guaranteed or minimum-edit repair;
 - [whole-pass value quotas](docs/value-quotas.md) with reversible domain bounds,
   independent recount, and [portable public-token recipes](docs/pipeline-value-quotas.md)
   that lower through exact-copy and learned-state projection passes;
@@ -569,9 +579,17 @@ provides cutaway/yaw SVG in native FPC and pas2js. The new
 [core mapped-pass API](docs/mapped-passes.md) supports unlike-sized integer-world
 layouts, exact point/footprint reads, unique-cell counts, and transactional
 selective/negotiated repair in native FPC and pas2js. Existing projection
-adapters retain explicit identical-layout guards. Portable per-pass layouts,
-mapped-clause persistence, and dedicated workspace/demo controls remain open;
-existing 2D versions and bytes remain unchanged.
+adapters retain explicit identical-layout guards. The shared
+[Mapped World workbench](examples/passes/07_MappedWorld/README.md) now exposes
+cell/point/region sampling, domains and caller locks, explicit housing demands,
+scoped ordinary/negotiated repair and independently checked SVG. Its tutorial
+reproduces an interior blocker; its editable sandbox is not restricted to that
+single uncertain cell. The three showcase grids are fixed, not an editor for
+arbitrary layouts. Portable per-pass layouts and mapped-clause recipe/run/result
+persistence remain open, as do broader topology controls and more targeted
+repair strategies. Existing 2D versions and bytes remain unchanged. The
+[research record](docs/research/mapped-world-footprints-v1.md) records focused
+native/browser evidence separately from full integration gates.
 The sequence version-1 layer learns bounded order-N latent states from ordered
 pretokenized UTF-8 corpora, resets typed BOS history at every sample boundary,
 retains raw observation/start/end counts, derives exact suffix/prefix

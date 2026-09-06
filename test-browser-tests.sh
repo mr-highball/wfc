@@ -74,7 +74,7 @@ else
   [[ -f "$source" ]] || continue
   name="${source##*/}"
   name="${name%.lpr}"
-  case "$name" in wfc_package_check_process_test|wfc_artifact_cli_process_test|wfc_ensemble_http_process_test) continue ;; esac
+  case "$name" in wfc_package_check_process_test|wfc_artifact_cli_process_test|wfc_ensemble_http_process_test|wfc_mapped_world_process_test) continue ;; esac
   if [[ -n "${WFC_BROWSER_TEST:-}" && "$name" != "$WFC_BROWSER_TEST" ]]; then continue; fi
   case "$name" in wfc_browser_args_test|wfc_browser_dom_test|wfc_browser_socket_test|wfc_browser_websocket_test|wfc_browser_cdp_test|wfc_browser_capture_test|wfc_serve_test|wfc_music_render_process_test|wfc_music_ensemble_render_process_test|wfc_music_ensemble_midi_render_process_test|wfc_music_voices_render_process_test|wfc_connectivity_process_test|wfc_music_studies_process_test) continue ;; esac
   sources+=("$name")
@@ -210,7 +210,7 @@ for name in "${sources[@]}"; do
   fi
   if [[ "$name" == wfc_browser_demo_entries_test ]]; then
     expectations+=(--expect data-demo-entries-self-test=passed)
-    expectations+=(--expect data-demo-entries-count=10)
+    expectations+=(--expect data-demo-entries-count=11)
   fi
   if [[ "$name" == wfc_music_ensemble_stream_demo_test ]]; then
     # Awaited file transactions have their own application completion signal.

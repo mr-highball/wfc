@@ -27,8 +27,8 @@ The original A-major and manually authored riff studies are also plain FPC
 console programs, with owned MIDI and streaming WAVE export. No submodule,
 external media library, or engine package is needed. The 2D world, three-pass text workbench,
 Building 3D, Training Studio, Music Studio, Ensemble Studio, Voice Studio,
-Neighborhood Counts, Connected Routes, and Learned Terraces have separate pas2js browser entry
-points described below.
+Neighborhood Counts, Connected Routes, Learned Terraces, and Mapped World have
+separate pas2js browser entry points described below.
 
 FPC 3.2.2 is the supported stable compiler. The current FPC development
 compiler is also exercised as a compatibility canary.
@@ -86,7 +86,8 @@ From the repository root, use the entry point for your shell:
 ```
 
 Both scripts rebuild with assertions and range, overflow, and I/O checks, run
-`wfc_test`, `wfc_world2d_test`, `wfc_world2d_settlement_test`,
+`wfc_test`, `wfc_lattice_test`, `wfc_mapped_passes_test`,
+`wfc_world2d_test`, `wfc_world2d_settlement_test`,
 `wfc_learn_test`, `wfc_pattern2d_test`, `wfc_pattern2d_passes_test`,
 `wfc_sequence_test`,
 `wfc_text_test`, `wfc_text_passes_test`, `wfc_text_pass_transaction_test`,
@@ -522,6 +523,62 @@ both 2D and multi-floor SVG exports plus no-replace behavior in
 [host guide](../examples/passes/06_ConnectedRoutes/README.md) and
 [constraint contract](connectivity.md).
 
+## Mapped World browser and native hosts
+
+Mapped World shares its session owner, literal-coordinate validator, inspector
+and SVG renderer between native FPC and pas2js. The three showcase grids are
+fixed: 8 × 6 terrain at pitch 4, 32 × 24 foliage at pitch 1, and 3 × 2 housing
+at pitch 8 with an inset origin. Domains, locks, housing demands, sampling and
+sandbox weights are editable; these dimensions are not a core graph-size cap.
+
+Stage and host the browser on an unused port:
+
+```powershell
+.\build-browser-mapped.ps1 -Compiler 'C:/path/to/pas2js.exe'
+.\build\native\bin\wfc_serve.exe --root build/browser/mapped/www --port 4192
+```
+
+```bash
+PAS2JS=/opt/pas2js/bin/pas2js bash ./build-browser-mapped.sh
+build/native/bin/wfc_serve --root build/browser/mapped/www --port 4192
+```
+
+Build the included FPC server with the native gate first, then open
+`http://127.0.0.1:4192/`. Append `?selftest=1` to run the actual browser entry
+fixture. Stop the foreground server with Ctrl+C. The
+[demo guide](../examples/passes/07_MappedWorld/README.md) covers trusted-LAN
+hosting, isolated checked native builds, all CLI options and exit statuses.
+
+The native build scripts register `wfc_mapped_world_test`,
+`wfc_mapped_world_geometry_test`, `MappedWorld --selftest`, and the real-process
+`wfc_mapped_world_process_test`. The portable owner and geometry suites also
+run through pas2js; file/process tests stay native. After the native build:
+
+```powershell
+.\build\native\bin\MappedWorld.exe --selftest
+.\build\native\bin\MappedWorld.exe --seed 3 --demand 0,0=house --repair foliage --trace
+```
+
+On Unix, use `build/native/bin/MappedWorld`. Each CLI invocation first generates
+the baseline, then applies requested edits and exactly the authorized repair.
+Changing `--repair foliage` to `--repair housing` demonstrates an expected
+failure with the seed-3 interior tree; it must not widen its own scope.
+
+`--svg NEW-FILE` requires current model-valid, physically clear output.
+Point/undersized-region studies can satisfy the selected model without clearing
+the full footprint. Only explicit `--diagnostic-svg NEW-FILE` may export such
+an unsafe study or a labeled retained baseline; neither output option replaces
+an existing destination. Browser edits likewise invalidate safe downloads.
+Portable mapped recipe/run/result persistence remains future work.
+
+The [footprint research record](research/mapped-world-footprints-v1.md)
+records the four-target native checks, actual browser fixture, and full stable
+Win32 build pass with its separate formatting-audit qualification. The first
+full browser run passed 138/139 programs and all 11 actual demo entries; its
+sole timed-out case passed one unchanged, separately recorded focused
+re-execution. The record preserves that first-run failure and the remaining
+desktop/mobile visual-review gap.
+
 ## Voice Studio browser and native hosts
 
 The independent-role studio stages the same portable training, graph,
@@ -576,7 +633,7 @@ commands, the complete marker contract, and explicit scope limits.
 
 ## Hosted pas2js gate
 
-The hosted browser gate builds the ten pas2js demos with a matching compiler
+The hosted browser gate builds the registered pas2js demos with a matching compiler
 and RTL. It serves standalone demo self-tests and the ensemble/independent-voice
 controllers' portable conformance hosts with the project-owned FPC server,
 executes them in headless Chrome, waits for complete rendered body contracts
@@ -585,7 +642,7 @@ FPC checker. Both conformance and standalone demos use this same maintained
 runner; no virtual-time snapshot is used as completion evidence.
 It also compiles every portable standalone conformance program for the browser
 and executes those pages through the same FPC tools. An additional browser-only
-entry regression loads all ten actual demo pages and their self-test queries,
+entry regression loads the registered actual demo pages and their self-test queries,
 including the HTML bootstrap and awaited controller checks. Native socket, DOM-parser,
 and renderer-process tests remain native. The source-derived test manifest
 rejects missing staged programs; see [development tools](development-tools.md)
@@ -599,7 +656,7 @@ not assertions that every console fixture has a browser host.
 The hosted workflow runs the checked native gate with FPC 3.2.2 on Linux,
 macOS, and Windows. The Linux lane also builds the FPM and Lazarus packages,
 runs the core Lazarus project, and verifies that generation leaves the checkout
-clean. A separate Linux lane builds all ten browser demos and executes
+clean. A separate Linux lane builds the registered browser demos and executes
 standalone demo self-tests plus portable browser conformance (including the
 Ensemble Studio and Voice Studio controllers) in headless Chrome using the included FPC
 development tools. A canary runs

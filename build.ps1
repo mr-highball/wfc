@@ -382,6 +382,45 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
   $connectivityDemoExecutable $binaryOutputDirectory
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+$mappedWorldDemoDirectory = Join-Path $repositoryRoot `
+  'examples/passes/07_MappedWorld'
+foreach ($mappedWorldTestName in @(
+    'wfc_mapped_world_test', 'wfc_mapped_world_geometry_test')) {
+  Write-Host "Building and running '$mappedWorldTestName'."
+  & $Compiler @CompilerOptions -B -Mdelphi -Sa -Cr -Co -Ci `
+    "-Fu$sourceDirectory" "-Fu$toolsDirectory" "-Fu$mappedWorldDemoDirectory" `
+    "-FU$unitOutputDirectory" "-FE$binaryOutputDirectory" `
+    (Join-Path $repositoryRoot "test/$mappedWorldTestName.lpr")
+  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+  $mappedWorldTestExecutable = if ($env:OS -eq 'Windows_NT') {
+    "$mappedWorldTestName.exe"
+  } else { $mappedWorldTestName }
+  & (Join-Path $binaryOutputDirectory $mappedWorldTestExecutable)
+  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+}
+
+Write-Host 'Building and checking Mapped World and native export transactions.'
+foreach ($mappedWorldSource in @(
+    (Join-Path $mappedWorldDemoDirectory 'MappedWorld.lpr'),
+    (Join-Path $repositoryRoot 'test/wfc_mapped_world_process_test.lpr'))) {
+  & $Compiler @CompilerOptions -B -Mdelphi -Sa -Cr -Co -Ci `
+    "-Fu$sourceDirectory" "-Fu$toolsDirectory" "-Fu$mappedWorldDemoDirectory" `
+    "-FU$unitOutputDirectory" "-FE$binaryOutputDirectory" $mappedWorldSource
+  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+}
+$mappedWorldDemoName = if ($env:OS -eq 'Windows_NT') {
+  'MappedWorld.exe'
+} else { 'MappedWorld' }
+$mappedWorldProcessTestName = if ($env:OS -eq 'Windows_NT') {
+  'wfc_mapped_world_process_test.exe'
+} else { 'wfc_mapped_world_process_test' }
+$mappedWorldDemoExecutable = Join-Path $binaryOutputDirectory $mappedWorldDemoName
+& $mappedWorldDemoExecutable --selftest
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+& (Join-Path $binaryOutputDirectory $mappedWorldProcessTestName) `
+  $mappedWorldDemoExecutable $binaryOutputDirectory
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
 $restartDemoDirectory = Join-Path $repositoryRoot `
   'examples/passes/05_DeterministicRestarts'
 foreach ($restartTestName in @(

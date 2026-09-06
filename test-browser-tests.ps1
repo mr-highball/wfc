@@ -26,6 +26,7 @@ $standalone = $WebRoot -ne '' -or $Page -ne '' -or $Expect.Count -gt 0
 $nativeOnly += 'wfc_package_check_process_test'
 $nativeOnly += 'wfc_artifact_cli_process_test'
 $nativeOnly += 'wfc_ensemble_http_process_test'
+$nativeOnly += 'wfc_mapped_world_process_test'
 if ($standalone) {
   if (-not $WebRoot -or -not $Page -or $TestName) {
     throw 'Standalone mode requires -WebRoot and -Page and excludes -TestName.'
@@ -166,7 +167,7 @@ try {
         $expectations = @('data-self-test=passed') + $expectations
       }
       if ($caseName -eq 'wfc_browser_demo_entries_test') {
-        $expectations += @('data-demo-entries-self-test=passed', 'data-demo-entries-count=10')
+        $expectations += @('data-demo-entries-self-test=passed', 'data-demo-entries-count=11')
       }
       if ($caseName -eq 'wfc_music_ensemble_stream_demo_test') {
         $expectations += @('data-stream-self-test=passed', 'data-stream-release=passed',

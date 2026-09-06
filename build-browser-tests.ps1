@@ -22,12 +22,13 @@ $unitPaths = @('src','tools','examples/2D/common','examples/3D/common',
   'examples/passes/02_TraceInspector',
   'examples/text/03_PassComposition',
   'examples/passes/06_ConnectedRoutes',
+  'examples/passes/07_MappedWorld',
   'examples/music/06_EnsembleStudio','examples/music/07_VoiceStudio') | ForEach-Object {
     '-Fu' + (Join-Path $repositoryRoot $_)
   }
 foreach ($source in Get-ChildItem -LiteralPath (Join-Path $repositoryRoot 'test') -Filter '*_test.lpr') {
   if ($source.BaseName -in @('wfc_package_check_process_test','wfc_artifact_cli_process_test','wfc_ensemble_http_process_test')) { continue }
-  if ($source.BaseName -in @('wfc_browser_dom_test','wfc_browser_args_test','wfc_browser_socket_test','wfc_browser_websocket_test','wfc_browser_cdp_test','wfc_browser_capture_test','wfc_serve_test','wfc_music_render_process_test','wfc_music_ensemble_render_process_test','wfc_music_ensemble_midi_render_process_test','wfc_music_voices_render_process_test','wfc_connectivity_process_test','wfc_music_studies_process_test')) { continue }
+  if ($source.BaseName -in @('wfc_browser_dom_test','wfc_browser_args_test','wfc_browser_socket_test','wfc_browser_websocket_test','wfc_browser_cdp_test','wfc_browser_capture_test','wfc_serve_test','wfc_music_render_process_test','wfc_music_ensemble_render_process_test','wfc_music_ensemble_midi_render_process_test','wfc_music_voices_render_process_test','wfc_connectivity_process_test','wfc_mapped_world_process_test','wfc_music_studies_process_test')) { continue }
   & $Compiler -B -Tbrowser -Mdelphi -Jc '-Jirtl.js' @unitPaths "-FU$units" "-FE$web" $source.FullName
   if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
   $html = Join-Path $web ($source.BaseName + '.html')
@@ -47,7 +48,8 @@ $entryDemos = @(
   @('ensemble', 'build-browser-ensemble', 'BrowserEnsembleStudio.js', 'ensemblestudio.css'),
   @('voices', 'build-browser-voices', 'BrowserVoiceStudio.js', 'voicestudio.css'),
   @('connectivity', 'build-browser-connectivity', 'BrowserConnectedRoutes.js', 'connectedroutes.css'),
-  @('terraces', 'build-browser-terraces', 'BrowserTerraces.js', 'terraces.css')
+  @('terraces', 'build-browser-terraces', 'BrowserTerraces.js', 'terraces.css'),
+  @('mapped', 'build-browser-mapped', 'BrowserMappedWorld.js', 'mappedworld.css')
 )
 foreach ($demo in $entryDemos) {
   & (Join-Path $repositoryRoot ($demo[1] + '.ps1')) -Compiler $Compiler
@@ -66,4 +68,4 @@ New-Item -ItemType Directory -Force -Path $captureFixture | Out-Null
 & $Compiler -B -Tbrowser -Mdelphi -Jc '-Jirtl.js' "-FU$units" "-FE$captureFixture" (Join-Path $repositoryRoot 'test/browser_capture/fixture.lpr')
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 Copy-Item -LiteralPath (Join-Path $repositoryRoot 'test/browser_capture/index.html') -Destination $captureFixture -Force
-Write-Host "Pascal browser conformance, capture fixture, and ten actual demo entries staged in '$web'."
+Write-Host "Pascal browser conformance, capture fixture, and eleven actual demo entries staged in '$web'."

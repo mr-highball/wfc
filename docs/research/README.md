@@ -8,6 +8,9 @@ literature. Each record owns its version, evidence, and limitations.
 For the original pass-system question, start with
 [Pass Negotiation](pass-negotiation-v1.md), then
 [Pattern-Projected Pass Composition](pattern-projected-passes-v1.md).
+For unlike-sized layers, continue with the reproducible
+[Mapped World footprint study](mapped-world-footprints-v1.md): a corner can be
+clear while the space a house actually occupies is not.
 For a non-spatial application of the same idea, read
 [Independent Voices](independent-voices-v1.md).
 The [roadmap](../../ROADMAP.md) distinguishes delivered mechanisms from
@@ -30,6 +33,7 @@ the broader work still required.
 | [Overlapping volumes and public constraints v1](overlapping-volumes-v1.md) | Literal cuboid learning, exact six-direction overlap and inverse public XYZ domains, including aliased offsets. Native/browser conformance; not yet a full training/workspace or interactive volume vertical slice. |
 | [Volume Observation Orbits v1](volume-observation-orbits-v1.md) | Aggregate transformed six-direction observations exactly, checked against literal coordinate transforms. Scalar token payloads do not rotate; cardinal relations are not joint 3D footprints. |
 | [Model-to-voxel pass experiment v1](model-to-voxel-pass-v1.md) | Connect learned terrain to authored structural interpretations and offset foliage constraints. Independent semantic validation checks the bridge; the fixture does not establish chunked scalability. |
+| [Mapped World footprints v1](mapped-world-footprints-v1.md) | Compose coarse terrain, fine foliage and inset housing in integer world coordinates. A generated interior blocker distinguishes point-model validity from full-footprint clearance; explicit provider repair is bounded, not guaranteed or minimum-change. |
 | [Portable Pipeline Bundle v1](portable-pipeline-bundle-v1.md) | Reconstruct supported declarative pipelines from canonical recipes, runs, and results. This is a closed, versioned execution contract, not serialization of arbitrary live graphs or callbacks. |
 | [Portable public quotas v1](portable-value-quotas-v1.md) | Lower whole-pass public quantities through exact-copy and latent projection layers, then independently recount before commit. Same-shape supported bridges only; not generalized count optimization. |
 

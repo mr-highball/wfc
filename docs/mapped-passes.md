@@ -179,8 +179,10 @@ new list of every intersected cell or a minimal conflicting footprint.
 - This first mapped gate is the **core API**, not a portable recipe extension.
   Existing recipe/run/result formats and domain workspaces still describe one
   shared grid. They cannot yet save or reconstruct unlike-sized layouts or
-  mapped clauses. Dedicated editor controls and portable persistence are
-  subsequent ecosystem work, not implied by this API.
+  mapped clauses. The [Mapped World workbench](../examples/passes/07_MappedWorld/README.md)
+  now provides editable constraints on a fixed mixed-resolution showcase;
+  portable mapped persistence and general layout editing remain subsequent
+  ecosystem work, not implied by this API.
 
 Executable conformance is in `test/wfc_mapped_passes_test.lpr`,
 `test/wfc_lattice_test.lpr`, and `test/wfc_pass_bridge_layout_test.lpr`. All are

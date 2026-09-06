@@ -421,6 +421,46 @@ esac
 "$connectivity_process_test_executable" "$connectivity_runtime_executable" \
   "$compiler_binary_output_directory" || exit $?
 
+compiler_mapped_world_demo_directory="$compiler_source_directory/../examples/passes/07_MappedWorld"
+for mapped_world_test_name in wfc_mapped_world_test wfc_mapped_world_geometry_test; do
+  printf "Building and running '%s'.\n" "$mapped_world_test_name"
+  "$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
+    "-Fu$compiler_source_directory" "-Fu$compiler_tools_directory" \
+    "-Fu$compiler_mapped_world_demo_directory" \
+    "-FU$compiler_unit_output_directory" "-FE$compiler_binary_output_directory" \
+    "$compiler_source_directory/../test/$mapped_world_test_name.lpr" || exit $?
+  mapped_world_test_executable="$binary_output_directory/$mapped_world_test_name"
+  case "$host_system" in
+    CYGWIN*|MINGW*|MSYS*) mapped_world_test_executable="${mapped_world_test_executable}.exe" ;;
+  esac
+  "$mapped_world_test_executable" || exit $?
+done
+
+printf 'Building and checking Mapped World and native export transactions.\n'
+for mapped_world_source in \
+  "$compiler_mapped_world_demo_directory/MappedWorld.lpr" \
+  "$compiler_source_directory/../test/wfc_mapped_world_process_test.lpr"
+do
+  "$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
+    "-Fu$compiler_source_directory" "-Fu$compiler_tools_directory" \
+    "-Fu$compiler_mapped_world_demo_directory" \
+    "-FU$compiler_unit_output_directory" "-FE$compiler_binary_output_directory" \
+    "$mapped_world_source" || exit $?
+done
+mapped_world_demo_executable="$binary_output_directory/MappedWorld"
+mapped_world_runtime_executable="$compiler_binary_output_directory/MappedWorld"
+mapped_world_process_test_executable="$binary_output_directory/wfc_mapped_world_process_test"
+case "$host_system" in
+  CYGWIN*|MINGW*|MSYS*)
+    mapped_world_demo_executable="${mapped_world_demo_executable}.exe"
+    mapped_world_runtime_executable="${mapped_world_runtime_executable}.exe"
+    mapped_world_process_test_executable="${mapped_world_process_test_executable}.exe"
+    ;;
+esac
+"$mapped_world_demo_executable" --selftest || exit $?
+"$mapped_world_process_test_executable" "$mapped_world_runtime_executable" \
+  "$compiler_binary_output_directory" || exit $?
+
 compiler_restart_demo_directory="$compiler_source_directory/../examples/passes/05_DeterministicRestarts"
 for restart_test_name in wfc_restart_test wfc_timing_test wfc_restart_demo_test; do
   printf "Building the restart suite '%s'.\n" "$restart_test_name"

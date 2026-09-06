@@ -283,7 +283,7 @@ source-derived suite; a focused success does not certify the other programs.
 
 Staging compiles `test/*_test.lpr` for `-Tbrowser`, embeds the matching RTL, and
 uses the FPC checker to create harnesses under `build/browser/tests/www`.
-It also rebuilds all ten demos and copies their three named public assets
+It also rebuilds all registered demos and copies their three named public assets
 into `demo-entries` below that root. `wfc_browser_demo_entries_test` loads the
 actual `index.html?selftest=1` pages in sequential same-origin frames and checks
 their rendered contracts. This catches entry-point/bootstrap problems that
@@ -320,7 +320,7 @@ with `build-browser-voices.ps1` or `build-browser-voices.sh`, then serve
 [Voice Studio host guide](../examples/music/07_VoiceStudio/README.md).
 
 The actual-page gate additionally requires `data-demo-entries-self-test=passed`
-after all ten pages finish. Each page retains its in-page 15-second deadline,
+after all registered pages finish. Each page retains its in-page 15-second deadline,
 now measured in ordinary browser time. The aggregate's native deadline remains
 60 seconds, as for every other program.
 Pending/missing page evidence never counts as success. This browser-only test

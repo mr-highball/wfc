@@ -128,7 +128,7 @@ attempts retain separate evidence directories. The hosted browser lane runs
 this fixture gate as well as the normal suite.
 
 The full browser gate still executes every current portable test, the Voice
-and Ensemble release contracts, and all ten actual demo entry pages. A
+and Ensemble release contracts, and all registered actual demo entry pages. A
 targeted local success is not proof of the full gate or another OS. Hosted
 results should be cited at their actual commit, not inferred from compilation.
 

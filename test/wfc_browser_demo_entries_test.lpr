@@ -29,7 +29,7 @@ program wfc_browser_demo_entries_test;
 uses SysUtils, JS, Web, wfc_browser_test_host;
 
 const
-  DEMO_COUNT = 10;
+  DEMO_COUNT = 11;
   DEFAULT_PAGE_TIMEOUT_MS = 15000;
   ENSEMBLE_PAGE_TIMEOUT_MS = 30000;
   POLL_INTERVAL_MS = 25;
@@ -105,6 +105,8 @@ begin
   FDemos[8].Bundle := 'BrowserConnectedRoutes.js'; FDemos[8].Stylesheet := 'connectedroutes.css';
   FDemos[9].Name := 'terraces';
   FDemos[9].Bundle := 'BrowserTerraces.js'; FDemos[9].Stylesheet := 'terraces.css';
+  FDemos[10].Name := 'mapped';
+  FDemos[10].Bundle := 'BrowserMappedWorld.js'; FDemos[10].Stylesheet := 'mappedworld.css';
 
   for I := 0 to DEMO_COUNT - 1 do
   begin
@@ -234,6 +236,20 @@ begin
   Expect(9, 'data-invalidation', 'passed');
   Expect(9, 'data-recovery', 'passed');
   Expect(9, 'data-new-session', 'passed');
+  Expect(10, 'data-baseline', 'passed');
+  Expect(10, 'data-housing-failure', 'passed');
+  Expect(10, 'data-upstream-repair', 'passed');
+  Expect(10, 'data-point-counterexample', 'passed');
+  Expect(10, 'data-scope-guard', 'passed');
+  Expect(10, 'data-invalidation', 'passed');
+  Expect(10, 'data-sandbox', 'passed');
+  Expect(10, 'data-region', 'passed');
+  Expect(10, 'data-lock-lifecycle', 'passed');
+  Expect(10, 'data-edit-error-isolation', 'passed');
+  Expect(10, 'data-queued-error-lifecycle', 'passed');
+  Expect(10, 'data-preset-input-isolation', 'passed');
+  Expect(10, 'data-model-valid', 'true');
+  Expect(10, 'data-physical-safe', 'true');
 end;
 
 constructor TDemoEntries.Create;
@@ -253,7 +269,7 @@ begin
     provisional generic marker on the first task; only our dedicated marker
     can certify completion of all awaited real pages. }
   document.body.setAttribute('data-self-test', 'pending');
-  WriteLn('Real browser demo entries: ten sequential staged index pages');
+  WriteLn('Real browser demo entries: eleven sequential staged index pages');
   OpenNext;
 end;
 
