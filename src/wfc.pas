@@ -79,6 +79,9 @@ const
   //Opt-in rooted, reciprocal-port connectivity. Unconstrained models retain
   //their existing solver, random-stream, and trace replay.
   WFC_GRAPH_CONNECTIVITY_VERSION = 1;
+  //Opt-in whole-pass value-set cardinality. Models without quotas retain
+  //their existing solver, random-stream, and trace replay.
+  WFC_GRAPH_VALUE_QUOTA_VERSION = 1;
   //Identifies the public causal-trace event schema. Trace capture is opt-in,
   //so adding this observability surface does not change solver replay.
   WFC_TRACE_VERSION = 1;
@@ -148,6 +151,17 @@ type
     RequireAllParticipants: Boolean;
   end;
   TGraphConnectivityConstraints = array of TGraphConnectivityConstraint;
+
+  //Count each cell in this pass once when its value belongs to Values.
+  //Bounds are independent of the current shape: a minimum larger than the
+  //cell count is an unsatisfiable constraint, not a malformed descriptor.
+  TGraphValueQuotaConstraint = record
+    LabelText: String;
+    Values: TGraphValues;
+    MinimumCount: Integer;
+    MaximumCount: Integer;
+  end;
+  TGraphValueQuotaConstraints = array of TGraphValueQuotaConstraint;
 
   //gpmLegacy preserves the original hybrid contract: a defined pass solves a
   //fresh layer, while a later definitionless pass copies its predecessor.
@@ -422,7 +436,8 @@ type
     gckPassDependency,
     gckEntryDomain,
     gckExcludedAssignment,
-    gckConnectivity
+    gckConnectivity,
+    gckValueQuota
   );
 
   TGraphSolveOptions = record
@@ -442,7 +457,8 @@ type
     HasDirection: Boolean;
     Direction: TGraphDirection;
     DependencyPassIndex: Integer;
-    //Pass-local copied connectivity descriptor ordinal, or -1 otherwise.
+    //Pass-local copied descriptor ordinal for connectivity/value-quota kinds,
+    //or -1 otherwise. The kind selects the corresponding registry.
     ConstraintIndex: Integer;
   end;
 
@@ -475,7 +491,8 @@ type
     gtckFinalValidation,
     gtckTransaction,
     gtckExactAssignmentExclusion,
-    gtckConnectivity
+    gtckConnectivity,
+    gtckValueQuota
   );
 
   TGraphTraceSignature = Cardinal;
@@ -807,6 +824,7 @@ type
     FPassDependencies: TPassDependencies;
     FTransformSourceIndex: Integer;
     FConnectivity: TGraphConnectivityConstraints;
+    FValueQuotas: TGraphValueQuotaConstraints;
     FTraceSink: TGraphTraceSink;
 
     function GetTraceSink: TGraphTraceSink;
@@ -1084,6 +1102,16 @@ type
     function ClearConnectivity: TGraph;
     function CopyConnectivityConstraints: TGraphConnectivityConstraints;
 
+    //Opt-in whole-pass AND quotas for the TrySolve family (not Run).
+    //Values are a nonempty set of registered values, copied and deduplicated
+    //in AddValue order. Bounds satisfy 0 <= minimum <= maximum; they need not
+    //fit the current cell count. Identical labeled registration is idempotent.
+    function RequireValueQuota(
+      const AConstraint: TGraphValueQuotaConstraint): TGraph;
+    function RemoveValueQuota(const ALabel: String): TGraph;
+    function ClearValueQuotas: TGraph;
+    function CopyValueQuotaConstraints: TGraphValueQuotaConstraints;
+
     //Caller-owned pass-local initial domains.  SetAllowedValues canonicalizes
     //the supplied set to AddValue order; an assigned empty set is an explicit
     //contradiction and is distinct from ClearAllowedValues.
@@ -1235,6 +1263,9 @@ var
     const AValues: TGraphConnectivityValues;
     const ARequireAllParticipants: Boolean = False):
     TGraphConnectivityConstraint;
+  function MakeGraphValueQuotaConstraint(const ALabel: String;
+    const AValues: TGraphValues; const AMinimumCount,
+    AMaximumCount: Integer): TGraphValueQuotaConstraint;
   function MakeGraphPassMatchTerm(const AOffset: TGraphOffset;
     const AValue: TGraphValue): TGraphPassMatchTerm; overload;
   function MakeGraphPassMatchTerm(const AOffset: TGraphOffset;
@@ -1425,6 +1456,49 @@ begin
     Length(ARequiredPositions));
   Result.Values := Copy(AValues, 0, Length(AValues));
   Result.RequireAllParticipants := ARequireAllParticipants;
+end;
+
+function MakeGraphValueQuotaConstraint(const ALabel: String;
+  const AValues: TGraphValues; const AMinimumCount,
+  AMaximumCount: Integer): TGraphValueQuotaConstraint;
+begin
+  Result.LabelText := ALabel;
+  Result.Values := CloneGraphValues(AValues);
+  Result.MinimumCount := AMinimumCount;
+  Result.MaximumCount := AMaximumCount;
+end;
+
+procedure CheckGraphValueQuotaBounds(const AMinimumCount,
+  AMaximumCount: Integer);
+begin
+  //Positive comparisons also reject nonfinite/undefined browser numbers.
+  if not ((AMinimumCount >= 0) and (AMinimumCount <= High(Integer))
+    and (AMaximumCount >= AMinimumCount)
+    and (AMaximumCount <= High(Integer))) then
+    raise ERangeError.Create(
+      'RequireValueQuota::bounds must satisfy 0 <= minimum <= maximum <= High(Integer)');
+  {$IFDEF PAS2JS}
+  //Strict inequality rejects numeric strings as well as fractional numbers.
+  if (AMinimumCount <> Trunc(AMinimumCount))
+    or (AMaximumCount <> Trunc(AMaximumCount)) then
+    raise ERangeError.Create('RequireValueQuota::bounds must be exact integers');
+  {$ENDIF}
+end;
+
+function GraphValueQuotaEqual(const ALeft,
+  ARight: TGraphValueQuotaConstraint): Boolean;
+var
+  I: Integer;
+begin
+  Result := False;
+  if (ALeft.LabelText <> ARight.LabelText)
+    or (ALeft.MinimumCount <> ARight.MinimumCount)
+    or (ALeft.MaximumCount <> ARight.MaximumCount)
+    or (Length(ALeft.Values) <> Length(ARight.Values)) then
+    Exit;
+  for I := 0 to High(ALeft.Values) do
+    if ALeft.Values[I] <> ARight.Values[I] then Exit;
+  Result := True;
 end;
 
 procedure CheckConnectivityPosition(const APosition: TGraphPosition;
@@ -1866,6 +1940,11 @@ begin
     GraphTraceHashCardinal(AHash, WFC_GRAPH_CONNECTIVITY_VERSION);
     GraphTraceHashInteger(AHash, AEvent.ConstraintIndex);
   end;
+  if AEvent.CauseKind = gtckValueQuota then
+  begin
+    GraphTraceHashCardinal(AHash, WFC_GRAPH_VALUE_QUOTA_VERSION);
+    GraphTraceHashInteger(AHash, AEvent.ConstraintIndex);
+  end;
 end;
 
 function CalculateGraphTraceHash(
@@ -2093,6 +2172,7 @@ begin
     rtckFinalValidation: LEvent.CauseKind := gtckFinalValidation;
     rtckExcludedAssignment: LEvent.CauseKind := gtckExactAssignmentExclusion;
     rtckConnectivity: LEvent.CauseKind := gtckConnectivity;
+    rtckValueQuota: LEvent.CauseKind := gtckValueQuota;
   else
     raise ERangeError.Create('TrySolve::invalid reference trace cause');
   end;
@@ -2243,6 +2323,11 @@ var
     if ASolve.Contradiction.Kind = gckConnectivity then
     begin
       GraphTraceHashCardinal(Result, WFC_GRAPH_CONNECTIVITY_VERSION);
+      GraphTraceHashInteger(Result, ASolve.Contradiction.ConstraintIndex);
+    end;
+    if ASolve.Contradiction.Kind = gckValueQuota then
+    begin
+      GraphTraceHashCardinal(Result, WFC_GRAPH_VALUE_QUOTA_VERSION);
       GraphTraceHashInteger(Result, ASolve.Contradiction.ConstraintIndex);
     end;
     GraphTraceHashCardinal(Result, Cardinal(Length(ASolve.Passes)));
@@ -4786,6 +4871,95 @@ begin
         RequiredPositions, Values, RequireAllParticipants);
 end;
 
+function TGraph.RequireValueQuota(
+  const AConstraint: TGraphValueQuotaConstraint): TGraph;
+var
+  LGraph: TGraph;
+  LCanonical: TGraphValueQuotaConstraint;
+  I, LCount: Integer;
+begin
+  Result := Self;
+  if Running then
+    raise EInvalidOperation.Create(
+      'RequireValueQuota::cannot change constraints while running');
+  LGraph := GetActivePassGraph;
+  if AConstraint.LabelText = '' then
+    raise EArgumentException.Create('RequireValueQuota::label cannot be empty');
+  CheckGraphValueQuotaBounds(AConstraint.MinimumCount, AConstraint.MaximumCount);
+  if Length(AConstraint.Values) = 0 then
+    raise EArgumentException.Create('RequireValueQuota::accepted values are required');
+  for I := 0 to High(AConstraint.Values) do
+    if (AConstraint.Values[I] = TGraphValue.Empty)
+      or not ContainsGraphValue(LGraph.FValues, AConstraint.Values[I]) then
+      raise EArgumentException.CreateFmt(
+        'RequireValueQuota::unknown accepted value "%s"', [AConstraint.Values[I]]);
+
+  LCanonical := MakeGraphValueQuotaConstraint(AConstraint.LabelText, nil,
+    AConstraint.MinimumCount, AConstraint.MaximumCount);
+  SetLength(LCanonical.Values, Length(LGraph.FValues));
+  LCount := 0;
+  for I := 0 to High(LGraph.FValues) do
+    if ContainsGraphValue(AConstraint.Values, LGraph.FValues[I]) then
+    begin
+      LCanonical.Values[LCount] := LGraph.FValues[I];
+      Inc(LCount);
+    end;
+  SetLength(LCanonical.Values, LCount);
+  for I := 0 to High(LGraph.FValueQuotas) do
+    if LGraph.FValueQuotas[I].LabelText = LCanonical.LabelText then
+    begin
+      if not GraphValueQuotaEqual(LGraph.FValueQuotas[I], LCanonical) then
+        raise EInvalidOperation.Create(
+          'RequireValueQuota::label already has a different definition; remove it first');
+      Exit;
+    end;
+  SetLength(LGraph.FValueQuotas, Length(LGraph.FValueQuotas) + 1);
+  LGraph.FValueQuotas[High(LGraph.FValueQuotas)] := LCanonical;
+end;
+
+function TGraph.RemoveValueQuota(const ALabel: String): TGraph;
+var
+  LGraph: TGraph;
+  I, J: Integer;
+begin
+  Result := Self;
+  if Running then
+    raise EInvalidOperation.Create(
+      'RemoveValueQuota::cannot change constraints while running');
+  LGraph := GetActivePassGraph;
+  for I := 0 to High(LGraph.FValueQuotas) do
+    if LGraph.FValueQuotas[I].LabelText = ALabel then
+    begin
+      for J := I to High(LGraph.FValueQuotas) - 1 do
+        LGraph.FValueQuotas[J] := LGraph.FValueQuotas[J + 1];
+      SetLength(LGraph.FValueQuotas, Length(LGraph.FValueQuotas) - 1);
+      Exit;
+    end;
+end;
+
+function TGraph.ClearValueQuotas: TGraph;
+begin
+  Result := Self;
+  if Running then
+    raise EInvalidOperation.Create(
+      'ClearValueQuotas::cannot change constraints while running');
+  GetActivePassGraph.FValueQuotas := nil;
+end;
+
+function TGraph.CopyValueQuotaConstraints: TGraphValueQuotaConstraints;
+var
+  LGraph: TGraph;
+  I: Integer;
+begin
+  LGraph := GetActivePassGraph;
+  Result := nil;
+  SetLength(Result, Length(LGraph.FValueQuotas));
+  for I := 0 to High(Result) do
+    with LGraph.FValueQuotas[I] do
+      Result[I] := MakeGraphValueQuotaConstraint(LabelText, Values,
+        MinimumCount, MaximumCount);
+end;
+
 procedure TGraph.ValidateConnectivityShape(const AWidth, AHeight,
   ADepth: TGraphCoordinate);
 var
@@ -6620,6 +6794,49 @@ var
       * AValueCount) + ANeighborValue;
   end;
 
+  function ValidateStagedValueQuotas(const AGraph: TGraph;
+    const AValues: TGraphValues; out AConstraintIndex,
+    AEntryIndex: Integer): Boolean;
+  var
+    C, I, LCount: Integer;
+    LConstraint: TGraphValueQuotaConstraint;
+  begin
+    //Independent public-value recount: do not reuse the numeric propagator
+    //or its final checker to guard the compiler/solver publication boundary.
+    AConstraintIndex := -1;
+    AEntryIndex := -1;
+    Result := True;
+    if Length(AGraph.FValueQuotas) = 0 then Exit;
+    ValidateDefinedModel(AGraph);
+    if Length(AValues) <> AGraph.FEntries.Count then
+      raise EInvalidOperation.Create('TrySolve::value quota assignment shape mismatch');
+    for I := 0 to High(AValues) do
+      if (AValues[I] = TGraphValue.Empty)
+        or not ContainsGraphValue(AGraph.FValues, AValues[I]) then
+      begin
+        AConstraintIndex := 0;
+        AEntryIndex := I;
+        Exit(False);
+      end;
+    for C := 0 to High(AGraph.FValueQuotas) do
+    begin
+      LConstraint := AGraph.FValueQuotas[C];
+      CheckGraphValueQuotaBounds(LConstraint.MinimumCount,
+        LConstraint.MaximumCount);
+      LCount := 0;
+      for I := 0 to High(AValues) do
+        if ContainsGraphValue(LConstraint.Values, AValues[I]) then
+          Inc(LCount);
+      if (LCount < LConstraint.MinimumCount)
+        or (LCount > LConstraint.MaximumCount) then
+      begin
+        AConstraintIndex := C;
+        //The violated bound describes this whole pass, not an arbitrary cell.
+        Exit(False);
+      end;
+    end;
+  end;
+
   function ValidateStagedConnectivity(const AGraph: TGraph;
     const AValues: TGraphValues; out AConstraintIndex,
     AEntryIndex: Integer): Boolean;
@@ -6804,6 +7021,8 @@ var
     LValueFailurePass: Integer;
     LConnectivityIndex, LProfileIndex, LPositionIndex: Integer;
     LConnectivity: TGraphConnectivityConstraint;
+    LQuotaIndex, LQuotaValueIndex: Integer;
+    LQuota: TGraphValueQuotaConstraint;
 
     function RequirementMatches(
       const ARequirementIndex: Integer): Boolean;
@@ -6943,6 +7162,21 @@ var
               Profiles[LProfileIndex].Ports := Profiles[LProfileIndex].Ports
                 or Byte(1 shl Ord(LDirection));
         end;
+      end;
+    end;
+
+    SetLength(AModel.ValueQuotas, Length(AGraph.FValueQuotas));
+    for LQuotaIndex := 0 to High(AGraph.FValueQuotas) do
+    begin
+      LQuota := AGraph.FValueQuotas[LQuotaIndex];
+      with AModel.ValueQuotas[LQuotaIndex] do
+      begin
+        MinimumCount := LQuota.MinimumCount;
+        MaximumCount := LQuota.MaximumCount;
+        SetLength(Values, Length(LQuota.Values));
+        for LQuotaValueIndex := 0 to High(Values) do
+          Values[LQuotaValueIndex] := FindValueIndex(AGraph,
+            LQuota.Values[LQuotaValueIndex]);
       end;
     end;
 
@@ -7174,6 +7408,8 @@ var
         Result := gckExcludedAssignment;
       rckConnectivity:
         Result := gckConnectivity;
+      rckValueQuota:
+        Result := gckValueQuota;
     else
       Result := gckNone;
     end;
@@ -7250,6 +7486,11 @@ var
       LConstraint, LFailedEntry) then
       raise EInvalidOperation.CreateFmt(
         'TrySolve::reused pass %d violates connectivity %d at entry %d; include it in regeneration',
+        [APassIndex, LConstraint, LFailedEntry]);
+    if not ValidateStagedValueQuotas(AGraph, LStaged[APassIndex],
+      LConstraint, LFailedEntry) then
+      raise EInvalidOperation.CreateFmt(
+        'TrySolve::reused pass %d violates value quota %d at entry %d; include it in regeneration',
         [APassIndex, LConstraint, LFailedEntry]);
   end;
 
@@ -7448,6 +7689,12 @@ var
           AFinalValidationPass := I;
           Exit(False);
         end;
+        if not ValidateStagedValueQuotas(FPasses[I], LStaged[I],
+          LConstraint, AFinalValidationEntry) then
+        begin
+          AFinalValidationPass := I;
+          Exit(False);
+        end;
       end;
 
       Result := DoValidateCommit(AFinalValidationPass,
@@ -7477,11 +7724,18 @@ var
       //edits are caller side effects, but must not publish a disconnected
       //candidate merely because its values and neighbor links stayed equal.
       for I := 0 to Pred(FPasses.Count) do
+      begin
         if not ValidateStagedConnectivity(FPasses[I], LStaged[I],
           LConstraint, AFinalValidationEntry) then
           raise EInvalidOperation.CreateFmt(
             'TrySolve::commit hook invalidated connectivity %d in pass %d entry %d',
             [LConstraint, I, AFinalValidationEntry]);
+        if not ValidateStagedValueQuotas(FPasses[I], LStaged[I],
+          LConstraint, AFinalValidationEntry) then
+          raise EInvalidOperation.CreateFmt(
+            'TrySolve::commit hook invalidated value quota %d in pass %d entry %d',
+            [LConstraint, I, AFinalValidationEntry]);
+      end;
       Result := True;
     except
       RestoreEntries;
@@ -8008,9 +8262,14 @@ begin
   BuildPassExecutionOrder(LExecutionOrder);
 
   for I := 0 to Pred(FPasses.Count) do
+  begin
     if Length(FPasses[I].FConnectivity) <> 0 then
       raise EInvalidOperation.Create(
         'Run::connectivity requires the TrySolve family');
+    if Length(FPasses[I].FValueQuotas) <> 0 then
+      raise EInvalidOperation.Create(
+        'Run::value quotas require the TrySolve family');
+  end;
 
   LSavedPassIndex := FCurPassIndex;
   FRunning := True;
@@ -8152,6 +8411,7 @@ begin
     FPlanes.Clear;
     SetLength(FValues, 0);
     FConnectivity := nil;
+    FValueQuotas := nil;
   finally
     LNewPass.Free;
     LNewPasses.Free;
@@ -8184,6 +8444,7 @@ begin
   SetLength(FPassDependencies, 0);
   FTransformSourceIndex := -1;
   FConnectivity := nil;
+  FValueQuotas := nil;
 end;
 
 constructor TGraph.CreatePass(const ARoot: TGraph;

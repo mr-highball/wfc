@@ -361,7 +361,7 @@ esac
 "$count_demo_executable" --selftest || exit $?
 
 compiler_connectivity_demo_directory="$compiler_source_directory/../examples/passes/06_ConnectedRoutes"
-for connectivity_test_name in wfc_connectivity_reference_test wfc_connectivity_test wfc_connectivity_trace_test wfc_connectivity_demo_test; do
+for connectivity_test_name in wfc_connectivity_reference_test wfc_connectivity_test wfc_connectivity_trace_test wfc_connectivity_demo_test wfc_value_quota_reference_test wfc_value_quota_test wfc_value_quota_trace_test; do
   printf "Building and running '%s'.\n" "$connectivity_test_name"
   "$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
     "-Fu$compiler_source_directory" "-Fu$compiler_tools_directory" \

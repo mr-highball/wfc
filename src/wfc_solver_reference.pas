@@ -52,6 +52,15 @@ type
   TReferenceConnectivityConstraints =
     wfc_connectivity_reference.TReferenceConnectivityConstraints;
 
+  //Count cells whose selected value belongs to this nonempty set. Each
+  //descriptor is an independent inclusive lower/upper bound over this pass.
+  TReferenceValueQuotaConstraint = record
+    Values: TReferenceIntegerArray;
+    MinimumCount: Integer;
+    MaximumCount: Integer;
+  end;
+  TReferenceValueQuotaConstraints = array of TReferenceValueQuotaConstraint;
+
   TReferenceContradictionKind = (
     rckNone,
     rckEmptyDomain,
@@ -64,7 +73,8 @@ type
     //exact full-assignment exclusions. Keep this distinct from model failure
     //so a pass-level coordinator can distinguish exhausted choice frames.
     rckExcludedAssignment,
-    rckConnectivity
+    rckConnectivity,
+    rckValueQuota
   );
 
   TReferenceContradictionKindArray =
@@ -107,7 +117,8 @@ type
     rtckBacktrack,
     rtckFinalValidation,
     rtckExcludedAssignment,
-    rtckConnectivity
+    rtckConnectivity,
+    rtckValueQuota
   );
 
   TReferenceTraceEvent = record
@@ -167,8 +178,8 @@ type
     RequiredValues: TReferenceByteArray;
     RequiredSupport: TReferenceByteArray;
     InitialAllowed: TReferenceByteArray;
-    //Legacy initial-domain classifications; rckConnectivity is reserved for
-    //the analyzer so no caller can manufacture a missing descriptor ordinal.
+    //Legacy initial-domain classifications; connectivity and value-quota
+    //failures are reserved for their analyzers and descriptor ordinals.
     InitialFailureKinds: TReferenceContradictionKindArray;
     LockedValues: TReferenceIntegerArray;
     CellOrder: TReferenceIntegerArray;
@@ -177,6 +188,9 @@ type
     ExcludedAssignments: TReferenceAssignments;
     //Independent AND clauses. Empty retains the historical search and trace.
     Connectivity: TReferenceConnectivityConstraints;
+    //Independent AND clauses in descriptor order. Empty makes no changes to
+    //the historical propagation, decision order, trace, or random draws.
+    ValueQuotas: TReferenceValueQuotaConstraints;
   end;
 
 function SolveReferenceModel(const AModel: TReferenceModel;
@@ -297,6 +311,9 @@ type
     function ReviseArc(const ACell, ADirection: Integer): Boolean;
     function ReviseRequired(const ACell: Integer): Boolean;
     function ReviseConnectivity: Boolean;
+    function ValueQuotaContains(const AConstraint, AValue: Integer): Boolean;
+    function ValueQuotaDomainCount(const AConstraint, ACell: Integer): Integer;
+    function ReviseValueQuotas: Boolean;
     function Propagate: Boolean;
     function FindDecisionCell: Integer;
     procedure EnsureFrameCapacity;
@@ -344,6 +361,41 @@ begin
       '%s has length %d; expected %d', [ALabel, AActual, AExpected]);
 end;
 
+procedure ValidateValueQuotas(const AModel: TReferenceModel);
+var
+  I, J, K: Integer;
+begin
+  if Length(AModel.ValueQuotas) = 0 then
+    Exit;
+  //Do not perform matrix arithmetic or allocate descriptor-sized state before
+  //checking exact finite browser integers. Empty graphs are legal; an unmet
+  //minimum is a solve contradiction, not malformed model data.
+  RequireReferenceConnectivityInteger(AModel.CellCount, 0, High(Integer),
+    'value-quota cell count');
+  RequireReferenceConnectivityInteger(AModel.ValueCount, 0, High(Integer),
+    'value-quota value count');
+  for I := 0 to High(AModel.ValueQuotas) do
+  begin
+    RequireReferenceConnectivityInteger(AModel.ValueQuotas[I].MinimumCount,
+      0, High(Integer), 'value-quota minimum count');
+    RequireReferenceConnectivityInteger(AModel.ValueQuotas[I].MaximumCount,
+      AModel.ValueQuotas[I].MinimumCount, High(Integer),
+      'value-quota maximum count');
+    if Length(AModel.ValueQuotas[I].Values) = 0 then
+      raise EInvalidOperation.Create('value quota needs at least one value');
+    if Length(AModel.ValueQuotas[I].Values) > AModel.ValueCount then
+      raise EInvalidOperation.Create('value quota has too many values');
+    for J := 0 to High(AModel.ValueQuotas[I].Values) do
+    begin
+      RequireReferenceConnectivityInteger(AModel.ValueQuotas[I].Values[J],
+        0, AModel.ValueCount - 1, 'value-quota value index');
+      for K := 0 to J - 1 do
+        if AModel.ValueQuotas[I].Values[K] = AModel.ValueQuotas[I].Values[J] then
+          raise EInvalidOperation.Create('value quota repeats a value index');
+    end;
+  end;
+end;
+
 procedure ValidateModel(const AModel: TReferenceModel);
 var
   I: Integer;
@@ -353,11 +405,13 @@ var
   LDuplicate: Boolean;
   LRelationCount: Integer;
   LSeen: TReferenceByteArray;
+  LGlobalLabel: String;
 begin
   //An opt-in connectivity model also guards exact browser integers before
   //the legacy matrix-size arithmetic or any descriptor-driven allocation.
   ValidateReferenceConnectivity(AModel.CellCount, AModel.ValueCount,
     AModel.Connectivity);
+  ValidateValueQuotas(AModel);
   if AModel.CellCount < 0 then
     raise ERangeError.Create('reference model cell count cannot be negative');
   if AModel.ValueCount < 0 then
@@ -392,40 +446,49 @@ begin
     'CellOrder');
 
   for I := 0 to High(AModel.InitialFailureKinds) do
+  begin
     if AModel.InitialFailureKinds[I] = rckConnectivity then
       raise EInvalidOperation.Create(
         'connectivity failure classification is reserved for descriptor analysis');
+    if AModel.InitialFailureKinds[I] = rckValueQuota then
+      raise EInvalidOperation.Create(
+        'value-quota failure classification is reserved for descriptor analysis');
+  end;
 
-  if Length(AModel.Connectivity) <> 0 then
+  if (Length(AModel.Connectivity) <> 0) or (Length(AModel.ValueQuotas) <> 0) then
   begin
+    if Length(AModel.Connectivity) <> 0 then
+      LGlobalLabel := 'connectivity'
+    else
+      LGlobalLabel := 'value-quota';
     for I := 0 to High(AModel.Neighbors) do
       RequireReferenceConnectivityInteger(AModel.Neighbors[I], -1,
-        AModel.CellCount - 1, 'connectivity model neighbor');
+        AModel.CellCount - 1, LGlobalLabel + ' model neighbor');
     for I := 0 to High(AModel.LockedValues) do
       RequireReferenceConnectivityInteger(AModel.LockedValues[I], -1,
-        AModel.ValueCount - 1, 'connectivity model lock');
+        AModel.ValueCount - 1, LGlobalLabel + ' model lock');
     for I := 0 to High(AModel.CellOrder) do
       RequireReferenceConnectivityInteger(AModel.CellOrder[I], 0,
-        AModel.CellCount - 1, 'connectivity model cell order');
+        AModel.CellCount - 1, LGlobalLabel + ' model cell order');
     for I := 0 to High(AModel.Compatibility) do
       RequireReferenceConnectivityInteger(AModel.Compatibility[I], 0, 255,
-        'connectivity compatibility byte');
+        LGlobalLabel + ' compatibility byte');
     for I := 0 to High(AModel.InitialAllowed) do
       RequireReferenceConnectivityInteger(AModel.InitialAllowed[I], 0, 255,
-        'connectivity domain byte');
+        LGlobalLabel + ' domain byte');
     for I := 0 to High(AModel.RequiredValues) do
       RequireReferenceConnectivityInteger(AModel.RequiredValues[I], 0, 255,
-        'connectivity local-required byte');
+        LGlobalLabel + ' local-required byte');
     for I := 0 to High(AModel.RequiredSupport) do
       RequireReferenceConnectivityInteger(AModel.RequiredSupport[I], 0, 255,
-        'connectivity local-support byte');
+        LGlobalLabel + ' local-support byte');
     for I := 0 to High(AModel.ValueWeights) do
       RequireReferenceConnectivityInteger(AModel.ValueWeights[I], 1,
-        High(Integer), 'connectivity value weight');
+        High(Integer), LGlobalLabel + ' value weight');
     for I := 0 to High(AModel.ExcludedAssignments) do
       for J := 0 to High(AModel.ExcludedAssignments[I]) do
         RequireReferenceConnectivityInteger(AModel.ExcludedAssignments[I][J],
-          0, AModel.ValueCount - 1, 'connectivity excluded value');
+          0, AModel.ValueCount - 1, LGlobalLabel + ' excluded value');
   end;
 
   for I := 0 to High(AModel.ExcludedAssignments) do
@@ -840,7 +903,8 @@ begin
   Dec(FDomainWeightSums[ACell], FValueWeights[AValue]);
   FDomainWeightLogSums[ACell] := FDomainWeightLogSums[ACell]
     - FValueWeightLogTerms[AValue];
-  if ACauseKind in [rtckAdjacency, rtckRequiredSupport, rtckConnectivity] then
+  if ACauseKind in [rtckAdjacency, rtckRequiredSupport, rtckConnectivity,
+      rtckValueQuota] then
     IncrementCounter(FReport.Propagations);
   LEventId := AppendTraceEvent(rtekCandidateRemoved, ACauseKind,
     ACauseEventId, ACell, AValue, ANeighborIndex, ADirection,
@@ -1191,6 +1255,79 @@ begin
   Result := True;
 end;
 
+function TReferenceSolver.ValueQuotaContains(const AConstraint,
+  AValue: Integer): Boolean;
+var
+  I: Integer;
+begin
+  for I := 0 to High(FModel.ValueQuotas[AConstraint].Values) do
+    if FModel.ValueQuotas[AConstraint].Values[I] = AValue then
+      Exit(True);
+  Result := False;
+end;
+
+function TReferenceSolver.ValueQuotaDomainCount(const AConstraint,
+  ACell: Integer): Integer;
+var
+  I: Integer;
+begin
+  Result := 0;
+  for I := 0 to High(FModel.ValueQuotas[AConstraint].Values) do
+    if FDomains[DomainIndex(ACell,
+        FModel.ValueQuotas[AConstraint].Values[I])] <> 0 then
+      Inc(Result);
+end;
+
+function TReferenceSolver.ReviseValueQuotas: Boolean;
+var
+  LConstraint, LCell, LValue, LMatches, LForced, LPossible: Integer;
+  LRemoveMembers, LRemoveNonmembers: Boolean;
+begin
+  for LConstraint := 0 to High(FModel.ValueQuotas) do
+  begin
+    LForced := 0;
+    LPossible := 0;
+    for LCell := 0 to FModel.CellCount - 1 do
+    begin
+      LMatches := ValueQuotaDomainCount(LConstraint, LCell);
+      if LMatches > 0 then
+      begin
+        Inc(LPossible);
+        if LMatches = FDomainCounts[LCell] then
+          Inc(LForced);
+      end;
+    end;
+    if (LForced > FModel.ValueQuotas[LConstraint].MaximumCount) or
+        (LPossible < FModel.ValueQuotas[LConstraint].MinimumCount) then
+    begin
+      //The bound concerns the whole pass, not any fabricated failure cell.
+      RecordContradiction(rckValueQuota, rtckValueQuota, -1, -1, -1,
+        FLastChangeEventId, LConstraint);
+      Exit(False);
+    end;
+    LRemoveMembers := LForced = FModel.ValueQuotas[LConstraint].MaximumCount;
+    LRemoveNonmembers := LPossible = FModel.ValueQuotas[LConstraint].MinimumCount;
+    if not (LRemoveMembers or LRemoveNonmembers) then
+      Continue;
+    for LCell := 0 to FModel.CellCount - 1 do
+    begin
+      LMatches := ValueQuotaDomainCount(LConstraint, LCell);
+      if (LMatches = 0) or (LMatches = FDomainCounts[LCell]) then
+        Continue;
+      //Only mixed domains are pruned. Upper-bound pruning preserves the
+      //forced count; lower-bound pruning preserves the possible count. The
+      //other bound can only become safer throughout this descriptor.
+      //Use value-index order, independent of the caller's set serialization.
+      for LValue := 0 to FModel.ValueCount - 1 do
+        if (LRemoveMembers and ValueQuotaContains(LConstraint, LValue)) or
+            (LRemoveNonmembers and not ValueQuotaContains(LConstraint, LValue)) then
+          RemoveCandidate(LCell, LValue, rtckValueQuota,
+            FLastChangeEventId, -1, -1, LConstraint);
+    end;
+  end;
+  Result := True;
+end;
+
 function TReferenceSolver.Propagate: Boolean;
 var
   LArc: Integer;
@@ -1215,6 +1352,9 @@ begin
     //No persistent component state is trailed: rebuild from restored domains
     //after each branch. Connectivity deletions re-enter the ordinary queue.
     if (Length(FConnectivity) <> 0) and not ReviseConnectivity then Exit(False);
+    //Quotas also recount restored domains instead of trailing cached counts.
+    //Their deletions re-enter adjacency, connectivity, and overlapping quotas.
+    if (Length(FModel.ValueQuotas) <> 0) and not ReviseValueQuotas then Exit(False);
   until FQueueCount = 0;
   Result := True;
 end;
@@ -1430,6 +1570,7 @@ var
   LValue: Integer;
   LConstraint: Integer;
   LFailureCell: Integer;
+  LQuotaCount: Integer;
 begin
   AContradiction.Kind := rckNone;
   AContradiction.EntryIndex := -1;
@@ -1511,6 +1652,23 @@ begin
       AContradiction.ConstraintIndex := LConstraint;
       Exit(False);
     end;
+  //Independent recount over the complete assignment, never the propagator's
+  //forced/possible counts or its current-domain bookkeeping.
+  for LConstraint := 0 to High(FModel.ValueQuotas) do
+  begin
+    LQuotaCount := 0;
+    for LCell := 0 to High(AAssignment) do
+      if ValueQuotaContains(LConstraint, AAssignment[LCell]) then
+        Inc(LQuotaCount);
+    if (LQuotaCount < FModel.ValueQuotas[LConstraint].MinimumCount) or
+        (LQuotaCount > FModel.ValueQuotas[LConstraint].MaximumCount) then
+    begin
+      AContradiction.Kind := rckValueQuota;
+      AContradiction.EntryIndex := -1;
+      AContradiction.ConstraintIndex := LConstraint;
+      Exit(False);
+    end;
+  end;
   Result := True;
 end;
 
@@ -1550,6 +1708,7 @@ var
   LRecovery: TReferenceRecoveryResult;
   LSolvedDomainCount: Integer;
   LSolvedEntry: Integer;
+  LFinalCause: TReferenceTraceCauseKind;
 begin
   AAssignment := nil;
   FReport.Status := rssContradiction;
@@ -1620,9 +1779,13 @@ begin
     ExtractAssignment(AAssignment);
     if not ValidateAssignment(AAssignment, LFinalContradiction) then
     begin
-      if LFinalContradiction.Kind = rckConnectivity then
+      if LFinalContradiction.Kind in [rckConnectivity, rckValueQuota] then
       begin
-        RecordContradiction(rckConnectivity, rtckConnectivity,
+        if LFinalContradiction.Kind = rckConnectivity then
+          LFinalCause := rtckConnectivity
+        else
+          LFinalCause := rtckValueQuota;
+        RecordContradiction(LFinalContradiction.Kind, LFinalCause,
           LFinalContradiction.EntryIndex, -1, -1, FLastChangeEventId,
           LFinalContradiction.ConstraintIndex);
         AAssignment := nil;

@@ -1,12 +1,15 @@
 # causal solve traces
 
-Opt-in [rooted connectivity](connectivity.md) adds `gtckConnectivity` and a
-pass-local `ConstraintIndex`. Ordinary events use `-1`; connectivity events
-use the descriptor's zero-based registration ordinal. Connectivity-derived
-decisions retain that ordinal through their cause link. Only connectivity
-causes extend the trace hash encoding, so unconstrained trace goldens remain
-unchanged. The formatter adds `connectivity=N` and the independent validator
-checks descriptor bounds and causal identity against the producing model.
+Opt-in [rooted connectivity](connectivity.md) and [whole-pass value quotas](value-quotas.md)
+add `gtckConnectivity` / `gtckValueQuota` and a pass-local `ConstraintIndex`.
+Ordinary events use `-1`; global-constraint events use the descriptor's
+zero-based registration ordinal in the registry selected by their cause kind.
+Derived decisions retain that ordinal through their cause link. Only these
+opt-in causes extend the trace hash encoding, so unconstrained trace goldens
+remain unchanged. The formatter adds `connectivity=N` or `value-quota=N` and
+the independent validator checks descriptor bounds and causal identity against
+the producing model. Whole-pass quota contradictions use entry `-1` and zero
+domain counts, never a fabricated failure cell or cell-domain size.
 
 Trace v1 event chronology and hashes remain unchanged. The pass report also
 retains its original `TraceStart`/`TraceCount` fields for source and transcript
@@ -230,7 +233,7 @@ must link back to that pass's staging event and agree with the failure report.
 Arbitrary rehashed interleaving is not another valid layout.
 
 Ordinary failure summaries must agree with the final contradiction's location,
-neighbor, direction, and connectivity ordinal. Unambiguous cause kinds must
+neighbor, direction, and global-constraint ordinal. Unambiguous cause kinds must
 match too. Initial-domain events record the last candidate removal, which can
 differ from the filter used for the aggregate failure classification. For
 those cases the validator checks the permitted classification family and any

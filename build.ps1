@@ -287,7 +287,9 @@ $connectivityDemoDirectory = Join-Path $repositoryRoot `
   'examples/passes/06_ConnectedRoutes'
 foreach ($connectivityTestName in @(
     'wfc_connectivity_reference_test', 'wfc_connectivity_test',
-    'wfc_connectivity_trace_test', 'wfc_connectivity_demo_test')) {
+    'wfc_connectivity_trace_test', 'wfc_connectivity_demo_test',
+    'wfc_value_quota_reference_test', 'wfc_value_quota_test',
+    'wfc_value_quota_trace_test')) {
   Write-Host "Building and running '$connectivityTestName'."
   & $Compiler @CompilerOptions -B -Mdelphi -Sa -Cr -Co -Ci `
     "-Fu$sourceDirectory" "-Fu$toolsDirectory" "-Fu$connectivityDemoDirectory" `

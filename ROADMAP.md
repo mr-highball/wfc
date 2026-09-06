@@ -403,10 +403,18 @@ reciprocal-port possible-graph pruning, mandatory cut participation, exact
 search-time validation, and reversible domains. Its two spatial demo cases
 exercise roads and multi-floor circulation; existing settlement/voxel model
 versions retain their earlier semantics. Portable recipe encoding, stronger
-port-specific filtering, chunk-boundary summaries, and global cardinality
+port-specific filtering and chunk-boundary summaries
 remain future work. The [research record](docs/research/rooted-connectivity-v1.md)
 states the soundness argument and finite oracle scope without a generalized
 arc-consistency or relative-performance claim.
+
+[Whole-pass Value Quotas v1](docs/value-quotas.md) now adds inclusive cardinality
+bounds over explicit value sets in unresolved same-pass domains. It composes
+with provider requirements and connectivity, trails its removals, independently
+recounts published and preserved assignments, and identifies clauses in traces.
+Its finite brute-force oracle checks satisfiability and sound pruning. Regional
+quotas, stronger propagation over interacting sets, efficient incremental count
+maintenance, and portable recipe encoding remain future work.
 
 The first packaged domain fixture proves the sequential subset with terrain →
 biome → foliage. The selective-settlement fixture expands that proof to
