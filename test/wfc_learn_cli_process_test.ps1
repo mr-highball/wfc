@@ -223,7 +223,7 @@ Check-Case -Executable $Learner -Arguments @('--quiet', $training) `
   -DiagnosticPrefix '' -Name 'quiet training'
 Check-Case -Executable $Learner -Arguments @('--version') `
   -StandardInput $emptyInput -ExpectedExitCode 0 `
-  -ExpectedOutput ($ascii.GetBytes("wfc-learn 2 (wfclearn=1,2)`n")) `
+  -ExpectedOutput ($ascii.GetBytes("wfc-learn 2 (wfclearn=1,2,3)`n")) `
   -DiagnosticPrefix '' -Name 'learner version'
 Check-Case -Executable $Learner -Arguments @($missingInput) `
   -StandardInput $emptyInput -ExpectedExitCode 3 -ExpectedOutput $null `

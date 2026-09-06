@@ -205,7 +205,7 @@ var
   LTokens: TWfcModelTokens;
 begin
   Check((WFC_TRAINING_VERSION = 1) and
-    (WFC_TRAINING_TEXT_VERSION = 2),
+    (WFC_TRAINING_TEXT_VERSION = 3),
     'the legacy API version and latest source-text profile are pinned');
   Check((Ord(wtkAdjacency1D) = 0) and (Ord(wtkAdjacency2D) = 1) and
     (Ord(wtkPattern2D) = 2) and (Ord(wtkSequence) = 3) and

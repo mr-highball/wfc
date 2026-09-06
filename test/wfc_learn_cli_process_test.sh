@@ -62,7 +62,7 @@ cleanup() {
   rmdir -- "$temporary_directory" 2>/dev/null || true
 }
 trap cleanup EXIT HUP INT TERM
-printf 'wfc-learn 2 (wfclearn=1,2)\n' >"$expected_version" || exit $?
+printf 'wfc-learn 2 (wfclearn=1,2,3)\n' >"$expected_version" || exit $?
 printf 'not-training\n' >"$invalid_training" || exit $?
 case_count=0
 
