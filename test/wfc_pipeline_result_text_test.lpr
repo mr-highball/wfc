@@ -538,6 +538,21 @@ begin
       'failed result text re-encodes byte for byte');
     FreeAndNil(LDecoded);
     FreeAndNil(LResult);
+    LFailure := EmptyWfcPipelineFailure;
+    LFailure.Kind := gckConnectivity;
+    LFailure.PassIndex := 0;
+    LResult := TWfcPipelineResult.Create(LRecipe, LRun,
+      CurrentWfcPipelineResultVersions, wprsContradiction, 0,
+      wpekTrace, Cardinal($10203040), LFailure, LOutcomes, nil);
+    LText := EncodeWfcPipelineResultText(LResult);
+    LDecoded := DecodeWfcPipelineResultText(LText, LRecipe, LRun);
+    Check((Pos('failure-kind=connectivity'#10, LText) > 0) and
+      (LDecoded.CopyFailure.Kind = gckConnectivity) and
+      (LDecoded.CopyFailure.EntryIndex = -1) and
+      (EncodeWfcPipelineResultText(LDecoded) = LText),
+      'whole-pass connectivity kind also has an exact canonical spelling');
+    FreeAndNil(LDecoded);
+    FreeAndNil(LResult);
     FreeAndNil(LRun);
 
     LRun := BuildRun(LRecipe, wpssNegotiated);

@@ -29,6 +29,7 @@ the broader work still required.
 | [Volume Observation Orbits v1](volume-observation-orbits-v1.md) | Aggregate transformed six-direction observations exactly, checked against literal coordinate transforms. Scalar token payloads do not rotate; cardinal relations are not joint 3D footprints. |
 | [Model-to-voxel pass experiment v1](model-to-voxel-pass-v1.md) | Connect learned terrain to authored structural interpretations and offset foliage constraints. Independent semantic validation checks the bridge; the fixture does not establish chunked scalability. |
 | [Portable Pipeline Bundle v1](portable-pipeline-bundle-v1.md) | Reconstruct supported declarative pipelines from canonical recipes, runs, and results. This is a closed, versioned execution contract, not serialization of arbitrary live graphs or callbacks. |
+| [Portable public quotas v1](portable-value-quotas-v1.md) | Lower whole-pass public quantities through exact-copy and latent projection layers, then independently recount before commit. Same-shape supported bridges only; not generalized count optimization. |
 
 ## Music
 

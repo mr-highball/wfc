@@ -113,7 +113,8 @@ end;
 function WfcValidateVersionText: String;
 begin
   Result := 'wfc-validate ' + IntToStr(WFC_VALIDATE_CLI_VERSION) +
-    ' (wfcpipeline=' + IntToStr(WFC_PIPELINE_TEXT_VERSION) + ')'#10;
+    ' (wfcpipeline=' + IntToStr(WFC_PIPELINE_TEXT_VERSION) + ',' +
+    IntToStr(WFC_PIPELINE_MAX_SUPPORTED_TEXT_VERSION) + ')'#10;
 end;
 
 function WfcValidateFailureExitCode(
@@ -323,13 +324,16 @@ end;
 function RecipeSummary(const AModel: TWfcPipelineModel): String;
 begin
   Result := 'valid canonical wfcpipeline=' +
-    IntToStr(WFC_PIPELINE_TEXT_VERSION) + ' signature=' +
+    IntToStr(WfcPipelineModelTextVersion(AModel)) + ' signature=' +
     WfcPipelineSignatureHex(AModel.Signature) +
     ' resources=' + IntToStr(AModel.ResourceCount) +
     ' passes=' + IntToStr(AModel.PassCount) +
     ' dependencies=' + IntToStr(AModel.DependencyCount) +
     ' bridges=' + IntToStr(AModel.BridgeCount) +
-    ' requirements=' + IntToStr(AModel.RequirementCount) + #10;
+    ' requirements=' + IntToStr(AModel.RequirementCount);
+  if AModel.ValueQuotaCount > 0 then
+    Result := Result + ' value-quotas=' + IntToStr(AModel.ValueQuotaCount);
+  Result := Result + #10;
 end;
 
 function FindNonAsciiByte(const AText: String): Integer;

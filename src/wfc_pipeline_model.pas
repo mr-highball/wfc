@@ -39,6 +39,9 @@ const
   WFC_PIPELINE_MODEL_VERSION = 1;
   WFC_PIPELINE_MODEL_SIGNATURE_VERSION = 1;
   WFC_PIPELINE_GRAPH_ADAPTER_VERSION = 1;
+  { Opt-in whole-pass public-token quotas. The legacy model/adapter versions,
+    version record, and all quota-free identities remain unchanged. }
+  WFC_PIPELINE_VALUE_QUOTA_VERSION = 1;
   { Bridge version 2 adds deterministic inverse lowering of public run inputs
     into the private source pass. Version 1 remains accepted as the portable
     forward-only contract. }
@@ -65,6 +68,9 @@ const
   WFC_PIPELINE_MAX_ENCODED_TOKEN_LENGTH = 1048576;
   WFC_PIPELINE_MAX_TOTAL_ENCODED_TOKEN_LENGTH = 16777216;
   WFC_PIPELINE_MAX_TOTAL_RESOURCE_RELATION_SLOT_COUNT = 16777216;
+  WFC_PIPELINE_MAX_VALUE_QUOTA_COUNT = 4096;
+  WFC_PIPELINE_MAX_VALUE_QUOTA_TOKEN_COUNT = 1024;
+  WFC_PIPELINE_MAX_TOTAL_VALUE_QUOTA_TOKEN_COUNT = 65536;
 
 type
   EWfcPipelineModel = class(Exception);
@@ -180,6 +186,20 @@ type
   end;
   TWfcPipelineRequirements = array of TWfcPipelineRequirement;
 
+  { Values is a nonempty set in the target's strict public-vocabulary order.
+    Whole-pass bounds are independent of invocation shape. Public transform
+    aliases retain their own declaration/diagnostic identity; the compiler
+    lowers their quota through the exact-copy chain, never materializing a
+    rule definition on the alias. }
+  TWfcPipelineValueQuota = record
+    PassIndex: Integer;
+    LabelText: TWfcModelToken;
+    Values: TWfcModelTokens;
+    MinimumCount: Integer;
+    MaximumCount: Integer;
+  end;
+  TWfcPipelineValueQuotas = array of TWfcPipelineValueQuota;
+
   { TWfcPipelineModel }
 
   (*
@@ -200,6 +220,7 @@ type
     FDependencies: TWfcPipelineDependencies;
     FBridges: TWfcPipelineBridges;
     FRequirements: TWfcPipelineRequirements;
+    FValueQuotas: TWfcPipelineValueQuotas;
     FVocabularies: array of TWfcModelTokens;
     FModelResources: array of TWfcModel;
     FRuleResources: array of TWfcRuleModel;
@@ -212,6 +233,8 @@ type
     function GetDependencyCount: Integer;
     function GetBridgeCount: Integer;
     function GetRequirementCount: Integer;
+    function GetValueQuotaCount: Integer;
+    function GetValueQuotaVersion: Integer;
     procedure Initialize(const AMetadata: TWfcPipelineMetadata;
       const AVersions: TWfcPipelineVersions;
       const ARank: Integer; const AWrapNeighbors: Boolean;
@@ -220,12 +243,14 @@ type
       const APasses: TWfcPipelinePasses;
       const ADependencies: TWfcPipelineDependencies;
       const ABridges: TWfcPipelineBridges;
-      const ARequirements: TWfcPipelineRequirements);
+      const ARequirements: TWfcPipelineRequirements;
+      const AValueQuotas: TWfcPipelineValueQuotas);
     procedure ValidateResourceIndex(const AIndex: Integer);
     procedure ValidatePassIndex(const AIndex: Integer);
     procedure ValidateDependencyIndex(const AIndex: Integer);
     procedure ValidateBridgeIndex(const AIndex: Integer);
     procedure ValidateRequirementIndex(const AIndex: Integer);
+    procedure ValidateValueQuotaIndex(const AIndex: Integer);
   public
     constructor Create(const AMetadata: TWfcPipelineMetadata;
       const ARank: Integer; const AWrapNeighbors: Boolean;
@@ -235,6 +260,25 @@ type
       const ADependencies: TWfcPipelineDependencies;
       const ABridges: TWfcPipelineBridges;
       const ARequirements: TWfcPipelineRequirements); overload;
+    constructor Create(const AMetadata: TWfcPipelineMetadata;
+      const ARank: Integer; const AWrapNeighbors: Boolean;
+      const ARunMode: TGraphRunMode;
+      const AResources: TWfcPipelineResources;
+      const APasses: TWfcPipelinePasses;
+      const ADependencies: TWfcPipelineDependencies;
+      const ABridges: TWfcPipelineBridges;
+      const ARequirements: TWfcPipelineRequirements;
+      const AValueQuotas: TWfcPipelineValueQuotas); overload;
+    constructor Create(const AMetadata: TWfcPipelineMetadata;
+      const AVersions: TWfcPipelineVersions;
+      const ARank: Integer; const AWrapNeighbors: Boolean;
+      const ARunMode: TGraphRunMode;
+      const AResources: TWfcPipelineResources;
+      const APasses: TWfcPipelinePasses;
+      const ADependencies: TWfcPipelineDependencies;
+      const ABridges: TWfcPipelineBridges;
+      const ARequirements: TWfcPipelineRequirements;
+      const AValueQuotas: TWfcPipelineValueQuotas); overload;
     constructor Create(const AMetadata: TWfcPipelineMetadata;
       const AVersions: TWfcPipelineVersions;
       const ARank: Integer; const AWrapNeighbors: Boolean;
@@ -253,11 +297,13 @@ type
     function DependencyAt(const AIndex: Integer): TWfcPipelineDependency;
     function BridgeAt(const AIndex: Integer): TWfcPipelineBridge;
     function RequirementAt(const AIndex: Integer): TWfcPipelineRequirement;
+    function ValueQuotaAt(const AIndex: Integer): TWfcPipelineValueQuota;
     function CopyResources: TWfcPipelineResources;
     function CopyPasses: TWfcPipelinePasses;
     function CopyDependencies: TWfcPipelineDependencies;
     function CopyBridges: TWfcPipelineBridges;
     function CopyRequirements: TWfcPipelineRequirements;
+    function CopyValueQuotas: TWfcPipelineValueQuotas;
     function CopyPublicVocabulary(
       const APassIndex: Integer): TWfcModelTokens;
     function FindResource(const AId: TWfcModelToken): Integer;
@@ -278,6 +324,9 @@ type
     property DependencyCount: Integer read GetDependencyCount;
     property BridgeCount: Integer read GetBridgeCount;
     property RequirementCount: Integer read GetRequirementCount;
+    property ValueQuotaCount: Integer read GetValueQuotaCount;
+    { Zero means no quota extension; otherwise the explicit supported version. }
+    property ValueQuotaVersion: Integer read GetValueQuotaVersion;
     property Signature: TWfcPipelineSignature read FSignature;
   end;
 
@@ -325,6 +374,10 @@ function MakeWfcPipelineCountRequirement(
   const ATerms: TWfcPipelineRequirementTerms;
   const AMinimumCount, AMaximumCount: Integer;
   const ACountMode: TGraphPassCountMode): TWfcPipelineRequirement;
+
+function MakeWfcPipelineValueQuota(const APassIndex: Integer;
+  const ALabelText: TWfcModelToken; const AValues: TWfcModelTokens;
+  const AMinimumCount, AMaximumCount: Integer): TWfcPipelineValueQuota;
 
 function WfcPipelineSignatureHex(
   const ASignature: TWfcPipelineSignature): String;
@@ -531,6 +584,29 @@ begin
   Result.Terms := CloneTerms(AValue.Terms);
 end;
 
+function CloneValueQuota(const AValue: TWfcPipelineValueQuota):
+  TWfcPipelineValueQuota;
+begin
+  Result.PassIndex := AValue.PassIndex;
+  Result.LabelText := AValue.LabelText;
+  Result.MinimumCount := AValue.MinimumCount;
+  Result.MaximumCount := AValue.MaximumCount;
+  Result.Values := CloneTokens(AValue.Values);
+end;
+
+procedure RequireQuotaInteger(const AValue: Integer; const ALabel: String);
+begin
+  { Match the core quota guard: positive comparisons reject NaN/undefined,
+    and strict Trunc equality rejects fractional and string-valued JS input. }
+  if not ((AValue >= 0) and (AValue <= High(Integer))) then
+    raise EWfcPipelineModel.Create(ALabel +
+      ' must be an exact integer in 0..High(Integer)');
+  {$IFDEF PAS2JS}
+  if AValue <> Trunc(AValue) then
+    raise EWfcPipelineModel.Create(ALabel + ' must be an exact integer');
+  {$ENDIF}
+end;
+
 function CurrentWfcPipelineVersions: TWfcPipelineVersions;
 begin
   Result.GraphModelVersion := WFC_GRAPH_MODEL_VERSION;
@@ -708,6 +784,21 @@ begin
   Result.Terms := CloneTerms(ATerms);
 end;
 
+function MakeWfcPipelineValueQuota(const APassIndex: Integer;
+  const ALabelText: TWfcModelToken; const AValues: TWfcModelTokens;
+  const AMinimumCount, AMaximumCount: Integer): TWfcPipelineValueQuota;
+begin
+  { Like the other IR factories, this detaches bounded input storage; the
+    immutable recipe constructor performs semantic/vocabulary validation. }
+  CheckedLength(Length(AValues), 'value-quota token count',
+    WFC_PIPELINE_MAX_VALUE_QUOTA_TOKEN_COUNT);
+  Result.PassIndex := APassIndex;
+  Result.LabelText := ALabelText;
+  Result.Values := CloneTokens(AValues);
+  Result.MinimumCount := AMinimumCount;
+  Result.MaximumCount := AMaximumCount;
+end;
+
 function TextIsAscii(const AValue: String): Boolean;
 var
   I: Integer;
@@ -839,6 +930,7 @@ var
   LRequirement: TWfcPipelineRequirement;
   LResource: TWfcPipelineResource;
   LTerm: TWfcPipelineRequirementTerm;
+  LQuota: TWfcPipelineValueQuota;
   LVersions: TWfcPipelineVersions;
 begin
   Result := Cardinal(2166136261);
@@ -937,6 +1029,26 @@ begin
         HashToken(Result, LTerm.AllowedProviderTokens[K]);
     end;
   end;
+  { Do not even hash a zero count for legacy recipes: their complete version-1
+    identities are already public goldens and must remain byte-for-byte. }
+  if AModel.ValueQuotaCount <> 0 then
+  begin
+    HashAscii(Result, 'wfcpipeline-value-quotas');
+    HashInteger(Result, AModel.ValueQuotaVersion);
+    HashInteger(Result, WFC_GRAPH_VALUE_QUOTA_VERSION);
+    HashInteger(Result, AModel.ValueQuotaCount);
+    for I := 0 to AModel.ValueQuotaCount - 1 do
+    begin
+      LQuota := AModel.ValueQuotaAt(I);
+      HashInteger(Result, LQuota.PassIndex);
+      HashToken(Result, LQuota.LabelText);
+      HashInteger(Result, LQuota.MinimumCount);
+      HashInteger(Result, LQuota.MaximumCount);
+      HashInteger(Result, Length(LQuota.Values));
+      for J := 0 to Length(LQuota.Values) - 1 do
+        HashToken(Result, LQuota.Values[J]);
+    end;
+  end;
 end;
 
 function WfcPipelineSignatureHex(
@@ -959,7 +1071,7 @@ begin
   inherited Create;
   Initialize(AMetadata, CurrentWfcPipelineVersions, ARank,
     AWrapNeighbors, ARunMode, AResources, APasses, ADependencies,
-    ABridges, ARequirements);
+    ABridges, ARequirements, nil);
 end;
 
 constructor TWfcPipelineModel.Create(
@@ -974,7 +1086,39 @@ constructor TWfcPipelineModel.Create(
 begin
   inherited Create;
   Initialize(AMetadata, AVersions, ARank, AWrapNeighbors, ARunMode,
-    AResources, APasses, ADependencies, ABridges, ARequirements);
+    AResources, APasses, ADependencies, ABridges, ARequirements, nil);
+end;
+
+constructor TWfcPipelineModel.Create(
+  const AMetadata: TWfcPipelineMetadata; const ARank: Integer;
+  const AWrapNeighbors: Boolean; const ARunMode: TGraphRunMode;
+  const AResources: TWfcPipelineResources;
+  const APasses: TWfcPipelinePasses;
+  const ADependencies: TWfcPipelineDependencies;
+  const ABridges: TWfcPipelineBridges;
+  const ARequirements: TWfcPipelineRequirements;
+  const AValueQuotas: TWfcPipelineValueQuotas);
+begin
+  inherited Create;
+  Initialize(AMetadata, CurrentWfcPipelineVersions, ARank,
+    AWrapNeighbors, ARunMode, AResources, APasses, ADependencies,
+    ABridges, ARequirements, AValueQuotas);
+end;
+
+constructor TWfcPipelineModel.Create(
+  const AMetadata: TWfcPipelineMetadata;
+  const AVersions: TWfcPipelineVersions; const ARank: Integer;
+  const AWrapNeighbors: Boolean; const ARunMode: TGraphRunMode;
+  const AResources: TWfcPipelineResources;
+  const APasses: TWfcPipelinePasses;
+  const ADependencies: TWfcPipelineDependencies;
+  const ABridges: TWfcPipelineBridges;
+  const ARequirements: TWfcPipelineRequirements;
+  const AValueQuotas: TWfcPipelineValueQuotas);
+begin
+  inherited Create;
+  Initialize(AMetadata, AVersions, ARank, AWrapNeighbors, ARunMode,
+    AResources, APasses, ADependencies, ABridges, ARequirements, AValueQuotas);
 end;
 
 destructor TWfcPipelineModel.Destroy;
@@ -1000,7 +1144,8 @@ procedure TWfcPipelineModel.Initialize(
   const APasses: TWfcPipelinePasses;
   const ADependencies: TWfcPipelineDependencies;
   const ABridges: TWfcPipelineBridges;
-  const ARequirements: TWfcPipelineRequirements);
+  const ARequirements: TWfcPipelineRequirements;
+  const AValueQuotas: TWfcPipelineValueQuotas);
 var
   I: Integer;
   J: Integer;
@@ -1027,6 +1172,8 @@ var
   LTotalRequirementTermCount: Integer;
   LTotalResourceRelationSlotCount: Integer;
   LVersions: TWfcPipelineVersions;
+  LQuotaCount: Integer;
+  LTotalQuotaTokenCount: Integer;
 
   procedure ValidateIndex(const AIndex, ACount: Integer;
     const ALabel: String);
@@ -1107,6 +1254,8 @@ begin
     'pipeline bridge count', WFC_PIPELINE_MAX_BRIDGE_COUNT);
   LRequirementCount := CheckedLength(Length(ARequirements),
     'pipeline requirement count', WFC_PIPELINE_MAX_REQUIREMENT_COUNT);
+  LQuotaCount := CheckedLength(Length(AValueQuotas),
+    'pipeline value-quota count', WFC_PIPELINE_MAX_VALUE_QUOTA_COUNT);
 
   { Preflight all nested record counts and all copied outer token bytes before
     allocating owner arrays or invoking a nested resource decoder. }
@@ -1115,6 +1264,7 @@ begin
   LTotalPayloadLength := 0;
   LTotalRequirementTermCount := 0;
   LTotalResourceRelationSlotCount := 0;
+  LTotalQuotaTokenCount := 0;
   AccumulateOuterToken(AMetadata.Name, 'pipeline name', False);
   AccumulateOuterToken(AMetadata.LicenseIdentifier,
     'pipeline license identifier', False);
@@ -1177,6 +1327,35 @@ begin
           Format('requirement %d term %d allowed token %d', [I, J, K]),
           False);
     end;
+  end;
+
+  for I := 0 to LQuotaCount - 1 do
+  begin
+    RequireQuotaInteger(AValueQuotas[I].PassIndex,
+      Format('value-quota %d pass index', [I]));
+    RequireQuotaInteger(AValueQuotas[I].MinimumCount,
+      Format('value-quota %d minimum', [I]));
+    RequireQuotaInteger(AValueQuotas[I].MaximumCount,
+      Format('value-quota %d maximum', [I]));
+    if AValueQuotas[I].MinimumCount > AValueQuotas[I].MaximumCount then
+      raise EWfcPipelineModel.CreateFmt(
+        'value-quota %d bounds must satisfy 0 <= minimum <= maximum', [I]);
+    AccumulateOuterToken(AValueQuotas[I].LabelText,
+      Format('value-quota %d label', [I]), False);
+    LAllowedCount := CheckedLength(Length(AValueQuotas[I].Values),
+      Format('value-quota %d token count', [I]),
+      WFC_PIPELINE_MAX_VALUE_QUOTA_TOKEN_COUNT);
+    if LAllowedCount = 0 then
+      raise EWfcPipelineModel.CreateFmt(
+        'value-quota %d must contain at least one public token', [I]);
+    if LTotalQuotaTokenCount >
+        WFC_PIPELINE_MAX_TOTAL_VALUE_QUOTA_TOKEN_COUNT - LAllowedCount then
+      raise EWfcPipelineModel.Create(
+        'aggregate value-quota token count exceeds the quota version-1 limit');
+    Inc(LTotalQuotaTokenCount, LAllowedCount);
+    for J := 0 to LAllowedCount - 1 do
+      AccumulateOuterToken(AValueQuotas[I].Values[J],
+        Format('value-quota %d token %d', [I, J]), False);
   end;
 
   FMetadata := AMetadata;
@@ -1681,6 +1860,41 @@ begin
     FRequirements[I] := CloneRequirement(ARequirements[I]);
   end;
 
+  { Resolve quotas only after bridges and transform aliases have their final
+    statically known public vocabulary. Private latent state keys never leak
+    into the portable quota surface. No dependency is introduced by a quota. }
+  SetLength(FValueQuotas, LQuotaCount);
+  for I := 0 to LQuotaCount - 1 do
+  begin
+    ValidateIndex(AValueQuotas[I].PassIndex, LPassCount,
+      Format('value-quota %d owner', [I]));
+    J := AValueQuotas[I].PassIndex;
+    if FPasses[J].Visibility <> wppvPublic then
+      raise EWfcPipelineModel.CreateFmt(
+        'value-quota %d owner must be public', [I]);
+    if Length(FVocabularies[J]) = 0 then
+      raise EWfcPipelineModel.CreateFmt(
+        'value-quota %d owner has no statically known public vocabulary', [I]);
+    for K := 0 to I - 1 do
+      if (AValueQuotas[K].PassIndex = J) and
+          (AValueQuotas[K].LabelText = AValueQuotas[I].LabelText) then
+        raise EWfcPipelineModel.CreateFmt(
+          'value-quota %d duplicates the pass/label key of quota %d', [I, K]);
+    LPreviousTokenIndex := -1;
+    for K := 0 to Length(AValueQuotas[I].Values) - 1 do
+    begin
+      LProviderTokenIndex := TokenIndex(FVocabularies[J], AValueQuotas[I].Values[K]);
+      if LProviderTokenIndex < 0 then
+        raise EWfcPipelineModel.CreateFmt(
+          'value-quota %d token %d is outside the public vocabulary', [I, K]);
+      if LProviderTokenIndex <= LPreviousTokenIndex then
+        raise EWfcPipelineModel.CreateFmt(
+          'value-quota %d tokens must use strict public-vocabulary order', [I]);
+      LPreviousTokenIndex := LProviderTokenIndex;
+    end;
+    FValueQuotas[I] := CloneValueQuota(AValueQuotas[I]);
+  end;
+
   FSignature := CalculateSignature(Self);
 end;
 
@@ -1707,6 +1921,17 @@ end;
 function TWfcPipelineModel.GetRequirementCount: Integer;
 begin
   Result := Length(FRequirements);
+end;
+
+function TWfcPipelineModel.GetValueQuotaCount: Integer;
+begin
+  Result := Length(FValueQuotas);
+end;
+
+function TWfcPipelineModel.GetValueQuotaVersion: Integer;
+begin
+  if ValueQuotaCount = 0 then Result := 0
+  else Result := WFC_PIPELINE_VALUE_QUOTA_VERSION;
 end;
 
 procedure TWfcPipelineModel.ValidateResourceIndex(const AIndex: Integer);
@@ -1742,6 +1967,16 @@ begin
   if (AIndex < 0) or (AIndex >= RequirementCount) then
     raise ERangeError.CreateFmt(
       'pipeline requirement index out of bounds [%d]', [AIndex]);
+end;
+
+procedure TWfcPipelineModel.ValidateValueQuotaIndex(const AIndex: Integer);
+begin
+  if not ((AIndex >= 0) and (AIndex < ValueQuotaCount)) then
+    raise ERangeError.Create('pipeline value-quota index out of bounds');
+  {$IFDEF PAS2JS}
+  if AIndex <> Trunc(AIndex) then
+    raise ERangeError.Create('pipeline value-quota index must be an exact integer');
+  {$ENDIF}
 end;
 
 function TWfcPipelineModel.CopyMetadata: TWfcPipelineMetadata;
@@ -1787,6 +2022,12 @@ function TWfcPipelineModel.RequirementAt(
 begin
   ValidateRequirementIndex(AIndex);
   Result := CloneRequirement(FRequirements[AIndex]);
+end;
+
+function TWfcPipelineModel.ValueQuotaAt(const AIndex: Integer): TWfcPipelineValueQuota;
+begin
+  ValidateValueQuotaIndex(AIndex);
+  Result := CloneValueQuota(FValueQuotas[AIndex]);
 end;
 
 function TWfcPipelineModel.CopyResources: TWfcPipelineResources;
@@ -1837,6 +2078,15 @@ begin
   SetLength(Result, RequirementCount);
   for I := 0 to RequirementCount - 1 do
     Result[I] := CloneRequirement(FRequirements[I]);
+end;
+
+function TWfcPipelineModel.CopyValueQuotas: TWfcPipelineValueQuotas;
+var I: Integer;
+begin
+  Result := nil;
+  SetLength(Result, ValueQuotaCount);
+  for I := 0 to ValueQuotaCount - 1 do
+    Result[I] := CloneValueQuota(FValueQuotas[I]);
 end;
 
 function TWfcPipelineModel.CopyPublicVocabulary(

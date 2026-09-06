@@ -32,6 +32,8 @@ uses
 
 const
   WFC_PIPELINE_TEXT_VERSION = 1;
+  WFC_PIPELINE_VALUE_QUOTA_TEXT_VERSION = 2;
+  WFC_PIPELINE_MAX_SUPPORTED_TEXT_VERSION = WFC_PIPELINE_VALUE_QUOTA_TEXT_VERSION;
   WFC_PIPELINE_MAX_ENCODED_TEXT_LENGTH = 268435456;
   WFC_PIPELINE_MAX_TEXT_LINE_COUNT = 26 +
     WFC_PIPELINE_MAX_RESOURCE_COUNT + WFC_PIPELINE_MAX_PASS_COUNT +
@@ -40,7 +42,11 @@ const
     WFC_PIPELINE_MAX_REQUIREMENT_COUNT +
     WFC_PIPELINE_MAX_TOTAL_REQUIREMENT_TERM_COUNT +
     WFC_PIPELINE_MAX_TOTAL_ALLOWED_TOKEN_COUNT;
+  WFC_PIPELINE_VALUE_QUOTA_MAX_TEXT_LINE_COUNT = WFC_PIPELINE_MAX_TEXT_LINE_COUNT +
+    2 + WFC_PIPELINE_MAX_VALUE_QUOTA_COUNT +
+    WFC_PIPELINE_MAX_TOTAL_VALUE_QUOTA_TOKEN_COUNT;
 
+function WfcPipelineModelTextVersion(const AModel: TWfcPipelineModel): Integer;
 function EncodeWfcPipelineModelText(
   const AModel: TWfcPipelineModel): String;
 function DecodeWfcPipelineModelText(
@@ -115,12 +121,13 @@ begin
   Inc(ALineCount);
 end;
 
-procedure AddLineCapacity(var ACount: Integer; const AAdditional: Integer);
+procedure AddLineCapacity(var ACount: Integer; const AAdditional: Integer;
+  const AMaximum: Integer = WFC_PIPELINE_MAX_TEXT_LINE_COUNT);
 begin
   if AAdditional < 0 then
     raise EArgumentOutOfRangeException.Create(
       'canonical WFC pipeline line addition cannot be negative');
-  if ACount > WFC_PIPELINE_MAX_TEXT_LINE_COUNT - AAdditional then
+  if ACount > AMaximum - AAdditional then
     raise ERangeError.Create('canonical WFC pipeline text has too many lines');
   Inc(ACount, AAdditional);
 end;
@@ -143,24 +150,48 @@ begin
   end;
 end;
 
-procedure PreflightTextEnvelope(const AText: String);
+procedure PreflightTextEnvelope(const AText: String; out AVersion: Integer);
 var
   I: SizeInt;
   LLineCount: Integer;
   LTextLength: SizeInt;
+  LMaximumLines: Integer;
+  LKnownVersion: Boolean;
 begin
   LTextLength := Length(AText);
   if (LTextLength < 0) or
       (LTextLength > SizeInt(WFC_PIPELINE_MAX_ENCODED_TEXT_LENGTH)) then
     TextError('document exceeds the version-1 encoded length limit');
+  { Determine the exact supported header before allocating the line array.
+    V1 retains its original denial-of-service envelope even when V2 exists. }
+  LKnownVersion := True;
+  if Copy(AText, 1, 14) = 'wfcpipeline=1'#10 then
+  begin
+    AVersion := WFC_PIPELINE_TEXT_VERSION;
+    LMaximumLines := WFC_PIPELINE_MAX_TEXT_LINE_COUNT;
+  end
+  else if Copy(AText, 1, 14) = 'wfcpipeline=2'#10 then
+  begin
+    AVersion := WFC_PIPELINE_VALUE_QUOTA_TEXT_VERSION;
+    LMaximumLines := WFC_PIPELINE_VALUE_QUOTA_MAX_TEXT_LINE_COUNT;
+  end
+  else
+  begin
+    { Preserve V1's early envelope diagnostic for malformed, line-heavy
+      inputs too. No unsupported header is admitted after this scan. }
+    LKnownVersion := False;
+    AVersion := WFC_PIPELINE_TEXT_VERSION;
+    LMaximumLines := WFC_PIPELINE_MAX_TEXT_LINE_COUNT;
+  end;
   LLineCount := 0;
   for I := 1 to LTextLength do
     if AText[I] = #10 then
     begin
-      if LLineCount = WFC_PIPELINE_MAX_TEXT_LINE_COUNT then
-        TextError('document exceeds the version-1 line-count limit');
+      if LLineCount = LMaximumLines then
+        TextError('document exceeds the version-' + IntToStr(AVersion) + ' line-count limit');
       Inc(LLineCount);
     end;
+  if not LKnownVersion then TextError('unsupported or noncanonical format version');
 end;
 
 function SplitRecord(const AText: String;
@@ -537,6 +568,14 @@ begin
   end;
 end;
 
+function WfcPipelineModelTextVersion(const AModel: TWfcPipelineModel): Integer;
+begin
+  if not Assigned(AModel) then
+    raise EArgumentNilException.Create('WFC pipeline model cannot be nil');
+  if AModel.ValueQuotaCount = 0 then Result := WFC_PIPELINE_TEXT_VERSION
+  else Result := WFC_PIPELINE_VALUE_QUOTA_TEXT_VERSION;
+end;
+
 function EncodeWfcPipelineModelText(
   const AModel: TWfcPipelineModel): String;
 var
@@ -554,12 +593,15 @@ var
   LResource: TWfcPipelineResource;
   LTerm: TWfcPipelineRequirementTerm;
   LVersions: TWfcPipelineVersions;
+  LQuota: TWfcPipelineValueQuota;
+  LTextVersion: Integer;
 begin
   if not Assigned(AModel) then
     raise EArgumentNilException.Create('WFC pipeline model cannot be nil');
 
   LMetadata := AModel.CopyMetadata;
   LVersions := AModel.CopyVersions;
+  LTextVersion := WfcPipelineModelTextVersion(AModel);
   LExpectedLineCount := WFC_PIPELINE_FIXED_LINE_COUNT;
   AddLineCapacity(LExpectedLineCount, AModel.ResourceCount);
   AddLineCapacity(LExpectedLineCount, AModel.PassCount);
@@ -576,10 +618,21 @@ begin
       AddLineCapacity(LExpectedLineCount,
         Length(LRequirement.Terms[J].AllowedProviderTokens));
   end;
+  if LTextVersion = WFC_PIPELINE_VALUE_QUOTA_TEXT_VERSION then
+  begin
+    AddLineCapacity(LExpectedLineCount, 2 + AModel.ValueQuotaCount,
+      WFC_PIPELINE_VALUE_QUOTA_MAX_TEXT_LINE_COUNT);
+    for I := 0 to AModel.ValueQuotaCount - 1 do
+    begin
+      LQuota := AModel.ValueQuotaAt(I);
+      AddLineCapacity(LExpectedLineCount, Length(LQuota.Values),
+        WFC_PIPELINE_VALUE_QUOTA_MAX_TEXT_LINE_COUNT);
+    end;
+  end;
   SetLength(LLines, LExpectedLineCount);
   LCount := 0;
   AppendLine(LLines, LCount, 'wfcpipeline=' +
-    IntToStr(WFC_PIPELINE_TEXT_VERSION));
+    IntToStr(LTextVersion));
   AppendLine(LLines, LCount, 'name=' + EncodeToken(LMetadata.Name));
   AppendLine(LLines, LCount, 'license=' +
     EncodeToken(LMetadata.LicenseIdentifier));
@@ -697,6 +750,23 @@ begin
     end;
   end;
 
+  if LTextVersion = WFC_PIPELINE_VALUE_QUOTA_TEXT_VERSION then
+  begin
+    AppendLine(LLines, LCount, 'value-quota-version=' + IntToStr(AModel.ValueQuotaVersion));
+    AppendLine(LLines, LCount, 'value-quotas=' + IntToStr(AModel.ValueQuotaCount));
+    for I := 0 to AModel.ValueQuotaCount - 1 do
+    begin
+      LQuota := AModel.ValueQuotaAt(I);
+      AppendLine(LLines, LCount, 'value-quota=' + IntToStr(I) + ',' +
+        IntToStr(LQuota.PassIndex) + ',' + EncodeToken(LQuota.LabelText) + ',' +
+        IntToStr(LQuota.MinimumCount) + ',' + IntToStr(LQuota.MaximumCount) + ',' +
+        IntToStr(Length(LQuota.Values)));
+      for J := 0 to High(LQuota.Values) do
+        AppendLine(LLines, LCount, 'quota-token=' + IntToStr(I) + ',' +
+          IntToStr(J) + ',' + EncodeToken(LQuota.Values[J]));
+    end;
+  end;
+
   AppendLine(LLines, LCount, 'signature=' +
     WfcPipelineSignatureHex(AModel.Signature));
   AppendLine(LLines, LCount, 'end');
@@ -759,6 +829,17 @@ var
   LTotalRequirementTermCount: Integer;
   LVersions: TWfcPipelineVersions;
   LWrapNeighbors: Boolean;
+  LTextVersion: Integer;
+  LQuotaTail: Integer;
+  LQuotaCount: Integer;
+  LQuotaTokenCount: Integer;
+  LTotalQuotaTokenCount: Integer;
+  LQuotaPassIndex: Integer;
+  LQuotaMinimum: Integer;
+  LQuotaMaximum: Integer;
+  LQuotaLabel: TWfcModelToken;
+  LQuotaTokens: TWfcModelTokens;
+  LQuotas: TWfcPipelineValueQuotas;
 
   function DecodeOuterToken(const AValue,
     AFieldName: String): TWfcModelToken;
@@ -778,18 +859,37 @@ var
     Inc(LTotalEncodedTokenLength, Integer(LEncodedLength));
     Result := DecodeToken(AValue);
   end;
+
+  function ReadQuotaRecord(const APrefix: String; const AFields: Integer;
+    const AName: String): TWfcPipelineTextFields;
+  var LLine: String;
+  begin
+    LLine := RequireLine(LLines, LLineIndex, AName);
+    { A quota row contains one escaped outer token and a fixed number of
+      bounded decimal fields. Reject an oversized row BEFORE splitting it
+      into copied field strings. Nested resource rows have their own limits. }
+    if Length(LLine) > WFC_PIPELINE_MAX_ENCODED_TOKEN_LENGTH + 128 then
+      TextError(AName + ' exceeds the encoded row-length limit');
+    Inc(LLineIndex);
+    Result := SplitRecord(ValueAfterPrefix(LLine, APrefix, AName), AFields, AName);
+  end;
 begin
   Result := nil;
-  PreflightTextEnvelope(AText);
+  PreflightTextEnvelope(AText, LTextVersion);
   WfcTextSplitCanonicalLines(AText, WFC_PIPELINE_TEXT_ARTIFACT,
     LLines);
   if Length(LLines) < WFC_PIPELINE_FIXED_LINE_COUNT then
     TextError('document is incomplete');
   LLineIndex := 0;
   if RequireLine(LLines, LLineIndex, 'format version') <>
-      'wfcpipeline=1' then
+      'wfcpipeline=' + IntToStr(LTextVersion) then
     TextError('unsupported or noncanonical format version');
   Inc(LLineIndex);
+  LQuotas := nil;
+  { A canonical V2 section needs a version, count, one descriptor and at
+    least one token. Reserve this minimum before allocating older sections. }
+  if LTextVersion = WFC_PIPELINE_VALUE_QUOTA_TEXT_VERSION then LQuotaTail := 4
+  else LQuotaTail := 0;
 
   { Pascal does not define argument evaluation order. Read stateful fields
     one at a time before any constructor/helper call. }
@@ -847,7 +947,7 @@ begin
   LResourceCount := ParseBoundedCount(ReadValueLine(LLines,
     LLineIndex, 'resources=', 'resource count'), 'resource count',
     WFC_PIPELINE_MAX_RESOURCE_COUNT);
-  RequireRecordCapacity(LResourceCount, 6, LLineIndex, LLines,
+  RequireRecordCapacity(LResourceCount, 6 + LQuotaTail, LLineIndex, LLines,
     'resource');
   SetLength(LResources, LResourceCount);
   LTotalPayloadLength := 0;
@@ -878,7 +978,7 @@ begin
 
   LPassCount := ParseBoundedCount(ReadValueLine(LLines, LLineIndex,
     'passes=', 'pass count'), 'pass count', WFC_PIPELINE_MAX_PASS_COUNT);
-  RequireRecordCapacity(LPassCount, 5, LLineIndex, LLines, 'pass');
+  RequireRecordCapacity(LPassCount, 5 + LQuotaTail, LLineIndex, LLines, 'pass');
   SetLength(LPasses, LPassCount);
   for I := 0 to LPassCount - 1 do
   begin
@@ -901,7 +1001,7 @@ begin
   LDependencyCount := ParseBoundedCount(ReadValueLine(LLines,
     LLineIndex, 'dependencies=', 'dependency count'),
     'dependency count', WFC_PIPELINE_MAX_DEPENDENCY_COUNT);
-  RequireRecordCapacity(LDependencyCount, 4, LLineIndex, LLines,
+  RequireRecordCapacity(LDependencyCount, 4 + LQuotaTail, LLineIndex, LLines,
     'dependency');
   SetLength(LDependencies, LDependencyCount);
   for I := 0 to LDependencyCount - 1 do
@@ -918,7 +1018,7 @@ begin
   LBridgeCount := ParseBoundedCount(ReadValueLine(LLines,
     LLineIndex, 'bridges=', 'bridge count'), 'bridge count',
     WFC_PIPELINE_MAX_BRIDGE_COUNT);
-  RequireRecordCapacity(LBridgeCount, 3, LLineIndex, LLines, 'bridge');
+  RequireRecordCapacity(LBridgeCount, 3 + LQuotaTail, LLineIndex, LLines, 'bridge');
   SetLength(LBridges, LBridgeCount);
   for I := 0 to LBridgeCount - 1 do
   begin
@@ -936,7 +1036,7 @@ begin
   LRequirementCount := ParseBoundedCount(ReadValueLine(LLines,
     LLineIndex, 'requirements=', 'requirement count'),
     'requirement count', WFC_PIPELINE_MAX_REQUIREMENT_COUNT);
-  RequireRecordCapacity(LRequirementCount, 2, LLineIndex, LLines,
+  RequireRecordCapacity(LRequirementCount, 2 + LQuotaTail, LLineIndex, LLines,
     'requirement');
   SetLength(LRequirements, LRequirementCount);
   for I := 0 to LRequirementCount - 1 do
@@ -959,7 +1059,7 @@ begin
       TextError('aggregate requirement-term count exceeds the version-1 limit');
     Inc(LTotalRequirementTermCount, LTermCount);
     RequireRecordCapacity(LTermCount + Ord(LRequirementKind = wprqCount),
-      2, LLineIndex, LLines,
+      2 + LQuotaTail, LLineIndex, LLines,
       'requirement term');
     LCountMinimum := 0;
     LCountMaximum := 0;
@@ -998,7 +1098,7 @@ begin
           WFC_PIPELINE_MAX_TOTAL_ALLOWED_TOKEN_COUNT - LAllowedCount then
         TextError('aggregate allowed-token count exceeds the version-1 limit');
       Inc(LTotalAllowedTokenCount, LAllowedCount);
-      RequireRecordCapacity(LAllowedCount, 2, LLineIndex, LLines,
+      RequireRecordCapacity(LAllowedCount, 2 + LQuotaTail, LLineIndex, LLines,
         'allowed-token');
       SetLength(LAllowedTokens, LAllowedCount);
       for K := 0 to LAllowedCount - 1 do
@@ -1029,6 +1129,56 @@ begin
         LRequirementProviderIndex, LRequirementKind, LTerms);
   end;
 
+  if LTextVersion = WFC_PIPELINE_VALUE_QUOTA_TEXT_VERSION then
+  begin
+    if ParseCanonicalInteger(ReadValueLine(LLines, LLineIndex,
+        'value-quota-version=', 'value-quota version'), 'value-quota version') <>
+        WFC_PIPELINE_VALUE_QUOTA_VERSION then
+      TextError('unsupported value-quota version');
+    LQuotaCount := ParseBoundedCount(ReadValueLine(LLines, LLineIndex,
+      'value-quotas=', 'value-quota count'), 'value-quota count',
+      WFC_PIPELINE_MAX_VALUE_QUOTA_COUNT);
+    if LQuotaCount = 0 then TextError('version 2 requires at least one value quota');
+    { Every quota needs a descriptor AND a token. The cap makes this product
+      safe; the remaining-line check precedes the descriptor array allocation. }
+    RequireRecordCapacity(2 * LQuotaCount, 2, LLineIndex, LLines, 'value-quota');
+    SetLength(LQuotas, LQuotaCount);
+    LTotalQuotaTokenCount := 0;
+    for I := 0 to LQuotaCount - 1 do
+    begin
+      LFields := ReadQuotaRecord('value-quota=', 6, 'value-quota record');
+      if ParseCanonicalInteger(LFields[0], 'value-quota index') <> I then
+        TextError('value-quota indices must be complete and ordered');
+      LQuotaPassIndex := ParseCanonicalInteger(LFields[1], 'value-quota pass index');
+      if LQuotaPassIndex >= LPassCount then TextError('value-quota pass index is outside the recipe');
+      LQuotaLabel := DecodeOuterToken(LFields[2], 'value-quota label');
+      if LQuotaLabel = '' then TextError('value-quota label cannot be empty');
+      LQuotaMinimum := ParseCanonicalInteger(LFields[3], 'value-quota minimum');
+      LQuotaMaximum := ParseCanonicalInteger(LFields[4], 'value-quota maximum');
+      if LQuotaMinimum > LQuotaMaximum then TextError('value-quota minimum exceeds maximum');
+      LQuotaTokenCount := ParseBoundedCount(LFields[5], 'value-quota token count',
+        WFC_PIPELINE_MAX_VALUE_QUOTA_TOKEN_COUNT);
+      if LQuotaTokenCount = 0 then TextError('value-quota token set cannot be empty');
+      if LTotalQuotaTokenCount > WFC_PIPELINE_MAX_TOTAL_VALUE_QUOTA_TOKEN_COUNT - LQuotaTokenCount then
+        TextError('aggregate value-quota token count exceeds the limit');
+      Inc(LTotalQuotaTokenCount, LQuotaTokenCount);
+      RequireRecordCapacity(LQuotaTokenCount, 2 + 2 * (LQuotaCount - I - 1),
+        LLineIndex, LLines, 'value-quota token');
+      SetLength(LQuotaTokens, LQuotaTokenCount);
+      for J := 0 to LQuotaTokenCount - 1 do
+      begin
+        LFields := ReadQuotaRecord('quota-token=', 3, 'value-quota token record');
+        if (ParseCanonicalInteger(LFields[0], 'value-quota token parent index') <> I) or
+            (ParseCanonicalInteger(LFields[1], 'value-quota token index') <> J) then
+          TextError('value-quota token indices must be complete and ordered');
+        LQuotaTokens[J] := DecodeOuterToken(LFields[2], 'value-quota token');
+        if LQuotaTokens[J] = '' then TextError('value-quota token cannot be empty');
+      end;
+      LQuotas[I] := MakeWfcPipelineValueQuota(LQuotaPassIndex, LQuotaLabel,
+        LQuotaTokens, LQuotaMinimum, LQuotaMaximum);
+    end;
+  end;
+
   LSignatureText := ReadValueLine(LLines, LLineIndex,
     'signature=', 'pipeline signature');
   if not SignatureTextIsCanonical(LSignatureText) then
@@ -1044,7 +1194,7 @@ begin
     try
       LModel := TWfcPipelineModel.Create(LMetadata, LVersions,
         LRank, LWrapNeighbors, LRunMode, LResources, LPasses,
-        LDependencies, LBridges, LRequirements);
+        LDependencies, LBridges, LRequirements, LQuotas);
     except
       on E: EWfcPipelineModel do
         TextError(E.Message);

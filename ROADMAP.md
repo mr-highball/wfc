@@ -31,6 +31,9 @@ The repository already contains the beginnings of the ecosystem:
   matching-offset or distinct-cell semantics, duplicate-safe canonicalization,
   zero-count absence, portable recipe encoding, independent validation, and a
   shared native/browser neighborhood inspection and bounded-repair demo;
+- [whole-pass value quotas](docs/value-quotas.md) with reversible domain bounds,
+  independent recount, and [portable public-token recipes](docs/pipeline-value-quotas.md)
+  that lower through exact-copy and learned-state projection passes;
 - a versioned portable random source with an explicit pipeline seed,
   independent index-derived pass streams, run-to-run rewind, and matching
   native/pas2js golden fixtures;

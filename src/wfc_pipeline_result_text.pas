@@ -365,6 +365,10 @@ begin
     gckPassDependency: Result := 'pass-dependency';
     gckEntryDomain: Result := 'entry-domain';
     gckExcludedAssignment: Result := 'excluded-assignment';
+    gckConnectivity: Result := 'connectivity';
+    gckValueQuota: Result := 'value-quota';
+  else
+    TextError('failure contradiction kind is unknown');
   end;
 end;
 
@@ -390,6 +394,10 @@ begin
     Result := gckEntryDomain
   else if AText = 'excluded-assignment' then
     Result := gckExcludedAssignment
+  else if AText = 'connectivity' then
+    Result := gckConnectivity
+  else if AText = 'value-quota' then
+    Result := gckValueQuota
   else
   begin
     TextError('failure contradiction kind is unknown');

@@ -6,7 +6,7 @@ pipeline without serializing a live `TGraph`:
 - `wfcrules=1` stores an immutable hand-authored local rule model;
 - `wfcpipeline=1` stores an immutable declarative pipeline recipe containing
   typed resources, passes, dependencies, projection bridges, and public-token
-  requirements;
+  requirements; opt-in `wfcpipeline=2` adds whole-pass public-token quotas;
 - `wfcpipeline-run=1` stores one recipe-bound invocation, including shape,
   seed, solve policy, public locks, and public allowed-token domains; and
 - `wfcpipeline-result=1` stores the terminal status, evidence identity, pass
@@ -151,7 +151,9 @@ is solved. Unknown versions fail closed, and changing one bridge field never
 changes the other projection kind.
 
 This preparation behavior is the `WFC_PIPELINE_RUNTIME_VERSION = 2`
-contract; the outer recipe, run, and result text envelopes remain version 1.
+contract; it does not change the outer run or result text envelopes. Quota-free
+recipes remain version 1; [quota-bearing recipes](pipeline-value-quotas.md)
+explicitly select version 2.
 
 Pattern projection rejects palette tokens in the reserved private-key form
 `@p` followed only by decimal digits. The recipe and runtime adapter call the
@@ -162,7 +164,7 @@ The IR validates bridge topology, endpoints, dependency and vocabulary
 ownership, and derives target vocabularies. The compiler materializes those
 bridges into a fresh graph. Its tentative-commit hook independently checks
 private pattern and sequence captures, exact transform copies, both projection
-kinds, and public-token requirements before the core can publish staged
+kinds, public-token requirements, and declared quotas before the core can publish staged
 entries. Rule and generic-model passes use the graph's complete local
 constraint surface because those adapters do not expose a separate solved
 capture validator.
@@ -207,10 +209,14 @@ validator both enforce the range; see the [complete count contract](pass-counts.
 
 ## Canonical recipe, run, and result text
 
-`wfc_pipeline_text` encodes and decodes `wfcpipeline=1`. Its line-oriented
+`wfc_pipeline_text` encodes and decodes `wfcpipeline=1` and quota-bearing
+`wfcpipeline=2`. Its line-oriented
 format has fixed field order and contiguous indexed records for resources,
 passes, dependencies, bridges, requirements, terms, and allowed tokens.
 Embedded documents are carried as one canonical percent-encoded field.
+The [quota extension](pipeline-value-quotas.md) adds its own ordered section,
+token/line limits, independent commit recount, and private-source lowering.
+Existing quota-free documents retain exact bytes and signatures.
 
 `wfc_pipeline_run_text` applies the same rules to `wfcpipeline-run=1`. A run
 repeats the recipe signature and records its positive rank-compatible shape,

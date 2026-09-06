@@ -822,6 +822,9 @@ for compiler_artifact_suite in \
   "$compiler_pipeline_text_test_source" \
   "$compiler_token_lookup_test_source" \
   "$compiler_pipeline_compile_test_source" \
+  "$compiler_tools_directory/../test/wfc_pipeline_value_quota_model_test.lpr" \
+  "$compiler_tools_directory/../test/wfc_pipeline_value_quota_text_test.lpr" \
+  "$compiler_tools_directory/../test/wfc_pipeline_value_quota_test.lpr" \
   "$compiler_pipeline_run_test_source" \
   "$compiler_pipeline_run_text_test_source" \
   "$compiler_pipeline_result_test_source" \

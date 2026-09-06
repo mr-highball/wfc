@@ -225,7 +225,8 @@ function WfcPipelineResultSignatureHex(
 implementation
 
 uses
-  wfc_text_codec;
+  wfc_text_codec,
+  wfc_token_lookup;
 
 type
   TBooleanArray = array of Boolean;
@@ -947,6 +948,10 @@ var
   LTotalCellCount: Integer;
   LTotalTokenLength: Integer;
   LVocabulary: TWfcModelTokens;
+  LQuota: TWfcPipelineValueQuota;
+  LQuotaIndex, LQuotaCount, LLayerIndex, LQuotaPassIndex: Integer;
+  LQuotaLookups: array of TWfcTokenLookup;
+  LQuotaCounts: array of array of Integer;
 begin
   inherited Create;
   if not Assigned(ARecipe) then
@@ -1162,6 +1167,57 @@ begin
     end;
     FLayers[I] := CloneLayer(ALayers[I]);
     Inc(LExpectedPassIndex);
+  end;
+  { A signature is provenance, not proof of constraint satisfaction. Recount
+    recipe quotas when constructing or decoding a solved artifact, even if
+    the caller did not obtain its layers from our compiler. This is a quota
+    validator, not a claim that result decoding re-solves all local rules. }
+  if FStatus = wprsSolved then
+  begin
+    if ARecipe.ValueQuotaCount > 0 then
+    begin
+      SetLength(LQuotaLookups, ARecipe.PassCount);
+      SetLength(LQuotaCounts, ARecipe.PassCount);
+    end;
+    try
+      for LQuotaIndex := 0 to ARecipe.ValueQuotaCount - 1 do
+      begin
+        LQuota := ARecipe.ValueQuotaAt(LQuotaIndex);
+        LQuotaPassIndex := LQuota.PassIndex;
+        if not Assigned(LQuotaLookups[LQuotaPassIndex]) then
+        begin
+          LLayerIndex := -1;
+          for I := 0 to Length(FLayers) - 1 do
+            if FLayers[I].PassIndex = LQuotaPassIndex then
+            begin
+              LLayerIndex := I;
+              Break;
+            end;
+          if LLayerIndex < 0 then
+            raise EWfcPipelineResult.Create('result quota owner layer is absent');
+          LQuotaLookups[LQuotaPassIndex] := TWfcTokenLookup.Create(
+            ARecipe.CopyPublicVocabulary(LQuotaPassIndex));
+          SetLength(LQuotaCounts[LQuotaPassIndex],
+            LQuotaLookups[LQuotaPassIndex].Count);
+          { Layers were already checked for complete, in-vocabulary tokens.
+            This temporary histogram belongs only to this construction. }
+          for J := 0 to Length(FLayers[LLayerIndex].Tokens) - 1 do
+            Inc(LQuotaCounts[LQuotaPassIndex][
+              LQuotaLookups[LQuotaPassIndex].Find(FLayers[LLayerIndex].Tokens[J])]);
+        end;
+        LQuotaCount := 0;
+        for J := 0 to Length(LQuota.Values) - 1 do
+          Inc(LQuotaCount, LQuotaCounts[LQuotaPassIndex][
+            LQuotaLookups[LQuotaPassIndex].Find(LQuota.Values[J])]);
+        if (LQuotaCount < LQuota.MinimumCount) or
+            (LQuotaCount > LQuota.MaximumCount) then
+          raise EWfcPipelineResult.CreateFmt(
+            'result violates recipe value quota [%d, pass %d]',
+            [LQuotaIndex, LQuota.PassIndex]);
+      end;
+    finally
+      for I := 0 to Length(LQuotaLookups) - 1 do LQuotaLookups[I].Free;
+    end;
   end;
   FSignature := CalculateSignature;
 end;

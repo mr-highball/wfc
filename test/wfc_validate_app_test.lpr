@@ -209,7 +209,7 @@ begin
   LCommand.Kind := wvckVersion;
   LStatus := WfcValidateExecuteText(LCommand, 'ignored', LOutput, LError);
   Check((LStatus = WFC_VALIDATE_EXIT_SUCCESS) and (LError = '') and
-    (LOutput = 'wfc-validate 1 (wfcpipeline=1)'#10),
+    (LOutput = 'wfc-validate 1 (wfcpipeline=1,2)'#10),
     'version identifies both CLI and artifact contracts');
 end;
 

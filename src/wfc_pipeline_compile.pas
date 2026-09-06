@@ -42,6 +42,9 @@ const
     recipe from requesting an impractical dense graph. }
   WFC_PIPELINE_COMPILE_MAX_DIMENSION = 4194304;
   WFC_PIPELINE_COMPILE_MAX_CELL_COUNT = 4194304;
+  { Aggregate latent-state visits for recipe quota lowering, checked before
+    allocating a graph. This bounds compilation, not the solver's search. }
+  WFC_PIPELINE_COMPILE_MAX_QUOTA_CANDIDATE_VISITS = 16777216;
 
 type
   TWfcPipelineCompileStage = (
@@ -52,7 +55,8 @@ type
     wpcsAdapters,
     wpcsBridges,
     wpcsRequirements,
-    wpcsVerification
+    wpcsVerification,
+    wpcsValueQuotas
   );
 
   EWfcPipelineCompile = class(Exception)
@@ -75,7 +79,8 @@ type
     wpcvkTransform,
     wpcvkPatternBridge,
     wpcvkSequenceBridge,
-    wpcvkRequirement
+    wpcvkRequirement,
+    wpcvkValueQuota
   );
 
   TWfcPipelineCommitValidation = record
@@ -83,6 +88,7 @@ type
     PassIndex: Integer;
     BridgeIndex: Integer;
     RequirementIndex: Integer;
+    ValueQuotaIndex: Integer;
     EntryIndex: Integer;
   end;
 
@@ -96,6 +102,12 @@ type
     FLastValidation: TWfcPipelineCommitValidation;
     procedure Initialize(const ARecipe: TWfcPipelineModel;
       const AWidth, AHeight, ADepth: Integer);
+    function QuotaMaterializedPass(const APassIndex: Integer): Integer;
+    function ProjectionBridgeForPass(const APassIndex: Integer): Integer;
+    procedure ValidateValueQuotaWork;
+    procedure InstallValueQuotas;
+    function ValidateValueQuotaCommit(out AFailedPassIndex,
+      AFailedEntryIndex: Integer): Boolean;
   private
     function ValidatePendingCommit(out AFailedPassIndex,
       AFailedEntryIndex: Integer): Boolean;
@@ -124,11 +136,17 @@ uses
   wfc_pattern2d,
   wfc_pattern2d_graph,
   wfc_sequence,
-  wfc_sequence_graph;
+  wfc_sequence_graph,
+  wfc_token_lookup;
 
 type
   TStringArray = array of String;
   TIntegerArray = array of Integer;
+  TQuotaRecount = record
+    Lookup: TWfcTokenLookup;
+    Counts: TIntegerArray;
+    InvalidEntry: Integer;
+  end;
 
   { The root and every pass retain the same owner. The core invokes this hook
     after staged assignments have reached live entries but before it discards
@@ -165,6 +183,8 @@ begin
       Result := 'requirements';
     wpcsVerification:
       Result := 'verification';
+    wpcsValueQuotas:
+      Result := 'value-quotas';
   else
     Result := 'unknown';
   end;
@@ -291,6 +311,7 @@ begin
   AValue.PassIndex := -1;
   AValue.BridgeIndex := -1;
   AValue.RequirementIndex := -1;
+  AValue.ValueQuotaIndex := -1;
   AValue.EntryIndex := -1;
 end;
 
@@ -467,6 +488,224 @@ begin
   inherited Destroy;
 end;
 
+function TWfcCompiledPipeline.QuotaMaterializedPass(
+  const APassIndex: Integer): Integer;
+var
+  LSteps: Integer;
+begin
+  Result := APassIndex;
+  LSteps := 0;
+  while FRecipe.PassAt(Result).Mode = gpmTransform do
+  begin
+    Inc(LSteps);
+    if LSteps >= FRecipe.PassCount then
+      raise EInvalidOperation.Create('quota transform chain does not terminate');
+    Result := FRecipe.PassAt(Result).TransformSourceIndex;
+  end;
+end;
+
+function TWfcCompiledPipeline.ProjectionBridgeForPass(
+  const APassIndex: Integer): Integer;
+var
+  I: Integer;
+begin
+  for I := 0 to FRecipe.BridgeCount - 1 do
+    if FRecipe.BridgeAt(I).TargetPassIndex = APassIndex then
+      Exit(I);
+  Result := -1;
+end;
+
+procedure TWfcCompiledPipeline.ValidateValueQuotaWork;
+var
+  I, LBridgeIndex, LPassIndex, LCount, LTotal: Integer;
+  LPass: TWfcPipelinePass;
+begin
+  LTotal := 0;
+  for I := 0 to FRecipe.ValueQuotaCount - 1 do
+  begin
+    LPassIndex := QuotaMaterializedPass(FRecipe.ValueQuotaAt(I).PassIndex);
+    LBridgeIndex := ProjectionBridgeForPass(LPassIndex);
+    if LBridgeIndex < 0 then Continue;
+    LPass := FRecipe.PassAt(FRecipe.BridgeAt(LBridgeIndex).SourcePassIndex);
+    case FRecipe.BridgeAt(LBridgeIndex).Kind of
+      wpbkPattern2DProjection:
+        LCount := FRecipe.BorrowPattern2DResource(LPass.ResourceIndex).PatternCount;
+      wpbkSequenceProjection:
+        LCount := FRecipe.BorrowSequenceResource(LPass.ResourceIndex).StateCount;
+    else
+      raise EInvalidOperation.Create('unknown quota projection bridge');
+    end;
+    if LCount > WFC_PIPELINE_COMPILE_MAX_QUOTA_CANDIDATE_VISITS - LTotal then
+      raise EWfcPipelineCompile.CreateFailure(wpcsValueQuotas, I,
+        'aggregate quota lowering exceeds the candidate-visit limit');
+    Inc(LTotal, LCount);
+  end;
+end;
+
+procedure TWfcCompiledPipeline.InstallValueQuotas;
+var
+  I, J, LPassIndex, LBridgeIndex, LSourceIndex, LCount: Integer;
+  LQuota: TWfcPipelineValueQuota;
+  LBridge: TWfcPipelineBridge;
+  LValues, LSourceValues, LAllowedValues: TGraphValues;
+  LLookup: TWfcTokenLookup;
+  LPattern: TWfcOverlappingModel2D;
+  LSequence: TWfcSequenceModel;
+  LToken: TWfcModelToken;
+  LLabel: String;
+begin
+  for I := 0 to FRecipe.ValueQuotaCount - 1 do
+  begin
+    try
+      LQuota := FRecipe.ValueQuotaAt(I);
+      LPassIndex := QuotaMaterializedPass(LQuota.PassIndex);
+      { Internal labels use immutable descriptor ordinals, not user labels:
+        two public aliases may use the same label on one shared source. }
+      LLabel := 'pipeline-value-quota:' + IntToStr(I);
+      SetLength(LValues, Length(LQuota.Values));
+      for J := 0 to Length(LValues) - 1 do
+        LValues[J] := TokenToGraphValue(LQuota.Values[J], 'quota token');
+      FGraph.SwitchToPass(LPassIndex);
+      FGraph.RequireValueQuota(MakeGraphValueQuotaConstraint(LLabel,
+        LValues, LQuota.MinimumCount, LQuota.MaximumCount));
+
+      LBridgeIndex := ProjectionBridgeForPass(LPassIndex);
+      if LBridgeIndex < 0 then Continue;
+      LBridge := FRecipe.BridgeAt(LBridgeIndex);
+      LSourceIndex := LBridge.SourcePassIndex;
+      LSourceValues := FGraph.PassGraph[LSourceIndex].CopyRegisteredValues;
+      SetLength(LAllowedValues, Length(LSourceValues));
+      LCount := 0;
+      LLookup := TWfcTokenLookup.Create(LQuota.Values);
+      try
+        LPattern := nil;
+        LSequence := nil;
+        case LBridge.Kind of
+          wpbkPattern2DProjection:
+            begin
+              LPattern := FRecipe.BorrowPattern2DResource(
+                FRecipe.PassAt(LSourceIndex).ResourceIndex);
+              if Length(LSourceValues) <> LPattern.PatternCount then
+                raise EInvalidOperation.Create('quota pattern registry mismatch');
+            end;
+          wpbkSequenceProjection:
+            begin
+              LSequence := FRecipe.BorrowSequenceResource(
+                FRecipe.PassAt(LSourceIndex).ResourceIndex);
+              if Length(LSourceValues) <> LSequence.StateCount then
+                raise EInvalidOperation.Create('quota sequence registry mismatch');
+            end;
+        end;
+        for J := 0 to Length(LSourceValues) - 1 do
+        begin
+          if Assigned(LPattern) then
+            { Wrapped projection has one public cell per latent anchor. Do
+              not count every overlapping footprint occurrence. }
+            LToken := LPattern.PaletteTokenAt(
+              LPattern.PatternPaletteIndexAt(J, 0, 0))
+          else
+            LToken := LSequence.PublicTokenAt(
+              LSequence.StateEmittedTokenIndexAt(J));
+          if LLookup.Find(LToken) >= 0 then
+          begin
+            LAllowedValues[LCount] := LSourceValues[J];
+            Inc(LCount);
+          end;
+        end;
+      finally
+        LLookup.Free;
+      end;
+      SetLength(LAllowedValues, LCount);
+      FGraph.SwitchToPass(LSourceIndex);
+      if LCount > 0 then
+        FGraph.RequireValueQuota(MakeGraphValueQuotaConstraint(LLabel,
+          LAllowedValues, LQuota.MinimumCount, LQuota.MaximumCount))
+      else if LQuota.MinimumCount > 0 then
+        { No source state can emit a requested member. A positive-shape
+          graph cannot contain zero members of its entire vocabulary. This
+          expresses unsatisfiability without an illegal empty quota set. }
+        FGraph.RequireValueQuota(MakeGraphValueQuotaConstraint(LLabel,
+          LSourceValues, 0, 0));
+    except
+      on E: Exception do
+        raise EWfcPipelineCompile.CreateFailure(wpcsValueQuotas, I, E.Message);
+    end;
+  end;
+end;
+
+function TWfcCompiledPipeline.ValidateValueQuotaCommit(
+  out AFailedPassIndex, AFailedEntryIndex: Integer): Boolean;
+var
+  I, J, LCount, LPassIndex: Integer;
+  LQuota: TWfcPipelineValueQuota;
+  LRecounts: array of TQuotaRecount;
+
+  procedure RecountOwner(const APassIndex: Integer);
+  var
+    X, Y, Z, LTokenIndex: Integer;
+    LEntry: TGraphEntry;
+  begin
+    if Assigned(LRecounts[APassIndex].Lookup) then Exit;
+    LRecounts[APassIndex].Lookup := TWfcTokenLookup.Create(
+      FRecipe.CopyPublicVocabulary(APassIndex));
+    SetLength(LRecounts[APassIndex].Counts,
+      LRecounts[APassIndex].Lookup.Count);
+    LRecounts[APassIndex].InvalidEntry := -1;
+    for Z := 0 to Integer(FGraph.Dimension.Depth) - 1 do
+      for Y := 0 to Integer(FGraph.Dimension.Height) - 1 do
+        for X := 0 to Integer(FGraph.Dimension.Width) - 1 do
+        begin
+          LEntry := FGraph.PassGraph[APassIndex].Entry[X, Y, Z];
+          LTokenIndex := LRecounts[APassIndex].Lookup.Find(
+            GraphValueToToken(LEntry.Value));
+          if LEntry.Empty or (LTokenIndex < 0) then
+          begin
+            LRecounts[APassIndex].InvalidEntry :=
+              (Z * Integer(FGraph.Dimension.Height) + Y) *
+              Integer(FGraph.Dimension.Width) + X;
+            Exit;
+          end;
+          Inc(LRecounts[APassIndex].Counts[LTokenIndex]);
+        end;
+  end;
+
+begin
+  Result := False;
+  AFailedPassIndex := -1;
+  AFailedEntryIndex := -1;
+  if FRecipe.ValueQuotaCount = 0 then Exit(True);
+  SetLength(LRecounts, FRecipe.PassCount);
+  try
+    for I := 0 to FRecipe.ValueQuotaCount - 1 do
+    begin
+      LQuota := FRecipe.ValueQuotaAt(I);
+      LPassIndex := LQuota.PassIndex;
+      { Transaction-local histograms scan each public owner once. They read
+        immutable recipe vocabularies and live public entries, never mutable
+        graph quota registrations, and cannot survive rollback or replay. }
+      RecountOwner(LPassIndex);
+      LCount := 0;
+      for J := 0 to Length(LQuota.Values) - 1 do
+        Inc(LCount, LRecounts[LPassIndex].Counts[
+          LRecounts[LPassIndex].Lookup.Find(LQuota.Values[J])]);
+      if (LRecounts[LPassIndex].InvalidEntry >= 0) or
+          (LCount < LQuota.MinimumCount) or (LCount > LQuota.MaximumCount) then
+      begin
+        FLastValidation.Kind := wpcvkValueQuota;
+        FLastValidation.PassIndex := LPassIndex;
+        FLastValidation.ValueQuotaIndex := I;
+        FLastValidation.EntryIndex := LRecounts[LPassIndex].InvalidEntry;
+        AFailedPassIndex := LPassIndex;
+        AFailedEntryIndex := FLastValidation.EntryIndex;
+        Exit;
+      end;
+    end;
+  finally
+    for I := 0 to Length(LRecounts) - 1 do LRecounts[I].Lookup.Free;
+  end;
+  Result := True;
+end;
+
 procedure TWfcCompiledPipeline.Initialize(const ARecipe: TWfcPipelineModel;
   const AWidth, AHeight, ADepth: Integer);
 var
@@ -499,6 +738,7 @@ begin
   LItemIndex := -1;
   try
     ValidateRankShape(ARecipe, AWidth, AHeight, ADepth);
+    ValidateValueQuotaWork;
     LVersions := ARecipe.CopyVersions;
     if LVersions.BundleGraphAdapterVersion <>
         WFC_PIPELINE_COMPILER_VERSION then
@@ -707,6 +947,10 @@ begin
           'recipe contains an unknown requirement kind');
       end;
     end;
+
+    LStage := wpcsValueQuotas;
+    LItemIndex := -1;
+    InstallValueQuotas;
 
     LStage := wpcsVerification;
     for I := 0 to ARecipe.PassCount - 1 do
@@ -983,7 +1227,7 @@ begin
           end;
         end;
   end;
-  Result := True;
+  Result := ValidateValueQuotaCommit(AFailedPassIndex, AFailedEntryIndex);
 end;
 
 function CompileWfcPipeline(const ARecipe: TWfcPipelineModel;
