@@ -66,6 +66,13 @@ uses
   {$IFNDEF LINUX}
     {$IFNDEF DARWIN}{$FATAL browser sockets support Windows, Linux and macOS}{$ENDIF}
   {$ENDIF}
+const
+  { Stable/current FPC BaseUnix omit FD_CLOEXEC on Linux. This descriptor flag
+    is 1 on both supported Unix hosts; keep it project-scoped, not an RTL alias.
+    OS ABI facts only:
+    https://github.com/torvalds/linux/blob/master/include/uapi/asm-generic/fcntl.h
+    https://github.com/apple-oss-distributions/xnu/blob/main/bsd/sys/fcntl.h }
+  BROWSER_FD_CLOEXEC = 1;
 {$ENDIF}
 
 {$IFDEF MSWINDOWS}
@@ -293,7 +300,7 @@ begin
   LFlags := ConfigureSocket(FSocket, F_GETFL, 0, FDeadline);
   ConfigureSocket(FSocket, F_SETFL, LFlags or O_NONBLOCK, FDeadline);
   LFlags := ConfigureSocket(FSocket, F_GETFD, 0, FDeadline);
-  ConfigureSocket(FSocket, F_SETFD, LFlags or FD_CLOEXEC, FDeadline);
+  ConfigureSocket(FSocket, F_SETFD, LFlags or BROWSER_FD_CLOEXEC, FDeadline);
   {$IFDEF DARWIN}
   { Socket-local SIGPIPE protection, never a process-wide signal change.
     https://developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man2/setsockopt.2.html }

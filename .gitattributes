@@ -1,6 +1,7 @@
 /build.sh text eol=lf
 /build-browser*.sh text eol=lf
 /test-browser-tests.sh text eol=lf
+/test/browser_capture/run.sh text eol=lf
 /test/fixtures/pipeline-cli/*.wfcpipeline text eol=lf
 /test/fixtures/pipeline-cli/*.wfcrun text eol=lf
 /test/fixtures/pipeline-cli/*.wfcresult text eol=lf
