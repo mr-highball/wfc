@@ -77,6 +77,12 @@ an external host. Keep unrelated or private files outside its document root.
 
 ### Server contract
 
+For user-defined-length Ensemble WAVE downloads on a phone without the direct
+browser file picker, use the dedicated
+[`EnsembleStudioServe` host](ensemble-http-downloads.md). It reuses these
+static-file safeguards and adds a narrow, in-process music-rendering endpoint.
+The `wfc_serve` executable described below remains static-only.
+
 ```text
 wfc_serve --root DIRECTORY [--port 8000] [--bind ADDRESS] [--max-requests N]
 wfc_serve --version
@@ -249,12 +255,16 @@ silently accepting a possibly unfinished timer teardown. Cleanup preserves an
 existing failure status and fails an otherwise successful run if teardown fails.
 
 These are bounded polling sequences, not hard wall-clock guarantees under
-arbitrary scheduler delays. The 60-second watchdog starts termination of both
+arbitrary scheduler delays. The outer 65-second watchdog starts termination of both
 capture and browser; the main capture wait still depends on the operating
 system actually terminating that process. Forced watchdog termination cannot
 guarantee its timer descendant has exited. This Bash path does not establish
 operating-system process-group or job containment. PowerShell uses finite
 five-second cleanup waits; cleanup time is separate from the test deadline.
+The native capture deadline remains 60 seconds. The outer watchdog's extra
+five seconds are teardown grace for a complete timeout diagnostic and orderly
+exit, not additional browser execution or I/O time. PowerShell applies the
+same grace only to the actual capture child, not deadline/profile helpers.
 
 For diagnosis, select one exact current test basename without changing the
 default full gate:
@@ -316,12 +326,16 @@ now measured in ordinary browser time. The aggregate's native deadline remains
 Pending/missing page evidence never counts as success. This browser-only test
 does not appear in the native gate.
 
+The Ensemble stream harness and actual demo page also require
+`data-http-stream-self-test=passed` for optional native-download discovery,
+strict capability parsing, current-setting links, and release handling.
+
 PowerShell accepts `-Checker` when staging and `-Server`, `-Checker`, `-Capture`,
 and `-Port` when running; the default port is 4180. The shell scripts use
 `WFC_BROWSER_CHECK`, `WFC_BROWSER_CAPTURE`, `WFC_SERVE`, `WFC_BROWSER`, and
 `WFC_BROWSER_PORT` (default 4180). Shell
 execution uses the host's `curl` and standard `sleep`/`kill` commands. Its owned-child
-watchdog applies the 60-second deadline, then allows up to two seconds before
+watchdog waits 65 seconds (including the teardown-only grace), then allows up to two seconds before
 forced termination; GNU `timeout` is not required. The shell runner is exercised
 by the Linux browser lane. Both runners collect per-program failures and fail the
 overall run if any current program fails. Interactive demo self-tests use the

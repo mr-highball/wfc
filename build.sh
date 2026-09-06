@@ -447,7 +447,7 @@ esac
 "$restart_demo_executable" --selftest || exit $?
 
 compiler_ensemble_demo_directory="$compiler_source_directory/../examples/music/06_EnsembleStudio"
-for ensemble_test_name in wfc_music_ensemble_test wfc_music_ensemble_graph_test wfc_music_ensemble_passes_test wfc_music_ensemble_training_test wfc_music_ensemble_demo_test wfc_sequence_segment_test wfc_music_ensemble_stream_test wfc_music_ensemble_audio_test wfc_music_ensemble_stream_demo_test wfc_midi_stream_test wfc_music_ensemble_midi_test wfc_music_ensemble_midi_stream_demo_test wfc_music_form_test wfc_ensemble_profiles_test wfc_music_ensemble_plan_hooks_test wfc_ensemble_development_test wfc_ensemble_developed_midi_test; do
+for ensemble_test_name in wfc_music_ensemble_test wfc_music_ensemble_graph_test wfc_music_ensemble_passes_test wfc_music_ensemble_training_test wfc_music_ensemble_demo_test wfc_sequence_segment_test wfc_music_ensemble_stream_test wfc_music_ensemble_audio_test wfc_music_ensemble_stream_demo_test wfc_midi_stream_test wfc_music_ensemble_midi_test wfc_music_ensemble_midi_stream_demo_test wfc_music_form_test wfc_ensemble_profiles_test wfc_music_ensemble_plan_hooks_test wfc_ensemble_development_test wfc_ensemble_developed_midi_test wfc_ensemble_http_test; do
   printf "Building and running '%s'.\n" "$ensemble_test_name"
   "$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
     "-Fu$compiler_source_directory" "-Fu$compiler_ensemble_demo_directory" "-Fu$compiler_source_directory/../tools" \
@@ -1489,6 +1489,28 @@ case "$host_system" in
 esac
 "$ensemble_render_test_executable" "$ensemble_render_executable" \
   "$compiler_binary_output_directory" || exit $?
+
+printf 'Building and checking the native Ensemble Studio download server.\n'
+for serve_source in \
+  "$compiler_ensemble_demo_directory/EnsembleStudioServe.lpr" \
+  "$compiler_source_directory/../test/wfc_ensemble_http_process_test.lpr"
+do
+  "$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
+    "-Fu$compiler_source_directory" "-Fu$compiler_ensemble_demo_directory" \
+    "-Fu$compiler_tools_directory" \
+    "-FU$compiler_unit_output_directory" "-FE$compiler_binary_output_directory" \
+    "$serve_source" || exit $?
+done
+ensemble_http_executable="$compiler_binary_output_directory/EnsembleStudioServe"
+ensemble_http_test_executable="$binary_output_directory/wfc_ensemble_http_process_test"
+case "$host_system" in
+  CYGWIN*|MINGW*|MSYS*)
+    ensemble_http_executable="${ensemble_http_executable}.exe"
+    ensemble_http_test_executable="${ensemble_http_test_executable}.exe"
+    ;;
+esac
+"$ensemble_http_test_executable" "$ensemble_http_executable" \
+  "$compiler_source_directory/.." || exit $?
 
 printf 'Building and checking the streaming Ensemble Studio MIDI renderer.\n'
 for render_source in \

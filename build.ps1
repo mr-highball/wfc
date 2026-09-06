@@ -434,7 +434,7 @@ foreach ($ensembleTestName in @(
     'wfc_music_ensemble_midi_test', 'wfc_music_ensemble_midi_stream_demo_test',
     'wfc_music_form_test', 'wfc_ensemble_profiles_test',
     'wfc_music_ensemble_plan_hooks_test', 'wfc_ensemble_development_test',
-    'wfc_ensemble_developed_midi_test')) {
+    'wfc_ensemble_developed_midi_test', 'wfc_ensemble_http_test')) {
   Write-Host "Building and running '$ensembleTestName'."
   & $Compiler @CompilerOptions -B -Mdelphi -Sa -Cr -Co -Ci `
     "-Fu$sourceDirectory" "-Fu$ensembleDemoDirectory" "-Fu$repositoryRoot/tools" `
@@ -1889,6 +1889,20 @@ foreach ($renderSource in @(
 & (Join-Path $binaryOutputDirectory "wfc_music_ensemble_render_process_test$toolExecutableSuffix") `
   (Join-Path $binaryOutputDirectory "EnsembleStudioRender$toolExecutableSuffix") `
   $binaryOutputDirectory
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+Write-Host 'Building and checking the native Ensemble Studio download server.'
+foreach ($serveSource in @(
+  (Join-Path $ensembleDemoDirectory 'EnsembleStudioServe.lpr'),
+  (Join-Path $repositoryRoot 'test/wfc_ensemble_http_process_test.lpr')
+)) {
+  & $Compiler @CompilerOptions -B -Mdelphi -Sa -Cr -Co -Ci `
+    "-Fu$sourceDirectory" "-Fu$ensembleDemoDirectory" "-Fu$toolsDirectory" `
+    "-FU$unitOutputDirectory" "-FE$binaryOutputDirectory" $serveSource
+  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+}
+& (Join-Path $binaryOutputDirectory "wfc_ensemble_http_process_test$toolExecutableSuffix") `
+  (Join-Path $binaryOutputDirectory "EnsembleStudioServe$toolExecutableSuffix") `
+  $repositoryRoot
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 Write-Host 'Building and checking the streaming Ensemble Studio MIDI renderer.'
 foreach ($renderSource in @(

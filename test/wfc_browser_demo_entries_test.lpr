@@ -186,6 +186,7 @@ begin
   Expect(6, 'data-stream-release', 'passed');
   Expect(6, 'data-midi-stream-self-test', 'passed');
   Expect(6, 'data-midi-stream-release', 'passed');
+  Expect(6, 'data-http-stream-self-test', 'passed');
   Expect(6, 'data-composition-signature', '573E2010');
   Expect(6, 'data-score-signature', '33123E67');
   Expect(6, 'data-midi-signature', '07361333');

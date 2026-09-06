@@ -45,6 +45,41 @@ type
     RelativePath: String;
   end;
 
+  { An optional, in-process extension for a dedicated development host. The
+    ordinary wfc_serve executable never installs one. A response retains its
+    last body byte until Finish, so a late producer failure cannot look like a
+    complete Content-Length download. Writes are bounded, not whole-body
+    buffered. HEAD emits metadata only. Objects are borrowed for one request. }
+  TWfcServeResponse = class
+  private
+    FHeadOnly, FStarted, FFinished, FPending, FFailed: Boolean;
+    FExpected, FWritten: Int64;
+    FLastByte: Byte;
+    procedure Emit(const ABuffer; const ACount: Integer);
+  protected
+    procedure SendBuffer(const ABuffer; const ACount: Integer); virtual; abstract;
+  public
+    constructor Create(const AHeadOnly: Boolean);
+    procedure BeginResponse(const AStatus: Integer; const ALength: Int64;
+      const AContentType: String; const ADownloadName: String = '');
+    procedure WriteBytes(const ABuffer; const ACount: Integer);
+    procedure WriteText(const AText: String);
+    procedure Finish;
+    property Started: Boolean read FStarted;
+    property Finished: Boolean read FFinished;
+    property HeadOnly: Boolean read FHeadOnly;
+    property Written: Int64 read FWritten;
+  end;
+
+  TWfcServeExtension = class
+  public
+    { Return False only without starting a response, to serve a static file.
+      A handled request must finish exactly once. Exceptions close it; after
+      headers no replacement response or padded successful body is sent. }
+    function HandleRequest(const ARequest: TWfcServeRequest;
+      const AResponse: TWfcServeResponse): Boolean; virtual; abstract;
+  end;
+
 { Pure helpers: printable ASCII targets are decoded once. Dot/hidden
   components, device aliases, backslash, colon, residual percent signs
   and trailing dot/space aliases are rejected on every supported OS. }
@@ -71,12 +106,13 @@ function ValidateWfcServeRoot(const ARoot: String): String;
   Linux requires /proc/self/fd; macOS uses fcntl(F_GETPATH). }
 procedure RunWfcServe(const ARoot: String; const APort: Integer;
   const AMaxRequests: Integer = 0;
-  const ABindAddress: String = '127.0.0.1');
+  const ABindAddress: String = '127.0.0.1';
+  const AExtension: TWfcServeExtension = nil);
 
 implementation
 
 uses
-  Sockets
+  Sockets, wfc_browser_socket
   {$IFDEF MSWINDOWS}, Windows{$ELSE}, BaseUnix{$ENDIF};
 
 {$IFNDEF MSWINDOWS}
@@ -112,6 +148,109 @@ function ServeFinalPathName(AHandle: THandle; APath: PChar;
   ALength, AFlags: DWORD): DWORD; stdcall;
   external 'kernel32' name 'GetFinalPathNameByHandleA';
 {$ENDIF}
+
+type
+  TSocketServeResponse = class(TWfcServeResponse)
+  private
+    FSocket: Integer;
+  protected
+    procedure SendBuffer(const ABuffer; const ACount: Integer); override;
+  public
+    constructor Create(const ASocket: Integer; const AHeadOnly: Boolean);
+  end;
+
+constructor TWfcServeResponse.Create(const AHeadOnly: Boolean);
+begin
+  inherited Create;
+  FHeadOnly := AHeadOnly;
+end;
+
+procedure TWfcServeResponse.Emit(const ABuffer; const ACount: Integer);
+begin
+  try
+    SendBuffer(ABuffer, ACount);
+  except
+    FFailed := True;
+    raise;
+  end;
+end;
+
+procedure TWfcServeResponse.BeginResponse(const AStatus: Integer;
+  const ALength: Int64; const AContentType, ADownloadName: String);
+var
+  LHeader: String;
+  I: Integer;
+begin
+  if FStarted then raise EWfcServe.Create('response already started');
+  if (AStatus < 100) or (AStatus > 599) or (ALength < 0) or
+      (AContentType = '') or (Length(AContentType) > 128) or
+      (Length(ADownloadName) > 128) then
+    raise EWfcServe.Create('invalid response metadata');
+  for I := 1 to Length(AContentType) do
+    if not (Ord(AContentType[I]) in [32..126]) then
+      raise EWfcServe.Create('invalid response content type');
+  for I := 1 to Length(ADownloadName) do
+    if not (ADownloadName[I] in ['a'..'z', 'A'..'Z', '0'..'9', '.', '-', '_']) then
+      raise EWfcServe.Create('invalid download filename');
+  if (ADownloadName <> '') and (ADownloadName[1] = '.') then
+    raise EWfcServe.Create('invalid download filename');
+  LHeader := WfcServeResponseHeader(AStatus, ALength, AContentType);
+  SetLength(LHeader, Length(LHeader) - 2);
+  LHeader := LHeader + 'Cross-Origin-Resource-Policy: same-origin' + #13#10 +
+    'Referrer-Policy: no-referrer' + #13#10 +
+    'X-Frame-Options: DENY' + #13#10;
+  if ADownloadName <> '' then
+    LHeader := LHeader + 'Content-Disposition: attachment; filename="' +
+      ADownloadName + '"' + #13#10;
+  LHeader := LHeader + #13#10;
+  FExpected := ALength;
+  FStarted := True;
+  Emit(LHeader[1], Length(LHeader));
+end;
+
+procedure TWfcServeResponse.WriteBytes(const ABuffer; const ACount: Integer);
+var
+  LBytes: PByte;
+begin
+  if not FStarted or FFinished or FHeadOnly or FFailed then
+    raise EWfcServe.Create('response is not accepting body bytes');
+  if (ACount < 0) or (ACount > 65536) or (ACount > FExpected - FWritten) then
+    raise EWfcServe.Create('response body count is invalid');
+  if ACount = 0 then Exit;
+  if FPending then Emit(FLastByte, 1);
+  LBytes := @ABuffer;
+  if ACount > 1 then Emit(LBytes^, ACount - 1);
+  FLastByte := (LBytes + ACount - 1)^;
+  FPending := True;
+  Inc(FWritten, ACount);
+end;
+
+procedure TWfcServeResponse.WriteText(const AText: String);
+var
+  LOffset, LCount: Integer;
+begin
+  if not FStarted or FFinished or FHeadOnly or FFailed then
+    raise EWfcServe.Create('response is not accepting body text');
+  LOffset := 1;
+  while LOffset <= Length(AText) do
+  begin
+    LCount := Length(AText) - LOffset + 1;
+    if LCount > 65536 then LCount := 65536;
+    WriteBytes(AText[LOffset], LCount);
+    Inc(LOffset, LCount);
+  end;
+end;
+
+procedure TWfcServeResponse.Finish;
+begin
+  if not FStarted or FFinished or FFailed then
+    raise EWfcServe.Create('response is not awaiting completion');
+  if not FHeadOnly and (FWritten <> FExpected) then
+    raise EWfcServe.Create('response body is incomplete');
+  if FPending then Emit(FLastByte, 1);
+  FPending := False;
+  FFinished := True;
+end;
 
 function HexDigit(const AChar: Char): Integer;
 begin
@@ -652,9 +791,9 @@ var
   LPart: String;
 begin
   AHeaders := '';
-  LStart := GetTickCount64;
+  LStart := WfcBrowserTickCount64;
   repeat
-    if GetTickCount64 - LStart >= WFC_SERVE_HEADER_TIMEOUT_MS then
+    if WfcBrowserTickCount64 - LStart >= WFC_SERVE_HEADER_TIMEOUT_MS then
       Exit(408);
     LReceived := fpRecv(ASocket, @LBuffer[0], SizeOf(LBuffer),
       {$IFDEF DARWIN}MSG_DONTWAIT{$ELSE}0{$ENDIF});
@@ -698,7 +837,7 @@ begin
   LPointer := @ABuffer;
   while LOffset < ACount do
   begin
-    if GetTickCount64 - AStart >= WFC_SERVE_SEND_TIMEOUT_MS then
+    if WfcBrowserTickCount64 - AStart >= WFC_SERVE_SEND_TIMEOUT_MS then
       Exit;
     LSent := fpSend(ASocket, LPointer + LOffset, ACount - LOffset,
       {$IFDEF LINUX}MSG_NOSIGNAL{$ELSE}
@@ -721,8 +860,24 @@ begin
   Result := True;
 end;
 
+constructor TSocketServeResponse.Create(const ASocket: Integer;
+  const AHeadOnly: Boolean);
+begin
+  inherited Create(AHeadOnly);
+  FSocket := ASocket;
+end;
+
+procedure TSocketServeResponse.SendBuffer(const ABuffer; const ACount: Integer);
+begin
+  { Each bounded block gets its own send deadline. Rendering a long requested
+    duration is not mistaken for one stalled socket write. }
+  if not SendBytes(FSocket, ABuffer, ACount, WfcBrowserTickCount64) then
+    raise EWfcServe.Create('client disconnected or socket write timed out');
+end;
+
 procedure HandleClient(const ASocket: Integer;
-  const ARoot, AFinalRoot, ABindAddress: String);
+  const ARoot, AFinalRoot, ABindAddress: String;
+  const AExtension: TWfcServeExtension);
 var
   LHeaders, LBody, LPath, LLocation: String;
   LRequest: TWfcServeRequest;
@@ -731,6 +886,8 @@ var
   LSize, LRemaining: Int64;
   LBuffer: array[0..65535] of Byte;
   LStart: QWord;
+  LResponse: TWfcServeResponse;
+  LHandled: Boolean;
 begin
   SetClientTimeouts(ASocket);
   LRequest.HeadOnly := False;
@@ -740,6 +897,23 @@ begin
   if LStatus = 200 then
     LStatus := ParseWfcServeRequest(LHeaders, LRequest, ABindAddress);
   try
+    if (LStatus = 200) and (AExtension <> nil) then
+    begin
+      LResponse := TSocketServeResponse.Create(ASocket, LRequest.HeadOnly);
+      try
+        LHandled := AExtension.HandleRequest(LRequest, LResponse);
+        if LHandled then
+        begin
+          if not LResponse.Finished then
+            raise EWfcServe.Create('extension left an incomplete response');
+          Exit;
+        end;
+        if LResponse.Started then
+          raise EWfcServe.Create('extension cannot fall back after starting a response');
+      finally
+        LResponse.Free;
+      end;
+    end;
     if LStatus = 200 then
     begin
       LPath := ARoot + StringReplace(LRequest.RelativePath, '/',
@@ -775,7 +949,7 @@ begin
         end;
       end;
     end;
-    LStart := GetTickCount64;
+    LStart := WfcBrowserTickCount64;
     if LStatus <> 200 then
     begin
       LBody := WfcServeReason(LStatus) + #10;
@@ -813,7 +987,8 @@ begin
 end;
 
 procedure RunWfcServe(const ARoot: String; const APort: Integer;
-  const AMaxRequests: Integer; const ABindAddress: String);
+  const AMaxRequests: Integer; const ABindAddress: String;
+  const AExtension: TWfcServeExtension);
 var
   LRoot, LFinalRoot: String;
   LRootHandle: THandle;
@@ -864,7 +1039,10 @@ begin
         ' (socket error ' + IntToStr(SocketError) + ')');
     if fpListen(LListener, 16) <> 0 then
       raise EWfcServe.Create('cannot listen on IPv4 socket');
-    WriteLn('WFC static server: http://', ABindAddress, ':', APort, '/');
+    if AExtension = nil then
+      WriteLn('WFC static server: http://', ABindAddress, ':', APort, '/')
+    else
+      WriteLn('WFC development server: http://', ABindAddress, ':', APort, '/');
     WriteLn('Root: ', LRoot);
     if Copy(ABindAddress, 1, 4) <> '127.' then
       WriteLn('Trusted LAN only: no authentication or TLS. All files in this root are shared.');
@@ -877,7 +1055,7 @@ begin
         raise EWfcServe.Create('listener accept failed');
       try
         try
-          HandleClient(LClient, LRoot, LFinalRoot, ABindAddress);
+          HandleClient(LClient, LRoot, LFinalRoot, ABindAddress, AExtension);
         except
           on E: Exception do
             WriteLn(StdErr, 'Request closed: ', E.Message);

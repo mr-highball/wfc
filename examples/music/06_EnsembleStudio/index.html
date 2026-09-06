@@ -22,7 +22,7 @@
   data-stream-write-failure="not-run" data-stream-commit="not-run"
   data-stream-release="not-run" data-midi-stream-self-test="not-requested"
   data-midi-stream-release="not-run" data-midi-stream-plan-state="none"
-  data-midi-stream-written-bytes="0">
+  data-midi-stream-written-bytes="0" data-http-stream-self-test="not-requested">
   <header class="masthead">
     <div>
       <p class="eyebrow">WFC / MUSIC LAB 06</p>
@@ -188,6 +188,11 @@
         <label class="check-field"><input id="stream-trace-input" type="checkbox"><span>Capture trace</span></label>
       </div>
       <p id="stream-plan" class="stream-plan">Preparing duration preflight…</p>
+      <div class="server-download">
+        <a id="stream-http-download" class="button-link disabled" aria-disabled="true" tabindex="-1" target="_blank" rel="noopener noreferrer">Download WAVE from FPC server</a>
+        <p id="stream-http-status" class="bounded-claim" aria-live="polite">Checking this FPC server for direct WAVE downloads…</p>
+        <p class="bounded-claim">When the included ensemble streaming server is running, this downloads the requested duration directly—even over phone LAN HTTP. It generates fresh music from the current stream settings, not the finite editor score. Your browser download manager owns progress and cancellation; the page’s Cancel button does not cancel this download. Interrupted downloads cannot be resumed: request a new download. A new tab keeps this studio open if the server reports an error.</p>
+      </div>
       <div class="stream-actions">
         <button id="stream-start-button" class="primary" type="button">Stream WAVE with Save As</button>
         <button id="stream-midi-plan-button" type="button">Plan MIDI</button>

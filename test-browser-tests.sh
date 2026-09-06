@@ -74,7 +74,7 @@ else
   [[ -f "$source" ]] || continue
   name="${source##*/}"
   name="${name%.lpr}"
-  case "$name" in wfc_package_check_process_test|wfc_artifact_cli_process_test) continue ;; esac
+  case "$name" in wfc_package_check_process_test|wfc_artifact_cli_process_test|wfc_ensemble_http_process_test) continue ;; esac
   if [[ -n "${WFC_BROWSER_TEST:-}" && "$name" != "$WFC_BROWSER_TEST" ]]; then continue; fi
   case "$name" in wfc_browser_args_test|wfc_browser_dom_test|wfc_browser_socket_test|wfc_browser_websocket_test|wfc_browser_cdp_test|wfc_browser_capture_test|wfc_serve_test|wfc_music_render_process_test|wfc_music_ensemble_render_process_test|wfc_music_ensemble_midi_render_process_test|wfc_music_voices_render_process_test|wfc_connectivity_process_test|wfc_music_studies_process_test) continue ;; esac
   sources+=("$name")
@@ -171,7 +171,10 @@ for _ in {1..50}; do
   bound=false
   while IFS= read -r line; do
     line=${line%$'\r'}
-    [[ "$line" != "WFC static server: http://127.0.0.1:$port/" ]] || bound=true
+    if [[ "$line" == "WFC static server: http://127.0.0.1:$port/" ]] ||
+        [[ "$standalone" == true && "$line" == "WFC development server: http://127.0.0.1:$port/" ]]; then
+      bound=true
+    fi
   done <"$results/server.log"
   ready_page="${sources[0]}.html"
   if [[ "$standalone" == true ]]; then ready_page=$standalone_page; fi
@@ -215,6 +218,7 @@ for name in "${sources[@]}"; do
     expectations+=(--expect data-stream-release=passed)
     expectations+=(--expect data-midi-stream-self-test=passed)
     expectations+=(--expect data-midi-stream-release=passed)
+    expectations+=(--expect data-http-stream-self-test=passed)
   fi
   if [[ "$name" == wfc_music_ensemble_demo_test ]]; then
     expectations+=(--expect data-developed-profile=passed)
@@ -247,11 +251,15 @@ for name in "${sources[@]}"; do
   # POSIX sleep/kill watchdog: no GNU timeout utility is needed on macOS.
   # Only the capture/browser PIDs recorded by this invocation are signalled.
   # Cancel the timer when capture returns; Chromium itself stays alive for CDP.
+  # Keep the native absolute sixty-second deadline unchanged. Allow five more
+  # seconds only for its timeout exception, cleanup and complete diagnostic to
+  # exit before forced containment; this cannot extend native page or I/O time.
+  capture_teardown_grace_seconds=5
   (
     trap - EXIT
     timer_pid=''
     trap 'trap "" TERM INT; if [[ -n "$timer_pid" ]]; then terminate_owned_child "$timer_pid" watchdog-timer || exit 1; fi; exit 0' TERM INT
-    sleep 60 &
+    sleep "$((60 + capture_teardown_grace_seconds))" &
     timer_pid=$!
     wait "$timer_pid" || exit 0
     timer_pid=''

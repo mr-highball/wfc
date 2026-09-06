@@ -191,6 +191,11 @@ private IPv4 address and open that address with port `4178`. The default remains
 localhost-only. See [LAN serving and firewall scope](../../../docs/development-tools.md#access-from-a-trusted-local-network).
 Over LAN HTTP, a browser may not provide the direct streaming file picker;
 the preview, ordinary exports, and native streaming fallback are separate.
+The optional [native download server](../../../docs/ensemble-http-downloads.md)
+also supplies **Download WAVE from FPC server** without that picker: run
+`EnsembleStudioServe` in place of `wfc_serve`, keeping the same staged root.
+It streams the user-requested duration as an ordinary browser download and
+does not buffer a whole-song Blob or write a song file on the server.
 
 Seed, bar or profile edits clear all current score/media immediately and require **New
 session**, which also clears locks and the hidden repair baseline. Strategy,
@@ -198,9 +203,10 @@ scope, allowance, trace, and lock edits also clear visible artifacts, but retain
 the current session baseline for an explicit repair. A failed solve exposes its
 terminal report and no partial or stale score, MIDI, or audio.
 
-The browser never autoplays. **Render preview** is a user action that creates a
+The browser never autoplays. **Build full-score WAV** is a user action that creates a
 project-owned WAV Blob; playback begins only if the user then activates the
-standard HTML audio control.
+standard HTML audio control. This finite preview adapter has a 60-second
+bound; the continuous renderers and native download server do not inherit it.
 
 ## Continuous WAVE and MIDI streams
 

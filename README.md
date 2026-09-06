@@ -130,6 +130,9 @@ The [musical-form planner](docs/music-form.md) adds bar-level form,
 harmonic-intent, and gesture passes. Ensemble Studio's developed profile uses
 them for question/answer/contrast/return phrases, with exact acoustic masks
 and an independently checked realization instead of extending one repeated bar.
+The optional [native Ensemble download host](docs/ensemble-http-downloads.md)
+streams user-selected-duration WAVE to ordinary browser downloads, including
+trusted-LAN clients without the direct browser file-system picker.
 The separate [independent-voice libraries](docs/music-voices.md) learn one
 chord-capable vocabulary per role and generate new vertical combinations
 under collective harmony, shared rhythm, ranges, and optional pair gaps.

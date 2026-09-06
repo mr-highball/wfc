@@ -25,6 +25,7 @@ $nativeOnly = @('wfc_browser_dom_test','wfc_browser_socket_test','wfc_browser_we
 $standalone = $WebRoot -ne '' -or $Page -ne '' -or $Expect.Count -gt 0
 $nativeOnly += 'wfc_package_check_process_test'
 $nativeOnly += 'wfc_artifact_cli_process_test'
+$nativeOnly += 'wfc_ensemble_http_process_test'
 if ($standalone) {
   if (-not $WebRoot -or -not $Page -or $TestName) {
     throw 'Standalone mode requires -WebRoot and -Page and excludes -TestName.'
@@ -97,12 +98,18 @@ function Stop-OwnedProcess([System.Diagnostics.Process] $Process, [string] $Labe
 }
 
 function Wait-CaptureProcess([System.Diagnostics.Process] $Process,
-  [System.Diagnostics.Stopwatch] $Clock, [string] $Label) {
-  $remaining = 60000 - $Clock.ElapsedMilliseconds
+  [System.Diagnostics.Stopwatch] $Clock, [string] $Label,
+  [switch] $AllowDeadlineTeardown) {
+  $containmentMilliseconds = 60000
+  # The native absolute deadline remains sixty seconds. Its timeout exception,
+  # cleanup and complete diagnostic may need time after that deadline to exit.
+  # This grace is only process containment, never additional page or I/O time.
+  if ($AllowDeadlineTeardown) { $containmentMilliseconds += 5000 }
+  $remaining = $containmentMilliseconds - $Clock.ElapsedMilliseconds
   if ($remaining -le 0 -or -not $Process.WaitForExit([int]$remaining)) {
     throw "Capture timed out: $Label."
   }
-  if ($Clock.ElapsedMilliseconds -ge 60000) { throw "Capture timed out: $Label." }
+  if ($Clock.ElapsedMilliseconds -ge $containmentMilliseconds) { throw "Capture timed out: $Label." }
   if ($Process.ExitCode -ne 0) { throw "Capture failed: $Label (exit $($Process.ExitCode))." }
 }
 
@@ -117,7 +124,11 @@ try {
   for ($attempt = 0; $attempt -lt 50; $attempt++) {
     if ($serverProcess.HasExited) { throw 'FPC server exited before readiness.' }
     try {
-      $bound = Select-String -LiteralPath (Join-Path $results 'server.log') -SimpleMatch -Quiet -Pattern "WFC static server: http://127.0.0.1:$Port/"
+      $readyLines = @(Get-Content -LiteralPath (Join-Path $results 'server.log'))
+      $bound = $readyLines -ccontains "WFC static server: http://127.0.0.1:$Port/"
+      if ($standalone -and -not $bound) {
+        $bound = $readyLines -ccontains "WFC development server: http://127.0.0.1:$Port/"
+      }
       if (-not $bound) { Start-Sleep -Milliseconds 200; continue }
       $null = Invoke-WebRequest -Uri ("http://127.0.0.1:$Port/" + $firstPage) -TimeoutSec 2
       if ($serverProcess.HasExited) { throw 'FPC server exited during readiness.' }
@@ -159,7 +170,8 @@ try {
       }
       if ($caseName -eq 'wfc_music_ensemble_stream_demo_test') {
         $expectations += @('data-stream-self-test=passed', 'data-stream-release=passed',
-          'data-midi-stream-self-test=passed', 'data-midi-stream-release=passed')
+          'data-midi-stream-self-test=passed', 'data-midi-stream-release=passed',
+          'data-http-stream-self-test=passed')
       }
       if ($caseName -eq 'wfc_music_ensemble_demo_test') {
         $expectations += @('data-developed-profile=passed')
@@ -192,7 +204,7 @@ try {
       $captureLog = Join-Path $runDirectory 'capture.log'
       $captureArguments = @('--profile', $profile, '--url', "http://127.0.0.1:$Port/$pageName", '--deadline', $deadline) + $assertions
       $captureProcess = Start-Process -FilePath $Capture -ArgumentList (Join-NativeArguments $captureArguments) -PassThru -WindowStyle Hidden -RedirectStandardOutput (Join-Path $runDirectory 'capture-output.log') -RedirectStandardError $captureLog
-      Wait-CaptureProcess $captureProcess $caseClock $caseName
+      Wait-CaptureProcess $captureProcess $caseClock $caseName -AllowDeadlineTeardown
       & $Checker @assertions
       if ($LASTEXITCODE -ne 0) { throw "Browser assertions failed: $caseName." }
     } catch {

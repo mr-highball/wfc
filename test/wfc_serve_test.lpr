@@ -29,14 +29,160 @@ uses
   Classes, SysUtils, Process, Sockets, wfc_serve_http
   {$IFDEF MSWINDOWS}, Windows{$ELSE}, BaseUnix{$ENDIF};
 
+type
+  TMemoryResponse = class(TWfcServeResponse)
+  public
+    Bytes: RawByteString;
+    FailNext: Boolean;
+    procedure SendBuffer(const ABuffer; const ACount: Integer); override;
+  end;
+
 var
   Checks: Integer;
+
+procedure TMemoryResponse.SendBuffer(const ABuffer; const ACount: Integer);
+var LPart: RawByteString;
+begin
+  if FailNext then
+  begin
+    FailNext := False;
+    raise EWfcServe.Create('injected transport failure');
+  end;
+  SetString(LPart, PAnsiChar(@ABuffer), ACount);
+  Bytes := Bytes + LPart;
+end;
 
 procedure Check(const ACondition: Boolean; const ALabel: String);
 begin
   Inc(Checks);
   if not ACondition then
     raise Exception.Create('check failed: ' + ALabel);
+end;
+
+procedure ExtensionResponseChecks;
+var
+  R: TMemoryResponse;
+  LHeaderLength, I: Integer;
+  LRaised: Boolean;
+  LByte: Byte;
+  LLarge: String;
+begin
+  LByte := 65;
+  R := TMemoryResponse.Create(False);
+  try
+    LRaised := False;
+    try R.Finish; except on EWfcServe do LRaised := True; end;
+    Check(LRaised and (R.Bytes = ''), 'cannot finish before headers');
+    LRaised := False;
+    try R.WriteText(''); except on EWfcServe do LRaised := True; end;
+    Check(LRaised and (R.Bytes = ''), 'empty text cannot bypass response state');
+    for I := 0 to 5 do
+    begin
+      LRaised := False;
+      try
+        case I of
+          0: R.BeginResponse(200, -1, 'audio/wav');
+          1: R.BeginResponse(200, 3, 'audio/wav'#13#10'Injected: yes');
+          2: R.BeginResponse(200, 3, 'audio/wav'#0);
+          3: R.BeginResponse(200, 3, 'audio/wav', '../outside.wav');
+          4: R.BeginResponse(200, 3, 'audio/wav', 'quote".wav');
+          5: R.BeginResponse(200, 3, 'audio/wav', '.hidden');
+        end;
+      except on EWfcServe do LRaised := True; end;
+      Check(LRaised and not R.Started and (R.Bytes = ''),
+        'invalid metadata emits nothing');
+    end;
+    R.BeginResponse(200, 3, 'audio/wav', 'ensemble-4.wav');
+    LHeaderLength := Length(R.Bytes);
+    Check(Pos('Content-Length: 3'#13#10, R.Bytes) > 0, 'extension exact content length');
+    Check(Pos('Content-Disposition: attachment; filename="ensemble-4.wav"'#13#10,
+      R.Bytes) > 0, 'safe download filename');
+    Check(Pos('Cross-Origin-Resource-Policy: same-origin'#13#10, R.Bytes) > 0,
+      'extension denies cross-origin resource embedding');
+    R.WriteText('ab');
+    Check((R.Written = 2) and (Length(R.Bytes) = LHeaderLength + 1),
+      'one pending body byte retained');
+    LRaised := False;
+    try R.Finish; except on EWfcServe do LRaised := True; end;
+    Check(LRaised and not R.Finished and (Length(R.Bytes) = LHeaderLength + 1),
+      'premature completion cannot release pending byte');
+    R.WriteText('c');
+    Check(Copy(R.Bytes, LHeaderLength + 1, MaxInt) = 'ab',
+      'all planned body bytes still lack completion byte');
+    LRaised := False;
+    try R.WriteBytes(LByte, 1); except on EWfcServe do LRaised := True; end;
+    Check(LRaised and (R.Written = 3), 'overrun rejected before output');
+    R.Finish;
+    Check(R.Finished and (Copy(R.Bytes, LHeaderLength + 1, MaxInt) = 'abc'),
+      'completion publishes exact body');
+    LRaised := False;
+    try R.Finish; except on EWfcServe do LRaised := True; end;
+    Check(LRaised, 'double finish rejected');
+    LRaised := False;
+    try R.WriteBytes(LByte, 0); except on EWfcServe do LRaised := True; end;
+    Check(LRaised, 'closed response rejects even empty writes');
+    LRaised := False;
+    try R.BeginResponse(200, 0, 'text/plain'); except on EWfcServe do LRaised := True; end;
+    Check(LRaised, 'second response rejected');
+  finally R.Free; end;
+
+  R := TMemoryResponse.Create(False);
+  try
+    R.BeginResponse(200, 1, 'audio/wav');
+    LHeaderLength := Length(R.Bytes);
+    R.WriteBytes(LByte, 1);
+    { Simulate a producer rejecting its final independent validation after
+      supplying every byte. Destruction must never auto-finish the response. }
+    Check((Length(R.Bytes) = LHeaderLength) and not R.Finished,
+      'late producer failure leaves even one-byte download incomplete');
+  finally R.Free; end;
+
+  for I := 0 to 1 do
+  begin
+    R := TMemoryResponse.Create(False);
+    try
+      R.FailNext := I = 0;
+      LRaised := False;
+      try R.BeginResponse(200, 1, 'audio/wav'); except on EWfcServe do LRaised := True; end;
+      if I = 1 then
+      begin
+        R.WriteBytes(LByte, 1);
+        R.FailNext := True;
+        try R.Finish; except on EWfcServe do LRaised := True; end;
+      end;
+      Check(LRaised and not R.Finished, 'transport failure never completes');
+      LRaised := False;
+      try R.Finish; except on EWfcServe do LRaised := True; end;
+      Check(LRaised and not R.Finished, 'failed transport cannot be retried as success');
+    finally R.Free; end;
+  end;
+
+  R := TMemoryResponse.Create(True);
+  try
+    R.BeginResponse(200, 9000000000, 'audio/wav', 'large.wav');
+    LHeaderLength := Length(R.Bytes);
+    LRaised := False;
+    try R.WriteBytes(LByte, 1); except on EWfcServe do LRaised := True; end;
+    Check(LRaised, 'HEAD does not accept a body');
+    R.Finish;
+    Check(R.Finished and (R.Written = 0) and (Length(R.Bytes) = LHeaderLength),
+      'HEAD completes metadata without materializing huge body');
+  finally R.Free; end;
+
+  R := TMemoryResponse.Create(False);
+  try
+    LLarge := StringOfChar('z', 131073);
+    R.BeginResponse(200, Length(LLarge), 'application/octet-stream');
+    LHeaderLength := Length(R.Bytes);
+    LRaised := False;
+    try R.WriteBytes(LLarge[1], 65537); except on EWfcServe do LRaised := True; end;
+    Check(LRaised and (R.Written = 0), 'single unbounded body block rejected');
+    R.WriteText(LLarge);
+    Check(R.Written = Length(LLarge), 'text helper writes bounded blocks');
+    R.Finish;
+    Check(Copy(R.Bytes, LHeaderLength + 1, MaxInt) = LLarge,
+      'chunk boundaries preserve every body byte');
+  finally R.Free; end;
 end;
 
 procedure Target(const AValue, AExpected: String);
@@ -909,6 +1055,7 @@ end;
 begin
   try
     Run;
+    ExtensionResponseChecks;
     if ParamCount <> 0 then
     begin
       if (ParamCount <> 3) or (ParamStr(1) <> '--integration') then

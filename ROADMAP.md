@@ -132,6 +132,10 @@ The repository already contains the beginnings of the ecosystem:
   independently validated immutable phrase plans, and a bounded phrase cursor;
   Ensemble Studio exposes a developed-period profile while preserving the
   original structural model's exact replay;
+- an opt-in [native Ensemble download host](docs/ensemble-http-downloads.md)
+  for user-selected-duration WAVE over ordinary trusted-LAN HTTP, with bounded
+  rendering, strict same-origin capability discovery, and incomplete-download
+  protection; the general static server remains static-only;
 - [Independent Voices v1](docs/music-voices.md) with detached common-excerpt
   role training, one chord-capable vocabulary per voice, shared harmony/rhythm
   providers, pitch ranges and optional pair gaps, existential exact-coverage
