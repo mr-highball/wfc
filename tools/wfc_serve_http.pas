@@ -771,6 +771,7 @@ var
   LRootHandle: THandle;
   LListener, LClient, LCount: Integer;
   LAddress: TInetSockAddr;
+  {$IFNDEF MSWINDOWS}LReuseAddress: LongInt; LOptionResult: Integer;{$ENDIF}
 begin
   if (APort < 1) or (APort > 65535) then
     raise EWfcServe.Create('port must be from 1 through 65535');
@@ -789,6 +790,20 @@ begin
     LListener := fpSocket(AF_INET, SOCK_STREAM, 0);
     if LListener < 0 then
       raise EWfcServe.Create('cannot create loopback socket');
+    {$IFNDEF MSWINDOWS}
+    { Restart after our actively closed HTTP connections enter TIME_WAIT.
+      This is socket-local SO_REUSEADDR, never SO_REUSEPORT: an existing
+      listener on the exact loopback address must still refuse a new bind.
+      https://man7.org/linux/man-pages/man7/socket.7.html
+      https://developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man2/setsockopt.2.html }
+    LReuseAddress := 1;
+    repeat
+      LOptionResult := fpSetSockOpt(LListener, SOL_SOCKET, SO_REUSEADDR,
+        @LReuseAddress, SizeOf(LReuseAddress));
+    until (LOptionResult = 0) or (SocketError <> ESysEINTR);
+    if LOptionResult <> 0 then
+      raise EWfcServe.Create('cannot configure loopback address reuse');
+    {$ENDIF}
     FillChar(LAddress, SizeOf(LAddress), 0);
     {$IFDEF DARWIN}LAddress.sin_len := SizeOf(LAddress);{$ENDIF}
     LAddress.sin_family := AF_INET;

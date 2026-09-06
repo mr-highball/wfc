@@ -408,9 +408,84 @@ procedure LiveChecks(const AServer, AParent: String);
 var
   LBase, LRoot, LOutside, LBytes, LResponse, LRequest: String;
   LProcess: TProcess;
-  LPort, LSocket, I, LSplit: Integer;
+  LPort, I, LSplit: Integer;
   LStart: QWord;
   LRaised: Boolean;
+
+  procedure StopServer;
+  begin
+    if LProcess = nil then
+      Exit;
+    try
+      if LProcess.Running then
+        LProcess.Terminate(0);
+      Check(LProcess.WaitOnExit(5000), 'owned server shutdown is bounded');
+    finally
+      FreeAndNil(LProcess);
+    end;
+  end;
+
+  procedure StartServer;
+  var
+    LSocket: Integer;
+    LStarted: QWord;
+  begin
+    LProcess := TProcess.Create(nil);
+    LProcess.Executable := ExpandFileName(AServer);
+    LProcess.Parameters.Add('--root');
+    LProcess.Parameters.Add(LRoot);
+    LProcess.Parameters.Add('--port');
+    LProcess.Parameters.Add(IntToStr(LPort));
+    LProcess.Options := [poUsePipes, poNoConsole];
+    LProcess.Execute;
+    LStarted := GetTickCount64;
+    repeat
+      if not LProcess.Running then
+        raise Exception.Create('owned test server exited during startup');
+      LSocket := ConnectClient(LPort);
+      if LSocket >= 0 then
+      begin
+        CloseSocket(LSocket);
+        Break;
+      end;
+      if GetTickCount64 - LStarted > 5000 then
+        raise Exception.Create('owned test server startup deadline exceeded');
+      Sleep(25);
+    until False;
+  end;
+
+  procedure ListenerCollision;
+  var
+    LOther: TProcess;
+    LError: String;
+    LLength: Integer;
+  begin
+    LOther := TProcess.Create(nil);
+    try
+      LOther.Executable := ExpandFileName(AServer);
+      LOther.Parameters.Add('--root');
+      LOther.Parameters.Add(LRoot);
+      LOther.Parameters.Add('--port');
+      LOther.Parameters.Add(IntToStr(LPort));
+      LOther.Options := [poUsePipes, poNoConsole];
+      LOther.Execute;
+      Check(LOther.WaitOnExit(5000), 'active listener collision fails promptly');
+      Check(LOther.ExitStatus <> 0, 'active listener collision fails closed');
+      LLength := LOther.Stderr.NumBytesAvailable;
+      Check((LLength > 0) and (LLength <= 4096),
+        'listener collision has a bounded diagnostic');
+      SetLength(LError, LLength);
+      LOther.Stderr.ReadBuffer(LError[1], LLength);
+      Check(Pos('cannot bind 127.0.0.1:' + IntToStr(LPort), LError) > 0,
+        'listener collision reports the exact occupied loopback address');
+      Check(LProcess.Running, 'listener collision leaves owner running');
+    finally
+      if LOther.Running then
+        LOther.Terminate(0);
+      Check(LOther.WaitOnExit(5000), 'colliding server cleanup is bounded');
+      LOther.Free;
+    end;
+  end;
 
   procedure Response(const AMethod, ATarget: String;
     const AStatus: Integer; const ABody: String);
@@ -458,28 +533,8 @@ begin
     except on EWfcServe do LRaised := True; end;
     Check(LRaised, 'link cannot be selected as root');
     LPort := UnusedLoopbackPort;
-    LProcess := TProcess.Create(nil);
-    LProcess.Executable := ExpandFileName(AServer);
-    LProcess.Parameters.Add('--root');
-    LProcess.Parameters.Add(LRoot);
-    LProcess.Parameters.Add('--port');
-    LProcess.Parameters.Add(IntToStr(LPort));
-    LProcess.Options := [poUsePipes, poNoConsole];
-    LProcess.Execute;
-    LStart := GetTickCount64;
-    repeat
-      if not LProcess.Running then
-        raise Exception.Create('owned test server exited during startup');
-      LSocket := ConnectClient(LPort);
-      if LSocket >= 0 then
-      begin
-        CloseSocket(LSocket);
-        Break;
-      end;
-      if GetTickCount64 - LStart > 5000 then
-        raise Exception.Create('owned test server startup deadline exceeded');
-      Sleep(25);
-    until False;
+    StartServer;
+    ListenerCollision;
     Response('GET', '/', 200, '<p>WFC server fixture</p>');
     Response('GET', '/binary.wav', 200, LBytes);
     Check(Pos('Content-Type: audio/wav'#13#10, LResponse) > 0,
@@ -519,14 +574,21 @@ begin
       AbandonResponse(LPort);
     Response('GET', '/', 200, '<p>WFC server fixture</p>');
     Check(LProcess.Running, 'server survives invalid, idle and abandoned clients');
-  finally
-    if LProcess <> nil then
+    {$IFNDEF MSWINDOWS}
+    { Exchange waits for server EOF before closing the client. Thus the
+      server actively closes each response and leaves TIME_WAIT connections.
+      Restart immediately on the same port, without waiting for TCP expiry,
+      and prove reuse never allows a second active listener to take over. }
+    for I := 1 to 3 do
     begin
-      if LProcess.Running then
-        LProcess.Terminate(0);
-      LProcess.WaitOnExit(5000);
-      LProcess.Free;
+      StopServer;
+      StartServer;
+      ListenerCollision;
+      Response('GET', '/', 200, '<p>WFC server fixture</p>');
     end;
+    {$ENDIF}
+  finally
+    StopServer;
     { Exact paths created above only; never enumerate or recurse. }
     RemoveDirectoryLink(LRoot + '/escape');
     SysUtils.DeleteFile(LRoot + '/index.html');

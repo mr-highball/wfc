@@ -74,6 +74,13 @@ The root must be an existing ordinary directory. The listener binds only
 `--max-requests` stops after that many accepted connections, including invalid
 requests. Without it, the foreground process keeps serving until stopped.
 
+On Unix, the listener sets `SO_REUSEADDR` before binding so a stopped server
+can restart on the same port while old HTTP connections finish their TCP
+wait state. It does not enable `SO_REUSEPORT`: a second active listener on
+the same loopback address and port must still be refused. Windows binding
+behavior is unchanged. Live tests check both refusal of a competing listener
+and immediate same-port restart after real HTTP traffic.
+
 Only GET and HEAD are accepted. Directories resolve to `index.html`, with a
 query-preserving redirect when a trailing slash is missing. There is no
 directory listing. HTML, CSS, JavaScript, JSON, SVG, MIDI, WAVE, icons, text,
