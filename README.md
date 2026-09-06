@@ -167,7 +167,7 @@ Open `http://127.0.0.1:4177/`; stop the foreground server with Ctrl+C.
 The [build guide](docs/building.md) covers all ten browser staging scripts,
 compiler versions and overrides, package builds, and CI.
 The [development-tool guide](docs/development-tools.md) covers the FPC server,
-browser evidence checker, and browser conformance runner. Generated browser
+browser completion capture, evidence checker, and browser conformance runner. Generated browser
 code is build output, not a second hand-maintained implementation.
 
 ## Framework guides

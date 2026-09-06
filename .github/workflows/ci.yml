@@ -214,12 +214,16 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes fp-compiler-3.2.2 fp-units-fcl-3.2.2 fp-utils-3.2.2
           mkdir -p build/native/bin build/native/tools-units
-          for tool in wfc_serve wfc_browser_check; do
+          for tool in wfc_serve wfc_browser_check wfc_browser_capture; do
             fpc -B -Mdelphi -Sa -Cr -Co -Ci -Futools \
               -FUbuild/native/tools-units -FEbuild/native/bin "tools/$tool.lpr"
           done
           PAS2JS="$PAS2JS_ROOT/bin/x86_64-linux/pas2js" bash ./build-browser-tests.sh
           bash ./test-browser-tests.sh
+
+      - name: Verify native browser capture completion and rejection
+        shell: bash
+        run: bash ./test/browser_capture/run.sh
 
       - name: Build browser Ensemble Studio
         shell: bash
@@ -252,76 +256,8 @@ jobs:
           pas2js="$PAS2JS_ROOT/bin/x86_64-linux/pas2js"
           PAS2JS="$pas2js" bash ./build-browser-text.sh
 
-          chrome=''
-          for candidate in google-chrome google-chrome-stable chromium chromium-browser; do
-            if command -v "$candidate" >/dev/null 2>&1; then
-              chrome=$(command -v "$candidate")
-              break
-            fi
-          done
-          if [ -z "$chrome" ]; then
-            echo 'No supported Chrome or Chromium executable was found.' >&2
-            exit 1
-          fi
-
-          server_log=$(mktemp)
-          chrome_log=$(mktemp)
-          dom_file=$(mktemp)
-          profile_directory=$(mktemp -d)
-          server_pid=''
-          cleanup() {
-            if [ -n "$server_pid" ]; then
-              kill "$server_pid" 2>/dev/null || true
-              wait "$server_pid" 2>/dev/null || true
-            fi
-            rm -f -- "$server_log" "$chrome_log" "$dom_file"
-            if [ -n "$profile_directory" ] && [ -d "$profile_directory" ]; then
-              rm -rf -- "$profile_directory"
-            fi
-          }
-          trap cleanup EXIT
-
-          ./build/native/bin/wfc_serve --port 4175 \
-            --root build/browser/text-passes/www \
-            >"$server_log" 2>&1 &
-          server_pid=$!
-
-          server_ready=false
-          for _ in $(seq 1 50); do
-            if curl --fail --silent \
-                http://127.0.0.1:4175/index.html >/dev/null 2>&1; then
-              server_ready=true
-              break
-            fi
-            if ! kill -0 "$server_pid" 2>/dev/null; then
-              cat "$server_log" >&2
-              exit 1
-            fi
-            sleep 0.2
-          done
-          if [ "$server_ready" != true ]; then
-            cat "$server_log" >&2
-            echo 'Timed out waiting for the browser text HTTP server.' >&2
-            exit 1
-          fi
-
-          if ! timeout 30s "$chrome" \
-              --headless \
-              --disable-gpu \
-              --disable-dev-shm-usage \
-              --no-default-browser-check \
-              --no-first-run \
-              --user-data-dir="$profile_directory" \
-              --virtual-time-budget=15000 \
-              --dump-dom \
-              'http://127.0.0.1:4175/index.html?selftest=1' \
-              >"$dom_file" 2>"$chrome_log"; then
-            cat "$chrome_log" >&2
-            cat "$server_log" >&2
-            exit 1
-          fi
-
-          ./build/native/bin/wfc_browser_check --dom "$dom_file" \
+          bash ./test-browser-tests.sh --root build/browser/text-passes/www \
+            --page 'index.html?selftest=1' \
             --expect 'data-state=solved' \
             --expect 'data-self-test=passed' \
             --expect 'data-signature=1:69ABA6CE' \
@@ -336,76 +272,8 @@ jobs:
           pas2js="$PAS2JS_ROOT/bin/x86_64-linux/pas2js"
           PAS2JS="$pas2js" bash ./build-browser-training.sh
 
-          chrome=''
-          for candidate in google-chrome google-chrome-stable chromium chromium-browser; do
-            if command -v "$candidate" >/dev/null 2>&1; then
-              chrome=$(command -v "$candidate")
-              break
-            fi
-          done
-          if [ -z "$chrome" ]; then
-            echo 'No supported Chrome or Chromium executable was found.' >&2
-            exit 1
-          fi
-
-          server_log=$(mktemp)
-          chrome_log=$(mktemp)
-          dom_file=$(mktemp)
-          profile_directory=$(mktemp -d)
-          server_pid=''
-          cleanup() {
-            if [ -n "$server_pid" ]; then
-              kill "$server_pid" 2>/dev/null || true
-              wait "$server_pid" 2>/dev/null || true
-            fi
-            rm -f -- "$server_log" "$chrome_log" "$dom_file"
-            if [ -n "$profile_directory" ] && [ -d "$profile_directory" ]; then
-              rm -rf -- "$profile_directory"
-            fi
-          }
-          trap cleanup EXIT
-
-          ./build/native/bin/wfc_serve --port 4176 \
-            --root build/browser/training/www \
-            >"$server_log" 2>&1 &
-          server_pid=$!
-
-          server_ready=false
-          for _ in $(seq 1 50); do
-            if curl --fail --silent \
-                http://127.0.0.1:4176/index.html >/dev/null 2>&1; then
-              server_ready=true
-              break
-            fi
-            if ! kill -0 "$server_pid" 2>/dev/null; then
-              cat "$server_log" >&2
-              exit 1
-            fi
-            sleep 0.2
-          done
-          if [ "$server_ready" != true ]; then
-            cat "$server_log" >&2
-            echo 'Timed out waiting for the browser training HTTP server.' >&2
-            exit 1
-          fi
-
-          if ! timeout 30s "$chrome" \
-              --headless \
-              --disable-gpu \
-              --disable-dev-shm-usage \
-              --no-default-browser-check \
-              --no-first-run \
-              --user-data-dir="$profile_directory" \
-              --virtual-time-budget=15000 \
-              --dump-dom \
-              'http://127.0.0.1:4176/index.html?selftest=1' \
-              >"$dom_file" 2>"$chrome_log"; then
-            cat "$chrome_log" >&2
-            cat "$server_log" >&2
-            exit 1
-          fi
-
-          ./build/native/bin/wfc_browser_check --dom "$dom_file" \
+          bash ./test-browser-tests.sh --root build/browser/training/www \
+            --page 'index.html?selftest=1' \
             --expect 'data-state=solved' \
             --expect 'data-self-test=passed' \
             --expect 'data-source-signature=0FA2C5EA' \
@@ -425,76 +293,8 @@ jobs:
           pas2js="$PAS2JS_ROOT/bin/x86_64-linux/pas2js"
           PAS2JS="$pas2js" bash ./build-browser-music.sh
 
-          chrome=''
-          for candidate in google-chrome google-chrome-stable chromium chromium-browser; do
-            if command -v "$candidate" >/dev/null 2>&1; then
-              chrome=$(command -v "$candidate")
-              break
-            fi
-          done
-          if [ -z "$chrome" ]; then
-            echo 'No supported Chrome or Chromium executable was found.' >&2
-            exit 1
-          fi
-
-          server_log=$(mktemp)
-          chrome_log=$(mktemp)
-          dom_file=$(mktemp)
-          profile_directory=$(mktemp -d)
-          server_pid=''
-          cleanup() {
-            if [ -n "$server_pid" ]; then
-              kill "$server_pid" 2>/dev/null || true
-              wait "$server_pid" 2>/dev/null || true
-            fi
-            rm -f -- "$server_log" "$chrome_log" "$dom_file"
-            if [ -n "$profile_directory" ] && [ -d "$profile_directory" ]; then
-              rm -rf -- "$profile_directory"
-            fi
-          }
-          trap cleanup EXIT
-
-          ./build/native/bin/wfc_serve --port 4177 \
-            --root build/browser/music/www \
-            >"$server_log" 2>&1 &
-          server_pid=$!
-
-          server_ready=false
-          for _ in $(seq 1 50); do
-            if curl --fail --silent \
-                http://127.0.0.1:4177/index.html >/dev/null 2>&1; then
-              server_ready=true
-              break
-            fi
-            if ! kill -0 "$server_pid" 2>/dev/null; then
-              cat "$server_log" >&2
-              exit 1
-            fi
-            sleep 0.2
-          done
-          if [ "$server_ready" != true ]; then
-            cat "$server_log" >&2
-            echo 'Timed out waiting for the browser music HTTP server.' >&2
-            exit 1
-          fi
-
-          if ! timeout 30s "$chrome" \
-              --headless \
-              --disable-gpu \
-              --disable-dev-shm-usage \
-              --no-default-browser-check \
-              --no-first-run \
-              --user-data-dir="$profile_directory" \
-              --virtual-time-budget=15000 \
-              --dump-dom \
-              'http://127.0.0.1:4177/index.html?selftest=1' \
-              >"$dom_file" 2>"$chrome_log"; then
-            cat "$chrome_log" >&2
-            cat "$server_log" >&2
-            exit 1
-          fi
-
-          ./build/native/bin/wfc_browser_check --dom "$dom_file" \
+          bash ./test-browser-tests.sh --root build/browser/music/www \
+            --page 'index.html?selftest=1' \
             --expect 'data-state=solved' \
             --expect 'data-self-test=passed' \
             --expect 'data-seed=0' \
@@ -533,76 +333,8 @@ jobs:
           pas2js="$PAS2JS_ROOT/bin/x86_64-linux/pas2js"
           PAS2JS="$pas2js" bash ./build-browser.sh
 
-          chrome=''
-          for candidate in google-chrome google-chrome-stable chromium chromium-browser; do
-            if command -v "$candidate" >/dev/null 2>&1; then
-              chrome=$(command -v "$candidate")
-              break
-            fi
-          done
-          if [ -z "$chrome" ]; then
-            echo 'No supported Chrome or Chromium executable was found.' >&2
-            exit 1
-          fi
-
-          server_log=$(mktemp)
-          chrome_log=$(mktemp)
-          dom_file=$(mktemp)
-          profile_directory=$(mktemp -d)
-          server_pid=''
-          cleanup() {
-            if [ -n "$server_pid" ]; then
-              kill "$server_pid" 2>/dev/null || true
-              wait "$server_pid" 2>/dev/null || true
-            fi
-            rm -f -- "$server_log" "$chrome_log" "$dom_file"
-            if [ -n "$profile_directory" ] && [ -d "$profile_directory" ]; then
-              rm -rf -- "$profile_directory"
-            fi
-          }
-          trap cleanup EXIT
-
-          ./build/native/bin/wfc_serve --port 4173 \
-            --root build/browser/world2d/www \
-            >"$server_log" 2>&1 &
-          server_pid=$!
-
-          server_ready=false
-          for _ in $(seq 1 50); do
-            if curl --fail --silent \
-                http://127.0.0.1:4173/index.html >/dev/null 2>&1; then
-              server_ready=true
-              break
-            fi
-            if ! kill -0 "$server_pid" 2>/dev/null; then
-              cat "$server_log" >&2
-              exit 1
-            fi
-            sleep 0.2
-          done
-          if [ "$server_ready" != true ]; then
-            cat "$server_log" >&2
-            echo 'Timed out waiting for the browser demo HTTP server.' >&2
-            exit 1
-          fi
-
-          if ! timeout 30s "$chrome" \
-              --headless \
-              --disable-gpu \
-              --disable-dev-shm-usage \
-              --no-default-browser-check \
-              --no-first-run \
-              --user-data-dir="$profile_directory" \
-              --virtual-time-budget=15000 \
-              --dump-dom \
-              'http://127.0.0.1:4173/index.html?selftest=1' \
-              >"$dom_file" 2>"$chrome_log"; then
-            cat "$chrome_log" >&2
-            cat "$server_log" >&2
-            exit 1
-          fi
-
-          ./build/native/bin/wfc_browser_check --dom "$dom_file" \
+          bash ./test-browser-tests.sh --root build/browser/world2d/www \
+            --page 'index.html?selftest=1' \
             --expect 'data-state=solved' \
             --expect 'data-self-test=passed' \
             --expect 'data-signature=1:5B0DD75D:08022AF1:A40D0955'
@@ -613,76 +345,8 @@ jobs:
           pas2js="$PAS2JS_ROOT/bin/x86_64-linux/pas2js"
           PAS2JS="$pas2js" bash ./build-browser-building3d.sh
 
-          chrome=''
-          for candidate in google-chrome google-chrome-stable chromium chromium-browser; do
-            if command -v "$candidate" >/dev/null 2>&1; then
-              chrome=$(command -v "$candidate")
-              break
-            fi
-          done
-          if [ -z "$chrome" ]; then
-            echo 'No supported Chrome or Chromium executable was found.' >&2
-            exit 1
-          fi
-
-          server_log=$(mktemp)
-          chrome_log=$(mktemp)
-          dom_file=$(mktemp)
-          profile_directory=$(mktemp -d)
-          server_pid=''
-          cleanup() {
-            if [ -n "$server_pid" ]; then
-              kill "$server_pid" 2>/dev/null || true
-              wait "$server_pid" 2>/dev/null || true
-            fi
-            rm -f -- "$server_log" "$chrome_log" "$dom_file"
-            if [ -n "$profile_directory" ] && [ -d "$profile_directory" ]; then
-              rm -rf -- "$profile_directory"
-            fi
-          }
-          trap cleanup EXIT
-
-          ./build/native/bin/wfc_serve --port 4174 \
-            --root build/browser/building3d/www \
-            >"$server_log" 2>&1 &
-          server_pid=$!
-
-          server_ready=false
-          for _ in $(seq 1 50); do
-            if curl --fail --silent \
-                http://127.0.0.1:4174/index.html >/dev/null 2>&1; then
-              server_ready=true
-              break
-            fi
-            if ! kill -0 "$server_pid" 2>/dev/null; then
-              cat "$server_log" >&2
-              exit 1
-            fi
-            sleep 0.2
-          done
-          if [ "$server_ready" != true ]; then
-            cat "$server_log" >&2
-            echo 'Timed out waiting for the Building 3D browser server.' >&2
-            exit 1
-          fi
-
-          if ! timeout 30s "$chrome" \
-              --headless \
-              --disable-gpu \
-              --disable-dev-shm-usage \
-              --no-default-browser-check \
-              --no-first-run \
-              --user-data-dir="$profile_directory" \
-              --virtual-time-budget=15000 \
-              --dump-dom \
-              'http://127.0.0.1:4174/index.html?selftest=1' \
-              >"$dom_file" 2>"$chrome_log"; then
-            cat "$chrome_log" >&2
-            cat "$server_log" >&2
-            exit 1
-          fi
-
-          ./build/native/bin/wfc_browser_check --dom "$dom_file" \
+          bash ./test-browser-tests.sh --root build/browser/building3d/www \
+            --page 'index.html?selftest=1' \
             --expect 'data-state=solved' \
             --expect 'data-self-test=passed' \
             --expect 'data-signature=1:F1EF0EB6' \
@@ -693,70 +357,8 @@ jobs:
         shell: bash
         run: |
           PAS2JS="$PAS2JS_ROOT/bin/x86_64-linux/pas2js" bash ./build-browser-counts.sh
-          chrome=''
-          for candidate in google-chrome google-chrome-stable chromium chromium-browser; do
-            if command -v "$candidate" >/dev/null 2>&1; then
-              chrome=$(command -v "$candidate")
-              break
-            fi
-          done
-          if [ -z "$chrome" ]; then
-            echo 'No supported Chrome or Chromium executable was found.' >&2
-            exit 1
-          fi
-
-          server_log=$(mktemp)
-          chrome_log=$(mktemp)
-          dom_file=$(mktemp)
-          profile_directory=$(mktemp -d)
-          server_pid=''
-          cleanup() {
-            if [ -n "$server_pid" ]; then
-              kill "$server_pid" 2>/dev/null || true
-              wait "$server_pid" 2>/dev/null || true
-            fi
-            rm -f -- "$server_log" "$chrome_log" "$dom_file"
-            if [ -n "$profile_directory" ] && [ -d "$profile_directory" ]; then
-              rm -rf -- "$profile_directory"
-            fi
-          }
-          trap cleanup EXIT
-          ./build/native/bin/wfc_serve --port 4176 \
-            --root build/browser/counts/www >"$server_log" 2>&1 &
-          server_pid=$!
-          server_ready=false
-          for _ in $(seq 1 50); do
-            if ! kill -0 "$server_pid" 2>/dev/null; then
-              cat "$server_log" >&2
-              exit 1
-            fi
-            bound=false
-            while IFS= read -r line; do
-              [ "$line" != 'WFC static server: http://127.0.0.1:4176/' ] || bound=true
-            done <"$server_log"
-            if [ "$bound" = true ] && curl --max-time 2 --fail --silent \
-                http://127.0.0.1:4176/index.html >/dev/null 2>&1; then
-              kill -0 "$server_pid" 2>/dev/null || exit 1
-              server_ready=true
-              break
-            fi
-            sleep 0.2
-          done
-          if [ "$server_ready" != true ]; then
-            cat "$server_log" >&2
-            echo 'Timed out waiting for the Neighborhood Counts HTTP server.' >&2
-            exit 1
-          fi
-          if ! timeout 30s "$chrome" --headless --disable-gpu \
-              --disable-dev-shm-usage --no-default-browser-check --no-first-run \
-              --user-data-dir="$profile_directory" --virtual-time-budget=15000 \
-              --dump-dom 'http://127.0.0.1:4176/index.html?selftest=1' \
-              >"$dom_file" 2>"$chrome_log"; then
-            cat "$chrome_log" >&2
-            cat "$server_log" >&2
-            exit 1
-          fi
-          ./build/native/bin/wfc_browser_check --dom "$dom_file" \
+          bash ./test-browser-tests.sh --root build/browser/counts/www \
+            --page 'index.html?selftest=1' \
             --expect 'data-state=solved' \
             --expect 'data-self-test=passed' \
             --expect 'data-output-key=LLLLLLLLL/.R.R...../....M....' \

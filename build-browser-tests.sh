@@ -9,7 +9,7 @@ if [[ -f "$checker.exe" ]]; then checker="$checker.exe"; fi
 mkdir -p build/browser/tests/units build/browser/tests/www
 for source in test/*_test.lpr; do
   name="$(basename -- "$source" .lpr)"
-  case "$name" in wfc_browser_dom_test|wfc_serve_test|wfc_music_render_process_test|wfc_music_ensemble_render_process_test|wfc_music_ensemble_midi_render_process_test|wfc_music_voices_render_process_test|wfc_connectivity_process_test|wfc_music_studies_process_test) continue ;; esac
+  case "$name" in wfc_browser_dom_test|wfc_browser_args_test|wfc_browser_socket_test|wfc_browser_websocket_test|wfc_browser_cdp_test|wfc_browser_capture_test|wfc_serve_test|wfc_music_render_process_test|wfc_music_ensemble_render_process_test|wfc_music_ensemble_midi_render_process_test|wfc_music_voices_render_process_test|wfc_connectivity_process_test|wfc_music_studies_process_test) continue ;; esac
   "$compiler" -B -Tbrowser -Mdelphi -Jc -Jirtl.js -Fusrc -Futools \
     -Fuexamples/2D/common -Fuexamples/3D/common \
     -Fuexamples/music/01_simple_A_major -Fuexamples/music/02_simple_song_riffs \
@@ -49,4 +49,10 @@ do
   cp -- "$entry_source/index.html" "$entry_source/$javascript" \
     "$entry_source/$stylesheet" "$entry_target/"
 done
-echo 'Pascal browser conformance and ten actual demo entries staged under build/browser/tests/www.'
+# Separately named asynchronous capture fixture; not a conformance program.
+mkdir -p build/browser/tests/www/capture-fixture
+"$compiler" -B -Tbrowser -Mdelphi -Jc -Jirtl.js \
+  -FUbuild/browser/tests/units -FEbuild/browser/tests/www/capture-fixture \
+  test/browser_capture/fixture.lpr
+cp -- test/browser_capture/index.html build/browser/tests/www/capture-fixture/
+echo 'Pascal browser conformance, capture fixture, and ten actual demo entries staged under build/browser/tests/www.'

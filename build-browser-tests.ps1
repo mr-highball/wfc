@@ -26,7 +26,7 @@ $unitPaths = @('src','tools','examples/2D/common','examples/3D/common',
     '-Fu' + (Join-Path $repositoryRoot $_)
   }
 foreach ($source in Get-ChildItem -LiteralPath (Join-Path $repositoryRoot 'test') -Filter '*_test.lpr') {
-  if ($source.BaseName -in @('wfc_browser_dom_test','wfc_serve_test','wfc_music_render_process_test','wfc_music_ensemble_render_process_test','wfc_music_ensemble_midi_render_process_test','wfc_music_voices_render_process_test','wfc_connectivity_process_test','wfc_music_studies_process_test')) { continue }
+  if ($source.BaseName -in @('wfc_browser_dom_test','wfc_browser_args_test','wfc_browser_socket_test','wfc_browser_websocket_test','wfc_browser_cdp_test','wfc_browser_capture_test','wfc_serve_test','wfc_music_render_process_test','wfc_music_ensemble_render_process_test','wfc_music_ensemble_midi_render_process_test','wfc_music_voices_render_process_test','wfc_connectivity_process_test','wfc_music_studies_process_test')) { continue }
   & $Compiler -B -Tbrowser -Mdelphi -Jc '-Jirtl.js' @unitPaths "-FU$units" "-FE$web" $source.FullName
   if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
   $html = Join-Path $web ($source.BaseName + '.html')
@@ -58,4 +58,11 @@ foreach ($demo in $entryDemos) {
     Copy-Item -LiteralPath (Join-Path $entrySource $asset) -Destination $entryTarget -Force
   }
 }
-Write-Host "Pascal browser conformance and ten actual demo entries staged in '$web'."
+# A separate real asynchronous capture fixture is not a conformance program.
+# Keep its Pascal bootstrap and compiled RTL together under a named sub-root.
+$captureFixture = Join-Path $web 'capture-fixture'
+New-Item -ItemType Directory -Force -Path $captureFixture | Out-Null
+& $Compiler -B -Tbrowser -Mdelphi -Jc '-Jirtl.js' "-FU$units" "-FE$captureFixture" (Join-Path $repositoryRoot 'test/browser_capture/fixture.lpr')
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+Copy-Item -LiteralPath (Join-Path $repositoryRoot 'test/browser_capture/index.html') -Destination $captureFixture -Force
+Write-Host "Pascal browser conformance, capture fixture, and ten actual demo entries staged in '$web'."

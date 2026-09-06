@@ -107,11 +107,13 @@ Every maintained browser demo exposes an event-driven `?selftest=1` route.
 The browser must execute the compiled Pascal before the resulting DOM is
 checked; merely fetching the original HTML proves nothing about generation.
 
-`wfc_browser_check` is the project-owned native verifier for the resulting
-browser evidence. The hosted gate starts the included FPC server, opens the
-self-test route in headless Chrome, and verifies the demo's exact body-state
-contract. The browser remains the JavaScript execution engine; the FPC tools
-serve files and inspect evidence, not emulate a browser.
+`wfc_browser_capture` waits for the requested terminal markers in an owned
+headless browser and publishes its rendered DOM. `wfc_browser_check` then
+independently verifies that file against the same exact body-state contract.
+Both are project-owned native Pascal tools, served by `wfc_serve`. The browser
+remains the JavaScript execution engine; the FPC tools do not emulate it.
+See [native browser capture](browser-capture.md) for the protocol, ownership,
+deadline, and failure contracts.
 
 ```text
 wfc_browser_check --dom FILE --expect NAME=VALUE [--expect ...]
@@ -159,12 +161,12 @@ speaker emitted sound.
 
 ## Run Pascal conformance in a real browser
 
-Build the native checker and server first, then stage the portable test programs
+Build the native capture tool, checker, and server first, then stage the portable test programs
 with pas2js and execute them in a Chromium-family browser:
 
 On Windows, run the browser conformance runner in **PowerShell 7 or newer**
 (`pwsh`), not Windows PowerShell 5.1. Its timeout cleanup uses the modern .NET
-process-tree API to terminate only the browser/server processes it owns. The
+process-tree API to terminate only the capture/browser/server processes it owns. The
 runner checks this shell version before starting any process.
 
 ```powershell
@@ -186,11 +188,12 @@ silently accepting a possibly unfinished timer teardown. Cleanup preserves an
 existing failure status and fails an otherwise successful run if teardown fails.
 
 These are bounded polling sequences, not hard wall-clock guarantees under
-arbitrary scheduler delays. The unchanged 60-second browser watchdog starts
-termination; the main browser wait still depends on the operating system
-actually terminating that process. Forced watchdog termination cannot guarantee
-its timer descendant has exited. This Bash path does not establish
-operating-system process-group or job containment.
+arbitrary scheduler delays. The 60-second watchdog starts termination of both
+capture and browser; the main capture wait still depends on the operating
+system actually terminating that process. Forced watchdog termination cannot
+guarantee its timer descendant has exited. This Bash path does not establish
+operating-system process-group or job containment. PowerShell uses finite
+five-second cleanup waits; cleanup time is separate from the test deadline.
 
 For diagnosis, select one exact current test basename without changing the
 default full gate:
@@ -220,11 +223,15 @@ server is required.
 Native DOM-parser, socket-server, and renderer-process tests are excluded;
 they execute in the native gate. The runner independently derives that same
 current source list, rejects missing HTML or compiled scripts, and ignores stale
-staged pages rather than counting them as current coverage. It owns a loopback server, launches
-each page in a separate browser profile, applies a 60-second process timeout
-and a 15-second browser virtual-time budget, and requires
-`data-self-test=passed`. Rendered DOM and browser/server logs remain in
-`build/browser/tests/results`.
+staged pages rather than counting them as current coverage. It owns a loopback
+server and prepares a new browser profile for every attempt. A native monotonic
+60-second deadline is created before browser launch. The FPC capture tool
+waits for `data-self-test=passed` and all additional required markers, without
+accelerating browser time or taking a timed `--dump-dom` snapshot. Rendered DOM
+and capture/browser logs remain in unique run directories under
+`build/browser/tests/results`. A fixed `<test>.dom` convenience copy is cleared
+before each attempt and published only after the fresh capture passes the
+independent checker; it is not a substitute for a successful runner exit.
 
 The ensemble stream demo test also requires its application-owned
 `data-stream-self-test=passed` and `data-stream-release=passed` markers. Its fake writable-file transactions are
@@ -242,21 +249,38 @@ with `build-browser-voices.ps1` or `build-browser-voices.sh`, then serve
 [Voice Studio host guide](../examples/music/07_VoiceStudio/README.md).
 
 The actual-page gate additionally requires `data-demo-entries-self-test=passed`
-after all ten pages finish. Each page retains a 15-second virtual deadline;
-this aggregate test receives 155 seconds of accelerated browser virtual time.
-Its real process deadline remains 60 seconds, as for every other program.
+after all ten pages finish. Each page retains its in-page 15-second deadline,
+now measured in ordinary browser time. The aggregate's native deadline remains
+60 seconds, as for every other program.
 Pending/missing page evidence never counts as success. This browser-only test
 does not appear in the native gate.
 
-PowerShell accepts `-Checker` when staging and `-Server`, `-Checker`, and
-`-Port` when running; the default port is 4180. The shell scripts use
-`WFC_BROWSER_CHECK`, `WFC_SERVE`, and `WFC_BROWSER`, with port 4180. Shell
+PowerShell accepts `-Checker` when staging and `-Server`, `-Checker`, `-Capture`,
+and `-Port` when running; the default port is 4180. The shell scripts use
+`WFC_BROWSER_CHECK`, `WFC_BROWSER_CAPTURE`, `WFC_SERVE`, `WFC_BROWSER`, and
+`WFC_BROWSER_PORT` (default 4180). Shell
 execution uses the host's `curl` and standard `sleep`/`kill` commands. Its owned-child
 watchdog applies the 60-second deadline, then allows up to two seconds before
 forced termination; GNU `timeout` is not required. The shell runner is exercised
 by the Linux browser lane. Both runners collect per-program failures and fail the
-overall run if any current program fails. Interactive demo
-self-tests are a separate hosted gate with each demo's fuller attribute map.
+overall run if any current program fails. Interactive demo self-tests use the
+same runner with each demo's fuller attribute map:
+
+```powershell
+.\test-browser-tests.ps1 -Browser 'C:/path/to/chrome.exe' `
+  -WebRoot build/browser/music/www -Page 'index.html?selftest=1' `
+  -Expect @('data-state=solved', 'data-arrangement-test=passed')
+```
+
+```bash
+WFC_BROWSER=/usr/bin/chromium bash ./test-browser-tests.sh \
+  --root build/browser/music/www --page 'index.html?selftest=1' \
+  --expect data-state=solved --expect data-arrangement-test=passed
+```
+
+The mandatory `data-self-test=passed` assertion is included automatically.
+Standalone mode cannot be combined with a conformance test selector. These
+examples are focused checks, not the complete hosted attribute map.
 
 To rerun only the native host-boundary checks after a native build:
 

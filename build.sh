@@ -829,6 +829,11 @@ for compiler_artifact_suite in \
   "$compiler_pipeline_runtime_test_source" \
   "$compiler_validate_app_test_source" \
   "$compiler_tools_directory/../test/wfc_browser_dom_test.lpr" \
+  "$compiler_tools_directory/../test/wfc_browser_args_test.lpr" \
+  "$compiler_tools_directory/../test/wfc_browser_socket_test.lpr" \
+  "$compiler_tools_directory/../test/wfc_browser_websocket_test.lpr" \
+  "$compiler_tools_directory/../test/wfc_browser_cdp_test.lpr" \
+  "$compiler_tools_directory/../test/wfc_browser_capture_test.lpr" \
   "$compiler_tools_directory/../test/wfc_serve_test.lpr" \
   "$compiler_run_app_test_source" \
   "$compiler_training_test_source" \
@@ -878,6 +883,7 @@ for compiler_tool_source in \
   "$compiler_tools_directory/wfc_music_import_cli.lpr" \
   "$compiler_tools_directory/wfc_serve.lpr" \
   "$compiler_tools_directory/wfc_browser_check.lpr" \
+  "$compiler_tools_directory/wfc_browser_capture.lpr" \
   "$compiler_run_tool_source"
 do
   tool_name=$(basename -- "$compiler_tool_source" .lpr)

@@ -116,7 +116,9 @@ Both scripts rebuild with assertions and range, overflow, and I/O checks, run
 `wfc_sequence_partial_projection_test`, `wfc_music_voices_training_test`,
 `wfc_music_voices_graph_test`, `wfc_music_voices_stream_test`,
 `wfc_music_voices_demo_test`,
-`wfc_browser_dom_test`, `wfc_serve_test`,
+`wfc_browser_dom_test`, `wfc_browser_args_test`, `wfc_browser_socket_test`,
+`wfc_browser_websocket_test`, `wfc_browser_cdp_test`, `wfc_browser_capture_test`,
+`wfc_serve_test`,
 `wfc_text_codec_test`, `wfc_rule_model_test`,
 `wfc_rule_text_test`, `wfc_pipeline_model_test`, `wfc_pipeline_text_test`,
 `wfc_pipeline_run_test`, `wfc_pipeline_run_text_test`,
@@ -527,8 +529,10 @@ commands, the complete marker contract, and explicit scope limits.
 The hosted browser gate builds the ten pas2js demos with a matching compiler
 and RTL. It serves standalone demo self-tests and the ensemble/independent-voice
 controllers' portable conformance hosts with the project-owned FPC server,
-executes them in headless Chrome, and checks rendered body attributes with the
-FPC checker.
+executes them in headless Chrome, waits for complete rendered body contracts
+with the FPC capture client, and independently checks the saved DOM with the
+FPC checker. Both conformance and standalone demos use this same maintained
+runner; no virtual-time snapshot is used as completion evidence.
 It also compiles every portable standalone conformance program for the browser
 and executes those pages through the same FPC tools. An additional browser-only
 entry regression loads all ten actual demo pages and their self-test queries,

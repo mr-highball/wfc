@@ -85,6 +85,11 @@ $artifactTestSources = @(
   (Join-Path $repositoryRoot 'test/wfc_pipeline_runtime_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_validate_app_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_browser_dom_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_browser_args_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_browser_socket_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_browser_websocket_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_browser_cdp_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_browser_capture_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_serve_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_run_app_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_training_test.lpr')
@@ -103,6 +108,7 @@ $toolSources = @(
   (Join-Path $repositoryRoot 'tools/wfc_music_import_cli.lpr')
   (Join-Path $repositoryRoot 'tools/wfc_serve.lpr')
   (Join-Path $repositoryRoot 'tools/wfc_browser_check.lpr')
+  (Join-Path $repositoryRoot 'tools/wfc_browser_capture.lpr')
 )
 $pipelineCliProcessTestSource = Join-Path $repositoryRoot `
   'test/wfc_pipeline_cli_process_test.ps1'
