@@ -404,6 +404,19 @@ begin
   {$ENDIF}
 end;
 
+function WaitForOwnedExit(const AProcess: TProcess;
+  const ATimeout: DWord): Boolean;
+begin
+  { Unix Running/Terminate may already reap the child. FPC's timed wait
+    still calls waitpid then and reports ECHILD, not a timeout. Preserve
+    the stopped state and exit status without waiting on a reaped child. }
+  if not AProcess.Running then
+    Exit(True);
+  Result := AProcess.WaitOnExit(ATimeout);
+  if not Result then
+    Result := not AProcess.Running;
+end;
+
 procedure LiveChecks(const AServer, AParent: String);
 var
   LBase, LRoot, LOutside, LBytes, LResponse, LRequest: String;
@@ -417,9 +430,12 @@ var
     if LProcess = nil then
       Exit;
     try
+      { Existing TProcess.Terminate can itself wait internally on Unix. The
+        helper below bounds only the subsequent exit observation, not that
+        OS/RTL termination call or total cleanup under an arbitrary stall. }
       if LProcess.Running then
         LProcess.Terminate(0);
-      Check(LProcess.WaitOnExit(5000), 'owned server shutdown is bounded');
+      Check(WaitForOwnedExit(LProcess, 5000), 'owned server post-termination wait completes');
     finally
       FreeAndNil(LProcess);
     end;
@@ -458,7 +474,7 @@ var
   var
     LOther: TProcess;
     LError: String;
-    LLength: Integer;
+    LLength, LExitStatus: Integer;
   begin
     LOther := TProcess.Create(nil);
     try
@@ -469,7 +485,10 @@ var
       LOther.Parameters.Add(IntToStr(LPort));
       LOther.Options := [poUsePipes, poNoConsole];
       LOther.Execute;
-      Check(LOther.WaitOnExit(5000), 'active listener collision fails promptly');
+      Check(WaitForOwnedExit(LOther, 5000), 'active listener collision fails promptly');
+      LExitStatus := LOther.ExitStatus;
+      Check(WaitForOwnedExit(LOther, 0), 'already-reaped colliding server remains stopped');
+      Check(LOther.ExitStatus = LExitStatus, 'repeated stopped-child wait preserves exit status');
       Check(LOther.ExitStatus <> 0, 'active listener collision fails closed');
       LLength := LOther.Stderr.NumBytesAvailable;
       Check((LLength > 0) and (LLength <= 4096),
@@ -482,7 +501,7 @@ var
     finally
       if LOther.Running then
         LOther.Terminate(0);
-      Check(LOther.WaitOnExit(5000), 'colliding server cleanup is bounded');
+      Check(WaitForOwnedExit(LOther, 5000), 'colliding server post-termination wait completes');
       LOther.Free;
     end;
   end;
@@ -534,6 +553,7 @@ begin
     Check(LRaised, 'link cannot be selected as root');
     LPort := UnusedLoopbackPort;
     StartServer;
+    Check(not WaitForOwnedExit(LProcess, 0), 'live server is not accepted as stopped');
     ListenerCollision;
     Response('GET', '/', 200, '<p>WFC server fixture</p>');
     Response('GET', '/binary.wav', 200, LBytes);
