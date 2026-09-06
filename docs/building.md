@@ -236,6 +236,14 @@ ownership, safety bounds, and CLI contracts are in
 
 ## FPM package
 
+Every maintained `src/*.pas` unit belongs to both the FPM and runtime-only
+Lazarus packages, including `wfc_music_form` and `wfc_pipeline_connectivity`.
+The normal native gate first runs the included
+[package completeness checker](package-checking.md). It compares source unit
+declarations with all three package lists; source-only compilation cannot
+hide a forgotten package entry. This inventory check complements actual
+package compilation; it does not replace it.
+
 `fpmake.pp` describes the runtime `wfc` package. Its only declared dependency,
 `rtl-generics`, is part of the standard FPC distribution; no third-party
 runtime library is required. Bootstrap FPMake with the compiler, then build
@@ -266,16 +274,44 @@ FPMake writes a target-specific `wfc-*.fpm` metadata file at the repository
 root. That generated file is ignored; compiled units are written beneath
 `build/fpm/units/`.
 
+To test installation without changing system directories, install into a
+private prefix under `build/`. These examples assume the same native `fpc`
+on `PATH` was used for the build:
+
+```powershell
+$packageTarget = "$(fpc -iTP)-$(fpc -iTO)"
+$packagePrefix = Join-Path (Get-Location) 'build/package-install'
+./build/fpm/bootstrap/bin/fpmake.exe install `
+  "--prefix=$packagePrefix" "--baseinstalldir=$packagePrefix/" `
+  "--unitinstalldir=$packagePrefix/units/$packageTarget/wfc"
+```
+
+```bash
+package_target="$(fpc -iTP)-$(fpc -iTO)"
+package_prefix="$PWD/build/package-install"
+./build/fpm/bootstrap/bin/fpmake install \
+  --prefix="$package_prefix" --baseinstalldir="$package_prefix/" \
+  --unitinstalldir="$package_prefix/units/$package_target/wfc"
+```
+
+Repeat any required `--compiler` and `--globalunitdir` overrides from the
+build command. The installed library units are in
+`build/package-install/units/<cpu>-<os>/wfc`; use that directory for the
+[package-only consumer check](package-checking.md#installed-unit-proof).
+
 ## Lazarus package and project
 
 `wfc.lpk` is a runtime-only package. It does not depend on the LCL. Build the
-package and the conformance project without allowing Lazarus to rewrite their
-metadata:
+package and the conformance project without saving project metadata:
 
 ```text
 lazbuild -B --no-write-project wfc.lpk
 lazbuild -B --no-write-project test/wfc_test.lpi
 ```
+
+Lazarus can still regenerate `wfc_package.pas`; its `uses` list follows the
+`wfc.lpk` item order. Keep those lists aligned when adding units. Different
+Lazarus versions can also change generated whitespace.
 
 The package output is written to `build/lazarus/package/<target>`. The test
 executable is written to `build/lazarus/test/bin`, with its units kept in the

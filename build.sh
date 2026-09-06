@@ -291,6 +291,26 @@ case "$host_system" in
 esac
 
 printf "Building the native conformance suite with '%s'.\n" "$compiler"
+package_check_suffix=''
+case "$host_system" in
+  CYGWIN*|MINGW*|MSYS*) package_check_suffix='.exe' ;;
+esac
+for package_check_source in \
+  "$compiler_tools_directory/wfc_package_check.lpr" \
+  "$compiler_source_directory/../test/wfc_package_check_test.lpr" \
+  "$compiler_source_directory/../test/wfc_package_check_process_test.lpr"
+do
+  "$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
+    "-Fu$compiler_tools_directory" "-FU$compiler_unit_output_directory" \
+    "-FE$compiler_binary_output_directory" "$package_check_source" || exit $?
+done
+"$binary_output_directory/wfc_package_check_test$package_check_suffix" || exit $?
+"$binary_output_directory/wfc_package_check$package_check_suffix" \
+  --root "$compiler_source_directory/.." || exit $?
+"$binary_output_directory/wfc_package_check$package_check_suffix" --version || exit $?
+"$binary_output_directory/wfc_package_check_process_test$package_check_suffix" \
+  "$compiler_binary_output_directory/wfc_package_check$package_check_suffix" || exit $?
+
 "$compiler" "$@" \
   -B \
   -Mdelphi \

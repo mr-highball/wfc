@@ -48,6 +48,7 @@ begin
     P.Targets.AddUnit('wfc_text_complete.pas');
     P.Targets.AddUnit('wfc_text_passes.pas');
     P.Targets.AddUnit('wfc_music.pas');
+    P.Targets.AddUnit('wfc_music_form.pas');
     P.Targets.AddUnit('wfc_music_sequence.pas');
     P.Targets.AddUnit('wfc_music_graph.pas');
     P.Targets.AddUnit('wfc_music_passes.pas');

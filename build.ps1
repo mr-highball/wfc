@@ -187,6 +187,28 @@ $binaryOutputDirectory = Join-Path $repositoryRoot 'build/native/bin'
 New-Item -ItemType Directory -Force -Path $unitOutputDirectory | Out-Null
 New-Item -ItemType Directory -Force -Path $binaryOutputDirectory | Out-Null
 
+Write-Host 'Checking complete FPM and Lazarus runtime package inventories.'
+$packageCheckSuffix = if ($env:OS -eq 'Windows_NT') { '.exe' } else { '' }
+foreach ($packageCheckSource in @(
+    (Join-Path $toolsDirectory 'wfc_package_check.lpr'),
+    (Join-Path $repositoryRoot 'test/wfc_package_check_test.lpr'),
+    (Join-Path $repositoryRoot 'test/wfc_package_check_process_test.lpr'))) {
+  & $Compiler @CompilerOptions -B -Mdelphi -Sa -Cr -Co -Ci `
+    "-Fu$toolsDirectory" "-FU$unitOutputDirectory" "-FE$binaryOutputDirectory" `
+    $packageCheckSource
+  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+}
+$packageChecker = Join-Path $binaryOutputDirectory "wfc_package_check$packageCheckSuffix"
+& (Join-Path $binaryOutputDirectory "wfc_package_check_test$packageCheckSuffix")
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+& $packageChecker --root $repositoryRoot
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+& $packageChecker --version
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+& (Join-Path $binaryOutputDirectory "wfc_package_check_process_test$packageCheckSuffix") `
+  $packageChecker
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
 $compilerArguments = @(
   $CompilerOptions
   '-B'

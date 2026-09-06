@@ -19,8 +19,7 @@ uses
   wfc_building3d_view, wfc_sequence_analyze, wfc_text_tokenize,
   wfc_text_complete, wfc_text_passes, wfc_music_passes, wfc_music_passes_text,
   wfc_pattern2d_graph, wfc_rule_model, wfc_rule_text, wfc_pipeline_model,
-  wfc_pipeline_text, wfc_token_lookup, wfc_pipeline_compile,
-  wfc_pipeline_connectivity, wfc_pipeline_run,
+  wfc_pipeline_text, wfc_token_lookup, wfc_pipeline_compile, wfc_pipeline_run,
   wfc_pipeline_run_text, wfc_pipeline_result, wfc_pipeline_result_text,
   wfc_pipeline_runtime, wfc_training, wfc_training_text, wfc_text_training,
   wfc_training_workspace, wfc_music_audio, wfc_music_audio_stream,
@@ -30,7 +29,8 @@ uses
   wfc_music_ensemble_stream, wfc_music_ensemble_audio, wfc_midi_stream,
   wfc_music_ensemble_midi, wfc_music_voices_graph, wfc_music_voices_training,
   wfc_music_voices_stream, wfc_connectivity_reference, wfc_learn3d,
-  wfc_terraces3d, wfc_terraces3d_view, wfc_trace_stream;
+  wfc_terraces3d, wfc_terraces3d_view, wfc_trace_stream,
+  wfc_pipeline_connectivity, wfc_music_form;
 
 implementation
 

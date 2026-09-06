@@ -193,7 +193,8 @@ The repository already contains the beginnings of the ecosystem:
 - stack-safe iterative traversal of large planes while preserving the legacy
   solver's north/east/south/west depth-first order;
 - checked one-command native build gates, an FPM package, a runtime-only
-  Lazarus package, and a hosted stable/development CI workflow;
+  Lazarus package, an included FPC package-inventory checker with separate
+  built-unit consumer tests, and a hosted stable/development CI workflow;
 - single-pass and multi-pass console world examples;
 - the original A-major and manually inferred riff grammars, now portable Pascal
   studies with native console hosts, owned MIDI and streaming WAVE output,

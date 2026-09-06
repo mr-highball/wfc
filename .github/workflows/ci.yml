@@ -117,14 +117,40 @@ jobs:
             fpmake.pp
           ./build/fpm/bootstrap/bin/fpmake build \
             --globalunitdir=/usr/lib/x86_64-linux-gnu/fpc/3.2.2
+          ./build/fpm/bootstrap/bin/fpmake install \
+            --globalunitdir=/usr/lib/x86_64-linux-gnu/fpc/3.2.2 \
+            --prefix="$PWD/build/package-install" \
+            --baseinstalldir="$PWD/build/package-install/" \
+            --unitinstalldir="$PWD/build/package-install/units/x86_64-linux/wfc"
+          check_package_consumer() {
+            local kind="$1"
+            local package_units="$2"
+            mkdir -p "build/package-consumer/$kind/units" "build/package-consumer/$kind/bin"
+            # Ignore compiler configuration: only standard FPC units and this
+            # package's compiled output are visible, never the repository src.
+            fpc -n -Mdelphi -Sa -Cr -Co -Ci \
+              '-Fu/usr/lib/x86_64-linux-gnu/fpc/3.2.2/units/x86_64-linux/*' \
+              "-Fu$package_units" \
+              "-FUbuild/package-consumer/$kind/units" \
+              "-FEbuild/package-consumer/$kind/bin" \
+              test/wfc_package_consumer.lpr
+            "./build/package-consumer/$kind/bin/wfc_package_consumer"
+          }
+          check_package_consumer fpm "$PWD/build/package-install/units/x86_64-linux/wfc"
           lazbuild -B --no-write-project wfc.lpk
+          check_package_consumer lazarus "$PWD/build/lazarus/package/x86_64-linux"
           lazbuild -B --no-write-project test/wfc_test.lpi
           ./build/lazarus/test/bin/wfc_test
           lazbuild -B --no-write-project examples/music/01_simple_A_major/simple_a_major.lpi
           lazbuild -B --no-write-project examples/music/02_simple_song_riffs/simple_song_riffs.lpi
           ./build/lazarus/music-studies/bin/simple_a_major --notes 3 --seed 55
           ./build/lazarus/music-studies/bin/simple_song_riffs --notes 3 --seed 55
-          test -z "$(git status --short)"
+          package_changes="$(git status --short)"
+          if test -n "$package_changes"; then
+            printf 'Package validation changed the checkout:\n%s\n' "$package_changes"
+            git diff --stat
+            exit 1
+          fi
 
   pas2js:
     name: pas2js 3.3.1 (FPC server and browser)

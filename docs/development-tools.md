@@ -22,6 +22,20 @@ tests, tool `--version` smoke checks, real command-line process tests, live
 server tests, and the streamed Music Studio exporter tests. It does not
 substitute for the browser execution gate below.
 
+## Check package completeness
+
+The native gate runs this read-only FPC tool before the larger test suites:
+
+```text
+build/native/bin/wfc_package_check --root .
+```
+
+It compares every maintained source unit with `fpmake.pp`, `wfc.lpk`, and
+`wfc_package.pas`, checking missing/duplicate entries, source declarations,
+and canonical filenames. Add `.exe` on Windows. See
+[package checking](package-checking.md) for the static-checking boundary,
+standalone build, limits, and installed-unit consumer tests.
+
 ## Serve a browser demo
 
 First stage the selected browser program with its dedicated build script.
