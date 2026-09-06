@@ -6,7 +6,8 @@ pas2js. It does not load files, fetch resources, train models, allocate a graph,
 run a solver, or depend on a presentation framework.
 
 Composition is a library operation, not an editable workspace or saved-operation
-journal. Its output uses the existing [portable artifact workflow](pipeline-artifacts.md)
+journal. Use [prepared sessions](pipeline-sessions.md) for in-memory input edits
+and revision-bound repair of its output recipe. Its output uses the existing [portable artifact workflow](pipeline-artifacts.md)
 and [mapped pass layouts](portable-mapped-passes.md). The unit is included in the
 [FPM and Lazarus runtime packages](building.md#fpm-package).
 
@@ -147,8 +148,10 @@ against hostile Proxy traps.
 
 These envelopes protect finite artifact processing. They are not a desired
 music duration, fixed map size, or claim of unlimited host memory. Assembly
-does not implement mutable edits, selective-repair ownership, saved operation
-journals or resumable execution; those belong to the workspace layer.
+does not itself implement mutable edits or selective-repair ownership;
+[preparation](pipeline-preparation.md) and [sessions](pipeline-sessions.md) supply
+those separately. Saved operation journals and resumable workspace execution
+remain future work.
 
 ## Executable examples and verification
 

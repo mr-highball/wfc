@@ -42,6 +42,13 @@ fragment's internal constraints and provenance while explicitly remapping names
 and indices. The output uses the existing recipe5/run2/result2 path; composition
 does not introduce a workspace journal format or implicitly connect fragments.
 
+For reusable input lowering and controlled in-memory editing, see
+[preparation and replacement](pipeline-preparation.md) and
+[prepared sessions](pipeline-sessions.md). Session outcomes preserve actual
+selective reuse, ownership and pending/currentness evidence; they are not a
+new artifact and must not be relabeled as fresh result1/result2 documents.
+Saved session/outcome formats and ordered operation journals remain separate work.
+
 ## Hand-authored rule models
 
 `TWfcRuleModel` in `wfc_rule_model` represents rule semantics that the learned

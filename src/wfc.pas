@@ -1248,6 +1248,16 @@ type
       const ARestarts: TGraphRestartOptions;
       out AReport: TGraphRestartReport): Boolean;
 
+    (*
+      resolves the exact selective-regeneration scope without solving or
+      changing entry values, domains, current-pass selection or random streams.
+      Roots are unique in pass-index order; active passes are in execution
+      order. Derived previous-value dependency roles may be synchronized.
+      No ancestor is added implicitly. Returned arrays are detached.
+    *)
+    procedure ResolveRegenerationScope(const ARequestedRoots: TGraphPassLabels;
+      out ACanonicalRoots, AActivePasses: TGraphPassIndices);
+
     function TryRegenerateFrom(const APass: String;
       const AOptions: TGraphSolveOptions;
       out AReport: TGraphSolveReport): Boolean; overload;
@@ -7053,6 +7063,40 @@ begin
   AReport.TranscriptHash :=
     CalculateGraphNegotiationTranscriptHash(AOptions, AReport);
   Result := AReport.Status = gnsSolved;
+end;
+
+procedure TGraph.ResolveRegenerationScope(const ARequestedRoots: TGraphPassLabels;
+  out ACanonicalRoots, AActivePasses: TGraphPassIndices);
+var
+  LDirty: TPassSelection;
+  {$IFDEF PAS2JS}LValid: Boolean;{$ENDIF}
+begin
+  {$IFDEF PAS2JS}
+  asm
+    LValid=Array.isArray(ARequestedRoots) && ARequestedRoots.length>0 &&
+      ARequestedRoots.length<=2147483647;
+    if(LValid) for(let i=0;i<ARequestedRoots.length;i++) {
+      const d=Object.getOwnPropertyDescriptor(ARequestedRoots,String(i));
+      if(!d || !Object.prototype.hasOwnProperty.call(d,'value') ||
+        typeof d.value!=='string') { LValid=false; break; }
+    }
+  end;
+  if not LValid then
+    raise EArgumentException.Create(
+      'ResolveRegenerationScope::roots require a dense passive string array');
+  {$ENDIF}
+  if Length(ARequestedRoots) = 0 then
+    raise EArgumentException.Create(
+      'ResolveRegenerationScope::at least one pass is required');
+  if Assigned(FPassRoot) then
+  begin
+    FPassRoot.ResolveRegenerationScope(ARequestedRoots,
+      ACanonicalRoots, AActivePasses);
+    Exit;
+  end;
+  EnsureInitialPass;
+  BuildDescendantPassSelection(ARequestedRoots, 'ResolveRegenerationScope',
+    ACanonicalRoots, AActivePasses, LDirty);
 end;
 
 function TGraph.TryRegenerateFrom(const APass: String;

@@ -208,6 +208,13 @@ The repository already contains the beginnings of the ecosystem:
   explicit resource/pass names, checked remapping of all seven row families,
   retained source/license provenance, and recipe5 output for independent run
   extents; it assembles definitions, not mutable workspaces or replay journals;
+- [reusable preparation and editable bindings](docs/pipeline-preparation.md)
+  with identity-bound detached input plans, compiler-base domain restoration,
+  actual alias/inverse ownership transitions and explicit replacement budgets;
+- [prepared pipeline sessions](docs/pipeline-sessions.md) with revision-bound
+  repair permission, cumulative pending requirements, separate historical/current
+  output and complete actual detached solver reports. This is an in-memory API,
+  not a saved journal, general workspace editor or live atomic-publication layer;
 - [saved-artifact validation and inspection](docs/artifact-tools.md) across
   rules, cardinal/pattern/sequence models, training sources, recipes, bound
   runs, and bound results; explicit exact-byte result replay, terminal-safe
@@ -595,8 +602,12 @@ clauses; run2 supplies independent extents; result2 records every pass layout.
 The same terrain/foliage/housing recipe now executes at multiple requested
 extents through the native save/validate/replay tools. The [immutable fragment composer](docs/pipeline-composition.md)
 now supplies checked definition assembly and explicit index/name remapping.
-The editable multi-resource composition
-workspace, workbench import/export, broader topology controls and more
+Reusable [preparation](docs/pipeline-preparation.md) and
+[prepared sessions](docs/pipeline-sessions.md) now supply input replacement,
+explicit repair permission and detached outcomes for one bound immutable recipe.
+The editable multi-resource composition workspace, saved operation/outcome
+formats, atomic candidate replay/publication, workbench import/export,
+broader topology controls and more
 targeted repair strategies remain open. Existing 2D versions and bytes remain unchanged. The
 [research record](docs/research/mapped-world-footprints-v1.md) records focused
 native/browser evidence separately from full integration gates.

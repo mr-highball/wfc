@@ -36,7 +36,8 @@ uses
   wfc_pipeline_result, wfc_pipeline_result_text, wfc_volume_symmetry,
   wfc_pattern3d, wfc_pattern3d_learn, wfc_pattern3d_text, wfc_pattern3d_graph,
   wfc_token_volume_view, wfc_voxel3d_isometric, wfc_voxel3d_svg, wfc_lattice,
-  wfc_pipeline_layout, wfc_pipeline_mapping, wfc_pipeline_compose;
+  wfc_pipeline_layout, wfc_pipeline_mapping, wfc_pipeline_compose,
+  wfc_pipeline_prepare, wfc_pipeline_session;
 
 var Checks: Integer;
 
@@ -228,6 +229,137 @@ begin
   finally Output.Free; Run.Free; Composition.Free; Second.Free; First.Free; end;
 end;
 
+procedure UsePreparedPipeline;
+var Recipe: TWfcPipelineModel; Run, Changed: TWfcPipelineRun;
+  Preparation, OtherPreparation: TWfcPipelinePreparation;
+  InputPlan: TWfcPipelineInputPlan; Binding: TWfcPipelineInputBinding;
+  Session: TWfcPipelinePreparedSession;
+  Initial, Outcome: TWfcPipelineSessionOutcome;
+  Edit: TWfcPipelineSessionEditOutcome;
+  Plan, Stale: TWfcPipelineSessionRepairPlan;
+  State: TWfcPipelineSessionPublicState; Layer: TWfcPipelineSessionLayer;
+  Scope: TWfcPipelineSessionScope; Impact: TWfcPipelineInputImpact;
+  Invocation: TWfcPipelineSessionInvocation;
+  Replacement: TWfcPipelineReplacementLimits;
+  Capture: TWfcPipelineSessionOutcomeLimits;
+  Locks: TWfcPipelineCellLocks; Labels: TGraphPassLabels;
+  Canonical, Active: TGraphPassIndices; Report, ReportCopy: TGraphSolveReport;
+  Layouts: TWfcPipelineLayoutTable; Rejected: Boolean;
+begin
+  Recipe:=nil; Run:=nil; Changed:=nil; Preparation:=nil; OtherPreparation:=nil;
+  InputPlan:=nil; Binding:=nil; Session:=nil; Initial:=nil; Outcome:=nil;
+  Edit:=nil; Plan:=nil; Stale:=nil; State:=nil; Layouts:=nil;
+  try
+    Recipe:=PackageFragment('land','MIT',True);
+    Run:=TWfcPipelineRun.Create(Recipe,3,1,1,17,wpssOneWay,64,0,True,nil,nil);
+    Preparation:=TWfcPipelinePreparation.Create(Recipe,Run);
+    InputPlan:=Preparation.PrepareInputs(Run);
+    Layouts:=InputPlan.CopyPassLayouts;
+    Check((Layouts.PassCount=2) and (Layouts.TotalCellCount=6),
+      'installed pure preparation owns complete invocation layouts');
+    FreeAndNil(Layouts);
+    OtherPreparation:=TWfcPipelinePreparation.Create(Recipe,Run);
+    Rejected:=False;
+    try Binding:=TWfcPipelineInputBinding.Create(OtherPreparation,InputPlan);
+    except on E:EWfcPipelineRuntime do Rejected:=True; end;
+    Check(Rejected and (Binding=nil),'installed input plan requires its exact producer');
+    FreeAndNil(OtherPreparation);
+    Binding:=TWfcPipelineInputBinding.Create(Preparation,InputPlan);
+    FreeAndNil(Preparation); FreeAndNil(Run);
+    Check(Length(InputPlan.CopyLocks)=0,'installed plan inspection survives producer and run disposal');
+    FreeAndNil(InputPlan);
+    Check(Binding.Usable and Binding.BorrowCompiled.Graph.TrySolve(DefaultGraphSolveOptions,Report),
+      'installed binding retains payload after all preparation wrappers are freed');
+    SetLength(Labels,1); Labels[0]:='public';
+    Binding.BorrowCompiled.Graph.ResolveRegenerationScope(Labels,Canonical,Active);
+    Check((Length(Canonical)=1) and (Canonical[0]=0) and
+      (Length(Active)=2) and (Active[1]=1),
+      'installed scope helper returns provider plus actual alias descendant');
+    Check(Binding.BorrowCompiled.Graph.Entry[0,0,0].Value='land',
+      'installed scope inspection preserves solved entries');
+    FreeAndNil(Binding);
+
+    Replacement.Version:=1; Replacement.MaxRetainedCellRecords:=10000;
+    Replacement.MaxRetainedValueItems:=10000; Replacement.MaxCandidateVisits:=1000000;
+    Capture.Version:=1; Capture.MaxPublicCellRecords:=10000;
+    Capture.MaxEncodedTokenBytes:=1000000; Capture.MaxReportPassRecords:=1000;
+    Capture.MaxTraceEvents:=100000; Capture.MaxExcludedAssignmentItems:=100000;
+    Run:=TWfcPipelineRun.Create(Recipe,3,1,1,17,wpssOneWay,64,0,True,nil,nil);
+    Session:=TWfcPipelinePreparedSession.Create(Recipe,Run,Replacement,Capture);
+    Check((WFC_PIPELINE_SESSION_VERSION=1) and Session.Usable and (Session.Revision=0),
+      'installed session begins at a usable revision zero');
+    Plan:=Session.PlanRepair(Run,Labels);
+    Check(Plan.MissingBaseline and not Plan.CanExecute,
+      'installed session exposes missing-baseline refusal without solving');
+    FreeAndNil(Plan);
+    Initial:=Session.ExecuteInitial;
+    Check(Initial.Solved and Initial.HasCurrentOutput and Initial.HasSuccessfulBaseline and
+      (Initial.Kind=wpsokOrdinaryFull) and (Session.Revision=1),
+      'installed session captures a real full baseline');
+    Report:=Initial.CopySolveReport;
+    Check(Report.TraceCaptured and (Length(Report.Trace)>0),
+      'installed session retains actual captured solve events');
+    Report.Passes[0].Decisions:=-1; ReportCopy:=Initial.CopySolveReport;
+    Check(ReportCopy.Passes[0].Decisions>=0,'installed session report arrays are detached');
+    Stale:=Session.PlanRepair(Run,Labels);
+    SetLength(Locks,1); Locks[0]:=MakeWfcPipelineCellLock(1,0,0,0,'land');
+    Changed:=TWfcPipelineRun.Create(Recipe,3,1,1,17,wpssOneWay,64,0,True,Locks,nil);
+    Edit:=Session.ApplyInputs(Changed); Impact:=Edit.CopyImpact;
+    Check((Edit.Revision=2) and not Edit.HasCurrentOutput and Edit.HasSuccessfulBaseline,
+      'installed alias edit revokes currentness but retains baseline');
+    Check(Impact.AuthoredInputsChanged and Impact.GraphInputsChanged and
+      (Length(Impact.AuthoredPassIndices)=1) and (Impact.AuthoredPassIndices[0]=1) and
+      (Length(Impact.ChangedPassIndices)=1) and (Impact.ChangedPassIndices[0]=0),
+      'installed edit distinguishes authored alias from changed materialized provider');
+    State:=Edit.CopyPublicState; Layer:=State.LayerAt(0);
+    Check((Layer.Cells[0].Token='land') and not Layer.Cells[0].Generated,
+      'installed same-token lock becomes caller-owned');
+    FreeAndNil(State); FreeAndNil(Edit);
+    Rejected:=False;
+    try Outcome:=Session.ExecuteRepair(Stale);
+    except on E:EWfcPipelineSession do Rejected:=True; end;
+    Check(Rejected and (Session.Revision=2) and Session.Usable,
+      'installed stale plan cannot mutate the current revision');
+    FreeAndNil(Stale);
+    Labels[0]:='alias'; Plan:=Session.PlanRepair(Changed,Labels); Scope:=Plan.CopyScope;
+    Check(not Plan.CanExecute and not Plan.MissingBaseline and
+      (Length(Scope.MissingPassIndices)=1) and (Scope.MissingPassIndices[0]=0),
+      'installed alias-only repair does not silently authorize its provider');
+    FreeAndNil(Plan);
+    Edit:=Session.ApplyInputs(Run); State:=Edit.CopyPublicState; Layer:=State.LayerAt(0);
+    Check((Edit.Revision=3) and Layer.Cells[0].Empty and not Layer.Cells[0].Generated,
+      'installed clear is a real transition, not restoration of a generated token');
+    Check(Length(Edit.CopyPendingPassIndices)=1,
+      'installed inverse edit retains earlier pending requirements');
+    FreeAndNil(State); FreeAndNil(Edit);
+    Labels[0]:='public'; Plan:=Session.PlanRepair(Run,Labels);
+    Check(Plan.CanExecute and (Plan.BaseRevision=3),'installed explicit provider repair is sufficient');
+    Outcome:=Session.ExecuteRepair(Plan);
+    Check(Outcome.Solved and Outcome.HasCurrentOutput and
+      (Outcome.Kind=wpsokOrdinarySelective) and (Session.Revision=4) and
+      (Length(Outcome.CopyPendingPassIndices)=0),
+      'installed sufficient selective solve settles pending requirements');
+    State:=Outcome.CopyPublicState; Layer:=State.LayerAt(0);
+    Check(Layer.Cells[0].Generated and (Layer.Cells[0].Token='land'),
+      'installed repair produces a newly generated provider value');
+    Layer.Cells[0].Token:='changed-copy'; Layer:=State.LayerAt(0);
+    Check(Layer.Cells[0].Token='land','installed public cell arrays are detached');
+    FreeAndNil(State); FreeAndNil(Plan);
+    Edit:=Session.ApplyInputs(Run);
+    Check((Session.Revision=5) and Edit.HasCurrentOutput and not Edit.CopyImpact.GraphInputsChanged,
+      'installed no-op edit still revises without rewriting generated ownership');
+    FreeAndNil(Edit); FreeAndNil(Session); FreeAndNil(Changed); FreeAndNil(Run); FreeAndNil(Recipe);
+    Invocation:=Initial.CopyInvocation;
+    Check((Invocation.Seed=17) and (Length(Invocation.Extents)=2),
+      'installed invocation evidence survives all recipe/session owners');
+    State:=Outcome.CopyPublicState; Layer:=State.LayerAt(1);
+    Check((State.LayerCount=2) and (Length(Layer.Cells)=3) and (Layer.Cells[0].Token='land'),
+      'installed complete detached outcome survives owner disposal');
+  finally Layouts.Free; State.Free; Stale.Free; Plan.Free; Edit.Free; Outcome.Free;
+    Initial.Free; Session.Free; Binding.Free; InputPlan.Free; OtherPreparation.Free;
+    Preparation.Free; Changed.Free; Run.Free; Recipe.Free; end;
+end;
+
 procedure UseMusicForm;
 var Config, Copied: TWfcMusicFormConfig; Cursor: TWfcMusicFormCursor;
   Plan: TWfcMusicFormPhrasePlan; Bars: TWfcMusicFormBars;
@@ -399,6 +531,7 @@ begin
     UseLattice;
     UsePortableMapping;
     UsePipelineComposition;
+    UsePreparedPipeline;
     UseMusicForm;
     UsePortableConnectivity;
     UseVolumePatterns;

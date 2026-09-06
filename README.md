@@ -33,6 +33,7 @@ and explicit exit gates.
 | Learn cyclic text, rhythms or event patterns | [Circular sequence training](docs/sequences.md#circular-source-training), [Training Studio](docs/training-studio.md) |
 | Save and replay a pipeline | [Portable recipes, runs, and results](docs/pipeline-artifacts.md) |
 | Assemble independently authored or learned pipelines | [Immutable fragment composition](docs/pipeline-composition.md) |
+| Edit a bound pipeline and authorize repair | [Preparation and input replacement](docs/pipeline-preparation.md), [prepared sessions](docs/pipeline-sessions.md) |
 | Check or inspect saved work | [Artifact-family validation, inspection, and exact replay](docs/artifact-tools.md) |
 | Extend or evaluate the system | [Roadmap](ROADMAP.md), [research records](docs/research/README.md) |
 
@@ -109,7 +110,11 @@ workbench's general layout editing and portable import/export UI remain open.
 or learned recipes with explicit names, preserving projection bridges, aliases,
 policies, topology, and resource provenance. It produces an immutable recipe;
 the caller supplies run extents and executes it through the existing runtime.
-It does not yet provide an editable multi-resource workspace or operation journal.
+The [prepared-session API](docs/pipeline-sessions.md) now adds immediate input
+edits, revision-bound explicit repair plans, cumulative pending requirements and
+complete detached solver/state evidence for one bound recipe. It keeps caller
+ownership and scoped reuse distinct from fresh invocation results. A complete
+editable multi-resource workspace and saved-operation journal remain open.
 
 Ordinary solving follows `prepare → solve → validate → commit`. A failed
 reference transaction restores its previous entries and random streams.

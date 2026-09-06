@@ -919,6 +919,13 @@ for compiler_artifact_suite in \
   "$compiler_source_directory/../test/wfc_pipeline_mapped_artifact_test.lpr" \
   "$compiler_source_directory/../test/wfc_pipeline_compose_test.lpr" \
   "$compiler_source_directory/../test/wfc_pipeline_compose_resources_test.lpr" \
+  "$compiler_source_directory/../test/wfc_pipeline_prepare_test.lpr" \
+  "$compiler_source_directory/../test/wfc_pipeline_prepare_threads_test.lpr" \
+  "$compiler_source_directory/../test/wfc_pipeline_replace_test.lpr" \
+  "$compiler_source_directory/../test/wfc_pipeline_replace_inverse_test.lpr" \
+  "$compiler_source_directory/../test/wfc_pipeline_session_test.lpr" \
+  "$compiler_source_directory/../test/wfc_pipeline_session_oracle_test.lpr" \
+  "$compiler_source_directory/../test/wfc_regeneration_scope_test.lpr" \
   "$compiler_source_directory/../test/wfc_lattice_test.lpr" \
   "$compiler_source_directory/../test/wfc_mapped_passes_test.lpr" \
   "$compiler_source_directory/../test/wfc_pass_bridge_layout_test.lpr" \

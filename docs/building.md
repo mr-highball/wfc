@@ -125,6 +125,10 @@ Both scripts rebuild with assertions and range, overflow, and I/O checks, run
 `wfc_pipeline_run_test`, `wfc_pipeline_run_text_test`,
 `wfc_pipeline_compile_test`, `wfc_pipeline_result_test`,
 `wfc_pipeline_result_text_test`, `wfc_pipeline_runtime_test`,
+`wfc_pipeline_prepare_test`, `wfc_pipeline_prepare_threads_test`,
+`wfc_pipeline_replace_test`, `wfc_pipeline_replace_inverse_test`,
+`wfc_pipeline_session_test`, `wfc_pipeline_session_oracle_test`,
+`wfc_regeneration_scope_test`,
 `wfc_token_lookup_test`, `wfc_validate_app_test`, `wfc_run_app_test`,
 `wfc_training_test`, `wfc_training_text_test`, `wfc_learn_app_test`,
 `wfc_learn3d_test`, `wfc_model3d_text_test`, `wfc_training3d_test`,
@@ -249,7 +253,8 @@ ownership, safety bounds, and CLI contracts are in
 ## FPM package
 
 Every maintained `src/*.pas` unit belongs to both the FPM and runtime-only
-Lazarus packages, including `wfc_music_form` and `wfc_pipeline_connectivity`.
+Lazarus packages, including `wfc_music_form`, `wfc_pipeline_connectivity`,
+`wfc_pipeline_prepare` and `wfc_pipeline_session`.
 The normal native gate first runs the included
 [package completeness checker](package-checking.md). It compares source unit
 declarations with all three package lists; source-only compilation cannot
@@ -570,7 +575,8 @@ Point/undersized-region studies can satisfy the selected model without clearing
 the full footprint. Only explicit `--diagnostic-svg NEW-FILE` may export such
 an unsafe study or a labeled retained baseline; neither output option replaces
 an existing destination. Browser edits likewise invalidate safe downloads.
-The [portable mapped extension](portable-mapped-passes.md) is under integration.
+The [portable mapped extension](portable-mapped-passes.md) uses the maintained
+native and browser gates.
 Its layout, geometry, model/codec, run/result, runtime and artifact suites are
 registered in both native scripts and portable browser discovery. The separate
 native-only `wfc_pipeline_mapped_process_test` invokes the actual `wfc_run`,
@@ -578,6 +584,13 @@ native-only `wfc_pipeline_mapped_process_test` invokes the actual `wfc_run`,
 canonical stdin/stdout, solved/nonsolved replay and invalid bindings. Its
 fixture directory is new on every run; browser discovery excludes this process
 harness. Mapped World UI import/export and general layout editing remain open.
+
+The [prepared session](pipeline-sessions.md) is a separate in-memory library
+boundary above [reusable input preparation](pipeline-preparation.md); it does
+not yet migrate the Mapped World demo or provide saved journal import/export.
+Its six new portable preparation/replacement/session/scope suites are discovered
+by all browser scripts. `wfc_pipeline_prepare_threads_test` is native-only and
+excluded by both build and execution scripts on each shell platform.
 
 The [footprint research record](research/mapped-world-footprints-v1.md)
 records the four-target native checks, actual browser fixture, and full stable

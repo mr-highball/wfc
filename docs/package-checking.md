@@ -100,6 +100,12 @@ owned mixed-pass layout prefixes plus independent mapped-footprint validation.
 It also assembles two owned [pipeline fragments](pipeline-composition.md),
 checks detached names/provenance and remapped alias/dependency references,
 then executes their differently sized passes through the installed runtime.
+It also uses [preparation](pipeline-preparation.md) after caller-wrapper disposal,
+checks exact producer identity and scope inspection, and executes a
+[prepared session](pipeline-sessions.md) through alias lock, clear, insufficient
+leaf scope, stale-plan rejection and sufficient provider repair. Detached
+invocation, reports and public states are inspected after all source owners
+are freed. These are behavioral checks, not merely extra `uses` entries.
 This catches both missing package entries and unusable exported interfaces.
 It is intentionally not named `*_test.lpr`: the source-path conformance runner
 must not silently substitute for this package-only check.

@@ -28,6 +28,7 @@ $nativeOnly += 'wfc_artifact_cli_process_test'
 $nativeOnly += 'wfc_ensemble_http_process_test'
 $nativeOnly += 'wfc_mapped_world_process_test'
 $nativeOnly += 'wfc_pipeline_mapped_process_test'
+$nativeOnly += 'wfc_pipeline_prepare_threads_test'
 if ($standalone) {
   if (-not $WebRoot -or -not $Page -or $TestName) {
     throw 'Standalone mode requires -WebRoot and -Page and excludes -TestName.'
