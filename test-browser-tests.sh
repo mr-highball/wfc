@@ -215,6 +215,9 @@ for name in "${sources[@]}"; do
     expectations+=(--expect data-midi-stream-self-test=passed)
     expectations+=(--expect data-midi-stream-release=passed)
   fi
+  if [[ "$name" == wfc_music_ensemble_demo_test ]]; then
+    expectations+=(--expect data-developed-profile=passed)
+  fi
   if [[ "$name" == wfc_music_voices_browser_test ]]; then
     expectations+=(--expect data-voice-stream-self-test=passed)
     expectations+=(--expect data-voice-stream-release=passed)

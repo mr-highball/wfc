@@ -38,7 +38,8 @@ uses
   wfc_music_ensemble_graph,
   wfc_music_ensemble_passes,
   wfc_music_audio,
-  wfc_midi_smf;
+  wfc_midi_smf,
+  ensemble_studio_profiles;
 
 const
   ENSEMBLE_STUDIO_VERSION = 1;
@@ -128,6 +129,8 @@ type
     FLocks: TEnsembleStudioLocks;
     FReport: TEnsembleStudioReport;
     FSeed: TGraphSeed;
+    FProfile: TEnsembleStudioProfile;
+    FFormReportText: String;
     FBars: Integer;
     FCellCount: Integer;
     FStatus: TEnsembleStudioStatus;
@@ -147,9 +150,12 @@ type
     function GetHasCurrent: Boolean;
     function GetHasBaseline: Boolean;
   public
-    constructor Create(const ASeed: TGraphSeed; const ABars: Integer);
+    constructor Create(const ASeed: TGraphSeed; const ABars: Integer;
+      const AProfile: TEnsembleStudioProfile = espStructuralV1);
     destructor Destroy; override;
-    procedure Reset(const ASeed: TGraphSeed; const ABars: Integer);
+    procedure Reset(const ASeed: TGraphSeed; const ABars: Integer); overload;
+    procedure Reset(const ASeed: TGraphSeed; const ABars: Integer;
+      const AProfile: TEnsembleStudioProfile); overload;
     procedure InvalidateCurrent;
     procedure SetLock(const ALayer: TWfcMusicEnsembleLayer;
       const APosition: Integer; const AToken: TWfcModelToken);
@@ -174,6 +180,8 @@ type
     function TryWavePreview(out ABytes: TWfcMusicAudioBytes;
       out AFrameCount: Integer; out AFailure: String): Boolean;
     property Seed: TGraphSeed read FSeed;
+    property Profile: TEnsembleStudioProfile read FProfile;
+    property FormReportText: String read FFormReportText;
     property Bars: Integer read FBars;
     property CellCount: Integer read FCellCount;
     property HasCurrent: Boolean read GetHasCurrent;
@@ -204,25 +212,11 @@ function EnsembleStudioTextSignature(const AText: String): String;
 implementation
 
 uses
-  wfc_sequence_learn,
   wfc_sequence_graph,
   wfc_music_text,
-  wfc_music_midi;
+  wfc_music_midi,
+  ensemble_studio_planning;
 
-const
-  ROOT_PITCHES: array[0..3] of Integer = (36, 41, 43, 45);
-  CHORD_PITCHES: array[0..3, 0..2] of Integer = (
-    (48, 52, 55),
-    (53, 57, 60),
-    (55, 59, 62),
-    (57, 60, 64)
-  );
-  UPPER_PITCHES: array[0..3, 0..3] of Integer = (
-    (60, 64, 67, 64),
-    (65, 69, 72, 69),
-    (67, 71, 74, 71),
-    (69, 72, 76, 72)
-  );
 
 procedure HashByte(var AHash: Cardinal; const AByte: Byte);
 {$PUSH}{$Q-}
@@ -402,141 +396,23 @@ begin
   end;
 end;
 
-function VoiceCell(const AAction: TWfcMusicCellAction;
-  const APitches: array of Integer; const AVelocity: Integer):
-  TWfcMusicVoiceCell;
-var
-  I: Integer;
-  LTones: TWfcMusicTones;
-begin
-  LTones := nil;
-  SetLength(LTones, Length(APitches));
-  for I := 0 to High(APitches) do
-    LTones[I] := MakeWfcMusicTone(APitches[I], AVelocity);
-  Result := MakeWfcMusicVoiceCell(AAction, LTones);
-end;
-
-function CorpusBarCell(const ARootIndex, APosition, AVariant: Integer):
-  TWfcMusicEnsembleFrame;
-var
-  LFirstUpper: Integer;
-  LSecondUpper: Integer;
-  LVoices: TWfcMusicVoiceCells;
-begin
-  if (ARootIndex < 0) or (ARootIndex > High(ROOT_PITCHES)) then
-    raise EEnsembleStudio.Create('unknown corpus harmony');
-  if (APosition < 0) or
-      (APosition >= ENSEMBLE_STUDIO_CELLS_PER_BAR) then
-    raise EEnsembleStudio.Create('corpus position is outside a bar');
-  if (AVariant < 0) or (AVariant > 3) then
-    raise EEnsembleStudio.Create('unknown corpus voicing');
-  { Variant tones remain members of the sounding triad, so all authored
-    ensemble alternatives share the same exact harmony and rhythm providers. }
-  LFirstUpper := CHORD_PITCHES[ARootIndex, AVariant mod 3] + 12;
-  LSecondUpper := CHORD_PITCHES[ARootIndex, (AVariant + 1) mod 3] + 12;
-  SetLength(LVoices, ENSEMBLE_STUDIO_VOICE_COUNT);
-  case APosition of
-    0:
-      begin
-        LVoices[0] := VoiceCell(wmcaAttack,
-          [ROOT_PITCHES[ARootIndex]], 72);
-        LVoices[1] := VoiceCell(wmcaAttack,
-          [CHORD_PITCHES[ARootIndex, 0], CHORD_PITCHES[ARootIndex, 1],
-           CHORD_PITCHES[ARootIndex, 2]], 64);
-        LVoices[2] := VoiceCell(wmcaAttack,
-          [LFirstUpper], 96);
-      end;
-    1:
-      begin
-        LVoices[0] := VoiceCell(wmcaHold,
-          [ROOT_PITCHES[ARootIndex]], 72);
-        LVoices[1] := VoiceCell(wmcaHold,
-          [CHORD_PITCHES[ARootIndex, 0], CHORD_PITCHES[ARootIndex, 1],
-           CHORD_PITCHES[ARootIndex, 2]], 64);
-        LVoices[2] := VoiceCell(wmcaHold,
-          [LFirstUpper], 96);
-      end;
-    2:
-      begin
-        LVoices[0] := VoiceCell(wmcaHold,
-          [ROOT_PITCHES[ARootIndex]], 72);
-        LVoices[1] := MakeWfcMusicRestVoiceCell;
-        LVoices[2] := VoiceCell(wmcaAttack,
-          [UPPER_PITCHES[ARootIndex, 1]], 96);
-      end;
-    3:
-      begin
-        LVoices[0] := VoiceCell(wmcaHold,
-          [ROOT_PITCHES[ARootIndex]], 72);
-        LVoices[1] := MakeWfcMusicRestVoiceCell;
-        LVoices[2] := VoiceCell(wmcaHold,
-          [UPPER_PITCHES[ARootIndex, 1]], 96);
-      end;
-    4:
-      begin
-        LVoices[0] := VoiceCell(wmcaHold,
-          [ROOT_PITCHES[ARootIndex]], 72);
-        LVoices[1] := VoiceCell(wmcaAttack,
-          [CHORD_PITCHES[ARootIndex, 0], CHORD_PITCHES[ARootIndex, 1],
-           CHORD_PITCHES[ARootIndex, 2]], 64);
-        LVoices[2] := VoiceCell(wmcaAttack,
-          [LSecondUpper], 96);
-      end;
-    5:
-      begin
-        LVoices[0] := VoiceCell(wmcaHold,
-          [ROOT_PITCHES[ARootIndex]], 72);
-        LVoices[1] := VoiceCell(wmcaHold,
-          [CHORD_PITCHES[ARootIndex, 0], CHORD_PITCHES[ARootIndex, 1],
-           CHORD_PITCHES[ARootIndex, 2]], 64);
-        LVoices[2] := VoiceCell(wmcaHold,
-          [LSecondUpper], 96);
-      end;
-    6:
-      begin
-        LVoices[0] := VoiceCell(wmcaHold,
-          [ROOT_PITCHES[ARootIndex]], 72);
-        LVoices[1] := MakeWfcMusicRestVoiceCell;
-        LVoices[2] := VoiceCell(wmcaAttack,
-          [UPPER_PITCHES[ARootIndex, 3]], 96);
-      end;
-  else
-    begin
-      LVoices[0] := MakeWfcMusicRestVoiceCell;
-      LVoices[1] := MakeWfcMusicRestVoiceCell;
-      LVoices[2] := MakeWfcMusicRestVoiceCell;
-    end;
-  end;
-  Result := MakeWfcMusicEnsembleFrame(LVoices);
-end;
-
 function EnsembleStudioCorpus(
   const AIndex: Integer): TWfcMusicEnsembleFrames;
-var
-  I: Integer;
 begin
-  if (AIndex < 0) or (AIndex >= ENSEMBLE_STUDIO_CORPUS_COUNT) then
-    raise EEnsembleStudio.Create('unknown project-authored ensemble corpus');
-  Result := nil;
-  SetLength(Result, ENSEMBLE_STUDIO_DEFAULT_BARS *
-    ENSEMBLE_STUDIO_CELLS_PER_BAR);
-  for I := 0 to High(Result) do
-    Result[I] := CorpusBarCell(
-      AIndex div 4,
-      I mod ENSEMBLE_STUDIO_CELLS_PER_BAR, AIndex mod 4);
-  ValidateWfcMusicEnsembleFrames(Result);
+  Result := EnsembleStudioProfileCorpus(espStructuralV1, AIndex);
 end;
 
 function BuildTemplateFrames(const ACellCount: Integer):
   TWfcMusicEnsembleFrames;
 var
   I: Integer;
+  LCorpus: TWfcMusicEnsembleFrames;
 begin
+  LCorpus := EnsembleStudioCorpus(0);
   Result := nil;
   SetLength(Result, ACellCount);
   for I := 0 to ACellCount - 1 do
-    Result[I] := CorpusBarCell(0,
-      I mod ENSEMBLE_STUDIO_CELLS_PER_BAR, 0);
+    Result[I] := LCorpus[I mod ENSEMBLE_STUDIO_CELLS_PER_BAR];
   ValidateWfcMusicEnsembleFrames(Result);
 end;
 
@@ -649,9 +525,11 @@ begin
 end;
 
 constructor TEnsembleStudio.Create(const ASeed: TGraphSeed;
-  const ABars: Integer);
+  const ABars: Integer; const AProfile: TEnsembleStudioProfile);
 begin
   inherited Create;
+  EnsembleStudioProfileName(AProfile);
+  FProfile := AProfile;
   BuildModels;
   Reset(ASeed, ABars);
 end;
@@ -667,38 +545,8 @@ begin
 end;
 
 procedure TEnsembleStudio.BuildModels;
-var
-  LEnsembleSamples: TWfcSequenceSamples;
-  LHarmonySamples: TWfcSequenceSamples;
-  LRhythmSamples: TWfcSequenceSamples;
-  LFrames: TWfcMusicEnsembleFrames;
-  I: Integer;
 begin
-  SetLength(LEnsembleSamples, ENSEMBLE_STUDIO_CORPUS_COUNT);
-  SetLength(LHarmonySamples, ENSEMBLE_STUDIO_CORPUS_COUNT);
-  SetLength(LRhythmSamples, ENSEMBLE_STUDIO_CORPUS_COUNT);
-  for I := 0 to ENSEMBLE_STUDIO_CORPUS_COUNT - 1 do
-  begin
-    LFrames := EnsembleStudioCorpus(I);
-    LEnsembleSamples[I] := MakeWfcSequenceSample(
-      EncodeWfcMusicEnsembleFrames(LFrames));
-    LRhythmSamples[I] := MakeWfcSequenceSample(
-      EncodeWfcMusicRhythmFrames(
-        ProjectWfcMusicEnsembleFramesToRhythm(LFrames)));
-    LHarmonySamples[I] := MakeWfcSequenceSample(
-      EncodeWfcMusicPitchClassSets(
-        ProjectWfcMusicEnsembleFramesToPitchClassSets(LFrames, 12)));
-  end;
-  { A complete bar of context preserves phase while the duplicated second bar
-    provides a BOS-free transition back to the next bar. Prefix generation can
-    therefore extend to any requested whole-bar grid without losing the
-    authored attack/hold/rest position. }
-  FModels.Harmony := LearnSequenceModelCorpus(LHarmonySamples,
-    ENSEMBLE_STUDIO_CELLS_PER_BAR);
-  FModels.Rhythm := LearnSequenceModelCorpus(LRhythmSamples,
-    ENSEMBLE_STUDIO_CELLS_PER_BAR);
-  FModels.Ensemble := LearnSequenceModelCorpus(LEnsembleSamples,
-    ENSEMBLE_STUDIO_CELLS_PER_BAR);
+  FModels := BuildEnsembleStudioProfileModels(FProfile);
 end;
 
 procedure TEnsembleStudio.Reset(const ASeed: TGraphSeed;
@@ -707,6 +555,7 @@ var
   LConfig: TWfcMusicEnsembleConfig;
   LNewPipeline: TWfcMusicEnsemblePipeline;
   LTemplate: TWfcMusicScore;
+  LFormReportText: String;
 begin
   LTemplate := BuildTemplate(ABars);
   LNewPipeline := nil;
@@ -716,12 +565,14 @@ begin
     LConfig.Models := FModels;
     LConfig.Extent := wsePrefix;
     LConfig.HarmonyMode := wmehmExact;
-    LNewPipeline := TWfcMusicEnsemblePipeline.Create(LConfig);
+    LNewPipeline := CreateEnsembleStudioPipeline(LConfig, FProfile,
+      LFormReportText);
   finally
     LTemplate.Free;
   end;
   FPipeline.Free;
   FPipeline := LNewPipeline;
+  FFormReportText := LFormReportText;
   FreeAndNil(FComposition);
   FSeed := ASeed;
   FBars := ABars;
@@ -731,6 +582,35 @@ begin
   InvalidateCurrent;
   FStatus := essIdle;
   FReport.Status := FStatus;
+end;
+
+procedure TEnsembleStudio.Reset(const ASeed: TGraphSeed;
+  const ABars: Integer; const AProfile: TEnsembleStudioProfile);
+var
+  LOldModels, LNewModels: TWfcMusicEnsembleModels;
+  LOldProfile: TEnsembleStudioProfile;
+begin
+  EnsembleStudioProfileName(AProfile);
+  EnsembleStudioBarsToCellCount(ABars);
+  if AProfile = FProfile then
+  begin
+    Reset(ASeed, ABars);
+    Exit;
+  end;
+  LNewModels := BuildEnsembleStudioProfileModels(AProfile);
+  LOldModels := FModels;
+  LOldProfile := FProfile;
+  FModels := LNewModels;
+  FProfile := AProfile;
+  try
+    Reset(ASeed, ABars);
+  except
+    FModels := LOldModels;
+    FProfile := LOldProfile;
+    FreeEnsembleStudioProfileModels(LNewModels);
+    raise;
+  end;
+  FreeEnsembleStudioProfileModels(LOldModels);
 end;
 
 procedure TEnsembleStudio.InvalidateCurrent;

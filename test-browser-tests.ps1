@@ -143,7 +143,12 @@ try {
     $captureProcess = $null
     $caseFailures = @()
     try {
-      [string[]]$expectations = if ($standalone) { @($Expect) } else { @('data-self-test=passed') }
+      # An empty branch result is $null, not an empty array. Assign inside the
+      # branch so a standalone run with no extra expectations does not emit
+      # an accidental empty --expect argument to the native capture tool.
+      [string[]]$expectations = @()
+      if ($standalone) { $expectations = @($Expect) }
+      else { $expectations = @('data-self-test=passed') }
       if (-not @($expectations | Where-Object { $_ -cmatch '^data-self-test=' }).Count) {
         $expectations = @('data-self-test=passed') + $expectations
       }
@@ -153,6 +158,9 @@ try {
       if ($caseName -eq 'wfc_music_ensemble_stream_demo_test') {
         $expectations += @('data-stream-self-test=passed', 'data-stream-release=passed',
           'data-midi-stream-self-test=passed', 'data-midi-stream-release=passed')
+      }
+      if ($caseName -eq 'wfc_music_ensemble_demo_test') {
+        $expectations += @('data-developed-profile=passed')
       }
       if ($caseName -eq 'wfc_music_voices_browser_test') {
         $expectations += @('data-voice-stream-self-test=passed', 'data-voice-stream-release=passed')

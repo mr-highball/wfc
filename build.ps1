@@ -391,7 +391,10 @@ foreach ($ensembleTestName in @(
     'wfc_music_ensemble_demo_test', 'wfc_sequence_segment_test',
     'wfc_music_ensemble_stream_test', 'wfc_music_ensemble_audio_test',
     'wfc_music_ensemble_stream_demo_test', 'wfc_midi_stream_test',
-    'wfc_music_ensemble_midi_test', 'wfc_music_ensemble_midi_stream_demo_test')) {
+    'wfc_music_ensemble_midi_test', 'wfc_music_ensemble_midi_stream_demo_test',
+    'wfc_music_form_test', 'wfc_ensemble_profiles_test',
+    'wfc_music_ensemble_plan_hooks_test', 'wfc_ensemble_development_test',
+    'wfc_ensemble_developed_midi_test')) {
   Write-Host "Building and running '$ensembleTestName'."
   & $Compiler @CompilerOptions -B -Mdelphi -Sa -Cr -Co -Ci `
     "-Fu$sourceDirectory" "-Fu$ensembleDemoDirectory" "-Fu$repositoryRoot/tools" `

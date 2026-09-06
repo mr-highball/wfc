@@ -124,6 +124,11 @@ The repository already contains the beginnings of the ecosystem:
   vectors, distinct exact/allowed pitch-class sets, safe continuation-model
   preflight, common-excerpt training, a transactional three-pass owner, and
   shared native/browser Ensemble Studio;
+- a [musical-form planner](docs/music-form.md) with caller-owned finite chord
+  and motif catalogs, explicit cadence and boundary-motion constraints,
+  independently validated immutable phrase plans, and a bounded phrase cursor;
+  Ensemble Studio exposes a developed-period profile while preserving the
+  original structural model's exact replay;
 - [Independent Voices v1](docs/music-voices.md) with detached common-excerpt
   role training, one chord-capable vocabulary per voice, shared harmony/rhythm
   providers, pitch ranges and optional pair gaps, existential exact-coverage

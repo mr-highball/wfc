@@ -39,6 +39,7 @@ uses
   wfc_midi_smf,
   wfc_midi_stream,
   ensemble_studio_stream,
+  ensemble_studio_profiles,
   ensemble_studio_midi_stream;
 
 type
@@ -61,6 +62,7 @@ type
     FSeed, FSeconds, FSegmentCells, FBacktracks, FPassBacktracks:
       TJSHTMLInputElement;
     FTrace: TJSHTMLInputElement;
+    FProfile: TJSHTMLSelectElement;
     FStart, FMidiPlanButton, FMidiSaveButton, FCancel: TJSHTMLButtonElement;
     FProgress: TJSHTMLProgressElement;
     FStatus, FDetail, FPlan, FFallback: TJSElement;
@@ -437,6 +439,7 @@ function TBrowserEnsembleStreamController.ReadOptions:
 begin
   Result := DefaultEnsembleStudioStreamOptions;
   Result.Seed := ReadSeed;
+  Result.Profile := ParseEnsembleStudioProfile(FProfile.value);
   Result.SegmentCellCount := ReadNonnegative(FSegmentCells,
     'stream segment cells');
   if (Result.SegmentCellCount < 1) or
@@ -490,6 +493,7 @@ begin
     else LTraceOption := '';
     LMidiCommand := 'EnsembleStudioMidiRender --seconds ' +
       LFrames.RequestedText + ' --seed ' + IntToStr(LOptions.Seed) +
+      ' --profile ' + EnsembleStudioProfileName(LOptions.Profile) +
       ' --segment-cells ' + IntToStr(LOptions.SegmentCellCount) +
       ' --backtracks ' + IntToStr(LOptions.MaxBacktracks) +
       ' --pass-backtracks ' + IntToStr(LOptions.MaxPassBacktracks) +
@@ -507,7 +511,8 @@ begin
       FPlan.setAttribute('data-valid', 'true');
       LWaveCommand := 'EnsembleStudioRender --seconds ' +
         LPlan.RequestedText + ' --seed ' +
-      IntToStr(LOptions.Seed) + ' --segment-cells ' +
+      IntToStr(LOptions.Seed) + ' --profile ' +
+      EnsembleStudioProfileName(LOptions.Profile) + ' --segment-cells ' +
       IntToStr(LOptions.SegmentCellCount) + ' --backtracks ' +
       IntToStr(LOptions.MaxBacktracks) + ' --pass-backtracks ' +
       IntToStr(LOptions.MaxPassBacktracks) + LTraceOption +
@@ -599,6 +604,7 @@ begin
   if (AEvent._type = 'click') and (LId <> 'new-session-button') then Exit;
   if (AEvent._type <> 'click') and
       (LId <> 'seed-input') and (LId <> 'stream-seconds-input') and
+      (LId <> 'profile-select') and
       (LId <> 'stream-segment-cells-input') and
       (LId <> 'stream-backtracks-input') and
       (LId <> 'stream-pass-backtracks-input') and
@@ -1597,6 +1603,7 @@ var
   LMutationHandler: TJSEventHandler;
 begin
   FSeed := TJSHTMLInputElement(RequireElement('seed-input'));
+  FProfile := TJSHTMLSelectElement(RequireElement('profile-select'));
   FSeconds := TJSHTMLInputElement(RequireElement('stream-seconds-input'));
   FSegmentCells := TJSHTMLInputElement(
     RequireElement('stream-segment-cells-input'));
@@ -1665,6 +1672,8 @@ procedure InstallEnsembleStreamBrowserTestFixture;
 begin
   TJSHTMLElement(document.body).innerHTML :=
     '<main><input id="seed-input" inputmode="text" autocomplete="off" value="0">' +
+    '<select id="profile-select"><option value="structural-v1">original</option>' +
+      '<option value="developed-period-v1">developed</option></select>' +
     '<input id="stream-seconds-input" inputmode="decimal" autocomplete="off" value="1.5">' +
     '<input id="stream-segment-cells-input" type="number" min="1" step="1" value="5">' +
     '<input id="stream-backtracks-input" type="number" min="0" step="1" value="256">' +

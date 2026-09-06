@@ -63,18 +63,6 @@ type
     Ensemble: TWfcSequenceModel;
   end;
 
-  { ScoreTemplate is read only during construction and is deep-copied by the
-    pipeline. Models remain caller-owned and must outlive the pipeline.
-    Voice order, finite extent, and harmony interpretation are explicit. }
-  TWfcMusicEnsembleConfig = record
-    QuantumTicks: Integer;
-    Seed: TGraphSeed;
-    Models: TWfcMusicEnsembleModels;
-    ScoreTemplate: TWfcMusicScore;
-    Extent: TWfcSequenceExtent;
-    HarmonyMode: TWfcMusicEnsembleHarmonyMode;
-  end;
-
   TWfcMusicEnsembleCompositionSignature = Cardinal;
 
   TWfcMusicEnsembleGeneratedLayers =
@@ -115,6 +103,30 @@ type
     CheckedCells: Integer;
     CheckedRelations: Integer;
     Issue: TWfcMusicEnsembleValidationIssue;
+  end;
+
+  TWfcMusicEnsembleComposition = class;
+  { The receiver is borrowed and must outlive its pipeline. Validation is
+    synchronous and observational: do not retain the borrowed composition,
+    change generation inputs, or reenter the pipeline. False rejects the
+    candidate while the graph transaction can still restore entries and RNG. }
+  TWfcMusicEnsembleCompositionValidator = function(
+    const Composition: TWfcMusicEnsembleComposition;
+    out Issue: TWfcMusicEnsembleValidationIssue): Boolean of object;
+
+  { ScoreTemplate and InitialTokenConstraints are read only during construction.
+    The pipeline owns detached score/domain baselines. Models and the optional
+    validator receiver remain caller-owned and must outlive the pipeline. }
+  TWfcMusicEnsembleConfig = record
+    QuantumTicks: Integer;
+    Seed: TGraphSeed;
+    Models: TWfcMusicEnsembleModels;
+    ScoreTemplate: TWfcMusicScore;
+    Extent: TWfcSequenceExtent;
+    HarmonyMode: TWfcMusicEnsembleHarmonyMode;
+    InitialTokenConstraints:
+      array[TWfcMusicEnsembleLayer] of TWfcSequenceTokenConstraints;
+    ValidateComposition: TWfcMusicEnsembleCompositionValidator;
   end;
 
   TWfcMusicEnsembleStatus = (
@@ -208,6 +220,7 @@ type
     FExtent: TWfcSequenceExtent;
     FHarmonyMode: TWfcMusicEnsembleHarmonyMode;
     FScoreTemplate: TWfcMusicScore;
+    FValidateComposition: TWfcMusicEnsembleCompositionValidator;
     FBaselineDomains:
       array[TWfcMusicEnsembleLayer] of array of TGraphValues;
     FBaselineHasDomains:
@@ -951,6 +964,7 @@ begin
   if FCellCount < 1 then
     raise EArgumentException.Create('music pass cell count must be positive');
   FModels := AConfig.Models;
+  FValidateComposition := AConfig.ValidateComposition;
   FDirtyLayers := [wmelHarmony, wmelRhythm, wmelEnsemble];
   FPendingComposition := nil;
   FPendingCapture := Default(TWfcMusicEnsembleCaptureReports);
@@ -990,6 +1004,10 @@ begin
       FScoreTemplate.VoiceCount, FScoreTemplate.StepsPerOctave,
       FHarmonyMode);
 
+    for LLayer := Low(TWfcMusicEnsembleLayer) to High(TWfcMusicEnsembleLayer) do
+      if Length(AConfig.InitialTokenConstraints[LLayer]) <> 0 then
+        IntersectSequenceTokenConstraints(GetModel(LLayer), GetLayerGraph(LLayer),
+          AConfig.InitialTokenConstraints[LLayer]);
     CaptureBaselineDomains;
     FGraph.SwitchToPass(WFC_MUSIC_ENSEMBLE_PASS_HARMONY);
   except
@@ -1239,6 +1257,15 @@ begin
   Result := EncodeWfcMusicText(A) = EncodeWfcMusicText(B);
 end;
 
+function ValidApplicationIssueInteger(const AValue, AMinimum,
+  AMaximum: Integer): Boolean;
+begin
+  Result := (AValue >= AMinimum) and (AValue <= AMaximum);
+  {$IFDEF PAS2JS}
+  Result := Result and (AValue = Trunc(AValue));
+  {$ENDIF}
+end;
+
 function TWfcMusicEnsemblePipeline.Validate(
   const AComposition: TWfcMusicEnsembleComposition;
   out AReport: TWfcMusicEnsembleValidationReport): Boolean;
@@ -1256,6 +1283,7 @@ var
   LRhythm: TWfcMusicRhythmFrame;
   LSequenceReport: TWfcSequenceGraphValidationReport;
   LSpans: TWfcMusicSpanEvents;
+  LApplicationIssue: TWfcMusicEnsembleValidationIssue;
 begin
   InitializeValidationReport(AReport);
   if not Assigned(AComposition) then
@@ -1419,6 +1447,32 @@ begin
   begin
     SetValidationIssue(AReport, wmevikSignature, wmelEnsemble, -1);
     Exit(False);
+  end;
+  if Assigned(FValidateComposition) then
+  begin
+    LApplicationIssue := Default(TWfcMusicEnsembleValidationIssue);
+    LApplicationIssue.Layer := wmelEnsemble;
+    LApplicationIssue.Position := -1;
+    if not FValidateComposition(AComposition, LApplicationIssue) then
+    begin
+      if not ValidApplicationIssueInteger(Ord(LApplicationIssue.Kind),
+          Ord(Low(TWfcMusicEnsembleValidationIssueKind)),
+          Ord(High(TWfcMusicEnsembleValidationIssueKind))) or
+          not ValidApplicationIssueInteger(Ord(LApplicationIssue.Layer),
+            Ord(Low(TWfcMusicEnsembleLayer)), Ord(High(TWfcMusicEnsembleLayer))) or
+          not ValidApplicationIssueInteger(LApplicationIssue.Position, -1, FCellCount - 1) then
+        SetValidationIssueDetail(AReport, wmevikInternal, wmelEnsemble, -1,
+          'composition validator returned an invalid issue')
+      else
+      begin
+        if LApplicationIssue.Kind = wmevikNone then
+          LApplicationIssue.Kind := wmevikCallerConstraint;
+        if LApplicationIssue.Detail = '' then
+          LApplicationIssue.Detail := 'application composition validation failed';
+        AReport.Issue := LApplicationIssue;
+      end;
+      Exit(False);
+    end;
   end;
   AReport.Valid := True;
   AReport.Issue.Kind := wmevikNone;

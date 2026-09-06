@@ -426,7 +426,7 @@ esac
 "$restart_demo_executable" --selftest || exit $?
 
 compiler_ensemble_demo_directory="$compiler_source_directory/../examples/music/06_EnsembleStudio"
-for ensemble_test_name in wfc_music_ensemble_test wfc_music_ensemble_graph_test wfc_music_ensemble_passes_test wfc_music_ensemble_training_test wfc_music_ensemble_demo_test wfc_sequence_segment_test wfc_music_ensemble_stream_test wfc_music_ensemble_audio_test wfc_music_ensemble_stream_demo_test wfc_midi_stream_test wfc_music_ensemble_midi_test wfc_music_ensemble_midi_stream_demo_test; do
+for ensemble_test_name in wfc_music_ensemble_test wfc_music_ensemble_graph_test wfc_music_ensemble_passes_test wfc_music_ensemble_training_test wfc_music_ensemble_demo_test wfc_sequence_segment_test wfc_music_ensemble_stream_test wfc_music_ensemble_audio_test wfc_music_ensemble_stream_demo_test wfc_midi_stream_test wfc_music_ensemble_midi_test wfc_music_ensemble_midi_stream_demo_test wfc_music_form_test wfc_ensemble_profiles_test wfc_music_ensemble_plan_hooks_test wfc_ensemble_development_test wfc_ensemble_developed_midi_test; do
   printf "Building and running '%s'.\n" "$ensemble_test_name"
   "$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
     "-Fu$compiler_source_directory" "-Fu$compiler_ensemble_demo_directory" "-Fu$compiler_source_directory/../tools" \

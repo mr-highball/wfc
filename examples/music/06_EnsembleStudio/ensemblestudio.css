@@ -59,6 +59,8 @@ label > span, dt, small { color: var(--muted); font-size: .67rem; letter-spacing
 input, select { min-width: 0; min-height: 2.55rem; padding: .52rem .62rem; }
 textarea { width: 100%; min-width: 0; resize: vertical; padding: .72rem; font: .73rem/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; }
 .session-actions label { width: 8.5rem; }
+.session-actions .profile-field { flex: 1 0 13rem; width: auto; }
+#form-report { max-height: 17rem; padding: .68rem; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; border: 1px solid var(--line); border-radius: .5rem; background: #070c0e; color: #ddd3c4; font: .69rem/1.5 ui-monospace, monospace; }
 .generation-fields { min-width: 0; display: grid; grid-template-columns: 1fr 1.35fr 1fr 1fr auto; gap: .65rem; align-items: end; }
 .check-field { display: flex; align-items: center; min-height: 2.55rem; gap: .45rem; }
 .check-field input { min-height: 0; }

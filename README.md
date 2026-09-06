@@ -125,6 +125,10 @@ scores and [stream continued polyphonic segments and audio](docs/music-ensemble-
 with [two-pass streamed MIDI](docs/music-midi-stream.md),
 without retaining the whole composition. Finite preview and score adapters
 still have their own resource bounds.
+The [musical-form planner](docs/music-form.md) adds bar-level form,
+harmonic-intent, and gesture passes. Ensemble Studio's developed profile uses
+them for question/answer/contrast/return phrases, with exact acoustic masks
+and an independently checked realization instead of extending one repeated bar.
 The separate [independent-voice libraries](docs/music-voices.md) learn one
 chord-capable vocabulary per role and generate new vertical combinations
 under collective harmony, shared rhythm, ranges, and optional pair gaps.
