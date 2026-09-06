@@ -99,7 +99,7 @@ assert_diagnostic() {
   local LC_ALL=C
   [[ ! -s "$standard_output" ]] || fail "$name wrote unexpected standard output"
   line_count=$(wc -l <"$standard_error") || exit $?
-  [[ "$line_count" == 1 ]] || fail "$name did not write one diagnostic line"
+  (( line_count == 1 )) || fail "$name did not write one diagnostic line"
   diagnostic=$(<"$standard_error")
   [[ "$diagnostic" == "$prefix"* ]] || fail "$name wrote the wrong diagnostic class"
   error_length=$(wc -c <"$standard_error") || exit $?

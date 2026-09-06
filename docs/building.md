@@ -524,14 +524,14 @@ commands, the complete marker contract, and explicit scope limits.
 
 ## Hosted pas2js gate
 
-The hosted browser gate builds the eight pas2js demos with a matching compiler
+The hosted browser gate builds the ten pas2js demos with a matching compiler
 and RTL. It serves standalone demo self-tests and the ensemble/independent-voice
 controllers' portable conformance hosts with the project-owned FPC server,
 executes them in headless Chrome, and checks rendered body attributes with the
 FPC checker.
 It also compiles every portable standalone conformance program for the browser
 and executes those pages through the same FPC tools. An additional browser-only
-entry regression loads all eight actual demo pages and their self-test queries,
+entry regression loads all ten actual demo pages and their self-test queries,
 including the HTML bootstrap and awaited controller checks. Native socket, DOM-parser,
 and renderer-process tests remain native. The source-derived test manifest
 rejects missing staged programs; see [development tools](development-tools.md)
