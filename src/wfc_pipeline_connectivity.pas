@@ -27,7 +27,8 @@ unit wfc_pipeline_connectivity;
 
 interface
 
-uses SysUtils, wfc, wfc_model, wfc_pipeline_model;
+uses SysUtils, wfc, wfc_model, wfc_lattice, wfc_pipeline_layout,
+  wfc_pipeline_model;
 
 const
   { Per immutable invocation, not a solver elapsed-time guarantee. }
@@ -45,18 +46,23 @@ function WfcPipelineProjectionBridgeForPass(const ARecipe: TWfcPipelineModel;
 { Called before graph or traversal storage is allocated. AFailedIndex is the
   offending immutable descriptor, or -1 for an invocation-wide shape error. }
 procedure PreflightWfcPipelineConnectivity(const ARecipe: TWfcPipelineModel;
-  const AWidth, AHeight, ADepth: Integer; out AFailedIndex: Integer);
+  const AWidth, AHeight, ADepth: Integer; out AFailedIndex: Integer); overload;
+procedure PreflightWfcPipelineConnectivity(const ARecipe: TWfcPipelineModel;
+  const ALayouts: TWfcPipelineLayoutTable; out AFailedIndex: Integer); overload;
 
 { Independent exact public-token traversal. No graph, solver analyzer, mutable
   constraint registry or solver reachability cache is consulted. Callers must
   first preflight the complete invocation's aggregate work. }
 function ValidateWfcPipelineConnectivity(const ARecipe: TWfcPipelineModel;
   const AConnectivityIndex, AWidth, AHeight, ADepth: Integer;
-  const ATokens: TWfcModelTokens; out AFailedEntryIndex: Integer): Boolean;
+  const ATokens: TWfcModelTokens; out AFailedEntryIndex: Integer): Boolean; overload;
+function ValidateWfcPipelineConnectivity(const ARecipe: TWfcPipelineModel;
+  const AConnectivityIndex: Integer; const ALayout: TWfcLatticeLayout;
+  const ATokens: TWfcModelTokens; out AFailedEntryIndex: Integer): Boolean; overload;
 
 implementation
 
-uses wfc_rule_model, wfc_pipeline_run, wfc_token_lookup;
+uses wfc_rule_model, wfc_pipeline_run, wfc_pipeline_mapping, wfc_token_lookup;
 
 type
   TIntegers = array of Integer;
@@ -64,26 +70,26 @@ type
 
 procedure RequireInteger(const AValue, AMinimum, AMaximum: Integer;
   const AName: String);
+{$IFDEF PAS2JS}var Valid: Boolean;{$ENDIF}
 begin
-  if not ((AValue >= AMinimum) and (AValue <= AMaximum)) then
-    raise EWfcPipelineConnectivity.Create(AName + ' is out of bounds');
   {$IFDEF PAS2JS}
-  if AValue <> Trunc(AValue) then
+  asm Valid = typeof AValue === 'number' && Number.isFinite(AValue) && Number.isInteger(AValue); end;
+  if not Valid then
     raise EWfcPipelineConnectivity.Create(AName + ' must be an exact integer');
   {$ENDIF}
+  if not ((AValue >= AMinimum) and (AValue <= AMaximum)) then
+    raise EWfcPipelineConnectivity.Create(AName + ' is out of bounds');
 end;
 
-function CellCount(const ARecipe: TWfcPipelineModel;
+function CellCount(const ARank: Integer;
   const AWidth, AHeight, ADepth: Integer): Integer;
 begin
-  if not Assigned(ARecipe) then
-    raise EWfcPipelineConnectivity.Create('connectivity recipe cannot be nil');
   RequireInteger(AWidth, 1, WFC_PIPELINE_RUN_MAX_DIMENSION, 'connectivity width');
   RequireInteger(AHeight, 1, WFC_PIPELINE_RUN_MAX_DIMENSION, 'connectivity height');
   RequireInteger(ADepth, 1, WFC_PIPELINE_RUN_MAX_DIMENSION, 'connectivity depth');
-  if (ARecipe.Rank = 1) and ((AHeight <> 1) or (ADepth <> 1)) then
+  if (ARank = 1) and ((AHeight <> 1) or (ADepth <> 1)) then
     raise EWfcPipelineConnectivity.Create('rank-one connectivity needs height/depth one');
-  if (ARecipe.Rank = 2) and (ADepth <> 1) then
+  if (ARank = 2) and (ADepth <> 1) then
     raise EWfcPipelineConnectivity.Create('rank-two connectivity needs depth one');
   if AWidth > WFC_PIPELINE_RUN_MAX_CELL_COUNT div AHeight then
     raise EWfcPipelineConnectivity.Create('connectivity cell count exceeds the limit');
@@ -105,6 +111,20 @@ function PositionIndex(const APosition: TGraphPosition;
   const AWidth, AHeight: Integer): Integer;
 begin
   Result := (APosition.Z * AHeight + APosition.Y) * AWidth + APosition.X;
+end;
+
+procedure RequireRecipeTopology(const ARecipe: TWfcPipelineModel;
+  const APassIndex: Integer; const ALayout: TWfcLatticeLayout);
+var T: TWfcPipelinePassTopology;
+begin
+  T := ARecipe.PassTopologyAt(APassIndex);
+  { Invocation extents are independent; origin, pitch and wrap are not. }
+  if (ALayout.Origin.X <> T.Origin.X) or (ALayout.Origin.Y <> T.Origin.Y) or
+    (ALayout.Origin.Z <> T.Origin.Z) or (ALayout.Pitch.X <> T.Pitch.X) or
+    (ALayout.Pitch.Y <> T.Pitch.Y) or (ALayout.Pitch.Z <> T.Pitch.Z) or
+    (ALayout.Wrap <> T.Wrap) then
+    raise EWfcPipelineConnectivity.CreateFmt(
+      'connectivity topology differs from recipe for pass %d', [APassIndex]);
 end;
 
 function WfcPipelineMaterializedPublicPass(const ARecipe: TWfcPipelineModel;
@@ -134,8 +154,32 @@ end;
 
 procedure PreflightWfcPipelineConnectivity(const ARecipe: TWfcPipelineModel;
   const AWidth, AHeight, ADepth: Integer; out AFailedIndex: Integer);
+var LLayouts: TWfcPipelineLayoutTable;
+begin
+  AFailedIndex := -1;
+  if not Assigned(ARecipe) then
+    raise EWfcPipelineConnectivity.Create('connectivity recipe cannot be nil');
+  { This opt-in preflight historically does no shape work for recipes without
+    connectivity. Keep that contract for existing numeric callers. }
+  if ARecipe.ConnectivityCount = 0 then Exit;
+  LLayouts := nil;
+  try
+    try
+      LLayouts := ResolveWfcPipelineLayoutTable(ARecipe,
+        UniformWfcPipelinePassExtents(ARecipe, AWidth, AHeight, ADepth));
+      PreflightWfcPipelineConnectivity(ARecipe, LLayouts, AFailedIndex);
+    except
+      on E: EWfcPipelineConnectivity do raise;
+      on E: Exception do raise EWfcPipelineConnectivity.Create(E.Message);
+    end;
+  finally LLayouts.Free; end;
+end;
+
+procedure PreflightWfcPipelineConnectivity(const ARecipe: TWfcPipelineModel;
+  const ALayouts: TWfcPipelineLayoutTable; out AFailedIndex: Integer);
 var I, J, C, LPassIndex, LBridgeIndex, LCount, LCells, LModel: Integer;
   Q: TWfcPipelineConnectivity; P: TWfcPipelinePass;
+  L: TWfcLatticeLayout;
 
   procedure AddModelWork(const ACount: Integer);
   begin
@@ -147,16 +191,29 @@ begin
   AFailedIndex := -1;
   if not Assigned(ARecipe) then
     raise EWfcPipelineConnectivity.Create('connectivity recipe cannot be nil');
+  if not Assigned(ALayouts) or (ALayouts.PassCount <> ARecipe.PassCount) then
+    raise EWfcPipelineConnectivity.Create('connectivity layout table mismatch');
+  { Bind the complete invocation before attributing failure to a descriptor.
+    This includes unrelated passes and ranks with degenerate local extents. }
+  for I := 0 to ARecipe.PassCount - 1 do
+  begin
+    if ALayouts.PassTopologyAt(I).Rank <> ARecipe.PassTopologyAt(I).Rank then
+      raise EWfcPipelineConnectivity.CreateFmt(
+        'connectivity topology rank differs from recipe for pass %d', [I]);
+    RequireRecipeTopology(ARecipe, I, ALayouts.PassLayoutAt(I));
+  end;
   if ARecipe.ConnectivityCount = 0 then Exit;
-  C := CellCount(ARecipe, AWidth, AHeight, ADepth);
   LCells := 0; LModel := 0;
   for I := 0 to ARecipe.ConnectivityCount - 1 do
   begin
     AFailedIndex := I;
     Q := ARecipe.ConnectivityAt(I);
-    ValidatePosition(Q.Root, AWidth, AHeight, ADepth);
+    L := ALayouts.PassLayoutAt(Q.PassIndex);
+    C := CellCount(ARecipe.PassTopologyAt(Q.PassIndex).Rank,
+      L.Cells.X, L.Cells.Y, L.Cells.Z);
+    ValidatePosition(Q.Root, L.Cells.X, L.Cells.Y, L.Cells.Z);
     for J := 0 to Length(Q.RequiredPositions) - 1 do
-      ValidatePosition(Q.RequiredPositions[J], AWidth, AHeight, ADepth);
+      ValidatePosition(Q.RequiredPositions[J], L.Cells.X, L.Cells.Y, L.Cells.Z);
     if C > WFC_PIPELINE_CONNECTIVITY_MAX_CELL_VISITS - LCells then
       raise EWfcPipelineConnectivity.Create('aggregate connectivity cell visits exceed the limit');
     Inc(LCells, C);
@@ -190,11 +247,33 @@ end;
 function ValidateWfcPipelineConnectivity(const ARecipe: TWfcPipelineModel;
   const AConnectivityIndex, AWidth, AHeight, ADepth: Integer;
   const ATokens: TWfcModelTokens; out AFailedEntryIndex: Integer): Boolean;
+var LLayouts: TWfcPipelineLayoutTable;
+begin
+  AFailedEntryIndex := -1;
+  LLayouts := nil;
+  try
+    try
+      LLayouts := ResolveWfcPipelineLayoutTable(ARecipe,
+        UniformWfcPipelinePassExtents(ARecipe, AWidth, AHeight, ADepth));
+      Result := ValidateWfcPipelineConnectivity(ARecipe, AConnectivityIndex,
+        LLayouts.PassLayoutAt(ARecipe.ConnectivityAt(AConnectivityIndex).PassIndex),
+        ATokens, AFailedEntryIndex);
+    except
+      on E: EWfcPipelineConnectivity do raise;
+      on E: Exception do raise EWfcPipelineConnectivity.Create(E.Message);
+    end;
+  finally LLayouts.Free; end;
+end;
+
+function ValidateWfcPipelineConnectivity(const ARecipe: TWfcPipelineModel;
+  const AConnectivityIndex: Integer; const ALayout: TWfcLatticeLayout;
+  const ATokens: TWfcModelTokens; out AFailedEntryIndex: Integer): Boolean;
 var Q: TWfcPipelineConnectivity; P: TWfcPipelinePass;
   LLookup: TWfcTokenLookup; LModel: TWfcModel; LRules: TWfcRuleModel;
   LIndices, LProfileForValue, LQueue, LRuleRows: TIntegers;
   LReached, LRequired: TBytes;
   C, I, J, LRoot, LHead, LTail, LCell, LNext, LProfile, LOther: Integer;
+  AWidth, AHeight, ADepth: Integer;
   D, R: TGraphDirection;
 
   function Neighbor(const ACell: Integer; const ADirection: TGraphDirection): Integer;
@@ -209,7 +288,7 @@ var Q: TWfcPipelineConnectivity; P: TWfcPipelinePass;
       gdNorth: Inc(Y); gdEast: Inc(X); gdSouth: Dec(Y);
       gdWest: Dec(X); gdUp: Inc(Z); gdDown: Dec(Z);
     end;
-    if ARecipe.WrapNeighbors then
+    if ALayout.Wrap then
     begin
       if X < 0 then X := AWidth - 1 else if X = AWidth then X := 0;
       if Y < 0 then Y := AHeight - 1 else if Y = AHeight then Y := 0;
@@ -254,10 +333,16 @@ var Q: TWfcPipelineConnectivity; P: TWfcPipelinePass;
   end;
 begin
   AFailedEntryIndex := -1;
-  C := CellCount(ARecipe, AWidth, AHeight, ADepth);
+  if not Assigned(ARecipe) then
+    raise EWfcPipelineConnectivity.Create('connectivity recipe cannot be nil');
+  ValidateWfcLatticeLayout(ALayout);
+  AWidth := ALayout.Cells.X; AHeight := ALayout.Cells.Y; ADepth := ALayout.Cells.Z;
   RequireInteger(AConnectivityIndex, 0, ARecipe.ConnectivityCount - 1,
     'connectivity descriptor index');
   Q := ARecipe.ConnectivityAt(AConnectivityIndex);
+  RequireRecipeTopology(ARecipe, Q.PassIndex, ALayout);
+  C := CellCount(ARecipe.PassTopologyAt(Q.PassIndex).Rank,
+    AWidth, AHeight, ADepth);
   ValidatePosition(Q.Root, AWidth, AHeight, ADepth);
   for I := 0 to Length(Q.RequiredPositions) - 1 do
     ValidatePosition(Q.RequiredPositions[I], AWidth, AHeight, ADepth);

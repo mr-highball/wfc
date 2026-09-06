@@ -234,7 +234,7 @@ jobs:
           test "$("$pas2js" -iV)" = '3.3.1'
           "$pas2js" -iW
 
-      - name: Build FPC development tools and browser conformance
+      - name: Build FPC browser development tools
         shell: bash
         run: |
           sudo apt-get update
@@ -244,7 +244,15 @@ jobs:
             fpc -B -Mdelphi -Sa -Cr -Co -Ci -Futools \
               -FUbuild/native/tools-units -FEbuild/native/bin "tools/$tool.lpr"
           done
+
+      - name: Stage portable browser programs and demo entries
+        shell: bash
+        run: |
           PAS2JS="$PAS2JS_ROOT/bin/x86_64-linux/pas2js" bash ./build-browser-tests.sh
+
+      - name: Run portable browser conformance and demo entries
+        shell: bash
+        run: |
           bash ./test-browser-tests.sh
 
       - name: Verify native browser capture completion and rejection

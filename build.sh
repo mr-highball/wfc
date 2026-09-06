@@ -908,6 +908,15 @@ for compiler_artifact_suite in \
   "$compiler_tools_directory/../test/wfc_serve_test.lpr" \
   "$compiler_run_app_test_source" \
   "$compiler_source_directory/../test/wfc_sequence_wrap_test.lpr" \
+  "$compiler_source_directory/../test/wfc_pipeline_layout_test.lpr" \
+  "$compiler_source_directory/../test/wfc_pipeline_mapping_test.lpr" \
+  "$compiler_source_directory/../test/wfc_pipeline_mapped_model_test.lpr" \
+  "$compiler_source_directory/../test/wfc_pipeline_model_topology_boundary_test.lpr" \
+  "$compiler_source_directory/../test/wfc_pipeline_mapped_text_test.lpr" \
+  "$compiler_source_directory/../test/wfc_pipeline_mapped_run_test.lpr" \
+  "$compiler_source_directory/../test/wfc_pipeline_mapped_result_test.lpr" \
+  "$compiler_source_directory/../test/wfc_pipeline_mapped_runtime_test.lpr" \
+  "$compiler_source_directory/../test/wfc_pipeline_mapped_artifact_test.lpr" \
   "$compiler_source_directory/../test/wfc_lattice_test.lpr" \
   "$compiler_source_directory/../test/wfc_mapped_passes_test.lpr" \
   "$compiler_source_directory/../test/wfc_pass_bridge_layout_test.lpr" \
@@ -1063,6 +1072,23 @@ esac
   "$compiler_binary_output_directory/wfc_validate$artifact_tool_suffix" \
   "$compiler_binary_output_directory/wfc_inspect$artifact_tool_suffix" \
   "$compiler_source_directory/.." || exit $?
+
+printf 'Building and running FPC mapped-pipeline process conformance.\n'
+"$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
+  "-Fu$compiler_source_directory" "-Fu$compiler_tools_directory" \
+  "-Fu$compiler_source_directory/../test" \
+  "-FU$compiler_unit_output_directory" "-FE$compiler_binary_output_directory" \
+  "$compiler_source_directory/../test/wfc_pipeline_mapped_process_test.lpr" || exit $?
+mapped_pipeline_process_parent=$(mktemp -d "$binary_output_directory/mapped-pipeline-process.XXXXXX") || exit $?
+mapped_pipeline_process_directory="$mapped_pipeline_process_parent/fixtures"
+case "$host_system" in
+  CYGWIN*|MINGW*|MSYS*) mapped_pipeline_process_directory=$(cygpath -m "$mapped_pipeline_process_directory") || exit $? ;;
+esac
+"$binary_output_directory/wfc_pipeline_mapped_process_test$artifact_tool_suffix" \
+  "$compiler_binary_output_directory/wfc_run$artifact_tool_suffix" \
+  "$compiler_binary_output_directory/wfc_validate$artifact_tool_suffix" \
+  "$compiler_binary_output_directory/wfc_inspect$artifact_tool_suffix" \
+  "$mapped_pipeline_process_directory" || exit $?
 
 printf "Building the dependency-free tiled-world example.\n"
 "$compiler" "$@" \

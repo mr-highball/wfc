@@ -99,8 +99,10 @@ count ranges. The [Mapped World workbench](examples/passes/07_MappedWorld/README
 lets you edit domains, locks, housing demands, and sampling on three fixed
 showcase grids. Its [reproducible footprint study](docs/research/mapped-world-footprints-v1.md)
 contrasts a clear corner with an interior blocker and demonstrates explicitly
-authorized upstream repair. Mapped layouts and clauses are not yet supported
-by portable recipe/run/result formats.
+authorized upstream repair. An additive [portable mapped pipeline extension](docs/portable-mapped-passes.md)
+is under integration: recipes own per-pass topology and mapped policies, runs
+own independent extents, and results retain each layer's actual layout. The
+workbench's general layout editing and portable import/export UI remain open.
 
 Ordinary solving follows `prepare → solve → validate → commit`. A failed
 reference transaction restores its previous entries and random streams.

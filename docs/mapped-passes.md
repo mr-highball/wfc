@@ -176,13 +176,13 @@ new list of every intersected cell or a minimal conflicting footprint.
   their identical-layout contracts. Their complete preflights reject unlike
   layouts before adding values, masks, requirements, or dependencies. A latent
   pattern key is still not a public terrain token.
-- This first mapped gate is the **core API**, not a portable recipe extension.
-  Existing recipe/run/result formats and domain workspaces still describe one
-  shared grid. They cannot yet save or reconstruct unlike-sized layouts or
-  mapped clauses. The [Mapped World workbench](../examples/passes/07_MappedWorld/README.md)
-  now provides editable constraints on a fixed mixed-resolution showcase;
-  portable mapped persistence and general layout editing remain subsequent
-  ecosystem work, not implied by this API.
+- The additive [portable mapped pipeline extension](portable-mapped-passes.md)
+  is under integration with recipe5/run2/result2 and per-invocation pass extents.
+  It preserves the old uniform formats. The
+  [Mapped World workbench](../examples/passes/07_MappedWorld/README.md) still
+  provides editable constraints on a fixed mixed-resolution showcase; its
+  portable import/export UI and general layout editing are separate remaining
+  ecosystem work, not implied by the core API.
 
 Executable conformance is in `test/wfc_mapped_passes_test.lpr`,
 `test/wfc_lattice_test.lpr`, and `test/wfc_pass_bridge_layout_test.lpr`. All are

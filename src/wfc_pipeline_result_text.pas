@@ -33,10 +33,10 @@ uses
   wfc_pipeline_result;
 
 const
-  WFC_PIPELINE_RESULT_TEXT_VERSION = 1;
+  WFC_PIPELINE_RESULT_TEXT_VERSION = 2;
   WFC_PIPELINE_RESULT_MAX_ENCODED_TEXT_LENGTH = 268435456;
-  WFC_PIPELINE_RESULT_MAX_TEXT_LINE_COUNT = 34 +
-    WFC_PIPELINE_MAX_PASS_COUNT +
+  WFC_PIPELINE_RESULT_MAX_TEXT_LINE_COUNT = 37 +
+    2 * WFC_PIPELINE_MAX_PASS_COUNT +
     WFC_PIPELINE_RESULT_MAX_PUBLIC_LAYER_COUNT +
     WFC_PIPELINE_RESULT_MAX_TOTAL_PUBLIC_CELL_COUNT;
 
@@ -52,6 +52,8 @@ uses
   SysUtils,
   wfc,
   wfc_model,
+  wfc_lattice,
+  wfc_pipeline_layout,
   wfc_text_codec;
 
 const
@@ -481,10 +483,13 @@ var
   LLines: TWfcTextLines;
   LOutcome: TWfcPipelinePassOutcome;
   LVersions: TWfcPipelineResultVersions;
+  LLayout: TWfcLatticeLayout;
 begin
   if not Assigned(AResult) then
     raise EArgumentNilException.Create('pipeline result cannot be nil');
   LExpectedLineCount := WFC_PIPELINE_RESULT_FIXED_LINE_COUNT;
+  if AResult.FormatVersion = 2 then
+    AddLineCapacity(LExpectedLineCount, 3 + AResult.PassCount);
   AddLineCapacity(LExpectedLineCount, AResult.PassOutcomeCount);
   AddLineCapacity(LExpectedLineCount, AResult.LayerCount);
   for I := 0 to AResult.LayerCount - 1 do
@@ -496,7 +501,7 @@ begin
   LFailure := AResult.CopyFailure;
 
   AppendLine(LLines, LLineCount, 'wfcpipeline-result=' +
-    IntToStr(WFC_PIPELINE_RESULT_TEXT_VERSION));
+    IntToStr(AResult.FormatVersion));
   AppendLine(LLines, LLineCount, 'recipe-signature=' +
     WfcPipelineSignatureHex(AResult.RecipeSignature));
   AppendLine(LLines, LLineCount, 'run-signature=' +
@@ -520,6 +525,23 @@ begin
   AppendLine(LLines, LLineCount, 'width=' + IntToStr(AResult.Width));
   AppendLine(LLines, LLineCount, 'height=' + IntToStr(AResult.Height));
   AppendLine(LLines, LLineCount, 'depth=' + IntToStr(AResult.Depth));
+  if AResult.FormatVersion = 2 then
+  begin
+    AppendLine(LLines, LLineCount, 'layout-version=' + IntToStr(WFC_PIPELINE_LAYOUT_VERSION));
+    AppendLine(LLines, LLineCount, 'mapping-version=' + IntToStr(WFC_PASS_MAPPING_VERSION));
+    AppendLine(LLines, LLineCount, 'layouts=' + IntToStr(AResult.PassCount));
+    for I := 0 to AResult.PassCount - 1 do
+    begin
+      LLayout := AResult.PassLayoutAt(I);
+      AppendLine(LLines, LLineCount, 'layout=' + IntToStr(I) + ',' +
+        IntToStr(AResult.PassTopologyAt(I).Rank) + ',' +
+        IntToStr(LLayout.Origin.X) + ',' + IntToStr(LLayout.Origin.Y) + ',' +
+        IntToStr(LLayout.Origin.Z) + ',' + IntToStr(LLayout.Pitch.X) + ',' +
+        IntToStr(LLayout.Pitch.Y) + ',' + IntToStr(LLayout.Pitch.Z) + ',' +
+        IntToStr(LLayout.Cells.X) + ',' + IntToStr(LLayout.Cells.Y) + ',' +
+        IntToStr(LLayout.Cells.Z) + ',' + BooleanName(LLayout.Wrap));
+    end;
+  end;
   AppendLine(LLines, LLineCount, 'seed=' + UIntToStr(AResult.Seed));
   AppendLine(LLines, LLineCount, 'strategy=' +
     StrategyName(AResult.Strategy));
@@ -626,6 +648,8 @@ var
   LTotalTokenLength: Integer;
   LVersions: TWfcPipelineResultVersions;
   LWidth: Integer;
+  LFormatVersion, LLayoutCount, LRank, LExpectedPublicCount, LExpectedPassIndex: Integer;
+  LLayout: TWfcLatticeLayout;
 
   function DecodeResultToken(const ATextValue,
     AFieldName: String): TWfcModelToken;
@@ -657,9 +681,14 @@ begin
   if Length(LLines) < WFC_PIPELINE_RESULT_FIXED_LINE_COUNT then
     TextError('document is incomplete');
   LLineIndex := 0;
-  if RequireLine(LLines, LLineIndex, 'format version') <>
-      'wfcpipeline-result=1' then
+  if RequireLine(LLines, LLineIndex, 'format version') = 'wfcpipeline-result=1' then
+    LFormatVersion := 1
+  else if RequireLine(LLines, LLineIndex, 'format version') = 'wfcpipeline-result=2' then
+    LFormatVersion := 2
+  else
     TextError('unsupported or noncanonical format version');
+  if LFormatVersion <> ARun.FormatVersion then
+    TextError('result format must match the supplied run format');
   Inc(LLineIndex);
 
   LRecipeSignatureText := ReadValueLine(LLines, LLineIndex,
@@ -707,6 +736,53 @@ begin
     'height=', 'height'), 'height');
   LDepth := ParseCanonicalInteger(ReadValueLine(LLines, LLineIndex,
     'depth=', 'depth'), 'depth');
+  if (LWidth <> ARun.Width) or (LHeight <> ARun.Height) or
+      (LDepth <> ARun.Depth) then
+    TextError('embedded pass-zero extent does not match the supplied run');
+  if LFormatVersion = 2 then
+  begin
+    if ParseCanonicalInteger(ReadValueLine(LLines, LLineIndex,
+        'layout-version=', 'layout version'), 'layout version') <>
+        WFC_PIPELINE_LAYOUT_VERSION then
+      TextError('unsupported layout version');
+    if ParseCanonicalInteger(ReadValueLine(LLines, LLineIndex,
+        'mapping-version=', 'mapping version'), 'mapping version') <>
+        WFC_PASS_MAPPING_VERSION then
+      TextError('unsupported mapping version');
+    LLayoutCount := ParseBoundedCount(ReadValueLine(LLines, LLineIndex,
+      'layouts=', 'layout count'), 'layout count', WFC_PIPELINE_MAX_PASS_COUNT);
+    if LLayoutCount <> ARun.PassCount then
+      TextError('result layout table must cover every run pass');
+    RequireRecordCapacity(LLayoutCount, LLineIndex, 20, LLines, 'layout');
+    for I := 0 to LLayoutCount - 1 do
+    begin
+      LFields := SplitRecord(ReadValueLine(LLines, LLineIndex,
+        'layout=', 'layout record'), 12, 'layout');
+      if ParseCanonicalInteger(LFields[0], 'layout pass index') <> I then
+        TextError('layout indices must be complete and ordered');
+      LRank := ParseCanonicalInteger(LFields[1], 'layout rank');
+      try
+        LLayout := MakeWfcLatticeLayout(
+          ParseCanonicalInteger(LFields[8], 'layout cells X'),
+          ParseCanonicalInteger(LFields[9], 'layout cells Y'),
+          ParseCanonicalInteger(LFields[10], 'layout cells Z'),
+          MakeWfcLatticeVector(
+            ParseCanonicalSignedInteger(LFields[2], 'layout origin X'),
+            ParseCanonicalSignedInteger(LFields[3], 'layout origin Y'),
+            ParseCanonicalSignedInteger(LFields[4], 'layout origin Z')),
+          MakeWfcLatticeVector(
+            ParseCanonicalInteger(LFields[5], 'layout pitch X'),
+            ParseCanonicalInteger(LFields[6], 'layout pitch Y'),
+            ParseCanonicalInteger(LFields[7], 'layout pitch Z')),
+          ParseBooleanName(LFields[11], 'layout wrap'));
+      except
+        on E: EWfcLattice do TextError('result layout: ' + E.Message);
+      end;
+      if (LRank <> ARun.PassTopologyAt(I).Rank) or
+          not SameWfcLatticeLayout(LLayout, ARun.PassLayoutAt(I)) then
+        TextError('result layout does not match the bound recipe/run');
+    end;
+  end;
   LSeed := ParseCanonicalCardinal(ReadValueLine(LLines, LLineIndex,
     'seed=', 'seed'), 'seed');
   LStrategy := ParseStrategy(ReadValueLine(LLines, LLineIndex,
@@ -790,7 +866,14 @@ begin
     WFC_PIPELINE_RESULT_MAX_PUBLIC_LAYER_COUNT);
   RequireRecordCapacity(LLayerCount, LLineIndex, 2, LLines,
     'public-layer');
+  LExpectedPublicCount := 0;
+  if LStatus = wprsSolved then
+    for I := 0 to ARecipe.PassCount - 1 do
+      if ARecipe.PassAt(I).Visibility = wppvPublic then Inc(LExpectedPublicCount);
+  if LLayerCount <> LExpectedPublicCount then
+    TextError('result layer count does not match its terminal status and recipe');
   SetLength(LLayers, LLayerCount);
+  LExpectedPassIndex := 0;
   LTotalCellCount := 0;
   LTotalTokenLength := 0;
   for I := 0 to LLayerCount - 1 do
@@ -801,16 +884,23 @@ begin
       TextError('public-layer indices must be complete and ordered');
     LLayers[I].PassIndex := ParseCanonicalInteger(LFields[1],
       'public-layer pass index');
-    LLayers[I].LabelName := DecodeResultToken(LFields[2],
-      'public-layer label');
+    while (LExpectedPassIndex < ARecipe.PassCount) and
+        (ARecipe.PassAt(LExpectedPassIndex).Visibility <> wppvPublic) do
+      Inc(LExpectedPassIndex);
+    if LLayers[I].PassIndex <> LExpectedPassIndex then
+      TextError('public layers must be complete and in recipe pass order');
     LCellCount := ParseBoundedCount(LFields[3],
       'public-layer cell count', WFC_PIPELINE_RUN_MAX_CELL_COUNT);
+    if LCellCount <> ARun.PassCellCount(LExpectedPassIndex) then
+      TextError('public layer extent differs from its bound pass');
     if LCellCount > WFC_PIPELINE_RESULT_MAX_TOTAL_PUBLIC_CELL_COUNT -
         LTotalCellCount then
       TextError('public result cells exceed the version-1 aggregate limit');
     Inc(LTotalCellCount, LCellCount);
     RequireRecordCapacity(LCellCount, LLineIndex,
       (LLayerCount - I - 1) + 2, LLines, 'public value');
+    LLayers[I].LabelName := DecodeResultToken(LFields[2],
+      'public-layer label');
     SetLength(LTokens, LCellCount);
     for J := 0 to LCellCount - 1 do
     begin
@@ -825,6 +915,7 @@ begin
     end;
     LLayers[I].Tokens := LTokens;
     LTokens := nil;
+    Inc(LExpectedPassIndex);
   end;
 
   LSignatureText := ReadValueLine(LLines, LLineIndex,

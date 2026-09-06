@@ -9,10 +9,18 @@ pipeline without serializing a live `TGraph`:
   requirements; opt-in `wfcpipeline=2` adds whole-pass public-token quotas,
   `wfcpipeline=3` adds rooted public-token connectivity, and `wfcpipeline=4`
   adds overlapping-volume resources/adapters/bridges while preserving both policies;
+  the additive `wfcpipeline=5` extension supplies independent pass topologies
+  and mapped public-token requirements;
 - `wfcpipeline-run=1` stores one recipe-bound invocation, including shape,
-  seed, solve policy, public locks, and public allowed-token domains; and
+  seed, solve policy, public locks, and public allowed-token domains;
+  explicit per-pass extents select `wfcpipeline-run=2`; and
 - `wfcpipeline-result=1` stores the terminal status, evidence identity, pass
-  outcomes, and complete public output of that invocation.
+  outcomes, and complete public output of that invocation; `wfcpipeline-result=2`
+  retains the complete per-pass layout table for a version-2 run.
+
+The [mapped extension](portable-mapped-passes.md) is under integration. It is
+explicitly opt-in and does not change existing recipe1–4/run1/result1 bytes.
+The fixed-grid Mapped World UI does not yet expose portable import/export.
 
 All four formats are implemented once in portable Pascal and use the same
 source on native FPC and pas2js. They need no JSON, YAML, reflection, serializer,
@@ -127,7 +135,8 @@ multiplication. Collection and text-envelope checks happen before their large
 outer allocations. Each typed resource decoder applies its own limits before
 dense allocation; the recipe then accounts its relation slots before accepting
 the resource and proceeding to the next one. Runtime preflight multiplies the
-cell count by the complete pass count and separately by the public-layer count.
+cell count by the complete pass count and separately by the public-layer count
+for uniform layouts; independent layouts sum their actual pass/public counts.
 It also charges every public label and the longest possible token in each
 public vocabulary across that pass's entire grid. A request that could exceed
 the result encoding budget is rejected before a graph is allocated, even when
@@ -221,7 +230,10 @@ validator both enforce the range; see the [complete count contract](pass-counts.
 
 `wfc_pipeline_text` encodes and decodes `wfcpipeline=1`, quota-bearing
 `wfcpipeline=2`, connectivity-bearing `wfcpipeline=3`, and feature-selected
-overlapping-volume `wfcpipeline=4`. Its line-oriented
+overlapping-volume `wfcpipeline=4`. Explicit spatial construction selects
+`wfcpipeline=5`, even for uniform geometry; its separate topology and mapped
+records are described in [portable mapped pipelines](portable-mapped-passes.md).
+Its line-oriented
 format has fixed field order and contiguous indexed records for resources,
 passes, dependencies, bridges, requirements, terms, and allowed tokens.
 Embedded documents are carried as one canonical percent-encoded field.
@@ -231,15 +243,17 @@ The [connectivity extension](pipeline-connectivity.md) adds rooted port profiles
 private-source lowering, and independent public traversal. Existing version-1
 and quota-only version-2 documents retain exact bytes and signatures.
 
-`wfc_pipeline_run_text` applies the same rules to `wfcpipeline-run=1`. A run
+`wfc_pipeline_run_text` applies the same rules to `wfcpipeline-run=1` and `=2`. A run
 repeats the recipe signature and records its positive rank-compatible shape,
 complete unsigned 32-bit seed, strategy, local and outer backtrack limits,
 trace policy, ordered public locks, and ordered public allowed-token domains.
 An assigned empty allowed-token array is an explicit contradictory domain; it
 is not the same thing as an absent domain. Decoding requires the referenced
 recipe and resolves every pass and token against its public vocabulary.
+Run2 appends a complete extent table to the checked pass-zero dimensions.
 
-`wfc_pipeline_result_text` encodes `wfcpipeline-result=1`. A result repeats both
+`wfc_pipeline_result_text` encodes `wfcpipeline-result=1` or `=2` to match its run.
+Result2 includes all pass layouts, including private passes. A result repeats both
 the recipe and run signatures, effective algorithm versions, shape, seed, and
 solve options. It then records status, stable pass counters, evidence kind and
 signature, structured failure fields, one terminal outcome per recipe pass,
@@ -389,7 +403,7 @@ wfc-validate --version
 `INPUT` is one recipe file or `-` for standard input. The default success
 output is a one-line recipe summary. `--quiet` suppresses it;
 `--emit-canonical` writes the exact input after strict decode and byte-for-byte
-canonical verification. Recipe validation supports `wfcpipeline=1,2,3,4` syntax, signatures,
+canonical verification. Recipe validation supports `wfcpipeline=1,2,3,4,5` syntax, signatures,
 typed resources, provenance, references, topology, vocabularies, and static
 limits. It does not compile or solve the recipe.
 
@@ -429,7 +443,8 @@ wfc-run --version
 `RECIPE` and `RUN` are canonical artifact files. Either one may be `-` for
 standard input, but not both. The tool strictly decodes the recipe first,
 decodes the run against it, prepares a fresh runtime, executes once, and writes
-one exact canonical `wfcpipeline-result=1` document. `--quiet` suppresses that
+one exact canonical `wfcpipeline-result=1` or `=2` document matching the run.
+`--quiet` suppresses that
 document without changing the outcome code. A solver contradiction or either
 backtrack limit still forms a valid canonical result and exits `4`; invalid
 recipe, run, transform-alias inputs, compile request, or runtime preflight does

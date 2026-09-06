@@ -585,9 +585,14 @@ cell/point/region sampling, domains and caller locks, explicit housing demands,
 scoped ordinary/negotiated repair and independently checked SVG. Its tutorial
 reproduces an interior blocker; its editable sandbox is not restricted to that
 single uncertain cell. The three showcase grids are fixed, not an editor for
-arbitrary layouts. Portable per-pass layouts and mapped-clause recipe/run/result
-persistence remain open, as do broader topology controls and more targeted
-repair strategies. Existing 2D versions and bytes remain unchanged. The
+arbitrary layouts. [Portable mapped pipelines](docs/portable-mapped-passes.md)
+are under integration: recipe5 owns ordered topologies and public mapped
+clauses; run2 supplies independent extents; result2 records every pass layout.
+The same terrain/foliage/housing recipe now executes at multiple requested
+extents through the native save/validate/replay tools. Full integration and
+package gates are still required. The editable multi-resource composition
+workspace, workbench import/export, broader topology controls and more
+targeted repair strategies remain open. Existing 2D versions and bytes remain unchanged. The
 [research record](docs/research/mapped-world-footprints-v1.md) records focused
 native/browser evidence separately from full integration gates.
 The sequence version-1 layer learns bounded order-N latent states from ordered

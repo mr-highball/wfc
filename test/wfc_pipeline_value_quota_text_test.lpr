@@ -111,7 +111,7 @@ var M, D, Legacy: TWfcPipelineModel; S, L, Expected: String; Q: TWfcPipelineValu
 begin
   Check((WFC_PIPELINE_TEXT_VERSION=1) and
     (WFC_PIPELINE_VALUE_QUOTA_TEXT_VERSION=2) and
-    (WFC_PIPELINE_MAX_SUPPORTED_TEXT_VERSION=4),
+    (WFC_PIPELINE_MAX_SUPPORTED_TEXT_VERSION=5),
     'legacy version and supported capability are separate');
   Check((WFC_PIPELINE_MAX_TEXT_LINE_COUNT=86618) and
     (WFC_PIPELINE_VALUE_QUOTA_MAX_TEXT_LINE_COUNT=156252), 'version-specific line caps');
@@ -140,7 +140,8 @@ begin
     Check(EncodeWfcPipelineModelText(D)=S, 'decoded quota token arrays are detached');
     Reject(ReplaceOnce(S,'value-quota-version=1'#10,'value-quota-version=2'#10),
       'unknown quota semantic version rejected');
-    Reject(ReplaceOnce(S,'wfcpipeline=2'#10,'wfcpipeline=5'#10), 'unknown outer version rejected');
+    Reject(ReplaceOnce(S,'wfcpipeline=2'#10,'wfcpipeline='+
+      IntToStr(WFC_PIPELINE_MAX_SUPPORTED_TEXT_VERSION+1)+#10), 'unknown outer version rejected');
     Reject(ReplaceOnce(S,'wfcpipeline=2'#10,'wfcpipeline=4'#10),
       'v4 cannot be selected by relabeling a quota-only document');
     Reject(ReplaceOnce(S,'wfcpipeline=2'#10,'wfcpipeline=1'#10), 'v1 never admits quota sections');

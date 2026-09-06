@@ -95,7 +95,8 @@ directories and the selected compiled package directory are supplied with
 `-Fu`. There is no repository `src` search path and no source rebuild fallback.
 
 The consumer exercises the public graph API, owned music-form configuration
-and phrase validation, and portable connectivity recipe/run/result replay.
+and phrase validation, portable connectivity recipe/run/result replay, and
+owned mixed-pass layout prefixes plus independent mapped-footprint validation.
 This catches both missing package entries and unusable exported interfaces.
 It is intentionally not named `*_test.lpr`: the source-path conformance runner
 must not silently substitute for this package-only check.

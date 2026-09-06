@@ -30,12 +30,15 @@ interface
 uses
   SysUtils,
   wfc,
+  wfc_lattice,
+  wfc_pipeline_layout,
   wfc_model,
   wfc_pipeline_model,
   wfc_pipeline_run;
 
 const
   WFC_PIPELINE_RESULT_VERSION = 1;
+  WFC_PIPELINE_RESULT_MAPPED_VERSION = 2;
   WFC_PIPELINE_RESULT_SIGNATURE_VERSION = 1;
 
   { Result artifacts may be supplied by untrusted tooling. These are fixed
@@ -119,6 +122,8 @@ type
   TWfcPipelineResult = class
   strict private
     FRecipeSignature: TWfcPipelineSignature;
+    FFormatVersion: Integer;
+    FLayouts: TWfcPipelineLayoutTable;
     FRunSignature: TWfcPipelineRunSignature;
     FVersions: TWfcPipelineResultVersions;
     FWidth: Integer;
@@ -140,6 +145,8 @@ type
     FSignature: TWfcPipelineResultSignature;
     function GetPassOutcomeCount: Integer;
     function GetLayerCount: Integer;
+    function GetPassCount: Integer;
+    function GetTotalCellCount: Integer;
     procedure ValidatePassOutcomeIndex(const AIndex: Integer);
     procedure ValidateLayerIndex(const AIndex: Integer);
     function CalculateSignature: TWfcPipelineResultSignature;
@@ -154,6 +161,7 @@ type
       const AFailure: TWfcPipelineFailure;
       const APassOutcomes: TWfcPipelinePassOutcomes;
       const ALayers: TWfcPipelineResultLayers);
+    destructor Destroy; override;
 
     function CopyVersions: TWfcPipelineResultVersions;
     function CopyFailure: TWfcPipelineFailure;
@@ -161,8 +169,18 @@ type
     function LayerAt(const AIndex: Integer): TWfcPipelineResultLayer;
     function CopyPassOutcomes: TWfcPipelinePassOutcomes;
     function CopyLayers: TWfcPipelineResultLayers;
+    function CopyPassLayouts: TWfcLatticeLayouts;
+    function CopyPassExtents: TWfcPipelinePassExtents;
+    function PassLayoutAt(const APassIndex: Integer): TWfcLatticeLayout;
+    function PassTopologyAt(const APassIndex: Integer): TWfcPipelinePassTopology;
+    function LayerLayoutAt(const ALayerIndex: Integer): TWfcLatticeLayout;
+    function PassCellCount(const APassIndex: Integer): Integer;
+    function PassOffsetAt(const APassIndex: Integer): Integer;
 
     property RecipeSignature: TWfcPipelineSignature read FRecipeSignature;
+    property FormatVersion: Integer read FFormatVersion;
+    property PassCount: Integer read GetPassCount;
+    property TotalCellCount: Integer read GetTotalCellCount;
     property RunSignature: TWfcPipelineRunSignature read FRunSignature;
     property Width: Integer read FWidth;
     property Height: Integer read FHeight;
@@ -226,6 +244,7 @@ implementation
 
 uses
   wfc_text_codec,
+  wfc_pipeline_mapping,
   wfc_token_lookup,
   wfc_pipeline_connectivity;
 
@@ -573,6 +592,20 @@ begin
   {$ENDIF}
 end;
 
+function CaptureLayoutMatches(const ARun: TWfcPipelineRun;
+  const APassIndex: Integer; const AGraph: TGraph): Boolean;
+var LExpected: TWfcLatticeLayout;
+begin
+  LExpected := ARun.PassLayoutAt(APassIndex);
+  if ARun.FormatVersion = WFC_PIPELINE_RUN_MAPPED_VERSION then
+    Exit(SameWfcLatticeLayout(AGraph.PassLayout, LExpected));
+  { Preserve the original version-1 capture boundary: declared provenance and
+    dimensions, not a newly inferred wrapping/layout authenticity guarantee. }
+  Result := (AGraph.Dimension.Width = TGraphCoordinate(LExpected.Cells.X)) and
+    (AGraph.Dimension.Height = TGraphCoordinate(LExpected.Cells.Y)) and
+    (AGraph.Dimension.Depth = TGraphCoordinate(LExpected.Cells.Z));
+end;
+
 function CaptureWfcPipelinePublicLayers(const ARecipe: TWfcPipelineModel;
   const ARun: TWfcPipelineRun;
   const AGraph: TGraph): TWfcPipelineResultLayers;
@@ -581,6 +614,8 @@ var
   LCellCount: Integer;
   LEntry: TGraphEntry;
   LLayerCount: Integer;
+  LTotalPublicCells: Integer;
+  LLayout: TWfcLatticeLayout;
   LPassGraph: TGraph;
   LPassIndex: Integer;
   LTokenIndex: Integer;
@@ -612,15 +647,29 @@ begin
     raise EWfcPipelineResult.Create(
       'capture graph seed does not match the run');
 
-  LCellCount := CheckedCellCount(ARun);
   LLayerCount := 0;
+  LTotalPublicCells := 0;
   for I := 0 to ARecipe.PassCount - 1 do
+  begin
+    LPassGraph := AGraph.PassGraph[I];
+    if GraphValueToToken(LPassGraph.CurrentPass) <>
+        ARecipe.PassAt(I).LabelName then
+      raise EWfcPipelineResult.CreateFmt(
+        'capture graph pass label does not match the recipe [%d]', [I]);
+    if not CaptureLayoutMatches(ARun, I, LPassGraph) then
+      raise EWfcPipelineResult.CreateFmt(
+        'capture pass layout does not match the run [%d]', [I]);
     if ARecipe.PassAt(I).Visibility = wppvPublic then
+    begin
       Inc(LLayerCount);
-  if (LLayerCount > WFC_PIPELINE_RESULT_MAX_PUBLIC_LAYER_COUNT) or
-      ((LLayerCount <> 0) and
-      (LCellCount > WFC_PIPELINE_RESULT_MAX_TOTAL_PUBLIC_CELL_COUNT div
-      LLayerCount)) then
+      LCellCount := ARun.PassCellCount(I);
+      if LCellCount > WFC_PIPELINE_RESULT_MAX_TOTAL_PUBLIC_CELL_COUNT -
+          LTotalPublicCells then
+        raise EWfcPipelineResult.Create('captured public cells exceed the aggregate limit');
+      Inc(LTotalPublicCells, LCellCount);
+    end;
+  end;
+  if LLayerCount > WFC_PIPELINE_RESULT_MAX_PUBLIC_LAYER_COUNT then
     raise EWfcPipelineResult.Create(
       'captured public result exceeds the version-1 layer/cell limits');
   SetLength(Result, LLayerCount);
@@ -633,19 +682,19 @@ begin
       raise EWfcPipelineResult.CreateFmt(
         'capture graph pass label does not match the recipe [%d]',
         [LPassIndex]);
-    if (LPassGraph.Dimension.Width <> TGraphCoordinate(ARun.Width)) or
-        (LPassGraph.Dimension.Height <> TGraphCoordinate(ARun.Height)) or
-        (LPassGraph.Dimension.Depth <> TGraphCoordinate(ARun.Depth)) then
+    LLayout := ARun.PassLayoutAt(LPassIndex);
+    if not CaptureLayoutMatches(ARun, LPassIndex, LPassGraph) then
       raise EWfcPipelineResult.CreateFmt(
         'capture pass shape does not match the run [%d]', [LPassIndex]);
     if ARecipe.PassAt(LPassIndex).Visibility <> wppvPublic then
       Continue;
+    LCellCount := ARun.PassCellCount(LPassIndex);
     SetLength(LTokens, LCellCount);
     LVocabulary := ARecipe.CopyPublicVocabulary(LPassIndex);
     LTokenIndex := 0;
-    for Z := 0 to ARun.Depth - 1 do
-      for Y := 0 to ARun.Height - 1 do
-        for X := 0 to ARun.Width - 1 do
+    for Z := 0 to LLayout.Cells.Z - 1 do
+      for Y := 0 to LLayout.Cells.Y - 1 do
+        for X := 0 to LLayout.Cells.X - 1 do
         begin
           LEntry := LPassGraph.Entry[TGraphCoordinate(X),
             TGraphCoordinate(Y), TGraphCoordinate(Z)];
@@ -867,10 +916,11 @@ var
   LLayer: TWfcPipelineResultLayer;
   LOutcome: TWfcPipelinePassOutcome;
   LVersions: TWfcPipelineResultVersions;
+  LLayout: TWfcLatticeLayout;
 begin
   Result := Cardinal(2166136261);
   HashAscii(Result, 'wfcpipeline-result');
-  HashCardinal(Result, WFC_PIPELINE_RESULT_VERSION);
+  HashCardinal(Result, FFormatVersion);
   HashCardinal(Result, WFC_PIPELINE_RESULT_SIGNATURE_VERSION);
   HashCardinal(Result, FRecipeSignature);
   HashCardinal(Result, FRunSignature);
@@ -886,6 +936,28 @@ begin
   HashInteger(Result, FWidth);
   HashInteger(Result, FHeight);
   HashInteger(Result, FDepth);
+  if FFormatVersion = WFC_PIPELINE_RESULT_MAPPED_VERSION then
+  begin
+    HashAscii(Result, 'resolved-pass-layouts');
+    HashInteger(Result, WFC_PIPELINE_LAYOUT_VERSION);
+    HashInteger(Result, WFC_PASS_MAPPING_VERSION);
+    HashInteger(Result, PassCount);
+    for I := 0 to PassCount - 1 do
+    begin
+      LLayout := FLayouts.PassLayoutAt(I);
+      HashInteger(Result, FLayouts.PassTopologyAt(I).Rank);
+      HashInteger(Result, LLayout.Origin.X);
+      HashInteger(Result, LLayout.Origin.Y);
+      HashInteger(Result, LLayout.Origin.Z);
+      HashInteger(Result, LLayout.Pitch.X);
+      HashInteger(Result, LLayout.Pitch.Y);
+      HashInteger(Result, LLayout.Pitch.Z);
+      HashInteger(Result, LLayout.Cells.X);
+      HashInteger(Result, LLayout.Cells.Y);
+      HashInteger(Result, LLayout.Cells.Z);
+      HashBoolean(Result, LLayout.Wrap);
+    end;
+  end;
   HashCardinal(Result, FSeed);
   HashInteger(Result, Ord(FStrategy));
   HashInteger(Result, FMaxBacktracks);
@@ -955,6 +1027,8 @@ var
   LQuotaCounts: array of array of Integer;
   LConnectivity: TWfcPipelineConnectivity;
   LConnectivityIndex, LFailedEntry: Integer;
+  LPassCells, LConsumerLayer, LProviderLayer, LRequirementIndex: Integer;
+  LRequirement: TWfcPipelineRequirement;
 begin
   inherited Create;
   if not Assigned(ARecipe) then
@@ -964,6 +1038,18 @@ begin
   if ARun.RecipeSignature <> ARecipe.Signature then
     raise EWfcPipelineResult.Create(
       'result recipe does not match its run provenance');
+  { Own all-pass layouts, including private failure owners, before layers. }
+  try
+    FLayouts := ResolveWfcPipelineLayoutTable(ARecipe, ARun.CopyPassExtents);
+    for I := 0 to FLayouts.PassCount - 1 do
+      if not SameWfcLatticeLayout(FLayouts.PassLayoutAt(I), ARun.PassLayoutAt(I)) or
+          (FLayouts.PassTopologyAt(I).Rank <> ARun.PassTopologyAt(I).Rank) then
+        raise EWfcPipelineResult.Create('result run layout binding differs');
+  except
+    on E: EWfcPipelineResult do raise;
+    on E: Exception do raise EWfcPipelineResult.Create('result layouts: ' + E.Message);
+  end;
+  FFormatVersion := ARun.FormatVersion;
   ValidateResultStatus(AStatus);
   ValidateEvidenceKind(AEvidenceKind);
   ValidateVersions(ARecipe, AVersions);
@@ -1032,10 +1118,10 @@ begin
         (FFailure.PassIndex >= ARecipe.PassCount) then
       raise EWfcPipelineResult.Create('result failure pass is out of range');
     if (FFailure.EntryIndex < -1) or
-        (FFailure.EntryIndex >= FCellCount) then
+        (FFailure.EntryIndex >= FLayouts.PassCellCount(FFailure.PassIndex)) then
       raise EWfcPipelineResult.Create('result failure entry is out of range');
     if (FFailure.NeighborIndex < -1) or
-        (FFailure.NeighborIndex >= FCellCount) then
+        (FFailure.NeighborIndex >= FLayouts.PassCellCount(FFailure.PassIndex)) then
       raise EWfcPipelineResult.Create(
         'result failure neighbor is out of range');
     if (not FFailure.HasDirection) and
@@ -1131,12 +1217,25 @@ begin
     raise EWfcPipelineResult.Create(
       'failed result cannot contain partial public layers');
 
+  { Check the complete public extent budget before cloning any layer tokens. }
+  LTotalCellCount := 0;
+  if FStatus = wprsSolved then
+    for I := 0 to ARecipe.PassCount - 1 do
+      if ARecipe.PassAt(I).Visibility = wppvPublic then
+      begin
+        LPassCells := FLayouts.PassCellCount(I);
+        if LPassCells > WFC_PIPELINE_RESULT_MAX_TOTAL_PUBLIC_CELL_COUNT -
+            LTotalCellCount then
+          raise EWfcPipelineResult.Create('result public cells exceed the aggregate limit');
+        Inc(LTotalCellCount, LPassCells);
+      end;
+
   LTotalCellCount := 0;
   LTotalTokenLength := 0;
   LExpectedPassIndex := 0;
   if ARecipe.ConnectivityCount <> 0 then
     try
-      PreflightWfcPipelineConnectivity(ARecipe, FWidth, FHeight, FDepth,
+      PreflightWfcPipelineConnectivity(ARecipe, FLayouts,
         LConnectivityIndex);
     except
       on E: EWfcPipelineConnectivity do
@@ -1156,14 +1255,15 @@ begin
         ARecipe.PassAt(LExpectedPassIndex).LabelName then
       raise EWfcPipelineResult.CreateFmt(
         'result layer label does not match its recipe pass [%d]', [I]);
-    if Length(ALayers[I].Tokens) <> FCellCount then
+    LPassCells := FLayouts.PassCellCount(LExpectedPassIndex);
+    if Length(ALayers[I].Tokens) <> LPassCells then
       raise EWfcPipelineResult.CreateFmt(
         'result layer has the wrong cell count [%d]', [I]);
-    if FCellCount > WFC_PIPELINE_RESULT_MAX_TOTAL_PUBLIC_CELL_COUNT -
+    if LPassCells > WFC_PIPELINE_RESULT_MAX_TOTAL_PUBLIC_CELL_COUNT -
         LTotalCellCount then
       raise EWfcPipelineResult.Create(
         'result public cells exceed the version-1 aggregate limit');
-    Inc(LTotalCellCount, FCellCount);
+    Inc(LTotalCellCount, LPassCells);
     LVocabulary := ARecipe.CopyPublicVocabulary(LExpectedPassIndex);
     AddTokenLength(LTotalTokenLength, ALayers[I].LabelName,
       'result layer label');
@@ -1242,7 +1342,8 @@ begin
         raise EWfcPipelineResult.Create('result connectivity owner layer is absent');
       try
         if not ValidateWfcPipelineConnectivity(ARecipe, LConnectivityIndex,
-          FWidth, FHeight, FDepth, FLayers[LLayerIndex].Tokens, LFailedEntry) then
+          FLayouts.PassLayoutAt(LConnectivity.PassIndex),
+          FLayers[LLayerIndex].Tokens, LFailedEntry) then
           raise EWfcPipelineResult.CreateFmt(
             'result violates recipe connectivity [%d, pass %d, entry %d]',
             [LConnectivityIndex, LConnectivity.PassIndex, LFailedEntry]);
@@ -1251,8 +1352,75 @@ begin
           raise EWfcPipelineResult.Create('result connectivity: ' + E.Message);
       end;
     end;
+  { Public mapped clauses are independently checked on claimed solved layers.
+    This does not replay hidden local rules or private latent assignments. }
+  if FStatus = wprsSolved then
+    for LRequirementIndex := 0 to ARecipe.RequirementCount - 1 do
+    begin
+      LRequirement := ARecipe.RequirementAt(LRequirementIndex);
+      if LRequirement.Kind <> wprqMapped then Continue;
+      LConsumerLayer := -1;
+      LProviderLayer := -1;
+      for I := 0 to Length(FLayers) - 1 do
+      begin
+        if FLayers[I].PassIndex = LRequirement.ConsumerPassIndex then LConsumerLayer := I;
+        if FLayers[I].PassIndex = LRequirement.ProviderPassIndex then LProviderLayer := I;
+      end;
+      if (LConsumerLayer < 0) or (LProviderLayer < 0) then
+        raise EWfcPipelineResult.Create('result mapped clause has an absent public layer');
+      for I := 0 to Length(FLayers[LConsumerLayer].Tokens) - 1 do
+        if FLayers[LConsumerLayer].Tokens[I] = LRequirement.ConsumerToken then
+          try
+            if not ValidateWfcPipelineMappedRequirement(LRequirement,
+                FLayouts.PassLayoutAt(LRequirement.ConsumerPassIndex),
+                FLayouts.PassLayoutAt(LRequirement.ProviderPassIndex), I,
+                FLayers[LProviderLayer].Tokens) then
+              raise EWfcPipelineResult.CreateFmt(
+                'result violates public mapped clause [%d, pass %d, entry %d]',
+                [LRequirementIndex, LRequirement.ConsumerPassIndex, I]);
+          except
+            on E: EWfcPipelineResult do raise;
+            on E: Exception do raise EWfcPipelineResult.Create('result mapped clause: ' + E.Message);
+          end;
+    end;
   FSignature := CalculateSignature;
 end;
+
+destructor TWfcPipelineResult.Destroy;
+begin
+  FLayouts.Free;
+  inherited Destroy;
+end;
+
+function TWfcPipelineResult.GetPassCount: Integer;
+begin Result := FLayouts.PassCount; end;
+
+function TWfcPipelineResult.GetTotalCellCount: Integer;
+begin Result := FLayouts.TotalCellCount; end;
+
+function TWfcPipelineResult.CopyPassLayouts: TWfcLatticeLayouts;
+begin Result := FLayouts.CopyLayouts; end;
+
+function TWfcPipelineResult.CopyPassExtents: TWfcPipelinePassExtents;
+begin Result := FLayouts.CopyExtents; end;
+
+function TWfcPipelineResult.PassLayoutAt(const APassIndex: Integer): TWfcLatticeLayout;
+begin Result := FLayouts.PassLayoutAt(APassIndex); end;
+
+function TWfcPipelineResult.PassTopologyAt(const APassIndex: Integer): TWfcPipelinePassTopology;
+begin Result := FLayouts.PassTopologyAt(APassIndex); end;
+
+function TWfcPipelineResult.LayerLayoutAt(const ALayerIndex: Integer): TWfcLatticeLayout;
+begin
+  ValidateLayerIndex(ALayerIndex);
+  Result := FLayouts.PassLayoutAt(FLayers[ALayerIndex].PassIndex);
+end;
+
+function TWfcPipelineResult.PassCellCount(const APassIndex: Integer): Integer;
+begin Result := FLayouts.PassCellCount(APassIndex); end;
+
+function TWfcPipelineResult.PassOffsetAt(const APassIndex: Integer): Integer;
+begin Result := FLayouts.PassOffsetAt(APassIndex); end;
 
 function TWfcPipelineResult.GetPassOutcomeCount: Integer;
 begin

@@ -27,7 +27,7 @@ implementation
 uses
   wfc, wfc_model, wfc_rule_model, wfc_pattern2d, wfc_pattern3d, wfc_sequence,
   wfc_training, wfc_pipeline_model, wfc_pipeline_run, wfc_pipeline_result,
-  wfc_text_codec;
+  wfc_text_codec, wfc_lattice, wfc_pipeline_layout;
 
 type
   TInspectWriter = class
@@ -126,6 +126,12 @@ begin
         if ADocument.StoredResult.Status = wprsSolved then Result := Result + 'checked'
         else Result := Result + 'not-applicable';
         Result := Result + ';full-solution=not-proven';
+        if ADocument.Recipe.HasPassMapping then
+        begin
+          Result := Result + ';solved-public-mapped-policies=';
+          if ADocument.StoredResult.Status = wprsSolved then Result := Result + 'checked'
+          else Result := Result + 'not-applicable';
+        end;
       end;
     wakTraining: Result := 'canonical-source-contract;learning=not-run';
   else Result := 'canonical-static-contract;satisfiability=not-proven'; end;
@@ -468,12 +474,17 @@ var I, J, K: Integer; MD: TWfcPipelineMetadata; R: TWfcPipelineResource;
   P: TWfcPipelinePass; D: TWfcPipelineDependency; G: TWfcPipelineBridge;
   Q: TWfcPipelineValueQuota; C: TWfcPipelineConnectivity;
   H: TWfcPipelineRequirement; V: TWfcModelTokens; LVisibility, LKind: String;
+  Topology: TWfcPipelinePassTopology; MatchText: String;
 begin
   if not W.Want then Exit;
   MD := M.CopyMetadata;
   if not W.Detail('recipe name=' + Token(MD.Name) + ' license=' + Token(MD.LicenseIdentifier) +
     ' source=' + Token(MD.SourceDescription) + ' fingerprint=' + Token(MD.SourceFingerprint) +
     ' rank=' + N(M.Rank) + ' wrap=' + B(M.WrapNeighbors)) then Exit;
+  if M.HasPassMapping then
+    if not W.Detail('spatial pass-mapping-version=' + N(M.PassMappingVersion) +
+      ' graph-pass-mapping-version=' + N(WFC_PASS_MAPPING_VERSION) +
+      ' global-topology=pass-zero-view;extents=invocation-owned') then Exit;
   for I := 0 to M.PassCount - 1 do
   begin
     if not W.Want then Exit;
@@ -482,6 +493,15 @@ begin
     if not W.Detail('pass index=' + N(I) + ' label=' + Token(P.LabelName) +
       ' visibility=' + LVisibility + ' mode=' + ModeName(P.Mode) + ' adapter=' + AdapterKind(P.AdapterKind) +
       ' resource=' + N(P.ResourceIndex) + ' transform-source=' + N(P.TransformSourceIndex)) then Exit;
+    if M.HasPassMapping then
+    begin
+      if not W.Want then Exit;
+      Topology := M.PassTopologyAt(I);
+      if not W.Detail('pass-topology pass=' + N(I) + ' rank=' + N(Topology.Rank) +
+        ' origin=' + XYZ(Topology.Origin.X,Topology.Origin.Y,Topology.Origin.Z) +
+        ' pitch=' + XYZ(Topology.Pitch.X,Topology.Pitch.Y,Topology.Pitch.Z) +
+        ' wrap=' + B(Topology.Wrap)) then Exit;
+    end;
   end;
   for I := 0 to M.DependencyCount - 1 do
   begin
@@ -514,6 +534,31 @@ begin
   begin
     if not W.Want then Exit;
     H := M.RequirementAt(I);
+    if H.Kind = wprqMapped then
+    begin
+      case H.MappedQuery.Kind of
+        gpmkPoint: LKind := 'point'; gpmkCellCoverage: LKind := 'cell';
+        gpmkRegionCoverage: LKind := 'region';
+      else raise EWfcArtifactInspect.Create('unknown mapped query kind'); end;
+      if H.MappedQuery.Match = gpmmAll then MatchText := 'all' else MatchText := 'count';
+      if not W.Detail('mapped-requirement index=' + N(I) + ' kind=' + LKind +
+        ' consumer=' + N(H.ConsumerPassIndex) + ' token=' + Token(H.ConsumerToken) +
+        ' provider=' + N(H.ProviderPassIndex) + ' match=' + MatchText +
+        ' minimum-offset=' + XYZ(H.MappedQuery.MinimumOffset.DeltaX,
+          H.MappedQuery.MinimumOffset.DeltaY,H.MappedQuery.MinimumOffset.DeltaZ) +
+        ' maximum-offset=' + XYZ(H.MappedQuery.MaximumOffset.DeltaX,
+          H.MappedQuery.MaximumOffset.DeltaY,H.MappedQuery.MaximumOffset.DeltaZ) +
+        ' minimum=' + N(H.MappedQuery.MinimumMatches) +
+        ' maximum=' + N(H.MappedQuery.MaximumMatches) +
+        ' tokens=' + N(Length(H.MappedQuery.AllowedProviderTokens))) then Exit;
+      for J := 0 to High(H.MappedQuery.AllowedProviderTokens) do
+      begin
+        if not W.Want then Exit;
+        if not W.Detail('mapped-allowed requirement=' + N(I) + ' index=' + N(J) +
+          ' token=' + Token(H.MappedQuery.AllowedProviderTokens[J])) then Exit;
+      end;
+      Continue;
+    end;
     case H.Kind of wprqExact: LKind := 'exact'; wprqAny: LKind := 'any'; else LKind := 'count'; end;
     if not W.Detail('requirement index=' + N(I) + ' kind=' + LKind +
       ' consumer=' + N(H.ConsumerPassIndex) + ' token=' + Token(H.ConsumerToken) +
@@ -580,6 +625,7 @@ end;
 
 procedure InspectRun(const W: TInspectWriter; const M: TWfcPipelineRun);
 var I, J: Integer; L: TWfcPipelineCellLock; D: TWfcPipelineCellDomain; S: String;
+  Layout: TWfcLatticeLayout;
 begin
   if not W.Want then Exit;
   if M.Strategy = wpssOneWay then S := 'one-way' else S := 'negotiated';
@@ -587,6 +633,21 @@ begin
     ' strategy=' + S + ' local-backtracks=' + N(M.MaxBacktracks) +
     ' pass-backtracks=' + N(M.MaxPassBacktracks) + ' capture-trace=' + B(M.CaptureTrace) +
     ' locks=' + N(M.LockCount) + ' domains=' + N(M.DomainCount)) then Exit;
+  if M.FormatVersion = 2 then
+  begin
+    if not W.Detail('run-layouts count=' + N(M.PassCount) +
+      ' total-cells=' + N(M.TotalCellCount) + ' shape=pass-zero-view') then Exit;
+    for I := 0 to M.PassCount - 1 do
+    begin
+      if not W.Want then Exit;
+      Layout := M.PassLayoutAt(I);
+      if not W.Detail('run-layout pass=' + N(I) + ' rank=' + N(M.PassTopologyAt(I).Rank) +
+        ' cells=' + XYZ(Layout.Cells.X,Layout.Cells.Y,Layout.Cells.Z) +
+        ' origin=' + XYZ(Layout.Origin.X,Layout.Origin.Y,Layout.Origin.Z) +
+        ' pitch=' + XYZ(Layout.Pitch.X,Layout.Pitch.Y,Layout.Pitch.Z) +
+        ' wrap=' + B(Layout.Wrap) + ' flat-offset=' + N(M.PassOffsetAt(I))) then Exit;
+    end;
+  end;
   for I := 0 to M.LockCount - 1 do
   begin
     if not W.Want then Exit;
@@ -612,6 +673,8 @@ end;
 procedure InspectResult(const W: TInspectWriter; const M: TWfcPipelineResult);
 var I, J: Integer; L: TWfcPipelineResultLayer; O: TWfcPipelinePassOutcome;
   F: TWfcPipelineFailure;
+  Layout: TWfcLatticeLayout; Cell: TWfcLatticeVector; Box: TWfcLatticeBox;
+  CellText: String;
 begin
   if not W.Want then Exit;
   if not W.Detail('result shape=' + XYZ(M.Width, M.Height, M.Depth) +
@@ -619,6 +682,17 @@ begin
     ' pass-backtracks=' + N(M.PassBacktracks) + ' evidence-kind=' + EvidenceName(M.EvidenceKind) +
     ' evidence-signature=' + WfcPipelineResultSignatureHex(M.EvidenceSignature) +
     ' evidence=claimed-not-replayed') then Exit;
+  if M.FormatVersion = 2 then
+    for I := 0 to M.PassOutcomeCount - 1 do
+    begin
+      if not W.Want then Exit;
+      Layout := M.PassLayoutAt(I);
+      if not W.Detail('result-layout pass=' + N(I) + ' rank=' + N(M.PassTopologyAt(I).Rank) +
+        ' cells=' + XYZ(Layout.Cells.X,Layout.Cells.Y,Layout.Cells.Z) +
+        ' origin=' + XYZ(Layout.Origin.X,Layout.Origin.Y,Layout.Origin.Z) +
+        ' pitch=' + XYZ(Layout.Pitch.X,Layout.Pitch.Y,Layout.Pitch.Z) +
+        ' wrap=' + B(Layout.Wrap)) then Exit;
+    end;
   if M.Status <> wprsSolved then
   begin
     if not W.Want then Exit;
@@ -642,14 +716,24 @@ begin
   begin
     if not W.Want then Exit;
     L := M.LayerAt(I);
+    Layout := M.PassLayoutAt(L.PassIndex);
     if not W.Detail('layer index=' + N(I) + ' pass=' + N(L.PassIndex) +
       ' label=' + Token(L.LabelName) + ' cells=' + N(Length(L.Tokens))) then Exit;
     for J := 0 to Length(L.Tokens) - 1 do
     begin
       if not W.Want then Exit;
-      if not W.Detail('cell layer=' + N(I) + ' index=' + N(J) +
-        ' xyz=' + XYZ(J mod M.Width, (J div M.Width) mod M.Height, (J div M.Width) div M.Height) +
-        ' token=' + Token(L.Tokens[J])) then Exit;
+      Cell := MakeWfcLatticeVector(J mod Layout.Cells.X,
+        (J div Layout.Cells.X) mod Layout.Cells.Y,
+        (J div Layout.Cells.X) div Layout.Cells.Y);
+      CellText := 'cell layer=' + N(I) + ' index=' + N(J) +
+        ' xyz=' + XYZ(Cell.X,Cell.Y,Cell.Z) + ' token=' + Token(L.Tokens[J]);
+      if M.FormatVersion = 2 then
+      begin
+        Box := WfcLatticeCellBox(Layout,Cell);
+        CellText := CellText + ' world-min=' + XYZ(Box.Minimum.X,Box.Minimum.Y,Box.Minimum.Z) +
+          ' world-max-exclusive=' + XYZ(Box.Maximum.X,Box.Maximum.Y,Box.Maximum.Z);
+      end;
+      if not W.Detail(CellText) then Exit;
     end;
   end;
 end;

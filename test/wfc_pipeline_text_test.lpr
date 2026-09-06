@@ -580,7 +580,8 @@ begin
     LFixture.Free;
   end;
   ExpectDecodeRejected(ReplaceOnce(LEncoded, 'wfcpipeline=1',
-    'wfcpipeline=5'), 'unknown outer versions fail closed');
+    'wfcpipeline=' + IntToStr(WFC_PIPELINE_MAX_SUPPORTED_TEXT_VERSION + 1)),
+    'unknown outer versions fail closed');
   ExpectDecodeRejected(ReplaceOnce(LEncoded, 'wfcpipeline=1',
     'wfcpipeline=2'), 'v2 requires its own nonempty quota section');
   ExpectDecodeRejected(ReplaceOnce(LEncoded, #10, #13#10),

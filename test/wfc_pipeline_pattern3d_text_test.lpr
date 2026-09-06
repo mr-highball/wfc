@@ -141,7 +141,9 @@ begin
   M:=Fixture(False,False);
   try S:=EncodeWfcPipelineModelText(M); finally M.Free; end;
   Reject(Replace(S,'wfcpipeline=4','wfcpipeline=04'),'version');
-  Reject(Replace(S,'wfcpipeline=4','wfcpipeline=5'),'version');
+  Reject(Replace(S,'wfcpipeline=4','wfcpipeline='+
+    IntToStr(WFC_PIPELINE_MAX_SUPPORTED_TEXT_VERSION+1)),'version');
+  Reject(Replace(S,'wfcpipeline=4','wfcpipeline=5'),'pattern3d presence');
   Reject(Replace(S,VERSION_LINES,''),'pattern3d graph-adapter');
   Reject(Replace(S,VERSION_LINES,'pattern3d-bridge-version=1'#10+'pattern3d-graph-adapter-version=1'#10),
     'pattern3d graph-adapter');

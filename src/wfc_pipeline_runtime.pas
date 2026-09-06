@@ -83,6 +83,7 @@ function ExecuteWfcPipeline(const ARecipe: TWfcPipelineModel;
 implementation
 
 uses
+  wfc_lattice,
   wfc_text_codec,
   wfc_token_lookup,
   wfc_pattern2d,
@@ -150,47 +151,29 @@ type
   end;
   TInverseDomains = array of TInverseDomain;
 
-function CheckedCellCount(const ARun: TWfcPipelineRun): Integer;
-var
-  LPlane: Integer;
-begin
-  if ARun.Width > WFC_PIPELINE_RUN_MAX_CELL_COUNT div ARun.Height then
-    raise EWfcPipelineRuntime.Create(
-      'run cell count exceeds the executable limit');
-  LPlane := ARun.Width * ARun.Height;
-  if LPlane > WFC_PIPELINE_RUN_MAX_CELL_COUNT div ARun.Depth then
-    raise EWfcPipelineRuntime.Create(
-      'run cell count exceeds the executable limit');
-  Result := LPlane * ARun.Depth;
-end;
-
 procedure PreflightResultAndGraphBudgets(const ARecipe: TWfcPipelineModel;
-  const ARun: TWfcPipelineRun; out ACellCount: Integer);
+  const ARun: TWfcPipelineRun);
 var
-  I: Integer;
-  LPublicCount: Integer;
+  I, LCount, LPublicCells, LPublicCount: Integer;
 begin
-  ACellCount := CheckedCellCount(ARun);
-  if (ARecipe.PassCount <> 0) and
-      (ACellCount > WFC_PIPELINE_RUNTIME_MAX_TOTAL_PASS_CELL_COUNT div
-      ARecipe.PassCount) then
-    raise EWfcPipelineRuntime.CreateFmt(
-      'pipeline materialization exceeds the runtime pass-cell limit [%d x %d]',
-      [ARecipe.PassCount, ACellCount]);
-
+  if ARun.TotalCellCount > WFC_PIPELINE_RUNTIME_MAX_TOTAL_PASS_CELL_COUNT then
+    raise EWfcPipelineRuntime.Create(
+      'pipeline materialization exceeds the runtime pass-cell limit');
   LPublicCount := 0;
+  LPublicCells := 0;
   for I := 0 to ARecipe.PassCount - 1 do
     if ARecipe.PassAt(I).Visibility = wppvPublic then
+    begin
       Inc(LPublicCount);
+      LCount := ARun.PassCellCount(I);
+      if LCount > WFC_PIPELINE_RESULT_MAX_TOTAL_PUBLIC_CELL_COUNT - LPublicCells then
+        raise EWfcPipelineRuntime.Create(
+          'pipeline public output exceeds the result cell limit');
+      Inc(LPublicCells, LCount);
+    end;
   if LPublicCount > WFC_PIPELINE_RESULT_MAX_PUBLIC_LAYER_COUNT then
     raise EWfcPipelineRuntime.Create(
       'pipeline public layer count exceeds the result limit');
-  if (LPublicCount <> 0) and
-      (ACellCount > WFC_PIPELINE_RESULT_MAX_TOTAL_PUBLIC_CELL_COUNT div
-      LPublicCount) then
-    raise EWfcPipelineRuntime.CreateFmt(
-      'pipeline public output exceeds the result cell limit [%d x %d]',
-      [LPublicCount, ACellCount]);
 end;
 
 function EncodedTokenLength(const AToken: TWfcModelToken;
@@ -207,7 +190,7 @@ begin
 end;
 
 procedure PreflightEncodedResultBudget(const ARecipe: TWfcPipelineModel;
-  const AVocabularies: TVocabularyArray; const ACellCount: Integer);
+  const AVocabularies: TVocabularyArray; const ARun: TWfcPipelineRun);
 var
   I: Integer;
   J: Integer;
@@ -240,10 +223,10 @@ begin
     LRemaining := WFC_PIPELINE_RESULT_MAX_TOTAL_ENCODED_TOKEN_LENGTH -
       LTotal;
     if (LMaximumTokenLength <> 0) and
-        (ACellCount > LRemaining div LMaximumTokenLength) then
+        (ARun.PassCellCount(I) > LRemaining div LMaximumTokenLength) then
       raise EWfcPipelineRuntime.CreateFmt(
         'public pass %d can exceed the result encoded-token budget', [I]);
-    Inc(LTotal, ACellCount * LMaximumTokenLength);
+    Inc(LTotal, ARun.PassCellCount(I) * LMaximumTokenLength);
   end;
 end;
 
@@ -296,15 +279,21 @@ begin
         [AInputKind, AInputIndex, I]);
 end;
 
-function CellKey(const APassIndex, AX, AY, AZ,
-  ACellCount: Integer; const ARun: TWfcPipelineRun): Integer;
+function CellKey(const APassIndex, AX, AY, AZ: Integer;
+  const ARun: TWfcPipelineRun): Integer;
 var
   LCell: Integer;
+  LLayout: TWfcLatticeLayout;
 begin
-  LCell := (AZ * ARun.Height + AY) * ARun.Width + AX;
-  if APassIndex > (High(Integer) - LCell) div ACellCount then
+  LLayout := ARun.PassLayoutAt(APassIndex);
+  if (AX < 0) or (AY < 0) or (AZ < 0) or
+    (AX >= LLayout.Cells.X) or (AY >= LLayout.Cells.Y) or
+    (AZ >= LLayout.Cells.Z) then
+    raise EWfcPipelineRuntime.Create('effective input coordinate is outside its pass');
+  LCell := (AZ * LLayout.Cells.Y + AY) * LLayout.Cells.X + AX;
+  if ARun.PassOffsetAt(APassIndex) > High(Integer) - LCell then
     raise EWfcPipelineRuntime.Create('effective input key exceeds Integer');
-  Result := APassIndex * ACellCount + LCell;
+  Result := ARun.PassOffsetAt(APassIndex) + LCell;
 end;
 
 procedure MergeSortLocks(var AValues: TEffectiveLocks);
@@ -532,7 +521,7 @@ end;
 procedure BuildEffectiveLocks(const ARun: TWfcPipelineRun;
   const ALookups: TTokenLookupArray;
   const AResolvedPasses: TIntegerArray;
-  const ACellCount: Integer; out AValues: TEffectiveLocks);
+  out AValues: TEffectiveLocks);
 var
   I: Integer;
   LEffectivePass: Integer;
@@ -556,7 +545,7 @@ begin
     AValues[I].Y := LInput.Y;
     AValues[I].Z := LInput.Z;
     AValues[I].Key := CellKey(LEffectivePass, LInput.X, LInput.Y,
-      LInput.Z, ACellCount, ARun);
+      LInput.Z, ARun);
     AValues[I].InputIndex := I;
   end;
 end;
@@ -564,7 +553,7 @@ end;
 procedure BuildEffectiveDomains(const ARun: TWfcPipelineRun;
   const ALookups: TTokenLookupArray;
   const AResolvedPasses: TIntegerArray;
-  const ACellCount: Integer; out AValues: TEffectiveDomains);
+  out AValues: TEffectiveDomains);
 var
   I: Integer;
   J: Integer;
@@ -602,7 +591,7 @@ begin
     AValues[I].Y := LInput.Y;
     AValues[I].Z := LInput.Z;
     AValues[I].Key := CellKey(LEffectivePass, LInput.X, LInput.Y,
-      LInput.Z, ACellCount, ARun);
+      LInput.Z, ARun);
     AValues[I].InputIndex := I;
   end;
 end;
@@ -838,13 +827,14 @@ begin
 end;
 
 procedure BuildInverseContributions(const ARecipe: TWfcPipelineModel;
-  const ARun: TWfcPipelineRun; const ACellCount: Integer;
+  const ARun: TWfcPipelineRun;
   const AConstraints: TEffectiveConstraints;
   out AValues: TInverseContributions);
 var
   I: Integer;
   J: Integer;
   LBridge: TWfcPipelineBridge;
+  LLayout: TWfcLatticeLayout;
   LBridgeForTarget: TIntegerArray;
   LContributionCount: Integer;
   LFootprintSize: Integer;
@@ -882,6 +872,9 @@ begin
   for I := 0 to ARecipe.BridgeCount - 1 do
   begin
     LBridge := ARecipe.BridgeAt(I);
+    if not SameWfcLatticeLayout(ARun.PassLayoutAt(LBridge.SourcePassIndex),
+      ARun.PassLayoutAt(LBridge.TargetPassIndex)) then
+      raise EWfcPipelineRuntime.Create('inverse bridge requires identical pass layouts');
     if ((LBridge.Kind = wpbkPattern2DProjection) and
         (LVersions.Pattern2DBridgeVersion = 2)) or
         ((LBridge.Kind = wpbkSequenceProjection) and
@@ -948,6 +941,7 @@ begin
     if J = WFC_PIPELINE_NO_INDEX then
       Continue;
     LBridge := ARecipe.BridgeAt(J);
+    LLayout := ARun.PassLayoutAt(LBridge.SourcePassIndex);
     case LBridge.Kind of
       wpbkPattern2DProjection:
         begin
@@ -958,13 +952,13 @@ begin
             begin
               AValues[LWrite].PassIndex := LBridge.SourcePassIndex;
               AValues[LWrite].X := WrappedSubtract(
-                AConstraints[I].X, X, ARun.Width);
+                AConstraints[I].X, X, LLayout.Cells.X);
               AValues[LWrite].Y := WrappedSubtract(
-                AConstraints[I].Y, Y, ARun.Height);
+                AConstraints[I].Y, Y, LLayout.Cells.Y);
               AValues[LWrite].Z := 0;
               AValues[LWrite].Key := CellKey(LBridge.SourcePassIndex,
                 AValues[LWrite].X, AValues[LWrite].Y, 0,
-                ACellCount, ARun);
+                ARun);
               AValues[LWrite].BridgeIndex := J;
               AValues[LWrite].ConstraintIndex := I;
               AValues[LWrite].OffsetX := X;
@@ -983,12 +977,12 @@ begin
               for X := 0 to LModel3D.PatternWidth - 1 do
               begin
                 AValues[LWrite].PassIndex := LBridge.SourcePassIndex;
-                AValues[LWrite].X := WrappedSubtract(AConstraints[I].X, X, ARun.Width);
-                AValues[LWrite].Y := WrappedSubtract(AConstraints[I].Y, Y, ARun.Height);
-                AValues[LWrite].Z := WrappedSubtract(AConstraints[I].Z, Z, ARun.Depth);
+                AValues[LWrite].X := WrappedSubtract(AConstraints[I].X, X, LLayout.Cells.X);
+                AValues[LWrite].Y := WrappedSubtract(AConstraints[I].Y, Y, LLayout.Cells.Y);
+                AValues[LWrite].Z := WrappedSubtract(AConstraints[I].Z, Z, LLayout.Cells.Z);
                 AValues[LWrite].Key := CellKey(LBridge.SourcePassIndex,
                   AValues[LWrite].X, AValues[LWrite].Y, AValues[LWrite].Z,
-                  ACellCount, ARun);
+                  ARun);
                 AValues[LWrite].BridgeIndex := J;
                 AValues[LWrite].ConstraintIndex := I;
                 AValues[LWrite].OffsetX := X;
@@ -1007,7 +1001,7 @@ begin
           AValues[LWrite].Y := 0;
           AValues[LWrite].Z := 0;
           AValues[LWrite].Key := CellKey(LBridge.SourcePassIndex,
-            AConstraints[I].X, 0, 0, ACellCount, ARun);
+            AConstraints[I].X, 0, 0, ARun);
           AValues[LWrite].BridgeIndex := J;
           AValues[LWrite].ConstraintIndex := I;
           AValues[LWrite].OffsetX := 0;
@@ -1335,7 +1329,6 @@ end;
 procedure TWfcPipelineRuntime.Initialize(const ARecipe: TWfcPipelineModel;
   const ARun: TWfcPipelineRun);
 var
-  LCellCount: Integer;
   LCompiled: TWfcCompiledPipeline;
   LConstraints: TEffectiveConstraints;
   LContributions: TInverseContributions;
@@ -1356,28 +1349,27 @@ begin
 
   LTokenLookups := nil;
   try
-    PreflightResultAndGraphBudgets(ARecipe, ARun, LCellCount);
+    PreflightResultAndGraphBudgets(ARecipe, ARun);
     BuildVocabularies(ARecipe, LVocabularies, LResolvedPasses,
       LTokenLookups);
-    PreflightEncodedResultBudget(ARecipe, LVocabularies, LCellCount);
+    PreflightEncodedResultBudget(ARecipe, LVocabularies, ARun);
     BuildEffectiveLocks(ARun, LTokenLookups, LResolvedPasses,
-      LCellCount, LLocks);
+      LLocks);
     BuildEffectiveDomains(ARun, LTokenLookups, LResolvedPasses,
-      LCellCount, LDomains);
+      LDomains);
     ConsolidateLocks(LLocks);
     ConsolidateDomains(LDomains);
     ValidateLockDomainCompatibility(LLocks, LDomains);
     BuildEffectiveConstraints(LLocks, LDomains, LVocabularies,
       LConstraints);
-    BuildInverseContributions(ARecipe, ARun, LCellCount,
+    BuildInverseContributions(ARecipe, ARun,
       LConstraints, LContributions);
     BuildInverseDomains(ARecipe, LConstraints, LContributions,
       LInverseDomains);
 
     LCompiled := nil;
     try
-      LCompiled := CompileWfcPipeline(ARecipe, ARun.Width,
-        ARun.Height, ARun.Depth);
+      LCompiled := CompileWfcPipeline(ARecipe, ARun.CopyPassExtents);
       ApplyInverseDomains(LCompiled, LInverseDomains);
       ApplyInputs(LCompiled, LLocks, LDomains);
       LCompiled.Graph.Seed := ARun.Seed;

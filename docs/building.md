@@ -238,7 +238,8 @@ shared application units or artifact contracts.
 
 One positional path may be `-`, but both cannot read standard input. By
 default, solved and non-solved executions both emit one canonical
-`wfcpipeline-result=1` document. `--quiet` suppresses that output. Exit `0`
+`wfcpipeline-result=1` or `=2` document matching the run's format.
+`--quiet` suppresses that output. Exit `0`
 means solved, `1` means an invalid recipe/run/executable invocation, `2` is a
 usage error, `3` is an I/O error, `4` means a valid canonical non-solved
 result, and `70` is an unexpected internal failure. The complete lifecycle,
@@ -569,7 +570,14 @@ Point/undersized-region studies can satisfy the selected model without clearing
 the full footprint. Only explicit `--diagnostic-svg NEW-FILE` may export such
 an unsafe study or a labeled retained baseline; neither output option replaces
 an existing destination. Browser edits likewise invalidate safe downloads.
-Portable mapped recipe/run/result persistence remains future work.
+The [portable mapped extension](portable-mapped-passes.md) is under integration.
+Its layout, geometry, model/codec, run/result, runtime and artifact suites are
+registered in both native scripts and portable browser discovery. The separate
+native-only `wfc_pipeline_mapped_process_test` invokes the actual `wfc_run`,
+`wfc_validate` and `wfc_inspect` executables with independent per-pass extents,
+canonical stdin/stdout, solved/nonsolved replay and invalid bindings. Its
+fixture directory is new on every run; browser discovery excludes this process
+harness. Mapped World UI import/export and general layout editing remain open.
 
 The [footprint research record](research/mapped-world-footprints-v1.md)
 records the four-target native checks, actual browser fixture, and full stable

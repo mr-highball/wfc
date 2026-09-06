@@ -74,7 +74,7 @@ else
   [[ -f "$source" ]] || continue
   name="${source##*/}"
   name="${name%.lpr}"
-  case "$name" in wfc_package_check_process_test|wfc_artifact_cli_process_test|wfc_ensemble_http_process_test|wfc_mapped_world_process_test) continue ;; esac
+  case "$name" in wfc_package_check_process_test|wfc_artifact_cli_process_test|wfc_ensemble_http_process_test|wfc_mapped_world_process_test|wfc_pipeline_mapped_process_test) continue ;; esac
   if [[ -n "${WFC_BROWSER_TEST:-}" && "$name" != "$WFC_BROWSER_TEST" ]]; then continue; fi
   case "$name" in wfc_browser_args_test|wfc_browser_dom_test|wfc_browser_socket_test|wfc_browser_websocket_test|wfc_browser_cdp_test|wfc_browser_capture_test|wfc_serve_test|wfc_music_render_process_test|wfc_music_ensemble_render_process_test|wfc_music_ensemble_midi_render_process_test|wfc_music_voices_render_process_test|wfc_connectivity_process_test|wfc_music_studies_process_test) continue ;; esac
   sources+=("$name")

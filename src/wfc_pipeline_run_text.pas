@@ -32,9 +32,9 @@ uses
   wfc_pipeline_run;
 
 const
-  WFC_PIPELINE_RUN_TEXT_VERSION = 1;
+  WFC_PIPELINE_RUN_TEXT_VERSION = 2;
   WFC_PIPELINE_RUN_MAX_ENCODED_TEXT_LENGTH = 67108864;
-  WFC_PIPELINE_RUN_MAX_TEXT_LINE_COUNT = 14 +
+  WFC_PIPELINE_RUN_MAX_TEXT_LINE_COUNT = 17 + WFC_PIPELINE_MAX_PASS_COUNT +
     WFC_PIPELINE_RUN_MAX_LOCK_COUNT + WFC_PIPELINE_RUN_MAX_DOMAIN_COUNT +
     WFC_PIPELINE_RUN_MAX_TOTAL_DOMAIN_TOKEN_COUNT;
 
@@ -48,6 +48,8 @@ uses
   SysUtils,
   wfc,
   wfc_model,
+  wfc_lattice,
+  wfc_pipeline_layout,
   wfc_text_codec;
 
 const
@@ -297,10 +299,13 @@ var
   LExpectedLineCount: Integer;
   LLines: TWfcTextLines;
   LLock: TWfcPipelineCellLock;
+  LLayout: TWfcLatticeLayout;
 begin
   if not Assigned(ARun) then
     raise EArgumentNilException.Create('WFC pipeline run cannot be nil');
   LExpectedLineCount := WFC_PIPELINE_RUN_FIXED_LINE_COUNT;
+  if ARun.FormatVersion = 2 then
+    AddLineCapacity(LExpectedLineCount, 3 + ARun.PassCount);
   AddLineCapacity(LExpectedLineCount, ARun.LockCount);
   AddLineCapacity(LExpectedLineCount, ARun.DomainCount);
   for I := 0 to ARun.DomainCount - 1 do
@@ -312,12 +317,25 @@ begin
   SetLength(LLines, LExpectedLineCount);
   LCount := 0;
   AppendLine(LLines, LCount, 'wfcpipeline-run=' +
-    IntToStr(WFC_PIPELINE_RUN_TEXT_VERSION));
+    IntToStr(ARun.FormatVersion));
   AppendLine(LLines, LCount, 'recipe-signature=' +
     WfcPipelineSignatureHex(ARun.RecipeSignature));
   AppendLine(LLines, LCount, 'width=' + IntToStr(ARun.Width));
   AppendLine(LLines, LCount, 'height=' + IntToStr(ARun.Height));
   AppendLine(LLines, LCount, 'depth=' + IntToStr(ARun.Depth));
+  if ARun.FormatVersion = 2 then
+  begin
+    AppendLine(LLines, LCount, 'layout-version=' + IntToStr(WFC_PIPELINE_LAYOUT_VERSION));
+    AppendLine(LLines, LCount, 'mapping-version=' + IntToStr(WFC_PASS_MAPPING_VERSION));
+    AppendLine(LLines, LCount, 'extents=' + IntToStr(ARun.PassCount));
+    for I := 0 to ARun.PassCount - 1 do
+    begin
+      LLayout := ARun.PassLayoutAt(I);
+      AppendLine(LLines, LCount, 'extent=' + IntToStr(I) + ',' +
+        IntToStr(LLayout.Cells.X) + ',' + IntToStr(LLayout.Cells.Y) + ',' +
+        IntToStr(LLayout.Cells.Z));
+    end;
+  end;
   AppendLine(LLines, LCount, 'seed=' + UIntToStr(ARun.Seed));
   AppendLine(LLines, LCount, 'strategy=' + StrategyName(ARun.Strategy));
   AppendLine(LLines, LCount, 'max-backtracks=' +
@@ -390,6 +408,10 @@ var
   LTotalAllowedCount: Integer;
   LTotalEncodedTokenLength: Integer;
   LWidth: Integer;
+  LFormatVersion: Integer;
+  LExtentCount: Integer;
+  LExtents: TWfcPipelinePassExtents;
+  LPreflightRun: TWfcPipelineRun;
 begin
   if not Assigned(ARecipe) then
     raise EArgumentNilException.Create('WFC pipeline run recipe cannot be nil');
@@ -400,9 +422,14 @@ begin
   if Length(LLines) > WFC_PIPELINE_RUN_MAX_TEXT_LINE_COUNT then
     TextError('document exceeds the version-1 line-count limit');
   LLineIndex := 0;
-  if RequireLine(LLines, LLineIndex, 'header') <>
-      'wfcpipeline-run=1' then
+  if RequireLine(LLines, LLineIndex, 'header') = 'wfcpipeline-run=1' then
+    LFormatVersion := 1
+  else if RequireLine(LLines, LLineIndex, 'header') = 'wfcpipeline-run=2' then
+    LFormatVersion := 2
+  else
     TextError('header or version is unsupported');
+  if (LFormatVersion = 1) and ARecipe.HasPassMapping then
+    TextError('spatial recipes require run format 2');
   Inc(LLineIndex);
   LRecipeSignatureText := ReadValueLine(LLines, LLineIndex,
     'recipe-signature=', 'recipe signature');
@@ -418,6 +445,38 @@ begin
     LLineIndex, 'height=', 'height'), 'height');
   LDepth := ParseCanonicalInteger(ReadValueLine(LLines,
     LLineIndex, 'depth=', 'depth'), 'depth');
+  LExtents := nil;
+  if LFormatVersion = 2 then
+  begin
+    if ParseCanonicalInteger(ReadValueLine(LLines, LLineIndex,
+        'layout-version=', 'layout version'), 'layout version') <>
+        WFC_PIPELINE_LAYOUT_VERSION then
+      TextError('unsupported layout version');
+    if ParseCanonicalInteger(ReadValueLine(LLines, LLineIndex,
+        'mapping-version=', 'mapping version'), 'mapping version') <>
+        WFC_PASS_MAPPING_VERSION then
+      TextError('unsupported mapping version');
+    LExtentCount := ParseBoundedCount(ReadValueLine(LLines, LLineIndex,
+      'extents=', 'extent count'), 'extent count', WFC_PIPELINE_MAX_PASS_COUNT);
+    if LExtentCount <> ARecipe.PassCount then
+      TextError('extent table must cover every recipe pass');
+    RequireRecordCapacity(LExtentCount, 9, LLineIndex, LLines, 'extent');
+    SetLength(LExtents, LExtentCount);
+    for I := 0 to LExtentCount - 1 do
+    begin
+      LFields := SplitRecord(ReadValueLine(LLines, LLineIndex,
+        'extent=', 'extent record'), 4, 'extent');
+      if ParseCanonicalInteger(LFields[0], 'extent pass index') <> I then
+        TextError('extent indices must be complete and ordered');
+      LExtents[I] := MakeWfcLatticeVector(
+        ParseCanonicalInteger(LFields[1], 'extent X'),
+        ParseCanonicalInteger(LFields[2], 'extent Y'),
+        ParseCanonicalInteger(LFields[3], 'extent Z'));
+    end;
+    if (LExtents[0].X <> LWidth) or (LExtents[0].Y <> LHeight) or
+        (LExtents[0].Z <> LDepth) then
+      TextError('width/height/depth must equal the pass-zero extent');
+  end;
   LSeed := ParseCanonicalCardinal(ReadValueLine(LLines,
     LLineIndex, 'seed=', 'seed'), 'seed');
   LStrategy := ParseStrategy(ReadValueLine(LLines,
@@ -430,6 +489,24 @@ begin
     'pass-backtrack limit');
   LCaptureTrace := ParseBooleanName(ReadValueLine(LLines,
     LLineIndex, 'trace=', 'trace flag'), 'trace flag');
+
+  { Resolve every extent and trust limit before any untrusted token array. }
+  LPreflightRun := nil;
+  try
+    try
+      if LFormatVersion = 2 then
+        LPreflightRun := TWfcPipelineRun.Create(ARecipe, LExtents, LSeed,
+          LStrategy, LMaxBacktracks, LMaxPassBacktracks, LCaptureTrace, nil, nil)
+      else
+        LPreflightRun := TWfcPipelineRun.Create(ARecipe, LWidth, LHeight,
+          LDepth, LSeed, LStrategy, LMaxBacktracks, LMaxPassBacktracks,
+          LCaptureTrace, nil, nil);
+    except
+      on E: Exception do TextError(E.Message);
+    end;
+  finally
+    LPreflightRun.Free;
+  end;
 
   LTotalEncodedTokenLength := 0;
   LLockCount := ParseBoundedCount(ReadValueLine(LLines,
@@ -511,9 +588,14 @@ begin
   LRun := nil;
   try
     try
-      LRun := TWfcPipelineRun.Create(ARecipe, LWidth, LHeight,
-        LDepth, LSeed, LStrategy, LMaxBacktracks,
-        LMaxPassBacktracks, LCaptureTrace, LLocks, LDomains);
+      if LFormatVersion = 2 then
+        LRun := TWfcPipelineRun.Create(ARecipe, LExtents, LSeed,
+          LStrategy, LMaxBacktracks, LMaxPassBacktracks,
+          LCaptureTrace, LLocks, LDomains)
+      else
+        LRun := TWfcPipelineRun.Create(ARecipe, LWidth, LHeight,
+          LDepth, LSeed, LStrategy, LMaxBacktracks,
+          LMaxPassBacktracks, LCaptureTrace, LLocks, LDomains);
     except
       on E: EWfcPipelineRun do
         TextError(E.Message);

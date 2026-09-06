@@ -1314,6 +1314,13 @@ var
     TGraphPassMapQuery;
   function MakeGraphPassCountQuery(const AQuery: TGraphPassMapQuery;
     const AMinimum, AMaximum: Integer): TGraphPassMapQuery;
+  { Pure preflight for tools and portable recipe compilers. Neither routine
+    allocates a graph or installs a clause. Normalization owns its values;
+    range validation checks all consumer anchors, not provider coverage. }
+  function NormalizeGraphPassMapQuery(const AQuery: TGraphPassMapQuery):
+    TGraphPassMapQuery;
+  procedure ValidateGraphPassMappedQuery(const AConsumerLayout: TWfcLatticeLayout;
+    const AQuery: TGraphPassMapQuery);
   function MakeGraphConnectivityValue(const AValue: TGraphValue;
     const AOpenings: TGraphDirections;
     const ARequiredByValue: Boolean = False): TGraphConnectivityValue;
@@ -1855,6 +1862,21 @@ begin
   Result.MinimumOffset := AOffset;
   Result.Values := AValues;
   Result := CanonicalGraphPassMapQuery(Result);
+end;
+
+function NormalizeGraphPassMapQuery(const AQuery: TGraphPassMapQuery):
+  TGraphPassMapQuery;
+begin
+  Result := CanonicalGraphPassMapQuery(AQuery);
+end;
+
+procedure ValidateGraphPassMappedQuery(const AConsumerLayout: TWfcLatticeLayout;
+  const AQuery: TGraphPassMapQuery);
+var
+  LCanonical: TGraphPassMapQuery;
+begin
+  LCanonical := CanonicalGraphPassMapQuery(AQuery);
+  ValidateGraphPassMapRange(AConsumerLayout, LCanonical);
 end;
 
 function MakeGraphPassCellQuery(const AOffset: TGraphOffset;

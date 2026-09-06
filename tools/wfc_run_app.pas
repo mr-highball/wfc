@@ -120,9 +120,10 @@ begin
     ' (wfcpipeline=' + IntToStr(WFC_PIPELINE_TEXT_VERSION) + ',' +
     IntToStr(WFC_PIPELINE_VALUE_QUOTA_TEXT_VERSION) + ',' +
     IntToStr(WFC_PIPELINE_CONNECTIVITY_TEXT_VERSION) + ',' +
+    IntToStr(WFC_PIPELINE_PATTERN_3D_TEXT_VERSION) + ',' +
     IntToStr(WFC_PIPELINE_MAX_SUPPORTED_TEXT_VERSION) +
-    ', wfcpipeline-run=' + IntToStr(WFC_PIPELINE_RUN_TEXT_VERSION) +
-    ', wfcpipeline-result=' +
+    ', wfcpipeline-run=1,' + IntToStr(WFC_PIPELINE_RUN_TEXT_VERSION) +
+    ', wfcpipeline-result=1,' +
     IntToStr(WFC_PIPELINE_RESULT_TEXT_VERSION) +
     ', runtime=' + IntToStr(WFC_PIPELINE_RUNTIME_VERSION) + ')'#10;
 end;

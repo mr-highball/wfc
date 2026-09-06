@@ -65,6 +65,15 @@ $musicTestSources = @(
   (Join-Path $repositoryRoot 'test/wfc_music_studio_test.lpr')
 )
 $artifactTestSources = @(
+  (Join-Path $repositoryRoot 'test/wfc_pipeline_layout_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_pipeline_mapping_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_pipeline_mapped_model_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_pipeline_model_topology_boundary_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_pipeline_mapped_text_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_pipeline_mapped_run_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_pipeline_mapped_result_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_pipeline_mapped_runtime_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_pipeline_mapped_artifact_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_lattice_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_mapped_passes_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_pass_bridge_layout_test.lpr')
@@ -1193,6 +1202,20 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
   $validatorToolExecutable `
   (Join-Path $binaryOutputDirectory "wfc_inspect$toolExecutableSuffix") `
   $repositoryRoot
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+Write-Host 'Building and running FPC mapped-pipeline process conformance.'
+& $Compiler @CompilerOptions -B -Mdelphi -Sa -Cr -Co -Ci `
+  "-Fu$sourceDirectory" "-Fu$toolsDirectory" "-Fu$repositoryRoot/test" `
+  "-FU$unitOutputDirectory" "-FE$binaryOutputDirectory" `
+  (Join-Path $repositoryRoot 'test/wfc_pipeline_mapped_process_test.lpr')
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+$mappedPipelineProcessDirectory = Join-Path $binaryOutputDirectory `
+  ('mapped-pipeline-process-' + [Guid]::NewGuid().ToString('N'))
+& (Join-Path $binaryOutputDirectory "wfc_pipeline_mapped_process_test$toolExecutableSuffix") `
+  $runnerToolExecutable $validatorToolExecutable `
+  (Join-Path $binaryOutputDirectory "wfc_inspect$toolExecutableSuffix") `
+  $mappedPipelineProcessDirectory
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 $learnerToolExecutable = Join-Path $binaryOutputDirectory `

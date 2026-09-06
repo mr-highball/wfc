@@ -466,7 +466,7 @@ procedure TestArguments;
 var LTool, LPrefix, LText, LName: String; I: Integer;
 begin
   Check(Success(Validator, ['--version'], '', 'validator version') =
-    'wfc-validate 2 (wfcpipeline=1,2,3,4)'#10, 'validator exact version bytes');
+    'wfc-validate 2 (wfcpipeline=1,2,3,4,5)'#10, 'validator exact version bytes');
   Check(Success(Inspector, ['--version'], '', 'inspector version') =
     'wfc-inspect 1'#10, 'inspector exact version bytes');
   for I := 0 to 1 do

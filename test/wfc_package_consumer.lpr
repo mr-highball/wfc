@@ -35,7 +35,8 @@ uses
   wfc_pipeline_run, wfc_pipeline_run_text, wfc_pipeline_runtime,
   wfc_pipeline_result, wfc_pipeline_result_text, wfc_volume_symmetry,
   wfc_pattern3d, wfc_pattern3d_learn, wfc_pattern3d_text, wfc_pattern3d_graph,
-  wfc_token_volume_view, wfc_voxel3d_isometric, wfc_voxel3d_svg, wfc_lattice;
+  wfc_token_volume_view, wfc_voxel3d_isometric, wfc_voxel3d_svg, wfc_lattice,
+  wfc_pipeline_layout, wfc_pipeline_mapping;
 
 var Checks: Integer;
 
@@ -79,6 +80,34 @@ begin
   Check(Cell.X=0,'installed lattice enumerates canonical first cell');
   Cell:=WfcLatticeCoverageCell(Coverage,1);
   Check(Cell.X=4,'installed lattice enumerates canonical seam cell');
+end;
+
+procedure UsePortableMapping;
+var Topologies:TWfcPipelinePassTopologies; Extents:TWfcPipelinePassExtents;
+  Table:TWfcPipelineLayoutTable; Query:TWfcPipelineMappedQuery;
+  Requirement:TWfcPipelineRequirement; Values:TWfcModelTokens;
+begin
+  SetLength(Topologies,2); SetLength(Extents,2);
+  Topologies[0]:=MakeWfcPipelinePassTopology(1,MakeWfcLatticeVector(0,0,0),
+    MakeWfcLatticeVector(2,1,1),False);
+  Topologies[1]:=LegacyWfcPipelinePassTopology(1,False);
+  Extents[0]:=MakeWfcLatticeVector(1,1,1); Extents[1]:=MakeWfcLatticeVector(2,1,1);
+  Table:=TWfcPipelineLayoutTable.Create(Topologies,Extents);
+  try
+    Check((WFC_PIPELINE_LAYOUT_VERSION=1) and (Table.TotalCellCount=3),
+      'installed portable layouts sum actual unlike pass cells');
+    Check(Table.FlatCellIndex(1,MakeWfcLatticeVector(1,0,0))=2,
+      'installed portable layouts expose collision-free prefix indices');
+    Query:=Default(TWfcPipelineMappedQuery); Query.Kind:=gpmkCellCoverage; Query.Match:=gpmmAll;
+    SetLength(Query.AllowedProviderTokens,1); Query.AllowedProviderTokens[0]:='clear';
+    Requirement:=MakeWfcPipelineMappedRequirement(0,'house',1,Query);
+    SetLength(Values,2); Values[0]:='clear'; Values[1]:='clear';
+    Check(ValidateWfcPipelineMappedRequirement(Requirement,Table.PassLayoutAt(0),
+      Table.PassLayoutAt(1),0,Values),'installed independent mapped policy covers whole footprint');
+    Values[1]:='tree';
+    Check(not ValidateWfcPipelineMappedRequirement(Requirement,Table.PassLayoutAt(0),
+      Table.PassLayoutAt(1),0,Values),'installed mapped policy rejects unsampled-corner blocker');
+  finally Table.Free; end;
 end;
 
 procedure UseMusicForm;
@@ -250,6 +279,7 @@ begin
   try
     UseGraph;
     UseLattice;
+    UsePortableMapping;
     UseMusicForm;
     UsePortableConnectivity;
     UseVolumePatterns;

@@ -60,9 +60,9 @@ filename extensions or a permissive fallback parser.
 | `pattern3d` | `wfcp=2` | Canonical joint XYZ footprints, exact derived six-direction overlap relations, symmetry and observation counts. |
 | `sequence` | `wfcs=1,2` | Canonical latent sequence states, histories, vocabulary, and observation counts; circular models additionally require balanced weighted contexts and no open endpoints. |
 | `training` | `wfclearn=1,2,3,4,5,6` | Canonical editable samples, options, provenance, and authored quota/connectivity policy, including circular sequences and overlapping volumes. No training occurs. |
-| `recipe` | `wfcpipeline=1,2,3,4` | Canonical embedded resources, static topology, pass DAG, bridges, public requirements, and policy. No graph is compiled. |
-| `run` | Recipe, then `wfcpipeline-run=1` | Canonical invocation bound to that recipe, including shape, options, public locks, and domains. Runtime preparation is not performed. |
-| `result` | Recipe, run, then `wfcpipeline-result=1` | Canonical bound terminal record, valid repeated fields, public layer shape/vocabulary, and the result decoder's solved public quota/connectivity checks. Not a complete solution proof. |
+| `recipe` | `wfcpipeline=1,2,3,4,5` | Canonical embedded resources, static topology, pass DAG, bridges, public requirements, and policy; recipe5 includes per-pass world geometry and mapped clauses. No graph is compiled. |
+| `run` | Recipe, then `wfcpipeline-run=1,2` | Canonical invocation bound to that recipe, including shape, options, public locks, and domains; run2 contains complete independent extents. Runtime preparation is not performed. |
+| `result` | Recipe, run, then `wfcpipeline-result=1,2` | Canonical bound terminal record, valid repeated fields, public layer shape/vocabulary, and solved public quota/connectivity/mapped checks. Result2 retains every pass layout. Not a complete solution proof. |
 
 Exactly one positional file may be `-` for standard input. Context files are
 supplied by the caller; metadata and embedded strings never cause additional
