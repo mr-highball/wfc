@@ -14,6 +14,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
 $fixtureDirectory = Join-Path $repositoryRoot 'examples/learning/04_TrainingDocuments'
+$connectivityFixtureDirectory = Join-Path $repositoryRoot 'test/fixtures/training-cli'
 $missingInput = Join-Path $fixtureDirectory 'missing.wfclearn'
 $maximumCapturedLength = 8192
 $processTimeoutMilliseconds = 30000
@@ -218,12 +219,36 @@ foreach ($profile in @('adjacency1d', 'adjacency2d', 'pattern2d', 'sequence', 'a
     -StandardInput $emptyInput -ExpectedExitCode 0 `
     -ExpectedOutput $resultBytes -DiagnosticPrefix '' -Name "$profile recipe execution"
 }
+$connectivityTraining = Join-Path $connectivityFixtureDirectory 'connectivity.wfclearn'
+$connectivityRecipe = Join-Path $connectivityFixtureDirectory 'connectivity.wfcpipeline'
+$connectivityTrainingBytes = [System.IO.File]::ReadAllBytes($connectivityTraining)
+$connectivityRecipeBytes = [System.IO.File]::ReadAllBytes($connectivityRecipe)
+Assert-Condition ($ascii.GetString($connectivityTrainingBytes).StartsWith("wfclearn=4`n")) `
+  'connectivity source fixture must be version four'
+Assert-Condition ($ascii.GetString($connectivityRecipeBytes).StartsWith("wfcpipeline=3`n")) `
+  'connectivity recipe fixture must be version three'
+Check-Case -Executable $Learner -Arguments @($connectivityTraining) `
+  -StandardInput $emptyInput -ExpectedExitCode 0 `
+  -ExpectedOutput $connectivityRecipeBytes -DiagnosticPrefix '' -Name 'connectivity file training'
+Check-Case -Executable $Learner -Arguments @('-') `
+  -StandardInput $connectivityTrainingBytes -ExpectedExitCode 0 `
+  -ExpectedOutput $connectivityRecipeBytes -DiagnosticPrefix '' -Name 'connectivity stdin training'
+Check-Case -Executable $Learner -Arguments @('--quiet', $connectivityTraining) `
+  -StandardInput $emptyInput -ExpectedExitCode 0 -ExpectedOutput $emptyInput `
+  -DiagnosticPrefix '' -Name 'quiet connectivity training'
+Check-Case -Executable $Learner -Arguments @('--model', $connectivityTraining) `
+  -StandardInput $emptyInput -ExpectedExitCode 1 -ExpectedOutput $null `
+  -DiagnosticPrefix 'wfc-learn: invalid training: standalone model export cannot represent authored connectivity;' `
+  -Name 'connectivity model-only loss prevention'
+Check-Case -Executable $Validator -Arguments @('recipe', '--emit-canonical', $connectivityRecipe) `
+  -StandardInput $emptyInput -ExpectedExitCode 0 `
+  -ExpectedOutput $connectivityRecipeBytes -DiagnosticPrefix '' -Name 'connectivity recipe validation'
 Check-Case -Executable $Learner -Arguments @('--quiet', $training) `
   -StandardInput $emptyInput -ExpectedExitCode 0 -ExpectedOutput $emptyInput `
   -DiagnosticPrefix '' -Name 'quiet training'
 Check-Case -Executable $Learner -Arguments @('--version') `
   -StandardInput $emptyInput -ExpectedExitCode 0 `
-  -ExpectedOutput ($ascii.GetBytes("wfc-learn 2 (wfclearn=1,2,3)`n")) `
+  -ExpectedOutput ($ascii.GetBytes("wfc-learn 3 (wfclearn=1,2,3,4)`n")) `
   -DiagnosticPrefix '' -Name 'learner version'
 Check-Case -Executable $Learner -Arguments @($missingInput) `
   -StandardInput $emptyInput -ExpectedExitCode 3 -ExpectedOutput $null `

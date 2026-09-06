@@ -24,7 +24,7 @@ and explicit exit gates.
 | What you want | Where to start |
 | --- | --- |
 | Understand and author passes | [Pass basics](docs/passes.md), [dependency DAGs](docs/pass-dags.md) |
-| Require connected roads or circulation | [Rooted port connectivity](docs/connectivity.md) |
+| Require connected roads or circulation | [Rooted port connectivity](docs/connectivity.md), [training-source authoring](docs/training-connectivity.md) |
 | Require exact or bounded output quantities | [Whole-pass value quotas](docs/value-quotas.md), [portable quota recipes](docs/pipeline-value-quotas.md) |
 | Build and run locally | [Build guide](docs/building.md), [FPC development tools](docs/development-tools.md) |
 | Try an interactive demo | [Demo table below](#demos), [complete examples index](examples/README.md) |

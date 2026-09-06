@@ -39,7 +39,8 @@ implementation
 
 uses
   SysUtils, wfc, wfc_text_codec, wfc_text_tokenize,
-  wfc_training, wfc_training_workspace, wfc_pipeline_result, training_studio_presets;
+  wfc_training, wfc_training_workspace, wfc_pipeline_result, training_studio_presets,
+  training_studio_connectivity;
 
 function TrainingStudioOutputIsValid(const APreset, AWidth, AHeight: Integer;
   const ATokens: TWfcModelTokens): Boolean;
@@ -226,6 +227,15 @@ var
   I: Integer;
 begin
   if (ParamCount >= 1) and
+      ((ParamStr(1) = '--connectivity-demo') or (ParamStr(1) = '--connectivity-selftest')) then
+  begin
+    if ParamCount <> 1 then
+      raise Exception.Create('usage: TrainingStudio --connectivity-demo | --connectivity-selftest');
+    if ParamStr(1) = '--connectivity-demo' then RunTrainingStudioConnectivityDemo;
+    WriteLn('Training Studio connectivity checks: ', TrainingStudioConnectivitySelfTest);
+    Exit;
+  end;
+  if (ParamCount >= 1) and
       ((ParamStr(1) = '--quota-demo') or (ParamStr(1) = '--quota-selftest')) then
   begin
     if ParamCount <> 1 then
@@ -239,7 +249,7 @@ begin
     Exit;
   end;
   if ParamCount > 2 then
-    raise Exception.Create('usage: TrainingStudio [preset 0..5] [decimal seed] | --selftest | --quota-demo | --quota-selftest');
+    raise Exception.Create('usage: TrainingStudio [preset 0..5] [decimal seed] | --selftest | --quota-demo | --quota-selftest | --connectivity-demo | --connectivity-selftest');
   LPreset := 2;
   LSeed := 0;
   if ParamCount >= 1 then

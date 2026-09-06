@@ -361,8 +361,9 @@ end;
 
 begin
   try
-    Check((Pos('wfclearn=1,2,3', WfcLearnVersionText) > 0) and
-      (Pos('rejects quota-bearing', WfcLearnHelpText) > 0), 'CLI help advertises persisted quota source and model-only rejection');
+    Check((Pos('wfclearn=1,2,3,4', WfcLearnVersionText) > 0) and
+      (Pos('rejects sources with value quotas or connectivity', WfcLearnHelpText) > 0),
+      'CLI help advertises persisted policy sources and model-only rejection');
     TestEveryOutputKind;
     TestAuthoredOrderAndShape;
     TestInvalidDraftLifecycle;

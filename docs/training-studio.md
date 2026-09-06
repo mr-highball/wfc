@@ -205,6 +205,16 @@ would lose the constraints. Export the recipe instead. See
 [persistent quota authoring](training-value-quotas.md) for the API, failure
 invalidation, bounds, and format contracts.
 
+The network editor adds explicit root/terminal XYZ positions, per-token
+participation and directional ports, required-by-value flags, and an
+all-participants option. [Connectivity authoring](training-connectivity.md)
+selects `wfclearn=4`, preserving any quotas in the same source. Editing either
+registry preserves the other. Policy drafts are mutually exclusive and block
+training, solving, source replacement, and exports until applied or discarded.
+The route demonstration separates learned local road/grass combinations from
+an authored path requirement and a six-road quota; the volume case proves
+fixed XYZ terminals and all/required-by-value behavior.
+
 The UI currently exposes token locks, not an editor for arbitrary allowed-token
 domain sets; those remain available through ConfigureRun and run artifacts.
 It does not turn raw images, voxel sets, or MIDI into corpora. Unicode
@@ -229,5 +239,6 @@ contradiction, and recovery before restoring the unchanged preset-2 fixture.
 The browser's `?selftest=1` path exercises real controls and checks solved,
 edited, contradictory, and recovered states before restoring the exact seeded
 pattern fixture. Hosted CI checks the resulting body attributes. Browser
-appearance is additionally inspected locally; pixel-identical rendering is not
-part of the portable solver contract.
+appearance requires separate visual review; these functional checks do not
+establish pixel-identical rendering, which is not part of the portable solver
+contract.

@@ -305,6 +305,11 @@ jobs:
             --expect 'data-source-signature=0FA2C5EA' \
             --expect 'data-recipe-signature=DBCBA621' \
             --expect 'data-result-signature=947C4AFD' \
+            --expect 'data-connectivity-edit=passed' \
+            --expect 'data-connectivity-replay=passed' \
+            --expect 'data-connectivity-contradiction=passed' \
+            --expect 'data-connectivity-invalidation=passed' \
+            --expect 'data-connectivity-volume=passed' \
             --expect 'data-cell-count=16' \
             --expect 'data-source-invalidation=passed' \
             --expect 'data-run-invalidation=passed' \

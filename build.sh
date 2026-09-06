@@ -870,6 +870,9 @@ for compiler_artifact_suite in \
   "$compiler_tools_directory/../test/wfc_training_value_quota_model_test.lpr" \
   "$compiler_tools_directory/../test/wfc_training_value_quota_text_test.lpr" \
   "$compiler_tools_directory/../test/wfc_training_value_quota_test.lpr" \
+  "$compiler_tools_directory/../test/wfc_training_connectivity_test.lpr" \
+  "$compiler_tools_directory/../test/wfc_training_connectivity_text_test.lpr" \
+  "$compiler_tools_directory/../test/wfc_training_connectivity_demo_test.lpr" \
   "$compiler_learn_app_test_source" \
   "$compiler_tools_directory/../test/wfc_music_import_app_test.lpr" \
   "$compiler_learned_pattern_world_bundle_test_source"
@@ -1383,7 +1386,7 @@ esac
 printf "Smoke testing '%s' with seed 0.\n" "$building_svg_executable"
 "$building_svg_executable" 0 "$building_svg_runtime_output" >/dev/null || exit $?
 
-printf 'Building and checking Training Studio presets and quota authoring.\n'
+printf 'Building and checking Training Studio presets and authored constraints.\n'
 "$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
   "-Fu$compiler_source_directory" "-Fu$compiler_training_studio_directory" \
   "-FU$compiler_unit_output_directory" "-FE$compiler_binary_output_directory" \
@@ -1394,6 +1397,7 @@ case "$host_system" in
 esac
 "$training_studio_executable" --selftest || exit $?
 "$training_studio_executable" --quota-selftest || exit $?
+"$training_studio_executable" --connectivity-selftest || exit $?
 
 printf 'Building and checking Music Studio.\n'
 "$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \

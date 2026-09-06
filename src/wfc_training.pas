@@ -29,12 +29,14 @@ interface
 
 uses
   SysUtils,
+  wfc,
   wfc_model,
   wfc_pipeline_model;
 
 const
   WFC_TRAINING_VERSION = 1;
   WFC_TRAINING_VALUE_QUOTA_VERSION = 1;
+  WFC_TRAINING_CONNECTIVITY_VERSION = 1;
 
   WFC_TRAINING_MAX_SAMPLE_COUNT = 4096;
   WFC_TRAINING_MAX_TOTAL_TOKEN_COUNT = 65536;
@@ -47,6 +49,11 @@ const
   WFC_TRAINING_MAX_VALUE_QUOTA_COUNT = 4096;
   WFC_TRAINING_MAX_VALUE_QUOTA_TOKEN_COUNT = 1024;
   WFC_TRAINING_MAX_TOTAL_VALUE_QUOTA_TOKEN_COUNT = 65536;
+  WFC_TRAINING_MAX_CONNECTIVITY_COUNT = 4096;
+  WFC_TRAINING_MAX_CONNECTIVITY_VALUE_COUNT = 1024;
+  WFC_TRAINING_MAX_TOTAL_CONNECTIVITY_VALUE_COUNT = 65536;
+  WFC_TRAINING_MAX_CONNECTIVITY_TERMINAL_COUNT = 65536;
+  WFC_TRAINING_MAX_TOTAL_CONNECTIVITY_TERMINAL_COUNT = 65536;
 
 type
   EWfcTraining = class(Exception);
@@ -96,6 +103,24 @@ type
   end;
   TWfcTrainingValueQuotas = array of TWfcTrainingValueQuota;
 
+  { Explicit world-axis ports on public output tokens. Profile order is
+    authored, not a learned vocabulary index. Sample symmetry does not
+    transform these ports. Unprofiled tokens are nonparticipants. }
+  TWfcTrainingConnectivityValue = record
+    Value: TWfcModelToken;
+    Openings: TGraphDirections;
+    RequiredByValue: Boolean;
+  end;
+  TWfcTrainingConnectivityValues = array of TWfcTrainingConnectivityValue;
+  TWfcTrainingConnectivity = record
+    LabelText: TWfcModelToken;
+    Root: TGraphPosition;
+    RequiredPositions: TGraphPositions;
+    Values: TWfcTrainingConnectivityValues;
+    RequireAllParticipants: Boolean;
+  end;
+  TWfcTrainingConnectivities = array of TWfcTrainingConnectivity;
+
   { Immutable, pretokenized training request. Every dynamic input is detached
     at construction, and every dynamic accessor returns another detached copy. }
   TWfcTrainingDocument = class
@@ -104,15 +129,19 @@ type
     FOptions: TWfcTrainingOptions;
     FSamples: TWfcTrainingSamples;
     FValueQuotas: TWfcTrainingValueQuotas;
+    FConnectivities: TWfcTrainingConnectivities;
     FTotalTokenCount: Integer;
     FSignature: Cardinal;
     function GetSampleCount: Integer;
     function GetValueQuotaCount: Integer;
     function GetValueQuotaVersion: Integer;
+    function GetConnectivityCount: Integer;
+    function GetConnectivityVersion: Integer;
     procedure Initialize(const AMetadata: TWfcTrainingMetadata;
       const AOptions: TWfcTrainingOptions;
       const ASamples: TWfcTrainingSamples;
-      const AValueQuotas: TWfcTrainingValueQuotas);
+      const AValueQuotas: TWfcTrainingValueQuotas;
+      const AConnectivities: TWfcTrainingConnectivities);
     procedure ValidateSampleIndex(const AIndex: Integer);
   public
     constructor Create(const AMetadata: TWfcTrainingMetadata;
@@ -122,6 +151,11 @@ type
       const AOptions: TWfcTrainingOptions;
       const ASamples: TWfcTrainingSamples;
       const AValueQuotas: TWfcTrainingValueQuotas); overload;
+    constructor Create(const AMetadata: TWfcTrainingMetadata;
+      const AOptions: TWfcTrainingOptions;
+      const ASamples: TWfcTrainingSamples;
+      const AValueQuotas: TWfcTrainingValueQuotas;
+      const AConnectivities: TWfcTrainingConnectivities); overload;
 
     function CopyMetadata: TWfcTrainingMetadata;
     function CopyOptions: TWfcTrainingOptions;
@@ -129,12 +163,16 @@ type
     function CopySamples: TWfcTrainingSamples;
     function ValueQuotaAt(const AIndex: Integer): TWfcTrainingValueQuota;
     function CopyValueQuotas: TWfcTrainingValueQuotas;
+    function ConnectivityAt(const AIndex: Integer): TWfcTrainingConnectivity;
+    function CopyConnectivities: TWfcTrainingConnectivities;
 
     property SampleCount: Integer read GetSampleCount;
     property TotalTokenCount: Integer read FTotalTokenCount;
     property Signature: Cardinal read FSignature;
     property ValueQuotaCount: Integer read GetValueQuotaCount;
     property ValueQuotaVersion: Integer read GetValueQuotaVersion;
+    property ConnectivityCount: Integer read GetConnectivityCount;
+    property ConnectivityVersion: Integer read GetConnectivityVersion;
   end;
 
 function MakeWfcTrainingMetadata(const AName, ALicenseIdentifier,
@@ -158,6 +196,14 @@ function MakeWfcTrainingValueQuota(const ALabelText: TWfcModelToken;
   const AValues: TWfcModelTokens;
   const AMinimumCount, AMaximumCount: Integer): TWfcTrainingValueQuota;
 
+function MakeWfcTrainingConnectivityValue(const AValue: TWfcModelToken;
+  const AOpenings: TGraphDirections; const ARequiredByValue: Boolean = False):
+  TWfcTrainingConnectivityValue;
+function MakeWfcTrainingConnectivity(const ALabelText: TWfcModelToken;
+  const ARoot: TGraphPosition; const ARequiredPositions: TGraphPositions;
+  const AValues: TWfcTrainingConnectivityValues;
+  const ARequireAllParticipants: Boolean = False): TWfcTrainingConnectivity;
+
 function WfcTrainingSignatureHex(const ASignature: Cardinal): String;
 
 function LearnWfcTrainingModelText(
@@ -169,7 +215,6 @@ function LearnWfcTrainingRecipe(
 implementation
 
 uses
-  wfc,
   wfc_learn,
   wfc_learn3d,
   wfc_model_text,
@@ -249,6 +294,25 @@ begin
   SetLength(Result, Length(ASource));
   for I := 0 to Length(ASource) - 1 do
     Result[I] := CloneValueQuota(ASource[I]);
+end;
+
+function CloneConnectivity(const ASource: TWfcTrainingConnectivity):
+  TWfcTrainingConnectivity;
+begin
+  Result.LabelText := ASource.LabelText;
+  Result.Root := ASource.Root;
+  Result.RequiredPositions := Copy(ASource.RequiredPositions, 0,
+    Length(ASource.RequiredPositions));
+  Result.Values := Copy(ASource.Values, 0, Length(ASource.Values));
+  Result.RequireAllParticipants := ASource.RequireAllParticipants;
+end;
+
+function CloneConnectivities(const ASource: TWfcTrainingConnectivities):
+  TWfcTrainingConnectivities;
+var I: Integer;
+begin
+  Result := nil; SetLength(Result, Length(ASource));
+  for I := 0 to High(ASource) do Result[I] := CloneConnectivity(ASource[I]);
 end;
 
 procedure HashByte(var AHash: Cardinal; const AValue: Byte);
@@ -333,16 +397,38 @@ begin
   end;
 end;
 
+function ConnectivityMask(const AOpenings: TGraphDirections): Integer;
+begin
+  Result := 0;
+  if gdNorth in AOpenings then Inc(Result, 1);
+  if gdEast in AOpenings then Inc(Result, 2);
+  if gdSouth in AOpenings then Inc(Result, 4);
+  if gdWest in AOpenings then Inc(Result, 8);
+  if gdUp in AOpenings then Inc(Result, 16);
+  if gdDown in AOpenings then Inc(Result, 32);
+end;
+
+function ConnectivityBooleanCode(const AValue: Boolean): String;
+begin
+  if AValue then Result := 'true' else Result := 'false';
+end;
+
 function CalculateTrainingSignature(const AMetadata: TWfcTrainingMetadata;
   const AOptions: TWfcTrainingOptions;
   const ASamples: TWfcTrainingSamples;
-  const AValueQuotas: TWfcTrainingValueQuotas): Cardinal;
+  const AValueQuotas: TWfcTrainingValueQuotas;
+  const AConnectivities: TWfcTrainingConnectivities): Cardinal;
 var
   I: Integer;
   J: Integer;
 begin
   Result := FNV_OFFSET_BASIS;
-  if Length(AValueQuotas) <> 0 then
+  if Length(AConnectivities) <> 0 then
+  begin
+    HashAscii(Result, 'wfclearn-v4');
+    HashAscii(Result, '4');
+  end
+  else if Length(AValueQuotas) <> 0 then
   begin
     HashAscii(Result, 'wfclearn-v3');
     HashAscii(Result, '3');
@@ -391,6 +477,34 @@ begin
       HashAscii(Result, IntToStr(Length(AValueQuotas[I].Values)));
       for J := 0 to Length(AValueQuotas[I].Values) - 1 do
         HashAscii(Result, CanonicalToken(AValueQuotas[I].Values[J]));
+    end;
+  end;
+  if Length(AConnectivities) <> 0 then
+  begin
+    HashAscii(Result, 'connectivities');
+    HashAscii(Result, IntToStr(WFC_TRAINING_CONNECTIVITY_VERSION));
+    HashAscii(Result, IntToStr(Length(AConnectivities)));
+    for I := 0 to High(AConnectivities) do
+    begin
+      HashAscii(Result, CanonicalToken(AConnectivities[I].LabelText));
+      HashAscii(Result, IntToStr(AConnectivities[I].Root.X));
+      HashAscii(Result, IntToStr(AConnectivities[I].Root.Y));
+      HashAscii(Result, IntToStr(AConnectivities[I].Root.Z));
+      HashAscii(Result, ConnectivityBooleanCode(AConnectivities[I].RequireAllParticipants));
+      HashAscii(Result, IntToStr(Length(AConnectivities[I].RequiredPositions)));
+      for J := 0 to High(AConnectivities[I].RequiredPositions) do
+      begin
+        HashAscii(Result, IntToStr(AConnectivities[I].RequiredPositions[J].X));
+        HashAscii(Result, IntToStr(AConnectivities[I].RequiredPositions[J].Y));
+        HashAscii(Result, IntToStr(AConnectivities[I].RequiredPositions[J].Z));
+      end;
+      HashAscii(Result, IntToStr(Length(AConnectivities[I].Values)));
+      for J := 0 to High(AConnectivities[I].Values) do
+      begin
+        HashAscii(Result, CanonicalToken(AConnectivities[I].Values[J].Value));
+        HashAscii(Result, IntToStr(ConnectivityMask(AConnectivities[I].Values[J].Openings)));
+        HashAscii(Result, ConnectivityBooleanCode(AConnectivities[I].Values[J].RequiredByValue));
+      end;
     end;
   end;
 end;
@@ -616,6 +730,117 @@ begin
   end;
 end;
 
+procedure RequireConnectivityBoolean(const AValue: Boolean; const ALabel: String);
+begin
+  if (AValue <> False) and (AValue <> True) then
+    raise EWfcTraining.Create(ALabel + ' must be Boolean');
+  {$IFNDEF PAS2JS}
+  if Ord(AValue) > 1 then raise EWfcTraining.Create(ALabel + ' must be Boolean');
+  {$ENDIF}
+end;
+
+procedure RequireConnectivityPosition(const AValue: TGraphPosition;
+  const ARank: Integer; const ALabel: String);
+
+  procedure Axis(const ACoordinate: TGraphCoordinate);
+  begin
+    if not ((ACoordinate >= 0) and
+        (ACoordinate <= TGraphCoordinate(High(Integer)))) then
+      raise EWfcTraining.Create(ALabel +
+        ' coordinate must be an exact integer in 0..High(Integer)');
+    {$IFDEF PAS2JS}
+    if ACoordinate <> Trunc(ACoordinate) then
+      raise EWfcTraining.Create(ALabel + ' coordinate must be an exact integer');
+    {$ENDIF}
+  end;
+
+begin
+  Axis(AValue.X); Axis(AValue.Y); Axis(AValue.Z);
+  if ((ARank = 1) and (AValue.Y <> 0)) or ((ARank < 3) and (AValue.Z <> 0)) then
+    raise EWfcTraining.Create(ALabel + ' coordinate exceeds the output rank');
+end;
+
+function ConnectivityPositionBefore(const ALeft, ARight: TGraphPosition): Boolean;
+begin
+  Result := (ALeft.Z < ARight.Z) or ((ALeft.Z = ARight.Z) and
+    ((ALeft.Y < ARight.Y) or ((ALeft.Y = ARight.Y) and (ALeft.X < ARight.X))));
+end;
+
+procedure ValidateConnectivities(const AOptions: TWfcTrainingOptions;
+  const AConnectivities: TWfcTrainingConnectivities; var AEncodedTotal: Integer);
+var
+  I, J, LRank, LTotalValues, LTotalTerminals: Integer;
+  LLabels, LValues: TTrainingStringSet;
+  LAdded: Boolean;
+  LDirections: TGraphDirections;
+  LDirection: TGraphDirection;
+begin
+  if Length(AConnectivities) > WFC_TRAINING_MAX_CONNECTIVITY_COUNT then
+    raise EWfcTraining.Create('training connectivity count exceeds the limit');
+  if Length(AConnectivities) = 0 then Exit;
+  case AOptions.Kind of
+    wtkAdjacency1D, wtkSequence: LRank := 1;
+    wtkAdjacency2D, wtkPattern2D: LRank := 2;
+    wtkAdjacency3D: LRank := 3;
+  else raise EWfcTraining.Create('unknown training kind'); end;
+  LTotalValues := 0; LTotalTerminals := 0;
+  { Preflight the complete externally supplied shape before owned registries
+    or lookups. Anchors belong to the future output, not a sample's bounds. }
+  for I := 0 to High(AConnectivities) do
+  begin
+    if (Length(AConnectivities[I].Values) = 0) or
+        (Length(AConnectivities[I].Values) > WFC_TRAINING_MAX_CONNECTIVITY_VALUE_COUNT) then
+      raise EWfcTraining.Create('training connectivity profile count is outside the limit');
+    if Length(AConnectivities[I].RequiredPositions) > WFC_TRAINING_MAX_CONNECTIVITY_TERMINAL_COUNT then
+      raise EWfcTraining.Create('training connectivity terminal count exceeds the limit');
+    LTotalValues := CheckedAdd(LTotalValues, Length(AConnectivities[I].Values),
+      WFC_TRAINING_MAX_TOTAL_CONNECTIVITY_VALUE_COUNT, 'aggregate training connectivity profile count');
+    LTotalTerminals := CheckedAdd(LTotalTerminals, Length(AConnectivities[I].RequiredPositions),
+      WFC_TRAINING_MAX_TOTAL_CONNECTIVITY_TERMINAL_COUNT, 'aggregate training connectivity terminal count');
+    AccumulateEncodedToken(AConnectivities[I].LabelText, 'training connectivity label', AEncodedTotal);
+    RequireConnectivityPosition(AConnectivities[I].Root, LRank, 'training connectivity root');
+    RequireConnectivityBoolean(AConnectivities[I].RequireAllParticipants, 'training connectivity all-participants');
+    for J := 0 to High(AConnectivities[I].RequiredPositions) do
+    begin
+      RequireConnectivityPosition(AConnectivities[I].RequiredPositions[J], LRank,
+        'training connectivity terminal');
+      if (AConnectivities[I].RequiredPositions[J].X = AConnectivities[I].Root.X) and
+          (AConnectivities[I].RequiredPositions[J].Y = AConnectivities[I].Root.Y) and
+          (AConnectivities[I].RequiredPositions[J].Z = AConnectivities[I].Root.Z) then
+        raise EWfcTraining.Create('training connectivity terminal repeats the root');
+      if (J <> 0) and not ConnectivityPositionBefore(
+          AConnectivities[I].RequiredPositions[J - 1], AConnectivities[I].RequiredPositions[J]) then
+        raise EWfcTraining.Create('training connectivity terminals must use strict Z,Y,X order');
+    end;
+    for J := 0 to High(AConnectivities[I].Values) do
+    begin
+      AccumulateEncodedToken(AConnectivities[I].Values[J].Value,
+        'training connectivity profile token', AEncodedTotal);
+      RequireConnectivityBoolean(AConnectivities[I].Values[J].RequiredByValue,
+        'training connectivity required-by-value');
+      LDirections := [];
+      for LDirection := Low(TGraphDirection) to High(TGraphDirection) do
+        if LDirection in AConnectivities[I].Values[J].Openings then Include(LDirections, LDirection);
+      if LDirections <> AConnectivities[I].Values[J].Openings then
+        raise EWfcTraining.Create('training connectivity profile has an invalid opening direction');
+    end;
+  end;
+  InitializeStringSet(LLabels, Length(AConnectivities));
+  for I := 0 to High(AConnectivities) do
+  begin
+    FindOrAddString(LLabels, CanonicalToken(AConnectivities[I].LabelText),
+      'training connectivity label count', LAdded);
+    if not LAdded then raise EWfcTraining.Create('training connectivity labels must be unique');
+    InitializeStringSet(LValues, Length(AConnectivities[I].Values));
+    for J := 0 to High(AConnectivities[I].Values) do
+    begin
+      FindOrAddString(LValues, CanonicalToken(AConnectivities[I].Values[J].Value),
+        'training connectivity profile count', LAdded);
+      if not LAdded then raise EWfcTraining.Create('training connectivity profile tokens must be unique');
+    end;
+  end;
+end;
+
 procedure ValidateOptions(const AOptions: TWfcTrainingOptions);
 begin
   KindCode(AOptions.Kind);
@@ -700,7 +925,8 @@ end;
 
 procedure ValidateModelCapacities(const AOptions: TWfcTrainingOptions;
   const ASamples: TWfcTrainingSamples;
-  const AValueQuotas: TWfcTrainingValueQuotas);
+  const AValueQuotas: TWfcTrainingValueQuotas;
+  const AConnectivities: TWfcTrainingConnectivities);
 var
   LAdded: Boolean;
   LHistory: String;
@@ -753,6 +979,12 @@ begin
           'training value quota token is absent from the source [%d,%d]',
           [I, J]);
 
+  for I := 0 to High(AConnectivities) do
+    for J := 0 to High(AConnectivities[I].Values) do
+      if FindString(LPublicTokens, CanonicalToken(AConnectivities[I].Values[J].Value)) < 0 then
+        raise EWfcTraining.CreateFmt(
+          'training connectivity profile token is absent from the source [%d,%d]', [I, J]);
+
   if AOptions.Kind <> wtkSequence then
     Exit;
 
@@ -789,6 +1021,7 @@ procedure ValidateTrainingInput(const AMetadata: TWfcTrainingMetadata;
   const AOptions: TWfcTrainingOptions;
   const ASamples: TWfcTrainingSamples;
   const AValueQuotas: TWfcTrainingValueQuotas;
+  const AConnectivities: TWfcTrainingConnectivities;
   out ATotalTokenCount: Integer);
 var
   I: Integer;
@@ -815,6 +1048,7 @@ begin
   AccumulateEncodedToken(AMetadata.SourceDescription,
     'training source description', LEncodedTotal);
   ValidateValueQuotas(AValueQuotas, LEncodedTotal);
+  ValidateConnectivities(AOptions, AConnectivities, LEncodedTotal);
 
   ATotalTokenCount := 0;
   LVisits := 0;
@@ -930,7 +1164,7 @@ begin
       WFC_TRAINING_MAX_VISIT_COUNT, 'aggregate training visit count');
   end;
 
-  ValidateModelCapacities(AOptions, ASamples, AValueQuotas);
+  ValidateModelCapacities(AOptions, ASamples, AValueQuotas, AConnectivities);
 end;
 
 function MakeWfcTrainingMetadata(const AName, ALicenseIdentifier,
@@ -990,6 +1224,31 @@ begin
   Result.MaximumCount := AMaximumCount;
 end;
 
+function MakeWfcTrainingConnectivityValue(const AValue: TWfcModelToken;
+  const AOpenings: TGraphDirections; const ARequiredByValue: Boolean):
+  TWfcTrainingConnectivityValue;
+begin
+  Result.Value := AValue;
+  Result.Openings := AOpenings;
+  Result.RequiredByValue := ARequiredByValue;
+end;
+
+function MakeWfcTrainingConnectivity(const ALabelText: TWfcModelToken;
+  const ARoot: TGraphPosition; const ARequiredPositions: TGraphPositions;
+  const AValues: TWfcTrainingConnectivityValues;
+  const ARequireAllParticipants: Boolean): TWfcTrainingConnectivity;
+begin
+  if Length(ARequiredPositions) > WFC_TRAINING_MAX_CONNECTIVITY_TERMINAL_COUNT then
+    raise EWfcTraining.Create('training connectivity terminal count exceeds the limit');
+  if Length(AValues) > WFC_TRAINING_MAX_CONNECTIVITY_VALUE_COUNT then
+    raise EWfcTraining.Create('training connectivity profile count exceeds the limit');
+  Result.LabelText := ALabelText;
+  Result.Root := ARoot;
+  Result.RequiredPositions := Copy(ARequiredPositions, 0, Length(ARequiredPositions));
+  Result.Values := Copy(AValues, 0, Length(AValues));
+  Result.RequireAllParticipants := ARequireAllParticipants;
+end;
+
 { TWfcTrainingDocument }
 
 constructor TWfcTrainingDocument.Create(
@@ -998,7 +1257,7 @@ constructor TWfcTrainingDocument.Create(
   const ASamples: TWfcTrainingSamples);
 begin
   inherited Create;
-  Initialize(AMetadata, AOptions, ASamples, nil);
+  Initialize(AMetadata, AOptions, ASamples, nil, nil);
 end;
 
 constructor TWfcTrainingDocument.Create(
@@ -1008,26 +1267,39 @@ constructor TWfcTrainingDocument.Create(
   const AValueQuotas: TWfcTrainingValueQuotas);
 begin
   inherited Create;
-  Initialize(AMetadata, AOptions, ASamples, AValueQuotas);
+  Initialize(AMetadata, AOptions, ASamples, AValueQuotas, nil);
+end;
+
+constructor TWfcTrainingDocument.Create(
+  const AMetadata: TWfcTrainingMetadata;
+  const AOptions: TWfcTrainingOptions;
+  const ASamples: TWfcTrainingSamples;
+  const AValueQuotas: TWfcTrainingValueQuotas;
+  const AConnectivities: TWfcTrainingConnectivities);
+begin
+  inherited Create;
+  Initialize(AMetadata, AOptions, ASamples, AValueQuotas, AConnectivities);
 end;
 
 procedure TWfcTrainingDocument.Initialize(
   const AMetadata: TWfcTrainingMetadata;
   const AOptions: TWfcTrainingOptions;
   const ASamples: TWfcTrainingSamples;
-  const AValueQuotas: TWfcTrainingValueQuotas);
+  const AValueQuotas: TWfcTrainingValueQuotas;
+  const AConnectivities: TWfcTrainingConnectivities);
 var
   LTotalTokenCount: Integer;
 begin
-  ValidateTrainingInput(AMetadata, AOptions, ASamples, AValueQuotas,
+  ValidateTrainingInput(AMetadata, AOptions, ASamples, AValueQuotas, AConnectivities,
     LTotalTokenCount);
   FMetadata := AMetadata;
   FOptions := AOptions;
   FSamples := CloneSamples(ASamples, AOptions.Kind = wtkAdjacency3D);
   FValueQuotas := CloneValueQuotas(AValueQuotas);
+  FConnectivities := CloneConnectivities(AConnectivities);
   FTotalTokenCount := LTotalTokenCount;
   FSignature := CalculateTrainingSignature(FMetadata, FOptions, FSamples,
-    FValueQuotas);
+    FValueQuotas, FConnectivities);
 end;
 
 function TWfcTrainingDocument.GetSampleCount: Integer;
@@ -1093,6 +1365,29 @@ function TWfcTrainingDocument.CopyValueQuotas: TWfcTrainingValueQuotas;
 begin
   Result := CloneValueQuotas(FValueQuotas);
 end;
+
+function TWfcTrainingDocument.GetConnectivityCount: Integer;
+begin Result := Length(FConnectivities); end;
+
+function TWfcTrainingDocument.GetConnectivityVersion: Integer;
+begin
+  if ConnectivityCount = 0 then Result := 0
+  else Result := WFC_TRAINING_CONNECTIVITY_VERSION;
+end;
+
+function TWfcTrainingDocument.ConnectivityAt(const AIndex: Integer): TWfcTrainingConnectivity;
+begin
+  if not ((AIndex >= 0) and (AIndex < ConnectivityCount)) then
+    raise ERangeError.Create('training connectivity index is out of bounds');
+  {$IFDEF PAS2JS}
+  if AIndex <> Trunc(AIndex) then
+    raise ERangeError.Create('training connectivity index must be an exact integer');
+  {$ENDIF}
+  Result := CloneConnectivity(FConnectivities[AIndex]);
+end;
+
+function TWfcTrainingDocument.CopyConnectivities: TWfcTrainingConnectivities;
+begin Result := CloneConnectivities(FConnectivities); end;
 
 function BuildLearnVolumeSamples(
   const ADocument: TWfcTrainingDocument): TWfcLearnVolumeSamples;
@@ -1166,7 +1461,7 @@ begin
         LModel := LearnModel1DCorpus(LSamples, LOptions.Boundary);
         try
           Result := EncodeWfcModelText(LModel);
-          if ADocument.ValueQuotaCount <> 0 then
+          if (ADocument.ValueQuotaCount <> 0) or (ADocument.ConnectivityCount <> 0) then
             APublicVocabulary := LModel.CopyTokens;
         finally
           LModel.Free;
@@ -1179,7 +1474,7 @@ begin
           LOptions.Symmetry);
         try
           Result := EncodeWfcModelText(LModel);
-          if ADocument.ValueQuotaCount <> 0 then
+          if (ADocument.ValueQuotaCount <> 0) or (ADocument.ConnectivityCount <> 0) then
             APublicVocabulary := LModel.CopyTokens;
         finally
           LModel.Free;
@@ -1193,7 +1488,7 @@ begin
           LOptions.Boundary, LOptions.Symmetry);
         try
           Result := EncodeWfcPattern2DText(LPattern);
-          if ADocument.ValueQuotaCount <> 0 then
+          if (ADocument.ValueQuotaCount <> 0) or (ADocument.ConnectivityCount <> 0) then
             APublicVocabulary := LPattern.CopyPalette;
         finally
           LPattern.Free;
@@ -1206,7 +1501,7 @@ begin
           LOptions.Order);
         try
           Result := EncodeWfcSequenceText(LSequence);
-          if ADocument.ValueQuotaCount <> 0 then
+          if (ADocument.ValueQuotaCount <> 0) or (ADocument.ConnectivityCount <> 0) then
             APublicVocabulary := LSequence.CopyPublicTokens;
         finally
           LSequence.Free;
@@ -1219,7 +1514,7 @@ begin
           LOptions.Symmetry);
         try
           Result := EncodeWfcModelText(LModel);
-          if ADocument.ValueQuotaCount <> 0 then
+          if (ADocument.ValueQuotaCount <> 0) or (ADocument.ConnectivityCount <> 0) then
             APublicVocabulary := LModel.CopyTokens;
         finally
           LModel.Free;
@@ -1237,6 +1532,10 @@ var
 begin
   if ADocument = nil then
     raise EWfcTraining.Create('training document cannot be nil');
+  if ADocument.ConnectivityCount <> 0 then
+    raise EWfcTraining.Create(
+      'standalone model export cannot represent authored connectivity; ' +
+      'export a pipeline recipe instead');
   if ADocument.ValueQuotaCount <> 0 then
     raise EWfcTraining.Create(
       'standalone model export cannot represent authored value quotas; ' +
@@ -1296,6 +1595,50 @@ begin
   end;
 end;
 
+function BuildRecipeConnectivities(const ADocument: TWfcTrainingDocument;
+  const APublicPassIndex: Integer; const APublicVocabulary: TWfcModelTokens):
+  TWfcPipelineConnectivities;
+var
+  I, J, LIndex, LCount: Integer;
+  LLookup: TWfcTokenLookup;
+  LSourceIndices: array of Integer;
+  LConnectivity: TWfcTrainingConnectivity;
+  LValues: TWfcPipelineConnectivityValues;
+begin
+  Result := nil;
+  if ADocument.ConnectivityCount = 0 then Exit;
+  LLookup := TWfcTokenLookup.Create(APublicVocabulary);
+  try
+    SetLength(Result, ADocument.ConnectivityCount);
+    SetLength(LSourceIndices, Length(APublicVocabulary));
+    for I := 0 to ADocument.ConnectivityCount - 1 do
+    begin
+      LConnectivity := ADocument.ConnectivityAt(I);
+      for J := 0 to High(LSourceIndices) do LSourceIndices[J] := -1;
+      for J := 0 to High(LConnectivity.Values) do
+      begin
+        LIndex := LLookup.Find(LConnectivity.Values[J].Value);
+        if LIndex < 0 then raise EWfcTraining.CreateFmt(
+          'training connectivity profile token is absent from learned public output [%d,%d]', [I, J]);
+        LSourceIndices[LIndex] := J;
+      end;
+      SetLength(LValues, Length(LConnectivity.Values)); LCount := 0;
+      for J := 0 to High(APublicVocabulary) do
+        if LSourceIndices[J] >= 0 then
+        begin
+          LIndex := LSourceIndices[J];
+          LValues[LCount] := MakeWfcPipelineConnectivityValue(APublicVocabulary[J],
+            LConnectivity.Values[LIndex].Openings, LConnectivity.Values[LIndex].RequiredByValue);
+          Inc(LCount);
+        end;
+      if LCount <> Length(LConnectivity.Values) then
+        raise EWfcTraining.Create('training connectivity lost a public profile token');
+      Result[I] := MakeWfcPipelineConnectivity(APublicPassIndex, LConnectivity.LabelText,
+        LConnectivity.Root, LConnectivity.RequiredPositions, LValues, LConnectivity.RequireAllParticipants);
+    end;
+  finally LLookup.Free; end;
+end;
+
 function BuildSourceDescription(
   const ADocument: TWfcTrainingDocument): TWfcModelToken;
 var
@@ -1349,6 +1692,7 @@ var
   LSourceDescription: TWfcModelToken;
   LWrap: Boolean;
   LValueQuotas: TWfcPipelineValueQuotas;
+  LConnectivities: TWfcPipelineConnectivities;
 begin
   if ADocument = nil then
     raise EWfcTraining.Create('training document cannot be nil');
@@ -1359,7 +1703,10 @@ begin
       'pattern2d recipe export currently requires wrapped training input');
 
   LMetadata := ADocument.CopyMetadata;
-  if ADocument.ValueQuotaCount <> 0 then
+  if ADocument.ConnectivityCount <> 0 then
+    LFingerprint := TWfcModelToken('wfclearn-v4/' +
+      WfcTrainingSignatureHex(ADocument.Signature))
+  else if ADocument.ValueQuotaCount <> 0 then
     LFingerprint := TWfcModelToken('wfclearn-v3/' +
       WfcTrainingSignatureHex(ADocument.Signature))
   else if LOptions.Kind = wtkAdjacency3D then
@@ -1464,9 +1811,10 @@ begin
     raise EWfcTraining.Create('training recipe has no public output pass');
   LValueQuotas := BuildRecipeValueQuotas(ADocument, LPublicPassIndex,
     LPublicVocabulary);
+  LConnectivities := BuildRecipeConnectivities(ADocument, LPublicPassIndex, LPublicVocabulary);
   Result := TWfcPipelineModel.Create(LPipelineMetadata, LRank, LWrap,
     rmBottomUp, LResources, LPasses, LDependencies, LBridges, nil,
-    LValueQuotas);
+    LValueQuotas, LConnectivities);
 end;
 
 end.

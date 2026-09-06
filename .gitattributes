@@ -15,3 +15,5 @@
 /examples/learning/04_TrainingDocuments/*.wfcrun text eol=lf
 /examples/learning/04_TrainingDocuments/*.wfcresult text eol=lf
 /examples/learning/04_TrainingDocuments/*.model text eol=lf
+/test/fixtures/training-cli/*.wfclearn text eol=lf
+/test/fixtures/training-cli/*.wfcpipeline text eol=lf

@@ -40,6 +40,12 @@ uses
   wfc_training_workspace;
 
 type
+  TTrainingConnectivityRow = record
+    Value: TWfcModelToken;
+    Participant, Required: TJSHTMLInputElement;
+    Ports: array[TGraphDirection] of TJSHTMLInputElement;
+  end;
+
   TBrowserTrainingStudioApplication = class
   strict private
     FWorkspace: TWfcTrainingWorkspace;
@@ -54,6 +60,20 @@ type
     FArtifactDownloadUrl: String;
     FQuotaDraftDirty: Boolean;
     FEditingQuotaIndex: Integer;
+    FConnectivityDraftDirty: Boolean;
+    FEditingConnectivityIndex: Integer;
+    FConnectivityProfileOrder: TWfcModelTokens;
+    FConnectivityRows: array of TTrainingConnectivityRow;
+    FConnectivityLabelInput: TJSHTMLInputElement;
+    FConnectivityRoot: array[0..2] of TJSHTMLInputElement;
+    FConnectivityTerminals: TJSHTMLTextAreaElement;
+    FConnectivityAll: TJSHTMLInputElement;
+    FConnectivityProfiles: TJSElement;
+    FConnectivityList: TJSHTMLSelectElement;
+    FConnectivityApplyButton, FConnectivityNewButton,
+      FConnectivityRemoveButton, FConnectivityClearButton,
+      FConnectivityDiscardButton, FConnectivityDemoButton: TJSHTMLButtonElement;
+    FConnectivityStatus: TJSElement;
 
     FPresetSelect: TJSHTMLSelectElement;
     FLoadPresetButton: TJSHTMLButtonElement;
@@ -152,6 +172,15 @@ type
     procedure ApplyQuotaDraft;
     procedure RefreshQuotaState;
     procedure RunQuotaSelfTest;
+    function PolicyDraftDirty: Boolean;
+    procedure RequireNoPolicyDraft;
+    procedure ReloadConnectivityEditor;
+    procedure LoadConnectivityFields(const AIndex: Integer);
+    procedure BeginConnectivityDraft;
+    procedure ApplyConnectivityDraft;
+    procedure CommitConnectivities(const AValues: TWfcTrainingConnectivities);
+    procedure RefreshConnectivityState;
+    procedure RunConnectivitySelfTest;
 
     procedure SetState(const AState, AStatus, ADetail: String);
     procedure ShowError(const AMessage: String);
@@ -208,6 +237,14 @@ type
     function HandleQuotaRemove(AEvent: TJSMouseEvent): Boolean;
     function HandleQuotaClear(AEvent: TJSMouseEvent): Boolean;
     function HandleQuotaDiscard(AEvent: TJSMouseEvent): Boolean;
+    function HandleConnectivityInput(AEvent: TJSEvent): Boolean;
+    function HandleConnectivitySelect(AEvent: TJSEvent): Boolean;
+    function HandleConnectivityApply(AEvent: TJSMouseEvent): Boolean;
+    function HandleConnectivityNew(AEvent: TJSMouseEvent): Boolean;
+    function HandleConnectivityRemove(AEvent: TJSMouseEvent): Boolean;
+    function HandleConnectivityClear(AEvent: TJSMouseEvent): Boolean;
+    function HandleConnectivityDiscard(AEvent: TJSMouseEvent): Boolean;
+    function HandleConnectivityDemo(AEvent: TJSMouseEvent): Boolean;
   public
     constructor Create;
     destructor Destroy; override;
@@ -220,7 +257,8 @@ uses
   wfc_text_codec,
   wfc_training_text,
   wfc_text_training,
-  training_studio_presets;
+  training_studio_presets,
+  training_studio_connectivity;
 
 const
   MAX_SEED = Cardinal($FFFFFFFF);
@@ -250,6 +288,8 @@ begin
   FArtifactDownloadUrl := '';
   FQuotaDraftDirty := False;
   FEditingQuotaIndex := -1;
+  FEditingConnectivityIndex := -1;
+  FConnectivityDraftDirty := False;
 end;
 
 destructor TBrowserTrainingStudioApplication.Destroy;
@@ -333,6 +373,21 @@ begin
   FQuotaClearButton := TJSHTMLButtonElement(RequireElement('quota-clear-button'));
   FQuotaDiscardButton := TJSHTMLButtonElement(RequireElement('quota-discard-button'));
   FQuotaStatusElement := RequireElement('quota-status');
+  FConnectivityLabelInput := TJSHTMLInputElement(RequireElement('connectivity-label'));
+  FConnectivityRoot[0] := TJSHTMLInputElement(RequireElement('connectivity-root-x'));
+  FConnectivityRoot[1] := TJSHTMLInputElement(RequireElement('connectivity-root-y'));
+  FConnectivityRoot[2] := TJSHTMLInputElement(RequireElement('connectivity-root-z'));
+  FConnectivityTerminals := TJSHTMLTextAreaElement(RequireElement('connectivity-terminals'));
+  FConnectivityAll := TJSHTMLInputElement(RequireElement('connectivity-all'));
+  FConnectivityProfiles := RequireElement('connectivity-profiles');
+  FConnectivityList := TJSHTMLSelectElement(RequireElement('connectivity-list'));
+  FConnectivityApplyButton := TJSHTMLButtonElement(RequireElement('connectivity-apply'));
+  FConnectivityNewButton := TJSHTMLButtonElement(RequireElement('connectivity-new'));
+  FConnectivityRemoveButton := TJSHTMLButtonElement(RequireElement('connectivity-remove'));
+  FConnectivityClearButton := TJSHTMLButtonElement(RequireElement('connectivity-clear'));
+  FConnectivityDiscardButton := TJSHTMLButtonElement(RequireElement('connectivity-discard'));
+  FConnectivityDemoButton := TJSHTMLButtonElement(RequireElement('connectivity-demo'));
+  FConnectivityStatus := RequireElement('connectivity-status');
 
   FResultStatusElement := RequireElement('result-status');
   FOutputGrid := RequireElement('output-grid');
@@ -379,6 +434,19 @@ begin
   FQuotaRemoveButton.onclick := @HandleQuotaRemove;
   FQuotaClearButton.onclick := @HandleQuotaClear;
   FQuotaDiscardButton.onclick := @HandleQuotaDiscard;
+  FConnectivityLabelInput.oninput := @HandleConnectivityInput;
+  FConnectivityRoot[0].oninput := @HandleConnectivityInput;
+  FConnectivityRoot[1].oninput := @HandleConnectivityInput;
+  FConnectivityRoot[2].oninput := @HandleConnectivityInput;
+  FConnectivityTerminals.oninput := @HandleConnectivityInput;
+  FConnectivityAll.onchange := @HandleConnectivityInput;
+  FConnectivityList.onchange := @HandleConnectivitySelect;
+  FConnectivityApplyButton.onclick := @HandleConnectivityApply;
+  FConnectivityNewButton.onclick := @HandleConnectivityNew;
+  FConnectivityRemoveButton.onclick := @HandleConnectivityRemove;
+  FConnectivityClearButton.onclick := @HandleConnectivityClear;
+  FConnectivityDiscardButton.onclick := @HandleConnectivityDiscard;
+  FConnectivityDemoButton.onclick := @HandleConnectivityDemo;
 end;
 
 procedure TBrowserTrainingStudioApplication.PopulatePresets;
@@ -416,6 +484,7 @@ end;
 
 procedure TBrowserTrainingStudioApplication.LoadPreset(const AIndex: Integer);
 begin
+  RequireNoPolicyDraft;
   FPresetSelect.value := IntToStr(AIndex);
   WriteOptions(TrainingStudioPresetOptions(AIndex),
     TrainingStudioPresetDepth(AIndex));
@@ -427,6 +496,7 @@ end;
 procedure TBrowserTrainingStudioApplication.ApplySourceText(
   const AText: String);
 begin
+  RequireNoPolicyDraft;
   CancelSourceFileRead;
   FQuotaDraftDirty := False;
   FLocks := nil;
@@ -435,6 +505,7 @@ begin
   FSourceInput.value := AText;
   FWorkspace.SetSourceText(AText);
   ReloadQuotaEditor;
+  ReloadConnectivityEditor;
   RefreshAll;
   SetState('source-dirty', 'Source changed; derived artifacts cleared.',
     'Train the current source before configuring another run.');
@@ -442,14 +513,14 @@ end;
 
 procedure TBrowserTrainingStudioApplication.TrainWorkspace;
 begin
-  if FQuotaDraftDirty then
-    raise EWfcTrainingWorkspace.Create('apply or discard the quota draft before training');
+  RequireNoPolicyDraft;
   CancelSourceFileRead;
   FLocks := nil;
   FSelectedCell := -1;
   FWorkspace.SetSourceText(FSourceInput.value);
   FWorkspace.Train;
   ReloadQuotaEditor;
+  ReloadConnectivityEditor;
   RefreshAll;
   SetState('trained', 'Recipe trained.',
     'The model and recipe are current; configure and solve a bounded run.');
@@ -461,8 +532,7 @@ var
   LOptions: TWfcTrainingSolveOptions;
   LStatus: TWfcPipelineResultStatus;
 begin
-  if FQuotaDraftDirty then
-    raise EWfcTrainingWorkspace.Create('apply or discard the quota draft before solving');
+  RequireNoPolicyDraft;
   { Clearing first is deliberate: malformed edited options cannot leave an
     older run or result looking current. }
   FWorkspace.ClearRun;
@@ -723,8 +793,233 @@ begin
   LoadQuotaFields(-1);
 end;
 
+function TBrowserTrainingStudioApplication.PolicyDraftDirty: Boolean;
+begin
+  Result := FQuotaDraftDirty or FConnectivityDraftDirty;
+end;
+
+procedure TBrowserTrainingStudioApplication.RequireNoPolicyDraft;
+begin
+  if PolicyDraftDirty then
+    raise EWfcTrainingWorkspace.Create('apply or discard the policy draft before this action');
+end;
+
+procedure TBrowserTrainingStudioApplication.LoadConnectivityFields(const AIndex: Integer);
+var I, J: Integer; D: TGraphDirection; C: TWfcTrainingConnectivity;
+begin
+  FEditingConnectivityIndex := AIndex;
+  FConnectivityList.selectedIndex := AIndex;
+  FConnectivityLabelInput.value := '';
+  for I := 0 to 2 do FConnectivityRoot[I].value := '0';
+  FConnectivityTerminals.value := '';
+  FConnectivityAll.checked := False;
+  FConnectivityProfileOrder := nil;
+  for I := 0 to High(FConnectivityRows) do
+  begin
+    FConnectivityRows[I].Participant.checked := False;
+    FConnectivityRows[I].Required.checked := False;
+    for D := Low(TGraphDirection) to High(TGraphDirection) do
+      FConnectivityRows[I].Ports[D].checked := False;
+  end;
+  if AIndex < 0 then Exit;
+  C := FWorkspace.CopyConnectivities[AIndex];
+  FConnectivityLabelInput.value := String(C.LabelText);
+  FConnectivityRoot[0].value := IntToStr(C.Root.X);
+  FConnectivityRoot[1].value := IntToStr(C.Root.Y);
+  FConnectivityRoot[2].value := IntToStr(C.Root.Z);
+  FConnectivityAll.checked := C.RequireAllParticipants;
+  for I := 0 to High(C.RequiredPositions) do
+  begin
+    if I > 0 then FConnectivityTerminals.value := FConnectivityTerminals.value + #10;
+    FConnectivityTerminals.value := FConnectivityTerminals.value +
+      IntToStr(C.RequiredPositions[I].X) + ',' + IntToStr(C.RequiredPositions[I].Y) +
+      ',' + IntToStr(C.RequiredPositions[I].Z);
+  end;
+  SetLength(FConnectivityProfileOrder, Length(C.Values));
+  for I := 0 to High(C.Values) do
+  begin
+    FConnectivityProfileOrder[I] := C.Values[I].Value;
+    for J := 0 to High(FConnectivityRows) do
+      if FConnectivityRows[J].Value = C.Values[I].Value then
+      begin
+        FConnectivityRows[J].Participant.checked := True;
+        FConnectivityRows[J].Required.checked := C.Values[I].RequiredByValue;
+        for D := Low(TGraphDirection) to High(TGraphDirection) do
+          FConnectivityRows[J].Ports[D].checked := D in C.Values[I].Openings;
+      end;
+  end;
+end;
+
+procedure TBrowserTrainingStudioApplication.ReloadConnectivityEditor;
+const Names: array[TGraphDirection] of String = ('North', 'East', 'South', 'West', 'Up', 'Down');
+var I: Integer; D: TGraphDirection; Row, Cell: TJSElement;
+  Option: TJSHTMLOptionElement; C: TWfcTrainingConnectivities;
+  function AddCheck(const ADescription: String): TJSHTMLInputElement;
+  begin
+    Cell := document.createElement('td');
+    Result := TJSHTMLInputElement(document.createElement('input'));
+    Result.setAttribute('type', 'checkbox');
+    Result.setAttribute('aria-label', ADescription);
+    Result.onchange := @HandleConnectivityInput;
+    Cell.appendChild(Result); Row.appendChild(Cell);
+  end;
+begin
+  FConnectivityProfiles.textContent := '';
+  FConnectivityList.textContent := '';
+  FConnectivityRows := nil;
+  if FWorkspace.HasRecipe then
+  begin
+    FVocabulary := FWorkspace.PublicVocabulary;
+    SetLength(FConnectivityRows, Length(FVocabulary));
+    for I := 0 to High(FVocabulary) do
+    begin
+      Row := document.createElement('tr');
+      Cell := document.createElement('th');
+      Cell.textContent := DisplayToken(FVocabulary[I]); Row.appendChild(Cell);
+      FConnectivityRows[I].Value := FVocabulary[I];
+      FConnectivityRows[I].Participant := AddCheck(DisplayToken(FVocabulary[I]) + ' participates');
+      for D := Low(TGraphDirection) to High(TGraphDirection) do
+        FConnectivityRows[I].Ports[D] := AddCheck(DisplayToken(FVocabulary[I]) + ' ' + Names[D]);
+      FConnectivityRows[I].Required := AddCheck(DisplayToken(FVocabulary[I]) + ' required by value');
+      FConnectivityProfiles.appendChild(Row);
+    end;
+    C := FWorkspace.CopyConnectivities;
+    for I := 0 to High(C) do
+    begin
+      Option := TJSHTMLOptionElement(document.createElement('option'));
+      Option.value := IntToStr(I);
+      Option.textContent := DisplayToken(C[I].LabelText) + ' : root ' +
+        IntToStr(C[I].Root.X) + ',' + IntToStr(C[I].Root.Y) + ',' +
+        IntToStr(C[I].Root.Z) + ' · ' + IntToStr(Length(C[I].Values)) +
+        ' profiles · ' + IntToStr(Length(C[I].RequiredPositions)) + ' terminals';
+      FConnectivityList.appendChild(Option);
+    end;
+  end;
+  LoadConnectivityFields(-1);
+end;
+
+procedure TBrowserTrainingStudioApplication.BeginConnectivityDraft;
+begin
+  if FQuotaDraftDirty then
+    raise EWfcTrainingWorkspace.Create('apply or discard the quota draft before editing connectivity');
+  CancelSourceFileRead;
+  if not FWorkspace.HasRecipe then
+    raise EWfcTrainingWorkspace.Create('train the current source before editing connectivity');
+  FConnectivityDraftDirty := True;
+  FWorkspace.ClearRun;
+  FSelectedCell := -1;
+  RefreshAll;
+  SetState('connectivity-dirty', 'Connectivity draft changed; apply or discard it.',
+    'No old output or derived download is current. Ports are explicit, never inferred.');
+end;
+
+procedure TBrowserTrainingStudioApplication.CommitConnectivities(
+  const AValues: TWfcTrainingConnectivities);
+begin
+  BeginConnectivityDraft;
+  try
+    FWorkspace.ReplaceConnectivities(AValues);
+    FConnectivityDraftDirty := False;
+    ReloadQuotaEditor;
+    ReloadConnectivityEditor;
+  finally
+    FSourceInput.value := FWorkspace.SourceText;
+    RefreshAll;
+  end;
+  SetState('trained', 'Connectivity saved in the training source; recipe rebuilt.',
+    'Configure and solve again. Saved quotas are retained.');
+end;
+
+procedure TBrowserTrainingStudioApplication.ApplyConnectivityDraft;
+var C: TWfcTrainingConnectivities; V: TWfcTrainingConnectivityValues;
+  P: TGraphPosition; T: TGraphPositions; I, J, N: Integer; Found: Boolean;
+  procedure AppendRow(const Index: Integer);
+  var D: TGraphDirection; Ports: TGraphDirections;
+  begin
+    if not FConnectivityRows[Index].Participant.checked then Exit;
+    Ports := [];
+    for D := Low(TGraphDirection) to High(TGraphDirection) do
+      if FConnectivityRows[Index].Ports[D].checked then Include(Ports, D);
+    N := Length(V); SetLength(V, N + 1);
+    V[N] := MakeWfcTrainingConnectivityValue(FConnectivityRows[Index].Value,
+      Ports, FConnectivityRows[Index].Required.checked);
+  end;
+begin
+  BeginConnectivityDraft;
+  P.X := WfcTextParseCanonicalInteger(FConnectivityRoot[0].value, 'root X', 'studio');
+  P.Y := WfcTextParseCanonicalInteger(FConnectivityRoot[1].value, 'root Y', 'studio');
+  P.Z := WfcTextParseCanonicalInteger(FConnectivityRoot[2].value, 'root Z', 'studio');
+  T := ParseTrainingStudioTerminals(FConnectivityTerminals.value);
+  V := nil;
+  { Keep existing authored order even when the learner's vocabulary changes.
+    New participants append in current public order; displayed escapes never
+    become token values. No participation, port or required flag is inferred. }
+  for I := 0 to High(FConnectivityProfileOrder) do
+    for J := 0 to High(FConnectivityRows) do
+      if FConnectivityRows[J].Value = FConnectivityProfileOrder[I] then AppendRow(J);
+  for I := 0 to High(FConnectivityRows) do
+  begin
+    Found := False;
+    for J := 0 to High(FConnectivityProfileOrder) do
+      if FConnectivityRows[I].Value = FConnectivityProfileOrder[J] then Found := True;
+    if not Found then AppendRow(I);
+  end;
+  C := FWorkspace.CopyConnectivities;
+  I := FEditingConnectivityIndex;
+  if I < 0 then begin I := Length(C); SetLength(C, I + 1); end
+  else if I >= Length(C) then
+    raise EWfcTrainingWorkspace.Create('selected network is stale');
+  C[I] := MakeWfcTrainingConnectivity(FConnectivityLabelInput.value, P, T, V,
+    FConnectivityAll.checked);
+  CommitConnectivities(C);
+end;
+
+procedure TBrowserTrainingStudioApplication.RefreshConnectivityState;
+var Available: Boolean; Count, I: Integer; D: TGraphDirection;
+begin
+  Available := FWorkspace.HasRecipe and not FQuotaDraftDirty;
+  Count := 0;
+  if FWorkspace.HasRecipe then Count := FWorkspace.ConnectivityCount
+  else begin FConnectivityList.textContent := ''; FEditingConnectivityIndex := -1; end;
+  FConnectivityLabelInput.disabled := not Available;
+  for I := 0 to 2 do FConnectivityRoot[I].disabled := not Available;
+  FConnectivityTerminals.disabled := not Available;
+  FConnectivityAll.disabled := not Available;
+  for I := 0 to High(FConnectivityRows) do
+  begin
+    FConnectivityRows[I].Participant.disabled := not Available;
+    FConnectivityRows[I].Required.disabled := not Available;
+    for D := Low(TGraphDirection) to High(TGraphDirection) do
+      FConnectivityRows[I].Ports[D].disabled := not Available;
+  end;
+  FConnectivityApplyButton.disabled := not Available;
+  if FEditingConnectivityIndex < 0 then FConnectivityApplyButton.textContent := 'Apply new network'
+  else FConnectivityApplyButton.textContent := 'Apply selected network';
+  FConnectivityNewButton.disabled := not Available or PolicyDraftDirty;
+  FConnectivityList.disabled := not Available or PolicyDraftDirty;
+  FConnectivityRemoveButton.disabled := not Available or PolicyDraftDirty or
+    (FEditingConnectivityIndex < 0);
+  FConnectivityClearButton.disabled := not Available or PolicyDraftDirty or (Count = 0);
+  FConnectivityDiscardButton.disabled := not FConnectivityDraftDirty;
+  FConnectivityDemoButton.disabled := PolicyDraftDirty;
+  FSourceInput.disabled := PolicyDraftDirty;
+  FLoadPresetButton.disabled := PolicyDraftDirty;
+  FSourceFileInput.disabled := PolicyDraftDirty;
+  FConvertRawButton.disabled := PolicyDraftDirty;
+  document.body.setAttribute('data-connectivity-count', IntToStr(Count));
+  document.body.setAttribute('data-connectivity-draft',
+    LowerCase(BoolToStr(FConnectivityDraftDirty, True)));
+  if FConnectivityDraftDirty then
+    FConnectivityStatus.textContent := 'Unapplied network draft. Apply or discard before training, solving or exporting. If rebuilding failed, discard and train the retained source again.'
+  else
+    FConnectivityStatus.textContent := IntToStr(Count) +
+      ' saved networks. Root and terminals are absolute XYZ positions; resizing never moves them.';
+end;
+
 procedure TBrowserTrainingStudioApplication.BeginQuotaDraft;
 begin
+  if FConnectivityDraftDirty then
+    raise EWfcTrainingWorkspace.Create('apply or discard the connectivity draft before editing quotas');
   CancelSourceFileRead;
   if not FWorkspace.HasRecipe then
     raise EWfcTrainingWorkspace.Create('train the current source before editing quotas');
@@ -744,6 +1039,7 @@ begin
     FWorkspace.ReplaceValueQuotas(AQuotas);
     FQuotaDraftDirty := False;
     ReloadQuotaEditor;
+    ReloadConnectivityEditor;
   finally
     { Successful edits are canonical source changes. On a failed rebuild the
       retained source is the only recoverable artifact, never an old run. }
@@ -789,9 +1085,10 @@ begin
 end;
 
 procedure TBrowserTrainingStudioApplication.RefreshQuotaState;
-var LHasRecipe: Boolean; LCount: Integer;
+var LHasRecipe, Available: Boolean; LCount: Integer;
 begin
   LHasRecipe := FWorkspace.HasRecipe;
+  Available := LHasRecipe and not FConnectivityDraftDirty;
   LCount := 0;
   if LHasRecipe then LCount := FWorkspace.ValueQuotaCount
   else
@@ -799,21 +1096,21 @@ begin
     FQuotaList.textContent := '';
     FEditingQuotaIndex := -1;
   end;
-  FQuotaLabelInput.disabled := not LHasRecipe;
-  FQuotaTokensSelect.disabled := not LHasRecipe;
-  FQuotaMinimumInput.disabled := not LHasRecipe;
-  FQuotaMaximumInput.disabled := not LHasRecipe;
-  FQuotaApplyButton.disabled := not LHasRecipe;
+  FQuotaLabelInput.disabled := not Available;
+  FQuotaTokensSelect.disabled := not Available;
+  FQuotaMinimumInput.disabled := not Available;
+  FQuotaMaximumInput.disabled := not Available;
+  FQuotaApplyButton.disabled := not Available;
   if FEditingQuotaIndex < 0 then FQuotaApplyButton.textContent := 'Apply new quota'
   else FQuotaApplyButton.textContent := 'Apply selected quota';
-  FQuotaNewButton.disabled := (not LHasRecipe) or FQuotaDraftDirty;
-  FQuotaList.disabled := (not LHasRecipe) or FQuotaDraftDirty;
-  FQuotaRemoveButton.disabled := (not LHasRecipe) or FQuotaDraftDirty or
+  FQuotaNewButton.disabled := (not Available) or PolicyDraftDirty;
+  FQuotaList.disabled := (not Available) or PolicyDraftDirty;
+  FQuotaRemoveButton.disabled := (not Available) or PolicyDraftDirty or
     (FEditingQuotaIndex < 0);
-  FQuotaClearButton.disabled := (not LHasRecipe) or FQuotaDraftDirty or (LCount = 0);
+  FQuotaClearButton.disabled := (not Available) or PolicyDraftDirty or (LCount = 0);
   FQuotaDiscardButton.disabled := not FQuotaDraftDirty;
-  FSolveButton.disabled := (not LHasRecipe) or FQuotaDraftDirty;
-  FTrainButton.disabled := FQuotaDraftDirty;
+  FSolveButton.disabled := (not FWorkspace.HasRecipe) or PolicyDraftDirty;
+  FTrainButton.disabled := PolicyDraftDirty;
   document.body.setAttribute('data-quota-count', IntToStr(LCount));
   document.body.setAttribute('data-quota-draft', LowerCase(BoolToStr(FQuotaDraftDirty, True)));
   if FQuotaDraftDirty then
@@ -829,7 +1126,13 @@ end;
 procedure TBrowserTrainingStudioApplication.SetState(
   const AState, AStatus, ADetail: String);
 begin
-  if FQuotaDraftDirty and (AState = 'run-dirty') then
+  if FConnectivityDraftDirty and (AState = 'run-dirty') then
+  begin
+    document.body.setAttribute('data-state', 'connectivity-dirty');
+    FStatusElement.textContent := 'Run edited; connectivity draft still needs apply or discard.';
+    FStatusDetailElement.textContent := 'Resolve the network draft before configuring another solve.';
+  end
+  else if FQuotaDraftDirty and (AState = 'run-dirty') then
   begin
     document.body.setAttribute('data-state', 'quota-dirty');
     FStatusElement.textContent := 'Run edited; quota draft still needs apply or discard.';
@@ -859,6 +1162,7 @@ procedure TBrowserTrainingStudioApplication.RefreshAll;
 begin
   RefreshVocabulary;
   RefreshQuotaState;
+  RefreshConnectivityState;
   RefreshLocks;
   RefreshMetrics;
   RefreshResult;
@@ -894,7 +1198,7 @@ begin
     LOptions := FWorkspace.SourceOptions;
     LProfile := ProfileName(LOptions.Kind);
     LSourceSignature := FWorkspace.TrainingSignatureText;
-    if not FQuotaDraftDirty then LRecipeSignature := FWorkspace.RecipeSignatureText;
+    if not PolicyDraftDirty then LRecipeSignature := FWorkspace.RecipeSignatureText;
     FProfileElement.textContent := LProfile;
     FSampleCountElement.textContent := IntToStr(FWorkspace.SampleCount);
     FSourceTokenCountElement.textContent :=
@@ -1185,7 +1489,7 @@ end;
 
 procedure TBrowserTrainingStudioApplication.RefreshDownloads;
 begin
-  if FQuotaDraftDirty then
+  if PolicyDraftDirty then
     SetDownloadLink(FSourceDownloadLink, '', 'training-source.wfclearn', FSourceDownloadUrl)
   else SetDownloadLink(FSourceDownloadLink, FWorkspace.SourceText,
     'training-source.wfclearn', FSourceDownloadUrl);
@@ -1194,12 +1498,13 @@ end;
 function TBrowserTrainingStudioApplication.SelectedArtifactText: String;
 begin
   Result := '';
-  if FQuotaDraftDirty then Exit;
+  if PolicyDraftDirty then Exit;
   if FArtifactSelect.value = 'source' then
     Result := FWorkspace.SourceText
   else if FArtifactSelect.value = 'model' then
   begin
-    if FWorkspace.HasRecipe and (FWorkspace.ValueQuotaCount = 0) then
+    if FWorkspace.HasRecipe and (FWorkspace.ValueQuotaCount = 0) and
+        (FWorkspace.ConnectivityCount = 0) then
       Result := FWorkspace.ModelText;
   end
   else if FArtifactSelect.value = 'recipe' then
@@ -1242,11 +1547,11 @@ begin
   FArtifactOutput.value := LText;
   SetDownloadLink(FArtifactDownloadLink, LText,
     SelectedArtifactFileName, FArtifactDownloadUrl);
-  if FQuotaDraftDirty then
-    FArtifactStatus.textContent := 'Apply or discard the quota draft before exporting.'
+  if PolicyDraftDirty then
+    FArtifactStatus.textContent := 'Apply or discard the policy draft before exporting.'
   else if (FArtifactSelect.value = 'model') and FWorkspace.HasRecipe and
-      (FWorkspace.ValueQuotaCount > 0) then
-    FArtifactStatus.textContent := 'Standalone models cannot retain hard output quotas. Download the source or pipeline recipe instead.'
+      ((FWorkspace.ValueQuotaCount > 0) or (FWorkspace.ConnectivityCount > 0)) then
+    FArtifactStatus.textContent := 'Standalone models cannot retain authored quotas or connectivity. Download the source or pipeline recipe instead.'
   else if LText = '' then
     FArtifactStatus.textContent :=
       'This artifact is unavailable for the current workspace state.'
@@ -1354,6 +1659,7 @@ var
   LText: String;
   LOptions: TWfcTrainingSolveOptions;
 begin
+  RequireNoPolicyDraft;
   CancelSourceFileRead;
   if Trim(FRawNameInput.value) = '' then
     raise EConvertError.Create('raw document name is required');
@@ -1397,6 +1703,7 @@ end;
 
 procedure TBrowserTrainingStudioApplication.DiscardSourceForImportError;
 begin
+  RequireNoPolicyDraft;
   FQuotaDraftDirty := False;
   FLocks := nil;
   FVocabulary := nil;
@@ -1404,6 +1711,7 @@ begin
   FSourceInput.value := '';
   FWorkspace.SetSourceText('');
   ReloadQuotaEditor;
+  ReloadConnectivityEditor;
   RefreshAll;
 end;
 
@@ -1429,6 +1737,7 @@ procedure TBrowserTrainingStudioApplication.BeginSourceFileRead;
 var
   LFile: TJSHTMLFile;
 begin
+  RequireNoPolicyDraft;
   if (not Assigned(FSourceFileInput.files)) or
       (FSourceFileInput.files.length = 0) then Exit;
   CancelSourceFileRead;
@@ -1636,6 +1945,151 @@ begin
     (FWorkspace.ResultSignatureText = BASELINE_RESULT_SIGNATURE) and
     (FWorkspace.ValueQuotaCount = 0) and not FQuotaDraftDirty,
     'quota self-test did not restore the untouched baseline');
+end;
+
+procedure TBrowserTrainingStudioApplication.RunConnectivitySelfTest;
+var S, R: String; I: Integer; D: TGraphDirection; Reader: TJSFileReader;
+  C: TWfcTrainingConnectivities;
+  procedure SelectNetwork;
+  begin
+    FConnectivityList.selectedIndex := 0;
+    DispatchDomEvent(FConnectivityList, 'change');
+  end;
+  procedure ApplyAndSolve;
+  begin
+    DispatchDomEvent(FConnectivityApplyButton, 'click');
+    AssertTest(not FConnectivityDraftDirty and FWorkspace.HasRecipe,
+      'network editor failed to save: ' + FStatusElement.textContent);
+    DispatchDomEvent(FSolveButton, 'click');
+    AssertTest(FWorkspace.HasResult, 'network solve has no terminal result');
+  end;
+begin
+  document.body.setAttribute('data-connectivity-edit', 'pending');
+  document.body.setAttribute('data-connectivity-replay', 'pending');
+  document.body.setAttribute('data-connectivity-contradiction', 'pending');
+  document.body.setAttribute('data-connectivity-invalidation', 'pending');
+  document.body.setAttribute('data-connectivity-volume', 'pending');
+  DispatchDomEvent(FConnectivityDemoButton, 'click');
+  AssertTest((FWorkspace.ConnectivityCount = 1) and (FWorkspace.ValueQuotaCount = 1) and
+    TrainingStudioRouteIsValid(FWorkspace.OutputTokens), 'route demonstration button');
+  FArtifactSelect.value := 'model'; DispatchDomEvent(FArtifactSelect, 'change');
+  AssertTest((FArtifactOutput.value = '') and
+    (FArtifactDownloadLink.getAttribute('aria-disabled') = 'true'),
+    'model export silently omitted network');
+  FQuotaLabelInput.value := 'unsaved quota';
+  DispatchDomEvent(FQuotaLabelInput, 'input');
+  HandleConnectivityNew(nil); HandleConnectivityApply(nil); HandleConnectivityClear(nil);
+  HandleLoadPreset(nil); HandleTrain(nil); HandleSolve(nil);
+  AssertTest(FQuotaDraftDirty and (FQuotaLabelInput.value = 'unsaved quota') and
+    not FConnectivityDraftDirty and (FWorkspace.ConnectivityCount = 1) and
+    not FWorkspace.HasResult, 'opposite handlers lost a quota draft');
+  DispatchDomEvent(FQuotaDiscardButton, 'click');
+  SelectNetwork;
+  Reader := TJSFileReader.new; FFileReader := Reader;
+  FConnectivityRoot[0].value := '0.5';
+  DispatchDomEvent(FConnectivityRoot[0], 'input');
+  CommitSourceFileText(Reader, 'stale source');
+  HandleQuotaNew(nil); HandleQuotaApply(nil); HandleQuotaClear(nil);
+  HandleLoadPreset(nil); HandleTrain(nil); HandleSolve(nil);
+  AssertTest(FConnectivityDraftDirty and not FQuotaDraftDirty and (FFileReader = nil) and
+    not FWorkspace.HasRun and not FWorkspace.HasResult and FTrainButton.disabled and
+    FSolveButton.disabled and (FArtifactOutput.value = '') and
+    (FSourceDownloadLink.getAttribute('aria-disabled') = 'true') and
+    (FConnectivityRoot[0].value = '0.5'), 'network draft stale action guards');
+  FWidthInput.value := '4'; DispatchDomEvent(FWidthInput, 'input');
+  AssertTest(document.body.getAttribute('data-state') = 'connectivity-dirty',
+    'run edit hid a network draft');
+  DispatchDomEvent(FConnectivityApplyButton, 'click');
+  AssertTest(FConnectivityDraftDirty and not FWorkspace.HasResult,
+    'fractional root silently accepted');
+  FConnectivityRoot[0].value := '0';
+  FConnectivityLabelInput.value := 'roads % / ' + String(WfcTextDecodeToken('caf%C3%A9', 'test'));
+  FConnectivityTerminals.value := '3,2,0'#10'0,1,0';
+  DispatchDomEvent(FConnectivityTerminals, 'input');
+  ApplyAndSolve;
+  AssertTest(TrainingStudioRouteIsValid(FWorkspace.OutputTokens) and
+    (FWorkspace.CopyConnectivities[0].RequiredPositions[0].Y = 1),
+    'network terminal sort or route validation');
+  AssertTest(FWorkspace.CopyConnectivities[0].LabelText =
+    'roads % / ' + WfcTextDecodeToken('caf%C3%A9', 'test'), 'network label escaped identity');
+  document.body.setAttribute('data-connectivity-edit', 'passed');
+  document.body.setAttribute('data-connectivity-invalidation', 'passed');
+  S := FWorkspace.SourceText; R := FWorkspace.ResultText;
+  AssertTest(Pos('wfclearn=4'#10, S) = 1, 'network source v4');
+  ApplySourceText(S); DispatchDomEvent(FTrainButton, 'click');
+  DispatchDomEvent(FSolveButton, 'click');
+  AssertTest((FWorkspace.ResultText = R) and (FWorkspace.ValueQuotaCount = 1),
+    'network source reload exact replay and quota coexistence');
+  SelectNetwork;
+  for I := 0 to High(FConnectivityRows) do
+    FConnectivityRows[I].Participant.checked := False;
+  DispatchDomEvent(FConnectivityAll, 'change');
+  DispatchDomEvent(FConnectivityApplyButton, 'click');
+  AssertTest(FConnectivityDraftDirty and not FWorkspace.HasRecipe and
+    not FWorkspace.HasRun and not FWorkspace.HasResult and
+    (FWorkspace.SourceText = S) and (FSourceInput.value = S) and
+    (FConnectivityList.options.length = 0), 'failed network rebuild kept stale artifacts');
+  DispatchDomEvent(FConnectivityDiscardButton, 'click');
+  DispatchDomEvent(FTrainButton, 'click'); DispatchDomEvent(FSolveButton, 'click');
+  AssertTest(not PolicyDraftDirty and (FWorkspace.ResultText = R),
+    'failed network draft did not recover from retained source');
+  document.body.setAttribute('data-connectivity-replay', 'passed');
+  SelectNetwork;
+  for I := 0 to High(FConnectivityRows) do
+    if FConnectivityRows[I].Value = 'road' then
+      for D := Low(TGraphDirection) to High(TGraphDirection) do
+        FConnectivityRows[I].Ports[D].checked := D in [gdEast, gdWest];
+  DispatchDomEvent(FConnectivityAll, 'change'); ApplyAndSolve;
+  AssertTest((FWorkspace.ResultStatus = wprsContradiction) and
+    (Length(FWorkspace.OutputTokens) = 0), 'missing planar ports did not contradict');
+  SelectNetwork;
+  for I := 0 to High(FConnectivityRows) do
+    if FConnectivityRows[I].Value = 'road' then
+      for D := Low(TGraphDirection) to High(TGraphDirection) do
+        FConnectivityRows[I].Ports[D].checked := D in [gdNorth, gdEast, gdSouth, gdWest];
+  DispatchDomEvent(FConnectivityAll, 'change'); ApplyAndSolve;
+  AssertTest(FWorkspace.ResultText = R, 'port correction exact recovery');
+  SelectNetwork; DispatchDomEvent(FConnectivityRemoveButton, 'click');
+  AssertTest((FWorkspace.ConnectivityCount = 0) and (FWorkspace.ValueQuotaCount = 1) and
+    (Pos('wfclearn=3'#10, FWorkspace.SourceText) = 1), 'network removal lost saved quota');
+  DispatchDomEvent(FQuotaClearButton, 'click');
+  AssertTest(FWorkspace.SourceText = TrainingStudioRouteSource, 'remove policies legacy restoration');
+  document.body.setAttribute('data-connectivity-contradiction', 'passed');
+  LoadPreset(VOLUME_PRESET); DispatchDomEvent(FTrainButton, 'click');
+  FWidthInput.value := '2'; FHeightInput.value := '2'; FDepthInput.value := '2';
+  C := TrainingStudioRouteNetwork;
+  C[0].LabelText := 'XYZ column'; C[0].RequiredPositions[0] := TrainingStudioPosition(0, 0, 1);
+  C[0].RequireAllParticipants := False;
+  SetLength(C[0].Values, 2);
+  C[0].Values[0] := MakeWfcTrainingConnectivityValue('B', [gdUp, gdDown], False);
+  C[0].Values[1] := MakeWfcTrainingConnectivityValue('A', [gdUp, gdDown], False);
+  { Imported authored order is deliberately opposite the learner's order. }
+  CommitConnectivities(C); SelectNetwork;
+  FConnectivityLabelInput.value := 'XYZ column saved';
+  DispatchDomEvent(FConnectivityLabelInput, 'input'); ApplyAndSolve;
+  AssertTest((FWorkspace.ResultStatus = wprsSolved) and (Length(FWorkspace.OutputTokens) = 8) and
+    (FWorkspace.CopyConnectivities[0].Values[0].Value = 'B') and
+    (FWorkspace.CopyConnectivities[0].Values[1].Value = 'A') and
+    (FWorkspace.CopyConnectivities[0].RequiredPositions[0].Z = 1), 'XYZ and profile authored order');
+  SelectNetwork; FConnectivityAll.checked := True;
+  DispatchDomEvent(FConnectivityAll, 'change'); ApplyAndSolve;
+  AssertTest(FWorkspace.ResultStatus = wprsContradiction, 'all-participant islands allowed');
+  SelectNetwork; FConnectivityAll.checked := False;
+  for I := 0 to High(FConnectivityRows) do
+    if FConnectivityRows[I].Value = 'B' then FConnectivityRows[I].Required.checked := True;
+  DispatchDomEvent(FConnectivityAll, 'change'); ApplyAndSolve;
+  AssertTest(FWorkspace.ResultStatus = wprsContradiction, 'required-by-value islands allowed');
+  DispatchDomEvent(FConnectivityClearButton, 'click');
+  AssertTest(FWorkspace.SourceText = TrainingStudioPresetText(VOLUME_PRESET),
+    'XYZ connectivity clear did not restore version two source');
+  document.body.setAttribute('data-connectivity-volume', 'passed');
+  LoadPreset(INITIAL_PRESET); DispatchDomEvent(FTrainButton, 'click');
+  DispatchDomEvent(FSolveButton, 'click');
+  AssertTest((FWorkspace.TrainingSignatureText = BASELINE_SOURCE_SIGNATURE) and
+    (FWorkspace.RecipeSignatureText = BASELINE_RECIPE_SIGNATURE) and
+    (FWorkspace.ResultSignatureText = BASELINE_RESULT_SIGNATURE) and
+    not PolicyDraftDirty and (FWorkspace.ConnectivityCount = 0),
+    'connectivity self-test failed to restore legacy baseline');
 end;
 
 procedure TBrowserTrainingStudioApplication.RunSelfTest;
@@ -1895,6 +2349,7 @@ begin
       'final baseline state has stale locks or cells');
     document.body.setAttribute('data-recovery', 'passed');
     RunQuotaSelfTest;
+    RunConnectivitySelfTest;
     document.body.setAttribute('data-self-test', 'passed');
   except
     on E: Exception do
@@ -1917,7 +2372,7 @@ var LIndex: Integer;
 begin
   Result := False;
   try
-    if FQuotaDraftDirty then
+    if PolicyDraftDirty then
     begin
       FQuotaList.selectedIndex := FEditingQuotaIndex;
       raise EWfcTrainingWorkspace.Create('apply or discard the quota draft before selecting another');
@@ -1939,7 +2394,7 @@ function TBrowserTrainingStudioApplication.HandleQuotaNew(AEvent: TJSMouseEvent)
 begin
   Result := False;
   try
-    if FQuotaDraftDirty then
+    if PolicyDraftDirty then
       raise EWfcTrainingWorkspace.Create('apply or discard the quota draft before starting another');
     LoadQuotaFields(-1);
     RefreshQuotaState;
@@ -1951,7 +2406,7 @@ var Q: TWfcTrainingValueQuotas; I: Integer;
 begin
   Result := False;
   try
-    if FQuotaDraftDirty then
+    if PolicyDraftDirty then
       raise EWfcTrainingWorkspace.Create('apply or discard the quota draft before removing a saved quota');
     Q := FWorkspace.CopyValueQuotas;
     if (FEditingQuotaIndex < 0) or (FEditingQuotaIndex >= Length(Q)) then
@@ -1966,7 +2421,7 @@ function TBrowserTrainingStudioApplication.HandleQuotaClear(AEvent: TJSMouseEven
 begin
   Result := False;
   try
-    if FQuotaDraftDirty then
+    if PolicyDraftDirty then
       raise EWfcTrainingWorkspace.Create('apply or discard the quota draft before clearing saved quotas');
     CommitValueQuotas(nil);
   except on E: Exception do ShowError(E.Message); end;
@@ -1976,6 +2431,8 @@ function TBrowserTrainingStudioApplication.HandleQuotaDiscard(AEvent: TJSMouseEv
 begin
   Result := False;
   try
+    if FConnectivityDraftDirty then
+      raise EWfcTrainingWorkspace.Create('discard the connectivity draft in its own editor');
     CancelSourceFileRead;
     FQuotaDraftDirty := False;
     ReloadQuotaEditor;
@@ -1986,6 +2443,95 @@ begin
     else
       SetState('source-dirty', 'Quota draft discarded; train the retained source.',
         'The failed rebuild left no recipe, run, or result.');
+  except on E: Exception do ShowError(E.Message); end;
+end;
+
+function TBrowserTrainingStudioApplication.HandleConnectivityInput(AEvent: TJSEvent): Boolean;
+begin
+  Result := False;
+  try BeginConnectivityDraft; except on E: Exception do ShowError(E.Message); end;
+end;
+
+function TBrowserTrainingStudioApplication.HandleConnectivitySelect(AEvent: TJSEvent): Boolean;
+begin
+  Result := False;
+  try
+    if PolicyDraftDirty then
+    begin
+      FConnectivityList.selectedIndex := FEditingConnectivityIndex;
+      RequireNoPolicyDraft;
+    end;
+    if (FConnectivityList.selectedIndex < 0) or
+        (FConnectivityList.selectedIndex >= FWorkspace.ConnectivityCount) then Exit;
+    LoadConnectivityFields(FConnectivityList.selectedIndex);
+    RefreshConnectivityState;
+  except on E: Exception do ShowError(E.Message); end;
+end;
+
+function TBrowserTrainingStudioApplication.HandleConnectivityApply(AEvent: TJSMouseEvent): Boolean;
+begin
+  Result := False;
+  try ApplyConnectivityDraft; except on E: Exception do ShowError(E.Message); end;
+end;
+
+function TBrowserTrainingStudioApplication.HandleConnectivityNew(AEvent: TJSMouseEvent): Boolean;
+begin
+  Result := False;
+  try RequireNoPolicyDraft; LoadConnectivityFields(-1); RefreshConnectivityState;
+  except on E: Exception do ShowError(E.Message); end;
+end;
+
+function TBrowserTrainingStudioApplication.HandleConnectivityRemove(AEvent: TJSMouseEvent): Boolean;
+var C: TWfcTrainingConnectivities; I: Integer;
+begin
+  Result := False;
+  try
+    RequireNoPolicyDraft;
+    C := FWorkspace.CopyConnectivities;
+    if (FEditingConnectivityIndex < 0) or (FEditingConnectivityIndex >= Length(C)) then
+      raise EWfcTrainingWorkspace.Create('select a saved network to remove');
+    for I := FEditingConnectivityIndex to Length(C) - 2 do C[I] := C[I + 1];
+    SetLength(C, Length(C) - 1); CommitConnectivities(C);
+  except on E: Exception do ShowError(E.Message); end;
+end;
+
+function TBrowserTrainingStudioApplication.HandleConnectivityClear(AEvent: TJSMouseEvent): Boolean;
+begin
+  Result := False;
+  try RequireNoPolicyDraft; CommitConnectivities(nil);
+  except on E: Exception do ShowError(E.Message); end;
+end;
+
+function TBrowserTrainingStudioApplication.HandleConnectivityDiscard(AEvent: TJSMouseEvent): Boolean;
+begin
+  Result := False;
+  try
+    if FQuotaDraftDirty then
+      raise EWfcTrainingWorkspace.Create('discard the quota draft in its own editor');
+    CancelSourceFileRead;
+    FConnectivityDraftDirty := False;
+    ReloadQuotaEditor; ReloadConnectivityEditor; RefreshAll;
+    if FWorkspace.HasRecipe then
+      SetState('trained', 'Network draft discarded; saved source is unchanged.',
+        'The previous run stays cleared; configure and solve again.')
+    else SetState('source-dirty', 'Network draft discarded; train the retained source.',
+      'The failed rebuild left no recipe, run, or result.');
+  except on E: Exception do ShowError(E.Message); end;
+end;
+
+function TBrowserTrainingStudioApplication.HandleConnectivityDemo(AEvent: TJSMouseEvent): Boolean;
+begin
+  Result := False;
+  try
+    RequireNoPolicyDraft;
+    ApplySourceText(TrainingStudioRouteSource);
+    WriteOptions(TrainingStudioRouteOptions, 1);
+    TrainWorkspace;
+    CommitConnectivities(TrainingStudioRouteNetwork);
+    CommitValueQuotas(TrainingStudioRouteQuota);
+    SolveWorkspace;
+    AssertTest(TrainingStudioRouteIsValid(FWorkspace.OutputTokens),
+      'route demonstration independent path/count validation');
   except on E: Exception do ShowError(E.Message); end;
 end;
 

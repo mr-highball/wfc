@@ -5,6 +5,7 @@ set -o pipefail
 
 repository_root=$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 fixture_directory="$repository_root/examples/learning/04_TrainingDocuments"
+connectivity_fixture_directory="$repository_root/test/fixtures/training-cli"
 missing_input="$fixture_directory/missing.wfclearn"
 maximum_captured_length=8192
 process_timeout_seconds=30
@@ -62,7 +63,7 @@ cleanup() {
   rmdir -- "$temporary_directory" 2>/dev/null || true
 }
 trap cleanup EXIT HUP INT TERM
-printf 'wfc-learn 2 (wfclearn=1,2,3)\n' >"$expected_version" || exit $?
+printf 'wfc-learn 3 (wfclearn=1,2,3,4)\n' >"$expected_version" || exit $?
 printf 'not-training\n' >"$invalid_training" || exit $?
 case_count=0
 
@@ -212,6 +213,29 @@ do
   run_case 0 '' "${runner[@]}" "$argument_recipe" "$argument_run"
   assert_exact_output "$result" "$profile recipe execution"
 done
+connectivity_training="$connectivity_fixture_directory/connectivity.wfclearn"
+connectivity_recipe="$connectivity_fixture_directory/connectivity.wfcpipeline"
+for required_file in "$connectivity_training" "$connectivity_recipe"
+do
+  [[ -f "$required_file" ]] || fail "required file is missing: $required_file"
+done
+IFS= read -r connectivity_header <"$connectivity_training" || fail 'cannot read connectivity source header'
+[[ "$connectivity_header" == 'wfclearn=4' ]] || fail 'connectivity source fixture must be version four'
+IFS= read -r connectivity_header <"$connectivity_recipe" || fail 'cannot read connectivity recipe header'
+[[ "$connectivity_header" == 'wfcpipeline=3' ]] || fail 'connectivity recipe fixture must be version three'
+argument_connectivity_training=$(argument_path "$connectivity_training") || exit $?
+argument_connectivity_recipe=$(argument_path "$connectivity_recipe") || exit $?
+run_case 0 '' "${learner[@]}" "$argument_connectivity_training"
+assert_exact_output "$connectivity_recipe" 'connectivity file training'
+run_case 0 "$connectivity_training" "${learner[@]}" -
+assert_exact_output "$connectivity_recipe" 'connectivity stdin training'
+run_case 0 '' "${learner[@]}" --quiet "$argument_connectivity_training"
+assert_empty_output 'quiet connectivity training'
+run_case 1 '' "${learner[@]}" --model "$argument_connectivity_training"
+assert_diagnostic 'wfc-learn: invalid training: standalone model export cannot represent authored connectivity;' \
+  'connectivity model-only loss prevention'
+run_case 0 '' "${validator[@]}" recipe --emit-canonical "$argument_connectivity_recipe"
+assert_exact_output "$connectivity_recipe" 'connectivity recipe validation'
 run_case 0 '' "${learner[@]}" --quiet "$argument_training"
 assert_empty_output 'quiet training'
 run_case 0 '' "${learner[@]}" --version

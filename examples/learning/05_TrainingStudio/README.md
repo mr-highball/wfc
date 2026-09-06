@@ -42,6 +42,20 @@ quotas restores the original result. Draft edits must be applied or discarded
 before solving; model-only export is disabled when it would lose quotas.
 See [quota authoring](../../../docs/training-value-quotas.md).
 
+The **Connectivity networks** editor saves explicit root/terminal XYZ positions
+and participating public tokens with reciprocal directional ports. Load the
+route corpus demonstration to generate a root-to-terminal path on a 4×3 board
+with exactly six road cells. Change road ports to east/west only to make the
+different-row destination unreachable; restore north/south to recover. This
+shows local sample relationships, global quantity, and reachability working
+together. The demonstration is separate from the six numbered presets.
+
+Networks and quotas are saved together in version-4 training source. Editors
+preserve one another's saved policies, require apply/discard for drafts, and
+prevent model-only exports that would drop either requirement. Profiles are
+authored, not inferred from the corpus. See
+[connectivity authoring](../../../docs/training-connectivity.md).
+
 Select **Volume checkerboard / six neighbors** for a 3D corpus. Width, height,
 and depth control the requested volume; output is displayed in labeled Z
 slices. Click any slice cell to copy X/Y/Z, add a lock, and solve again. With
@@ -65,6 +79,8 @@ presets. Manually:
 build/native/bin/TrainingStudio --selftest
 build/native/bin/TrainingStudio --quota-demo
 build/native/bin/TrainingStudio --quota-selftest
+build/native/bin/TrainingStudio --connectivity-demo
+build/native/bin/TrainingStudio --connectivity-selftest
 build/native/bin/TrainingStudio 2 0
 build/native/bin/TrainingStudio 5 0
 ```
@@ -75,6 +91,8 @@ demonstration is a self-checking console view, not an interactive native window.
 For arbitrary file-based training and replay, use `wfc_learn`/`wfc_run`.
 The quota demonstration is a separate checked native path; it uses the same
 source-owned editing, retraining, contradiction, and replay workspace as the UI.
+The connectivity demonstration additionally checks independent road reachability,
+quantity, policy persistence, contradiction/recovery, and XYZ participation.
 
 The console and browser token grid show percent-encoded values so whitespace and Unicode
 remain visible and byte-portable.
@@ -111,6 +129,11 @@ data-source-signature="0FA2C5EA"
 data-recipe-signature="DBCBA621"
 data-result-signature="947C4AFD"
 data-cell-count="16"
+data-connectivity-edit="passed"
+data-connectivity-replay="passed"
+data-connectivity-contradiction="passed"
+data-connectivity-invalidation="passed"
+data-connectivity-volume="passed"
 ```
 
 The interactive envelope is deliberately finite: 512 source tokens, 64

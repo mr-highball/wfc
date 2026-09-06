@@ -130,6 +130,11 @@ begin
   Expect(3, 'data-quota-contradiction', 'passed');
   Expect(3, 'data-quota-invalidation', 'passed');
   Expect(3, 'data-quota-volume', 'passed');
+  Expect(3, 'data-connectivity-edit', 'passed');
+  Expect(3, 'data-connectivity-replay', 'passed');
+  Expect(3, 'data-connectivity-contradiction', 'passed');
+  Expect(3, 'data-connectivity-invalidation', 'passed');
+  Expect(3, 'data-connectivity-volume', 'passed');
   Expect(3, 'data-source-invalidation', 'passed');
   Expect(3, 'data-run-invalidation', 'passed');
   Expect(3, 'data-contradiction', 'passed');

@@ -16,6 +16,10 @@
   data-quota-edit="not-run" data-quota-replay="not-run"
   data-quota-contradiction="not-run" data-quota-invalidation="not-run"
   data-quota-volume="not-run"
+  data-connectivity-count="0" data-connectivity-draft="false"
+  data-connectivity-edit="not-run" data-connectivity-replay="not-run"
+  data-connectivity-contradiction="not-run" data-connectivity-invalidation="not-run"
+  data-connectivity-volume="not-run"
   data-source-invalidation="not-run" data-run-invalidation="not-run"
   data-contradiction="not-run" data-recovery="not-run"
   data-preset-sweep="not-run" data-import-race="not-run"
@@ -123,6 +127,48 @@
         </div>
         <p id="quota-status" class="hint" aria-live="polite">Train the current source to choose public tokens.</p>
         <p class="hint">Apply rebuilds the recipe and saves quotas in the editable .wfclearn source. Download source to keep them. Standalone model export cannot retain quotas; use the source or recipe.</p>
+      </div>
+
+      <div class="connectivity-editor" aria-labelledby="connectivity-heading">
+        <div class="section-heading">
+          <div><h3 id="connectivity-heading">Rooted connectivity networks</h3>
+            <p>Explicit public-token ports, independent of learned adjacency. Every saved network must hold. Nonparticipants are not traversable.</p></div>
+          <div class="toolbar">
+            <button id="connectivity-new" type="button">New network</button>
+            <button id="connectivity-demo" type="button">Load route corpus demonstration</button>
+          </div>
+        </div>
+        <p class="hint">The demonstration replaces the source with all local road/grass pairs, then authors a 4×3 route from (0,0,0) to (3,2,0) with exactly six roads. It is separate from the six original presets.</p>
+        <div class="connectivity-fields">
+          <label><span>Unique network label</span><input id="connectivity-label" autocomplete="off" spellcheck="false"></label>
+          <label><span>Root X</span><input id="connectivity-root-x" inputmode="numeric" value="0"></label>
+          <label><span>Root Y</span><input id="connectivity-root-y" inputmode="numeric" value="0"></label>
+          <label><span>Root Z</span><input id="connectivity-root-z" inputmode="numeric" value="0"></label>
+        </div>
+        <label><span>Fixed terminals · one X,Y,Z per line</span>
+          <textarea id="connectivity-terminals" rows="3" spellcheck="false" placeholder="3,2,0"></textarea></label>
+        <p class="hint">Coordinates are absolute and nonnegative. Saving sorts terminals by Z, Y, X; duplicates and the root as a terminal are rejected. Rank-1 sources require Y=Z=0; rank-2 requires Z=0. Output bounds are checked when configuring the run.</p>
+        <div class="connectivity-table-scroll">
+          <table class="connectivity-table">
+            <thead><tr><th scope="col">Public token</th><th scope="col">Participates</th>
+              <th scope="col">N</th><th scope="col">E</th><th scope="col">S</th><th scope="col">W</th>
+              <th scope="col">Up</th><th scope="col">Down</th><th scope="col">Required by value</th></tr></thead>
+            <tbody id="connectivity-profiles"></tbody>
+          </table>
+        </div>
+        <p class="hint">Ports are never inferred. N is +Y, E is +X, Up is +Z; edges need reciprocal ports and allowed learned adjacency. “Required by value” requires every occurrence of that participating token to reach the root. Unchecked participants' ports and required flags are not saved. Existing authored profile order is retained; new participants append in public vocabulary order.</p>
+        <label class="check-field"><input id="connectivity-all" type="checkbox"><span>Require all participating cells to reach the root</span></label>
+        <div class="toolbar">
+          <button id="connectivity-apply" class="primary" type="button">Apply add / replace</button>
+          <button id="connectivity-discard" type="button">Discard draft</button>
+        </div>
+        <select id="connectivity-list" size="4" aria-label="Saved connectivity networks"></select>
+        <div class="toolbar">
+          <button id="connectivity-remove" type="button">Remove selected</button>
+          <button id="connectivity-clear" type="button">Clear all networks</button>
+        </div>
+        <p id="connectivity-status" class="hint" aria-live="polite">Train the source to author public-token connectivity.</p>
+        <p class="hint">Apply saves networks in the canonical .wfclearn source and retrains, preserving quotas. Resolve one policy draft before editing the other. Standalone models cannot retain authored networks; export source or recipe.</p>
       </div>
 
       <div class="lock-editor">

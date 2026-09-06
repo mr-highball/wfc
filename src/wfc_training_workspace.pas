@@ -34,6 +34,7 @@ uses
 const
   WFC_TRAINING_WORKSPACE_VERSION = 1;
   WFC_TRAINING_WORKSPACE_VALUE_QUOTA_VERSION = 1;
+  WFC_TRAINING_WORKSPACE_CONNECTIVITY_VERSION = 1;
 
 type
   EWfcTrainingWorkspace = class(Exception);
@@ -89,6 +90,7 @@ type
     function GetSourceTokenCount: Integer;
     function GetModelItemCount: Integer;
     function GetValueQuotaCount: Integer;
+    function GetConnectivityCount: Integer;
   public
     constructor Create; overload;
     constructor Create(const ALimits: TWfcTrainingWorkspaceLimits); overload;
@@ -101,6 +103,9 @@ type
       new draft is retained even if its learning fails. Every failed attempt
       discards all derived artifacts so correction/retraining is explicit. }
     procedure ReplaceValueQuotas(const AValues: TWfcTrainingValueQuotas);
+    { The same draft/failure lifecycle as quota replacement. Each policy edit
+      preserves the other saved registry; coordinates remain output anchors. }
+    procedure ReplaceConnectivities(const AValues: TWfcTrainingConnectivities);
     procedure ClearRun;
     procedure ConfigureRun(const AOptions: TWfcTrainingSolveOptions;
       const ALocks: TWfcPipelineCellLocks;
@@ -115,6 +120,7 @@ type
     function CopyMetadata: TWfcTrainingMetadata;
     function CopyPasses: TWfcPipelinePasses;
     function CopyValueQuotas: TWfcTrainingValueQuotas;
+    function CopyConnectivities: TWfcTrainingConnectivities;
     function PublicVocabulary: TWfcModelTokens;
     function OutputTokens: TWfcModelTokens;
     function CopyFailure: TWfcPipelineFailure;
@@ -139,6 +145,7 @@ type
     property SourceTokenCount: Integer read GetSourceTokenCount;
     property ModelItemCount: Integer read GetModelItemCount;
     property ValueQuotaCount: Integer read GetValueQuotaCount;
+    property ConnectivityCount: Integer read GetConnectivityCount;
   end;
 
 function DefaultWfcTrainingWorkspaceLimits: TWfcTrainingWorkspaceLimits;
@@ -305,6 +312,7 @@ var
   LMetadata: TWfcTrainingMetadata;
   LOptions: TWfcTrainingOptions;
   LSamples: TWfcTrainingSamples;
+  LConnectivities: TWfcTrainingConnectivities;
   LDocument: TWfcTrainingDocument;
   LText: String;
 begin
@@ -315,9 +323,10 @@ begin
       LMetadata := FDocument.CopyMetadata;
       LOptions := FDocument.CopyOptions;
       LSamples := FDocument.CopySamples;
+      LConnectivities := FDocument.CopyConnectivities;
       ClearTraining;
       LDocument := TWfcTrainingDocument.Create(LMetadata, LOptions,
-        LSamples, AValues);
+        LSamples, AValues, LConnectivities);
       LText := EncodeWfcTrainingText(LDocument);
       CheckLimit(Length(LText), FLimits.MaxSourceTextLength, False, 'source text');
       { Publish an editable canonical draft before training. If learning fails,
@@ -331,6 +340,40 @@ begin
   finally
     LDocument.Free;
   end;
+end;
+
+procedure TWfcTrainingWorkspace.ReplaceConnectivities(
+  const AValues: TWfcTrainingConnectivities);
+var
+  LMetadata: TWfcTrainingMetadata;
+  LOptions: TWfcTrainingOptions;
+  LSamples: TWfcTrainingSamples;
+  LQuotas: TWfcTrainingValueQuotas;
+  LDocument: TWfcTrainingDocument;
+  LText: String;
+begin
+  LDocument := nil;
+  try
+    try
+      RequireRecipe;
+      LMetadata := FDocument.CopyMetadata;
+      LOptions := FDocument.CopyOptions;
+      LSamples := FDocument.CopySamples;
+      LQuotas := FDocument.CopyValueQuotas;
+      ClearTraining;
+      LDocument := TWfcTrainingDocument.Create(LMetadata, LOptions,
+        LSamples, LQuotas, AValues);
+      LText := EncodeWfcTrainingText(LDocument);
+      CheckLimit(Length(LText), FLimits.MaxSourceTextLength, False, 'source text');
+      { Publish only a valid canonical draft; learning failures retain this
+        requested policy, but no previous derived artifact remains available. }
+      SetSourceText(LText);
+      Train;
+    except
+      ClearTraining;
+      raise;
+    end;
+  finally LDocument.Free; end;
 end;
 
 procedure TWfcTrainingWorkspace.RequireRun;
@@ -492,6 +535,18 @@ begin
   Result := FDocument.ValueQuotaCount;
 end;
 
+function TWfcTrainingWorkspace.CopyConnectivities: TWfcTrainingConnectivities;
+begin
+  RequireRecipe;
+  Result := FDocument.CopyConnectivities;
+end;
+
+function TWfcTrainingWorkspace.GetConnectivityCount: Integer;
+begin
+  RequireRecipe;
+  Result := FDocument.ConnectivityCount;
+end;
+
 function TWfcTrainingWorkspace.PublicVocabulary: TWfcModelTokens;
 begin
   RequireRecipe;
@@ -557,6 +612,9 @@ var
   LResource: TWfcPipelineResource;
 begin
   RequireRecipe;
+  if FDocument.ConnectivityCount > 0 then
+    raise EWfcTrainingWorkspace.Create(
+      'standalone model export cannot preserve output connectivity; export the recipe');
   if FDocument.ValueQuotaCount > 0 then
     raise EWfcTrainingWorkspace.Create(
       'standalone model export cannot preserve output quotas; export the recipe');

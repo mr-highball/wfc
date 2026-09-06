@@ -31,8 +31,9 @@ uses
   wfc_training;
 
 const
-  WFC_TRAINING_TEXT_VERSION = 3;
+  WFC_TRAINING_TEXT_VERSION = 4;
   WFC_TRAINING_VALUE_QUOTA_TEXT_VERSION = 3;
+  WFC_TRAINING_CONNECTIVITY_TEXT_VERSION = 4;
   WFC_TRAINING_MAX_ENCODED_TEXT_LENGTH = 8388608;
   WFC_TRAINING_MAX_TEXT_LINE_COUNT = 11 +
     WFC_TRAINING_MAX_SAMPLE_COUNT + WFC_TRAINING_MAX_TOTAL_TOKEN_COUNT;
@@ -40,6 +41,11 @@ const
     WFC_TRAINING_MAX_TEXT_LINE_COUNT + 2 +
     WFC_TRAINING_MAX_VALUE_QUOTA_COUNT +
     WFC_TRAINING_MAX_TOTAL_VALUE_QUOTA_TOKEN_COUNT;
+  WFC_TRAINING_CONNECTIVITY_MAX_TEXT_LINE_COUNT =
+    WFC_TRAINING_VALUE_QUOTA_MAX_TEXT_LINE_COUNT + 2 +
+    WFC_TRAINING_MAX_CONNECTIVITY_COUNT +
+    WFC_TRAINING_MAX_TOTAL_CONNECTIVITY_VALUE_COUNT +
+    WFC_TRAINING_MAX_TOTAL_CONNECTIVITY_TERMINAL_COUNT;
 
 { The editable source has no caller-supplied signature. Its immutable
   fingerprint is computed from validated contents by TWfcTrainingDocument. }
@@ -53,6 +59,7 @@ implementation
 
 uses
   SysUtils,
+  wfc,
   wfc_model,
   wfc_text_codec;
 
@@ -100,6 +107,42 @@ begin
   end;
 end;
 
+function ConnectivityMask(const AOpenings: TGraphDirections): Integer;
+begin
+  Result := 0;
+  if gdNorth in AOpenings then Inc(Result, 1);
+  if gdEast in AOpenings then Inc(Result, 2);
+  if gdSouth in AOpenings then Inc(Result, 4);
+  if gdWest in AOpenings then Inc(Result, 8);
+  if gdUp in AOpenings then Inc(Result, 16);
+  if gdDown in AOpenings then Inc(Result, 32);
+end;
+
+function ConnectivityOpenings(const AMask: Integer): TGraphDirections;
+begin
+  if (AMask < 0) or (AMask > 63) then Fail('connectivity opening mask is outside 0..63');
+  Result := [];
+  if (AMask and 1) <> 0 then Include(Result, gdNorth);
+  if (AMask and 2) <> 0 then Include(Result, gdEast);
+  if (AMask and 4) <> 0 then Include(Result, gdSouth);
+  if (AMask and 8) <> 0 then Include(Result, gdWest);
+  if (AMask and 16) <> 0 then Include(Result, gdUp);
+  if (AMask and 32) <> 0 then Include(Result, gdDown);
+end;
+
+function BooleanText(const AValue: Boolean): String;
+begin
+  if AValue then Result := 'true' else Result := 'false';
+end;
+
+function ParseBoolean(const AValue: String): Boolean;
+begin
+  if AValue = 'true' then Exit(True);
+  if AValue = 'false' then Exit(False);
+  Fail('connectivity boolean must be true or false');
+  Result := False;
+end;
+
 function EncodeWfcTrainingText(
   const ADocument: TWfcTrainingDocument): String;
 var
@@ -113,6 +156,7 @@ var
   LSample: TWfcTrainingSample;
   LVersion: Integer;
   LQuota: TWfcTrainingValueQuota;
+  LConnectivity: TWfcTrainingConnectivity;
   LLineCount: Integer;
 
   procedure Add(const ALine: String);
@@ -134,11 +178,21 @@ begin
   if ADocument = nil then
     Fail('document is nil');
   LLineCount := 11 + ADocument.SampleCount + ADocument.TotalTokenCount;
-  if ADocument.ValueQuotaCount > 0 then
+  if (ADocument.ValueQuotaCount > 0) or (ADocument.ConnectivityCount > 0) then
   begin
     Inc(LLineCount, 2 + ADocument.ValueQuotaCount);
     for I := 0 to ADocument.ValueQuotaCount - 1 do
       Inc(LLineCount, Length(ADocument.ValueQuotaAt(I).Values));
+  end;
+  if ADocument.ConnectivityCount > 0 then
+  begin
+    Inc(LLineCount, 2 + ADocument.ConnectivityCount);
+    for I := 0 to ADocument.ConnectivityCount - 1 do
+    begin
+      LConnectivity := ADocument.ConnectivityAt(I);
+      Inc(LLineCount, Length(LConnectivity.RequiredPositions) +
+        Length(LConnectivity.Values));
+    end;
   end;
   SetLength(LLines, LLineCount);
   LLine := 0;
@@ -171,9 +225,9 @@ begin
       Add('token=' + IntToStr(I) + ',' + IntToStr(J) + ',' +
         Token(LSample.Tokens[J]));
   end;
-  if ADocument.ValueQuotaCount > 0 then
+  if (ADocument.ValueQuotaCount > 0) or (ADocument.ConnectivityCount > 0) then
   begin
-    Add('value-quota-version=' + IntToStr(WFC_TRAINING_VALUE_QUOTA_VERSION));
+    Add('value-quota-version=' + IntToStr(ADocument.ValueQuotaVersion));
     Add('value-quotas=' + IntToStr(ADocument.ValueQuotaCount));
     for I := 0 to ADocument.ValueQuotaCount - 1 do
     begin
@@ -186,6 +240,31 @@ begin
           Token(LQuota.Values[J]));
     end;
   end;
+  if ADocument.ConnectivityCount > 0 then
+  begin
+    Add('connectivity-version=' + IntToStr(WFC_TRAINING_CONNECTIVITY_VERSION));
+    Add('connectivities=' + IntToStr(ADocument.ConnectivityCount));
+    for I := 0 to ADocument.ConnectivityCount - 1 do
+    begin
+      LConnectivity := ADocument.ConnectivityAt(I);
+      Add('connectivity=' + IntToStr(I) + ',' + Token(LConnectivity.LabelText) +
+        ',' + IntToStr(LConnectivity.Root.X) + ',' + IntToStr(LConnectivity.Root.Y) +
+        ',' + IntToStr(LConnectivity.Root.Z) + ',' +
+        BooleanText(LConnectivity.RequireAllParticipants) + ',' +
+        IntToStr(Length(LConnectivity.RequiredPositions)) + ',' +
+        IntToStr(Length(LConnectivity.Values)));
+      for J := 0 to Length(LConnectivity.RequiredPositions) - 1 do
+        Add('terminal=' + IntToStr(I) + ',' + IntToStr(J) + ',' +
+          IntToStr(LConnectivity.RequiredPositions[J].X) + ',' +
+          IntToStr(LConnectivity.RequiredPositions[J].Y) + ',' +
+          IntToStr(LConnectivity.RequiredPositions[J].Z));
+      for J := 0 to Length(LConnectivity.Values) - 1 do
+        Add('profile=' + IntToStr(I) + ',' + IntToStr(J) + ',' +
+          Token(LConnectivity.Values[J].Value) + ',' +
+          IntToStr(ConnectivityMask(LConnectivity.Values[J].Openings)) + ',' +
+          BooleanText(LConnectivity.Values[J].RequiredByValue));
+    end;
+  end;
   Add('end');
   Result := WfcTextJoinCanonicalLines(LLines, ARTIFACT_NAME);
 end;
@@ -194,6 +273,7 @@ function WfcTrainingDocumentTextVersion(
   const ADocument: TWfcTrainingDocument): Integer;
 begin
   if ADocument = nil then Fail('document is nil');
+  if ADocument.ConnectivityCount > 0 then Exit(WFC_TRAINING_CONNECTIVITY_TEXT_VERSION);
   if ADocument.ValueQuotaCount > 0 then Exit(WFC_TRAINING_VALUE_QUOTA_TEXT_VERSION);
   if ADocument.CopyOptions.Kind = wtkAdjacency3D then Exit(2);
   Result := 1;
@@ -213,6 +293,8 @@ begin
     LLineLimit := WFC_TRAINING_MAX_TEXT_LINE_COUNT
   else if LHeader = 'wfclearn=3'#10 then
     LLineLimit := WFC_TRAINING_VALUE_QUOTA_MAX_TEXT_LINE_COUNT
+  else if LHeader = 'wfclearn=4'#10 then
+    LLineLimit := WFC_TRAINING_CONNECTIVITY_MAX_TEXT_LINE_COUNT
   else
     Fail('expected supported wfclearn header');
   LLines := 0;
@@ -246,7 +328,10 @@ var
   LTotal: Integer;
   LVersion: Integer;
   LQuotaCount, LQuotaTokens, LTotalQuotaTokens: Integer;
+  LQuotaVersion, LConnectivityCount, LTerminalCount, LProfileCount: Integer;
+  LTotalTerminals, LTotalProfiles: Integer;
   LQuotas: TWfcTrainingValueQuotas;
+  LConnectivities: TWfcTrainingConnectivities;
 
   function ReadLine: String;
   begin
@@ -314,6 +399,8 @@ begin
     LVersion := 2
   else if LText = 'wfclearn=3' then
     LVersion := 3
+  else if LText = 'wfclearn=4' then
+    LVersion := 4
   else
     Fail('expected supported wfclearn header');
   LMetadata.Name := Token(ReadValue('name='));
@@ -408,13 +495,18 @@ begin
       LSamples[I].Tokens[J] := Token(LFields[2]);
     end;
   end;
-  if LVersion = WFC_TRAINING_VALUE_QUOTA_TEXT_VERSION then
+  if LVersion >= WFC_TRAINING_VALUE_QUOTA_TEXT_VERSION then
   begin
-    if Number(ReadValue('value-quota-version=')) <> WFC_TRAINING_VALUE_QUOTA_VERSION then
+    LQuotaVersion := Number(ReadValue('value-quota-version='));
+    if (LQuotaVersion <> WFC_TRAINING_VALUE_QUOTA_VERSION) and
+        not ((LVersion = WFC_TRAINING_CONNECTIVITY_TEXT_VERSION) and (LQuotaVersion = 0)) then
       Fail('unsupported training value-quota version');
     LQuotaCount := Number(ReadValue('value-quotas='));
-    if (LQuotaCount < 1) or (LQuotaCount > WFC_TRAINING_MAX_VALUE_QUOTA_COUNT) then
-      Fail('version 3 requires a nonempty bounded quota registry');
+    if (LQuotaCount < 0) or (LQuotaCount > WFC_TRAINING_MAX_VALUE_QUOTA_COUNT) then
+      Fail('quota count is outside the allowed range');
+    if ((LQuotaCount = 0) and (LQuotaVersion <> 0)) or
+        ((LQuotaCount <> 0) and (LQuotaVersion <> WFC_TRAINING_VALUE_QUOTA_VERSION)) then
+      Fail('quota capability version does not match its registry');
     if LQuotaCount > (Length(LLines) - LLine - 1) div 2 then
       Fail('quota count exceeds the available records');
     SetLength(LQuotas, LQuotaCount);
@@ -449,12 +541,73 @@ begin
       end;
     end;
   end;
+  if LVersion = WFC_TRAINING_CONNECTIVITY_TEXT_VERSION then
+  begin
+    if Number(ReadValue('connectivity-version=')) <> WFC_TRAINING_CONNECTIVITY_VERSION then
+      Fail('unsupported training connectivity version');
+    LConnectivityCount := Number(ReadValue('connectivities='));
+    if (LConnectivityCount < 1) or
+        (LConnectivityCount > WFC_TRAINING_MAX_CONNECTIVITY_COUNT) then
+      Fail('version 4 requires a nonempty bounded connectivity registry');
+    if LConnectivityCount > (Length(LLines) - LLine - 1) div 2 then
+      Fail('connectivity count exceeds the available records');
+    SetLength(LConnectivities, LConnectivityCount);
+    LTotalTerminals := 0; LTotalProfiles := 0;
+    for I := 0 to LConnectivityCount - 1 do
+    begin
+      Fields(ReadValue('connectivity='), 8);
+      if Number(LFields[0]) <> I then
+        Fail('connectivity indices must be contiguous and ordered');
+      LConnectivities[I].LabelText := Token(LFields[1]);
+      if LConnectivities[I].LabelText = '' then Fail('connectivity label cannot be empty');
+      LConnectivities[I].Root.X := Number(LFields[2]);
+      LConnectivities[I].Root.Y := Number(LFields[3]);
+      LConnectivities[I].Root.Z := Number(LFields[4]);
+      LConnectivities[I].RequireAllParticipants := ParseBoolean(LFields[5]);
+      LTerminalCount := Number(LFields[6]);
+      LProfileCount := Number(LFields[7]);
+      if (LTerminalCount < 0) or (LTerminalCount > WFC_TRAINING_MAX_CONNECTIVITY_TERMINAL_COUNT) then
+        Fail('connectivity terminal count exceeds the limit');
+      if (LProfileCount < 1) or (LProfileCount > WFC_TRAINING_MAX_CONNECTIVITY_VALUE_COUNT) then
+        Fail('connectivity profile count is outside the allowed range');
+      if LTerminalCount > WFC_TRAINING_MAX_TOTAL_CONNECTIVITY_TERMINAL_COUNT - LTotalTerminals then
+        Fail('aggregate connectivity terminals exceed the limit');
+      if LProfileCount > WFC_TRAINING_MAX_TOTAL_CONNECTIVITY_VALUE_COUNT - LTotalProfiles then
+        Fail('aggregate connectivity profiles exceed the limit');
+      Inc(LTotalTerminals, LTerminalCount); Inc(LTotalProfiles, LProfileCount);
+      if LTerminalCount + LProfileCount > Length(LLines) - LLine - 1 -
+          2 * (LConnectivityCount - I - 1) then
+        Fail('connectivity child counts exceed the available records');
+      SetLength(LConnectivities[I].RequiredPositions, LTerminalCount);
+      SetLength(LConnectivities[I].Values, LProfileCount);
+      for J := 0 to LTerminalCount - 1 do
+      begin
+        Fields(ReadValue('terminal='), 5);
+        if (Number(LFields[0]) <> I) or (Number(LFields[1]) <> J) then
+          Fail('terminal indices must be contiguous and ordered');
+        LConnectivities[I].RequiredPositions[J].X := Number(LFields[2]);
+        LConnectivities[I].RequiredPositions[J].Y := Number(LFields[3]);
+        LConnectivities[I].RequiredPositions[J].Z := Number(LFields[4]);
+      end;
+      for J := 0 to LProfileCount - 1 do
+      begin
+        Fields(ReadValue('profile='), 5);
+        if (Number(LFields[0]) <> I) or (Number(LFields[1]) <> J) then
+          Fail('profile indices must be contiguous and ordered');
+        LConnectivities[I].Values[J].Value := Token(LFields[2]);
+        if LConnectivities[I].Values[J].Value = '' then Fail('profile token cannot be empty');
+        LConnectivities[I].Values[J].Openings := ConnectivityOpenings(Number(LFields[3]));
+        LConnectivities[I].Values[J].RequiredByValue := ParseBoolean(LFields[4]);
+      end;
+    end;
+  end;
   if ReadLine <> 'end' then
     Fail('expected end marker');
   if LLine <> Length(LLines) then
     Fail('records follow the end marker');
   try
-    Result := TWfcTrainingDocument.Create(LMetadata, LOptions, LSamples, LQuotas);
+    Result := TWfcTrainingDocument.Create(LMetadata, LOptions, LSamples,
+      LQuotas, LConnectivities);
   except
     on E: EWfcTraining do
       Fail(E.Message);

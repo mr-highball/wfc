@@ -169,7 +169,8 @@ available memory, and search complexity remain real constraints.
 
 The fluent graph API and [portable recipe extension](pipeline-connectivity.md)
 both preserve these descriptors. Connectivity-bearing recipes use
-`wfcpipeline=3`; training sources do not yet author connectivity profiles.
+`wfcpipeline=3`. [Training-source authoring](training-connectivity.md) also
+preserves explicit profiles and output anchors in `wfclearn=4` documents.
 The older settlement and voxel adapters keep their existing
 versioned semantics; in particular, their previous post-generation
 reachability checks have not silently changed into this new solver mode.

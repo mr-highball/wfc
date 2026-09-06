@@ -413,8 +413,13 @@ search-time validation, and reversible domains. Its two spatial demo cases
 exercise roads and multi-floor circulation; existing settlement/voxel model
 versions retain their earlier semantics. [Portable connectivity recipes](docs/pipeline-connectivity.md)
 now preserve public profiles, including exact-copy aliases and private learned-state
-lowering, through native/browser artifact replay. Stronger port-specific filtering,
-profile-authoring/training tools, and chunk-boundary summaries remain future work.
+lowering, through native/browser artifact replay.
+[Training-source authoring](docs/training-connectivity.md) now preserves explicit
+token ports, output anchors, and required participation through source editing,
+retraining, native CLI export, and the browser network editor. It composes with
+authored quotas without inferring either policy from observations. Stronger
+port-specific filtering, inferred orientation semantics, and chunk-boundary
+summaries remain future work.
 The [research record](docs/research/rooted-connectivity-v1.md)
 states the soundness argument and finite oracle scope without a generalized
 arc-consistency or relative-performance claim.
@@ -560,6 +565,10 @@ labeled browser Z slices. A fifth exact CLI bundle replays the volume preset.
 Its
 interactive envelope is bounded and synchronous; raw media/voxel/music
 extraction, larger background jobs, and general recipe authoring remain open.
+Authored quotas use `wfclearn=3`; explicit connectivity selects `wfclearn=4`
+with persistent world-axis profiles and output roots/terminals. Both lower to
+the actual learned public output, remain distinct from sample frequencies,
+and are protected against loss during edits or model-only export.
 Word-boundary tables, wrapped sequence training, overlapping 3D extraction,
 broader artifact lint/inspection, and the complete exit gate remain open.
 

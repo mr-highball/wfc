@@ -151,8 +151,10 @@ projections, quotas, wrapping, 3D directions, repair, and forged result
 rejection. Connected Routes adds native artifact export/replay and an actual
 browser-entry proof. See its [commands](../examples/passes/06_ConnectedRoutes/README.md).
 
-Connectivity profiles are explicitly authored. Training Studio does not yet
-infer or edit them, and this feature does not export an arbitrary live graph.
+Connectivity profiles are explicitly authored. [Training Studio's network
+editor](training-connectivity.md) now saves them with learned source documents;
+it does not infer ports or orientation semantics. This feature does not export
+an arbitrary live graph.
 The existing graph propagator's finite evidence and limitations still apply;
 this format introduces no stronger propagation or relative-speed claim.
 The [representation and verification record](research/portable-connectivity-v1.md)

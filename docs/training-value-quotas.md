@@ -69,11 +69,15 @@ its source editor synchronized with this draft on both success and failure.
 
 ## Explicit format version
 
-Only nonempty quota registries select `wfclearn=3`. All existing quota-free
+Nonempty quota registries without connectivity select `wfclearn=3`. All existing quota-free
 non-volume documents retain exact version-1 text and identity; quota-free
 volumes retain exact version-2 text and identity. Removing the last quota
 restores the appropriate old format. No reader silently accepts quota records
 inside versions 1 or 2.
+
+[Authored connectivity](training-connectivity.md) selects version 4 and includes
+the same quota section alongside named networks. Editing either policy preserves
+the other. Removing connectivity returns to version 3 when quotas remain.
 
 Version 3 uses `sample=index,width,height,depth,name` for every training kind;
 non-volume samples must have depth `1`. After all samples and their token

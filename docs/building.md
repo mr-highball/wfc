@@ -435,8 +435,10 @@ PAS2JS=/opt/pas2js/bin/pas2js bash ./build-browser-training.sh
 
 Serve `build/browser/training/www` and append `?selftest=1`. The test exercises
 all six presets, full-depth volume slices and XYZ locks, source/run invalidation,
-public-token locks, contradiction
-recovery, and stale-import rejection. The final overlapping-checkerboard
+public-token locks, persistent quotas and connectivity networks, contradiction
+recovery, and stale-import rejection. Its five `data-connectivity-*` checks
+(edit, replay, contradiction, invalidation, volume) must each report `passed`.
+The final overlapping-checkerboard
 fixture must report `data-state="solved"`, `data-self-test="passed"`,
 `data-source-signature="0FA2C5EA"`, `data-recipe-signature="DBCBA621"`,
 `data-result-signature="947C4AFD"`, and `data-cell-count="16"`.
