@@ -49,11 +49,14 @@ function MakeWfcTextTrainingSample(const AName,
   AText: TWfcModelToken): TWfcTextTrainingSample;
 
 { Builds an owned immutable sequence-training document using the version-one
-  Unicode-scalar tokenizer. Metadata and sample boundaries are preserved. }
+  Unicode-scalar tokenizer. Metadata and sample boundaries are preserved.
+  Open remains the default; wrap treats each complete raw sample as its own
+  circle, without joining samples or introducing beginning/end sentinels. }
 function BuildWfcTextTrainingDocument(
   const AMetadata: TWfcTrainingMetadata;
   const ASamples: TWfcTextTrainingSamples;
-  const AOrder: Integer): TWfcTrainingDocument;
+  const AOrder: Integer;
+  const ABoundary: TWfcModelBoundary = wmbOpen): TWfcTrainingDocument;
 
 implementation
 
@@ -229,7 +232,8 @@ end;
 function BuildWfcTextTrainingDocument(
   const AMetadata: TWfcTrainingMetadata;
   const ASamples: TWfcTextTrainingSamples;
-  const AOrder: Integer): TWfcTrainingDocument;
+  const AOrder: Integer;
+  const ABoundary: TWfcModelBoundary): TWfcTrainingDocument;
 var
   I: Integer;
   LEncodedTotal: Integer;
@@ -238,6 +242,20 @@ var
   LTrainingSamples: TWfcTrainingSamples;
 begin
   Result := nil;
+  case ABoundary of
+    wmbOpen, wmbWrap: ;
+  else
+    raise EWfcTextTraining.Create('unknown text training boundary');
+  end;
+  {$IFDEF PAS2JS}
+  asm
+    if (typeof AOrder !== 'number' || !Number.isFinite(AOrder) ||
+        Math.floor(AOrder) !== AOrder) {
+      throw pas.wfc_text_training.EWfcTextTraining.$create('Create',
+        ['text training order must be an exact finite integer']);
+    }
+  end;
+  {$ENDIF}
   if (AOrder < 1) or (AOrder > WFC_TRAINING_MAX_ORDER) then
     raise EWfcTextTraining.Create(
       'text training order is outside the version-1 limit');
@@ -260,7 +278,7 @@ begin
       LEncodedTotal);
 
   LTrainingSamples := TokenizeSamples(ASamples);
-  LOptions := MakeWfcTrainingOptions(wtkSequence, wmbOpen, wmsNone,
+  LOptions := MakeWfcTrainingOptions(wtkSequence, ABoundary, wmsNone,
     0, 0, AOrder);
   try
     Result := TWfcTrainingDocument.Create(AMetadata, LOptions,

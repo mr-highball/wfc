@@ -24,7 +24,8 @@
   data-contradiction="not-run" data-recovery="not-run"
   data-preset-sweep="not-run" data-import-race="not-run"
   data-volume-dimensions="not-run" data-volume-lock="not-run"
-  data-volume-contradiction="not-run" data-volume-recovery="not-run">
+  data-volume-contradiction="not-run" data-volume-recovery="not-run"
+  data-source-boundary="" data-output-boundary="" data-circular-sequence="not-run">
   <header class="masthead">
     <div>
       <p class="eyebrow">WFC / LEARNING LAB 05</p>
@@ -67,7 +68,9 @@
           <label><span>License declaration</span><input id="raw-license-input" placeholder="required · never inferred"></label>
           <label><span>Source description</span><input id="raw-source-input" placeholder="required"></label>
           <label><span>Sequence order</span><input id="raw-order-input" type="number" min="1" max="64" value="2"></label>
+          <label><span>Sample boundary</span><select id="raw-boundary-select"><option value="open">Open · beginning and end</option><option value="wrap">Circular · last token joins first</option></select></label>
         </div>
+        <p>Circular is an explicit declaration about this complete sample, not an instruction to join separate samples. It learns one observation per scalar with no beginning/end sentinel. Its Studio output also wraps. Use open for ordinary finite text; this does not alter the separate word tokenizer.</p>
         <label><span>Raw text</span><textarea id="raw-text-input" rows="5" maxlength="2048" spellcheck="false"></textarea></label>
         <button id="convert-raw-button" type="button">Replace source with scalar training document</button>
       </details>
@@ -77,6 +80,7 @@
       <div class="status-line"><span class="status-light" aria-hidden="true"></span><div><small>Workspace</small><strong id="status" aria-live="polite">Loading Pascal runtime…</strong></div></div>
       <dl class="metrics">
         <div><dt>Profile</dt><dd id="profile-output">—</dd></div>
+        <div class="wide"><dt>Boundary policy</dt><dd id="boundary-output">—</dd></div>
         <div><dt>Samples</dt><dd id="sample-count">0</dd></div>
         <div><dt>Source tokens</dt><dd id="source-token-count">0</dd></div>
         <div><dt>Locks</dt><dd id="lock-count">0</dd></div>

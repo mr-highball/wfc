@@ -37,6 +37,7 @@ const
   WFC_TRAINING_VERSION = 1;
   WFC_TRAINING_VALUE_QUOTA_VERSION = 1;
   WFC_TRAINING_CONNECTIVITY_VERSION = 1;
+  WFC_TRAINING_SEQUENCE_WRAP_VERSION = 1;
 
   WFC_TRAINING_MAX_SAMPLE_COUNT = 4096;
   WFC_TRAINING_MAX_TOTAL_TOKEN_COUNT = 65536;
@@ -205,6 +206,11 @@ function MakeWfcTrainingConnectivity(const ALabelText: TWfcModelToken;
   const ARequireAllParticipants: Boolean = False): TWfcTrainingConnectivity;
 
 function WfcTrainingSignatureHex(const ASignature: Cardinal): String;
+
+{ Circular extraction is an explicit capability, independent of an output
+  graph's wrapping. Existing open sequence requests retain their v1 identity. }
+function WfcTrainingOptionsUseWrappedSequence(
+  const AOptions: TWfcTrainingOptions): Boolean;
 
 function LearnWfcTrainingModelText(
   const ADocument: TWfcTrainingDocument): String;
@@ -413,6 +419,12 @@ begin
   if AValue then Result := 'true' else Result := 'false';
 end;
 
+function WfcTrainingOptionsUseWrappedSequence(
+  const AOptions: TWfcTrainingOptions): Boolean;
+begin
+  Result := (AOptions.Kind = wtkSequence) and (AOptions.Boundary = wmbWrap);
+end;
+
 function CalculateTrainingSignature(const AMetadata: TWfcTrainingMetadata;
   const AOptions: TWfcTrainingOptions;
   const ASamples: TWfcTrainingSamples;
@@ -423,7 +435,12 @@ var
   J: Integer;
 begin
   Result := FNV_OFFSET_BASIS;
-  if Length(AConnectivities) <> 0 then
+  if WfcTrainingOptionsUseWrappedSequence(AOptions) then
+  begin
+    HashAscii(Result, 'wfclearn-v5');
+    HashAscii(Result, '5');
+  end
+  else if Length(AConnectivities) <> 0 then
   begin
     HashAscii(Result, 'wfclearn-v4');
     HashAscii(Result, '4');
@@ -463,6 +480,11 @@ begin
     HashAscii(Result, IntToStr(Length(ASamples[I].Tokens)));
     for J := 0 to Length(ASamples[I].Tokens) - 1 do
       HashAscii(Result, CanonicalToken(ASamples[I].Tokens[J]));
+  end;
+  if WfcTrainingOptionsUseWrappedSequence(AOptions) then
+  begin
+    HashAscii(Result, 'sequence-wrap');
+    HashAscii(Result, IntToStr(WFC_TRAINING_SEQUENCE_WRAP_VERSION));
   end;
   if Length(AValueQuotas) <> 0 then
   begin
@@ -841,6 +863,22 @@ begin
   end;
 end;
 
+procedure RequireWrappedSequenceInteger(const AValue: Integer;
+  const ALabel: String);
+{$IFDEF PAS2JS}var LValid: Boolean;{$ENDIF}
+begin
+  {$IFDEF PAS2JS}
+  asm
+    LValid = typeof AValue === 'number' && isFinite(AValue) &&
+      Math.floor(AValue) === AValue;
+  end;
+  if not LValid then
+    raise EWfcTraining.Create(ALabel + ' must be an exact integer');
+  {$ENDIF}
+  if (AValue < 1) or (AValue > High(Integer)) then
+    raise EWfcTraining.Create(ALabel + ' must be a positive Integer');
+end;
+
 procedure ValidateOptions(const AOptions: TWfcTrainingOptions);
 begin
   KindCode(AOptions.Kind);
@@ -897,8 +935,8 @@ begin
       end;
     wtkSequence:
       begin
-        if AOptions.Boundary <> wmbOpen then
-          raise EWfcTraining.Create('sequence training boundary must be open');
+        if AOptions.Boundary = wmbWrap then
+          RequireWrappedSequenceInteger(AOptions.Order, 'circular sequence order');
         if AOptions.Symmetry <> wmsNone then
           raise EWfcTraining.Create('sequence training symmetry must be none');
         if (AOptions.PatternWidth <> 0) or
@@ -931,6 +969,8 @@ var
   LAdded: Boolean;
   LHistory: String;
   LHistorySize: Integer;
+  LHistoryPosition: Integer;
+  LSampleLength: Integer;
   LPosition: Integer;
   LPublicTokens: TTrainingStringSet;
   LSampleIndex: Integer;
@@ -996,7 +1036,17 @@ begin
       LHistory := '';
       for H := 0 to LHistorySize - 1 do
       begin
-        if LPosition < LHistorySize - H then
+        if AOptions.Boundary = wmbWrap then
+        begin
+          { Reduce the distance before subtraction: even order > sample
+            length repeats only this sample, never adjacent corpus entries. }
+          LSampleLength := Length(LTokenIndices[LSampleIndex]);
+          LHistoryPosition := LPosition - ((LHistorySize - H) mod LSampleLength);
+          if LHistoryPosition < 0 then Inc(LHistoryPosition, LSampleLength);
+          LHistory := LHistory + 'T' +
+            IntToStr(LTokenIndices[LSampleIndex][LHistoryPosition]) + ';';
+        end
+        else if LPosition < LHistorySize - H then
           LHistory := LHistory + 'B;'
         else
           LHistory := LHistory + 'T' +
@@ -1074,6 +1124,11 @@ begin
 
   for I := 0 to Length(ASamples) - 1 do
   begin
+    if WfcTrainingOptionsUseWrappedSequence(AOptions) then
+    begin
+      RequireWrappedSequenceInteger(ASamples[I].Width, 'circular sample width');
+      RequireWrappedSequenceInteger(ASamples[I].Height, 'circular sample height');
+    end;
     AccumulateEncodedToken(ASamples[I].Name,
       'training sample name', LEncodedTotal);
     FindOrAddString(LSampleNames, CanonicalToken(ASamples[I].Name),
@@ -1498,7 +1553,7 @@ begin
       begin
         LSequenceSamples := BuildSequenceSamples(ADocument);
         LSequence := LearnSequenceModelCorpus(LSequenceSamples,
-          LOptions.Order);
+          LOptions.Order, LOptions.Boundary);
         try
           Result := EncodeWfcSequenceText(LSequence);
           if (ADocument.ValueQuotaCount <> 0) or (ADocument.ConnectivityCount <> 0) then
@@ -1703,7 +1758,10 @@ begin
       'pattern2d recipe export currently requires wrapped training input');
 
   LMetadata := ADocument.CopyMetadata;
-  if ADocument.ConnectivityCount <> 0 then
+  if WfcTrainingOptionsUseWrappedSequence(LOptions) then
+    LFingerprint := TWfcModelToken('wfclearn-v5/' +
+      WfcTrainingSignatureHex(ADocument.Signature))
+  else if ADocument.ConnectivityCount <> 0 then
     LFingerprint := TWfcModelToken('wfclearn-v4/' +
       WfcTrainingSignatureHex(ADocument.Signature))
   else if ADocument.ValueQuotaCount <> 0 then
@@ -1789,6 +1847,8 @@ begin
         LPasses[0] := MakeWfcPipelinePass('sequence', wppvPrivate,
           gpmOverlay, WFC_PIPELINE_NO_INDEX, wpakSequence, 0,
           True, wseWhole);
+        if LOptions.Boundary = wmbWrap then
+          LPasses[0].SequenceExtent := wseWrap;
         LPasses[1] := MakeWfcPipelinePass('output', wppvPublic,
           gpmOverlay, WFC_PIPELINE_NO_INDEX, wpakEmpty,
           WFC_PIPELINE_NO_INDEX, False, wseWhole);

@@ -866,6 +866,9 @@ for compiler_artifact_suite in \
   "$compiler_tools_directory/../test/wfc_browser_capture_test.lpr" \
   "$compiler_tools_directory/../test/wfc_serve_test.lpr" \
   "$compiler_run_app_test_source" \
+  "$compiler_source_directory/../test/wfc_sequence_wrap_test.lpr" \
+  "$compiler_source_directory/../test/wfc_training_sequence_wrap_test.lpr" \
+  "$compiler_source_directory/../test/wfc_training_circular_studio_test.lpr" \
   "$compiler_training_test_source" \
   "$compiler_text_training_test_source" \
   "$compiler_training_workspace_test_source" \

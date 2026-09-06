@@ -79,7 +79,9 @@ begin
   begin
     LText := DetokenizeWfcText(ATokens, wttkUnicodeScalar);
     Result := (LText = 'a cat.') or (LText = 'a bat.');
-  end;
+  end
+  else if APreset = TRAINING_STUDIO_CIRCULAR_PRESET then
+    Result := TrainingStudioCircularOutputIsValid(ATokens);
 end;
 
 function TrainingStudioVolumeOutputIsValid(const AWidth, AHeight,
@@ -129,7 +131,8 @@ begin
     LDepth := TrainingStudioPresetDepth(APreset);
     if LWorkspace.Rank = 3 then
       LWorkspace.ConfigureVolumeRun(LOptions, LDepth, nil, nil)
-    else LWorkspace.ConfigureRun(LOptions, nil, nil);
+    else LWorkspace.ConfigureRun(LOptions,
+      TrainingStudioPresetLocks(APreset, LWorkspace.PublicPassIndex), nil);
     LWorkspace.Solve;
     LTokens := LWorkspace.OutputTokens;
     if LWorkspace.Rank = 3 then
@@ -145,6 +148,9 @@ begin
       ' result=', LWorkspace.ResultSignatureText);
     WriteLn('samples=', LWorkspace.SampleCount, ' source-tokens=',
       LWorkspace.SourceTokenCount, ' model-items=', LWorkspace.ModelItemCount);
+    if APreset = TRAINING_STUDIO_CIRCULAR_PRESET then
+      WriteLn('source-boundary=circular output-boundary=wrap public-locks=3',
+        ' first-phrase=rise-fall second-phrase=rise-rest');
     for I := 0 to Length(LTokens) - 1 do
     begin
       if (LDepth > 1) and (I mod (LOptions.Width * LOptions.Height) = 0) then
@@ -249,7 +255,7 @@ begin
     Exit;
   end;
   if ParamCount > 2 then
-    raise Exception.Create('usage: TrainingStudio [preset 0..5] [decimal seed] | --selftest | --quota-demo | --quota-selftest | --connectivity-demo | --connectivity-selftest');
+    raise Exception.Create('usage: TrainingStudio [preset 0..6] [decimal seed] | --selftest | --quota-demo | --quota-selftest | --connectivity-demo | --connectivity-selftest');
   LPreset := 2;
   LSeed := 0;
   if ParamCount >= 1 then

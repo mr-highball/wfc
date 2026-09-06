@@ -48,7 +48,7 @@ route corpus demonstration to generate a root-to-terminal path on a 4×3 board
 with exactly six road cells. Change road ports to east/west only to make the
 different-row destination unreachable; restore north/south to recover. This
 shows local sample relationships, global quantity, and reachability working
-together. The demonstration is separate from the six numbered presets.
+together. The demonstration is separate from the numbered presets.
 
 Networks and quotas are saved together in version-4 training source. Editors
 preserve one another's saved policies, require apply/discard for drafts, and
@@ -62,9 +62,30 @@ slices. Click any slice cell to copy X/Y/Z, add a lock, and solve again. With
 this wrapped alternating corpus, even extents solve while odd wrapped cycles
 contradict; increasing the search budget cannot repair an impossible cycle.
 
+Select **Circular text / rise and rest** (preset 6), then **Train recipe** and
+**Configure & solve**. Two independent order-four raw-text circles, `rise fall `
+and `rise rest `, teach actual last-to-first history. Three visible public
+locks (`r` at 0, `f` at 5, `r` at 15) make the first phrase fall and the second
+rest; the forty-cell output wraps back to its first cell. Change or clear locks
+in the existing editor. For example, adding `r` at 1 contradicts the existing
+`r` at 0; removing that lock restores exact replay. A width of 39 cannot close
+this phrase cycle and also contradicts; it is not silently padded. The boundary
+policy is displayed alongside the training profile.
+
+These preset locks are run choices, not source training records. Only the
+first train after loading this preset installs them; ordinary retraining or
+source import clears locks. Export the run as well as the source/recipe to
+retain the exact public constraints. Circular source has no BOS or invented
+start/end evidence, and never joins separate samples. It demonstrates cyclic
+constraint training, not semantic understanding or musical development.
+
 Imported canonical source must use LF and exactly one final LF. Raw text is a
 separate explicit Unicode-scalar import; it preserves whitespace and treats
-the whole provided text as one sample. Source/license fields are declarations
+the whole provided text as one sample. Its **Sample boundary** selector defaults
+to **Open**; opt into **Circular** only when the sample itself is a complete
+circle (including any trailing space). Open sources retain their original
+format, while circular sequence source uses `wfclearn=5` and learns `wfcs=2`.
+Source/license fields are declarations
 you supply, not inferred permissions. All bundled presets are project-authored
 and MIT licensed.
 Browser text fields use LF line endings; canonical token records can retain
@@ -72,7 +93,7 @@ explicit CR or CRLF tokens without textarea normalization.
 
 ## Native demonstrations
 
-The checked native build (`build.ps1` or `build.sh`) also runs all six
+The checked native build (`build.ps1` or `build.sh`) also runs all seven
 presets. Manually:
 
 ```text
@@ -83,9 +104,10 @@ build/native/bin/TrainingStudio --connectivity-demo
 build/native/bin/TrainingStudio --connectivity-selftest
 build/native/bin/TrainingStudio 2 0
 build/native/bin/TrainingStudio 5 0
+build/native/bin/TrainingStudio 6 0
 ```
 
-Use `TrainingStudio.exe` on Windows. Arguments are preset index 0–5 and
+Use `TrainingStudio.exe` on Windows. Arguments are preset index 0–6 and
 an optional unsigned decimal seed; default is preset 2, seed 0. The native
 demonstration is a self-checking console view, not an interactive native window.
 For arbitrary file-based training and replay, use `wfc_learn`/`wfc_run`.
@@ -120,6 +142,12 @@ The fifth training-document bundle (`adjacency3d`) exactly matches Studio
 preset 5, including its unlocked 1,024-backtrack run. Its source and recipe
 signatures are `C6E52736` and `4B8C29E4`.
 
+The added circular preset uses the same search settings but three public locks.
+Its source is `7078B027`, recipe `6F936E07`, and seed-zero result `3437A49D`.
+It produces `rise fall rise rest rise rest rise fall ` (including the final
+space), using twenty source scalars and seventeen latent states. The six
+original unlocked fixtures above remain unchanged.
+
 At `?selftest=1`, the browser returns to preset 2 and publishes:
 
 ```text
@@ -134,6 +162,7 @@ data-connectivity-replay="passed"
 data-connectivity-contradiction="passed"
 data-connectivity-invalidation="passed"
 data-connectivity-volume="passed"
+data-circular-sequence="passed"
 ```
 
 The interactive envelope is deliberately finite: 512 source tokens, 64

@@ -102,7 +102,7 @@ begin
     '  wfc-learn --help'#10 +
     '  wfc-learn --version'#10 +
     #10 +
-    'INPUT is one canonical wfclearn=1, wfclearn=2, wfclearn=3, or wfclearn=4 file path, or - to read standard ' +
+    'INPUT is one canonical wfclearn=1, wfclearn=2, wfclearn=3, wfclearn=4, or wfclearn=5 file path, or - to read standard ' +
       'input.'#10 +
     'By default, training emits a canonical wfcpipeline=1 recipe, or ' +
       'wfcpipeline=2 for value quotas, or wfcpipeline=3 for authored connectivity.'#10 +
@@ -114,7 +114,7 @@ end;
 function WfcLearnVersionText: String;
 begin
   Result := 'wfc-learn ' + IntToStr(WFC_LEARN_CLI_VERSION) +
-    ' (wfclearn=1,2,3,4)'#10;
+    ' (wfclearn=1,2,3,4,5)'#10;
 end;
 
 function WfcLearnFailureExitCode(

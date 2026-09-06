@@ -33,6 +33,7 @@ uses
 
 const
   WFC_SEQUENCE_MODEL_VERSION = 1;
+  WFC_SEQUENCE_WRAPPED_MODEL_VERSION = 2;
   WFC_SEQUENCE_GRAPH_MODEL_VERSION = 1;
   WFC_SEQUENCE_EXTENT_VERSION = 1;
 
@@ -67,8 +68,9 @@ type
 
   (*
     One latent state corresponds to one public output position. History has
-    exactly Order - 1 items, left-padded with typed BOS values, and the
-    emitted token is projected at the same coordinate.
+    exactly Order - 1 items. Open samples are left-padded with typed BOS;
+    circular samples wrap history within their own sample and contain no BOS.
+    The emitted token is projected at the same coordinate.
   *)
   TWfcSequenceState = record
     History: TWfcSequenceHistory;
@@ -116,6 +118,7 @@ type
   TWfcSequenceModel = class
   strict private
     FOrder: Integer;
+    FBoundary: TWfcModelBoundary;
     FSampleLengths: TWfcSequenceSampleLengths;
     FPublicTokens: TWfcModelTokens;
     FStates: TWfcSequenceStates;
@@ -125,6 +128,7 @@ type
     FObservationCount: Integer;
 
     function GetHistorySize: Integer;
+    function GetModelVersion: Integer;
     function GetSampleCount: Integer;
     function GetPublicTokenCount: Integer;
     function GetStateCount: Integer;
@@ -132,13 +136,15 @@ type
     procedure ValidatePublicTokenIndex(const AIndex: Integer);
     procedure ValidateStateIndex(const AIndex: Integer);
     procedure ValidateHistoryIndex(const AIndex: Integer);
+    procedure ValidateCircularCounts;
   public
     constructor Create(const AOrder: Integer;
       const ASampleLengths: TWfcSequenceSampleLengths;
       const APublicTokens: TWfcModelTokens;
       const AStates: TWfcSequenceStates;
       const AStateCounts, AStartCounts,
-      AEndCounts: TWfcModelIntegerArray);
+      AEndCounts: TWfcModelIntegerArray;
+      const ABoundary: TWfcModelBoundary = wmbOpen);
 
     function SampleLengthAt(const ASampleIndex: Integer): Integer;
     function PublicTokenAt(
@@ -176,6 +182,8 @@ type
       const AStateKeys: TWfcModelTokens): TWfcModel;
 
     property Order: Integer read FOrder;
+    property Boundary: TWfcModelBoundary read FBoundary;
+    property ModelVersion: Integer read GetModelVersion;
     property HistorySize: Integer read GetHistorySize;
     property SampleCount: Integer read GetSampleCount;
     property PublicTokenCount: Integer read GetPublicTokenCount;
@@ -205,6 +213,22 @@ implementation
 
 type
   TBooleanArray = array of Boolean;
+
+procedure RequireCircularInteger(const AValue, AMinimum, AMaximum: Integer;
+  const ALabel: String);
+var LValid: Boolean;
+begin
+  {$IFDEF PAS2JS}
+  asm
+    LValid = typeof AValue === 'number' && isFinite(AValue) &&
+      Math.floor(AValue) === AValue && AValue >= AMinimum && AValue <= AMaximum;
+  end;
+  {$ELSE}
+  LValid := (AValue >= AMinimum) and (AValue <= AMaximum);
+  {$ENDIF}
+  if not LValid then
+    raise EWfcSequence.Create(ALabel + ' must be an exact integer in range');
+end;
 
 function CheckedLength(const ALength: SizeInt;
   const ALabel: String): Integer;
@@ -367,7 +391,8 @@ constructor TWfcSequenceModel.Create(const AOrder: Integer;
   const APublicTokens: TWfcModelTokens;
   const AStates: TWfcSequenceStates;
   const AStateCounts, AStartCounts,
-  AEndCounts: TWfcModelIntegerArray);
+  AEndCounts: TWfcModelIntegerArray;
+  const ABoundary: TWfcModelBoundary);
 var
   I: Integer;
   J: Integer;
@@ -392,6 +417,13 @@ var
   LUsedPublicTokens: TBooleanArray;
 begin
   inherited Create;
+  case ABoundary of
+    wmbOpen, wmbWrap: FBoundary := ABoundary;
+  else
+    raise EWfcSequence.Create('unknown sequence learning boundary');
+  end;
+  if FBoundary = wmbWrap then
+    RequireCircularInteger(AOrder, 1, WFC_SEQUENCE_MAX_ORDER, 'sequence order');
   if AOrder < 1 then
     raise EWfcSequence.CreateFmt(
       'sequence order must be positive [%d]', [AOrder]);
@@ -427,6 +459,9 @@ begin
   LExpectedObservations := 0;
   for I := 0 to LSampleCount - 1 do
   begin
+    if FBoundary = wmbWrap then
+      RequireCircularInteger(ASampleLengths[I], 1, High(Integer),
+        'circular sequence sample length');
     if ASampleLengths[I] < 1 then
       raise EWfcSequence.CreateFmt(
         'sequence sample length must be positive [%d: %d]',
@@ -443,7 +478,9 @@ begin
     history width. }
   SetLength(LExpectedDepthObservationCounts, AOrder);
   SetLength(LExpectedDepthEndCounts, AOrder);
-  for I := 0 to LSampleCount - 1 do
+  if FBoundary = wmbWrap then
+    LExpectedDepthObservationCounts[0] := LExpectedObservations
+  else for I := 0 to LSampleCount - 1 do
   begin
     LPrefixPositionCount := LHistorySize;
     if ASampleLengths[I] < LPrefixPositionCount then
@@ -515,6 +552,17 @@ begin
   LEndTotal := 0;
   for I := 0 to LStateCount - 1 do
   begin
+    if FBoundary = wmbWrap then
+    begin
+      RequireCircularInteger(AStates[I].EmittedTokenIndex, 0,
+        LPublicTokenCount - 1, 'circular sequence emitted-token index');
+      RequireCircularInteger(AStateCounts[I], 1, High(Integer),
+        'circular sequence state observation count');
+      RequireCircularInteger(AStartCounts[I], 0, 0,
+        'circular sequence start count');
+      RequireCircularInteger(AEndCounts[I], 0, 0,
+        'circular sequence end count');
+    end;
     if CheckedLength(Length(AStates[I].History),
         'sequence state history length') <> LHistorySize then
       raise EWfcSequence.CreateFmt(
@@ -535,6 +583,8 @@ begin
       case AStates[I].History[J].Kind of
         wshBos:
           begin
+            if FBoundary = wmbWrap then
+              raise EWfcSequence.Create('circular sequence history cannot contain BOS');
             if AStates[I].History[J].TokenIndex <> -1 then
               raise EWfcSequence.CreateFmt(
                 'sequence BOS history index must be -1 [%d, %d: %d]',
@@ -547,6 +597,9 @@ begin
           end;
         wshToken:
           begin
+            if FBoundary = wmbWrap then
+              RequireCircularInteger(AStates[I].History[J].TokenIndex, 0,
+                LPublicTokenCount - 1, 'circular sequence history token index');
             if (AStates[I].History[J].TokenIndex < 0) or
                 (AStates[I].History[J].TokenIndex >=
                   LPublicTokenCount) then
@@ -614,11 +667,11 @@ begin
     raise EWfcSequence.CreateFmt(
       'sequence state observations do not match sample lengths [%d <> %d]',
       [FObservationCount, LExpectedObservations]);
-  if LStartTotal <> LSampleCount then
+  if (FBoundary = wmbOpen) and (LStartTotal <> LSampleCount) then
     raise EWfcSequence.CreateFmt(
       'sequence start observations do not match sample count [%d <> %d]',
       [LStartTotal, LSampleCount]);
-  if LEndTotal <> LSampleCount then
+  if (FBoundary = wmbOpen) and (LEndTotal <> LSampleCount) then
     raise EWfcSequence.CreateFmt(
       'sequence end observations do not match sample count [%d <> %d]',
       [LEndTotal, LSampleCount]);
@@ -674,6 +727,49 @@ begin
           [I]);
     end;
   end;
+  if FBoundary = wmbWrap then ValidateCircularCounts;
+end;
+
+procedure TWfcSequenceModel.ValidateCircularCounts;
+var
+  I, J, H: Integer;
+  LSameHistory: Boolean;
+  LIncoming, LOutgoing: Integer;
+begin
+  { A state is a weighted edge from its history context to the context formed
+    by shifting that history and appending its emission. Every context in a
+    collection of circles must have equal incoming and outgoing weight.
+    Merely finding one compatible predecessor/successor is insufficient.
+    This validates aggregate circulation, not the original ordered samples or
+    a partition of the multigraph into their recorded individual lengths. }
+  for I := 0 to StateCount - 1 do
+  begin
+    LIncoming := 0;
+    LOutgoing := 0;
+    for J := 0 to StateCount - 1 do
+    begin
+      LSameHistory := True;
+      for H := 0 to HistorySize - 1 do
+        if not HistoryItemsEqual(FStates[I].History[H], FStates[J].History[H]) then
+        begin LSameHistory := False; Break; end;
+      if LSameHistory then
+        LOutgoing := CheckedAdd(LOutgoing, FStateCounts[J],
+          'circular sequence outgoing context count');
+      if StatesCompatible(J, I) then
+        LIncoming := CheckedAdd(LIncoming, FStateCounts[J],
+          'circular sequence incoming context count');
+    end;
+    if LIncoming <> LOutgoing then
+      raise EWfcSequence.CreateFmt(
+        'circular sequence context counts are not balanced [%d: %d <> %d]',
+        [I, LIncoming, LOutgoing]);
+  end;
+end;
+
+function TWfcSequenceModel.GetModelVersion: Integer;
+begin
+  if FBoundary = wmbWrap then Result := WFC_SEQUENCE_WRAPPED_MODEL_VERSION
+  else Result := WFC_SEQUENCE_MODEL_VERSION;
 end;
 
 function TWfcSequenceModel.GetHistorySize: Integer;
@@ -979,7 +1075,7 @@ begin
         LRelations[GraphRelationIndex(wmdWest, J, I,
           StateCount)] := 1;
       end;
-  Result := TWfcModel.Create(1, LSampleShapes, wmbOpen, wmsNone,
+  Result := TWfcModel.Create(1, LSampleShapes, FBoundary, wmsNone,
     [wmdEast, wmdWest], AStateKeys, LWeights, LRelations);
 end;
 

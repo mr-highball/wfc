@@ -112,6 +112,10 @@ The repository already contains the beginnings of the ecosystem:
   caller-defined tokenizer learning, anchored infill, prefix continuation,
   structured semantic failure, independent text validation, and a shared
   native/pas2js demonstration;
+- explicit [circular sequence training](docs/sequences.md#circular-source-training)
+  with per-sample wrapped histories, raw balanced context counts, strict
+  `wfcs=2` / `wfclearn=5` artifacts, full recipe/lock/policy/replay support,
+  and a shared native/browser circular-text training preset;
 - a reusable three-pass text owner with separate structure, lexical, and
   punctuation sequence models; atomic N-source public projection maps;
   exact versioned surface fragments; independent cross-layer validation;
@@ -250,11 +254,11 @@ It is not yet the finished system described above:
   structurally compatible overlapping 2D footprints, and bounded order-N
   sequences with explicit projection; Unicode-scalar text tokenization and
   exact completion domains now sit above that sequence layer, while a
-  project-owned versioned word-boundary table, wrapped sequence training,
+  project-owned versioned word-boundary table,
   overlapping 3D footprints, structured multi-license provenance, media import and
   word-oriented text import, larger/background browser training, artifact-family
   semantic/asset lint, and live interactive inspection remain;
-- the [hosted gate at `b3bd1ae`](https://github.com/mr-highball/wfc/actions/runs/34005958438)
+- the [hosted gate at `4d3db9b`](https://github.com/mr-highball/wfc/actions/runs/34020117117)
   passed stable FPC on Linux/macOS/Windows, development FPC on Linux, and the
   pas2js browser lane on 2026-09-06 UTC, including Linux package/clean-checkout
   checks and native browser completion/rejection fixtures; this verifies that
@@ -566,7 +570,7 @@ options, source/license labels and content fingerprints while exporting
 cardinal, overlapping-pattern, or whole-sequence recipes. Four bundled corpora
 replay exact source-to-result artifacts on native FPC.
 Training Studio now connects editable corpora and explicit Unicode-scalar raw
-text to that workflow through one reusable invalidation-aware workspace, six
+text to that workflow through one reusable invalidation-aware workspace, seven
 native presets, and a browser lock/inspection/export workbench. Full-volume
 training uses `wfclearn=2`, depth-sensitive provenance, XYZ locks/domains, and
 labeled browser Z slices. A fifth exact CLI bundle replays the volume preset.
@@ -577,11 +581,15 @@ Authored quotas use `wfclearn=3`; explicit connectivity selects `wfclearn=4`
 with persistent world-axis profiles and output roots/terminals. Both lower to
 the actual learned public output, remain distinct from sample frequencies,
 and are protected against loss during edits or model-only export.
+Circular sequence training additionally selects `wfclearn=5`, emits `wfcs=2`,
+and lowers to a wrapped sequence pass. It learns each sample's seam explicitly,
+retains raw balanced context counts without BOS or endpoint evidence, and
+exposes source boundary choice through both direct text learning and Studio.
 The [artifact tools](docs/artifact-tools.md) now validate all eight saved
 rule/training/pipeline families and explain their structure with explicitly
 bounded reports. Result validation distinguishes static bound-artifact checks
 from opt-in complete runtime replay, including exact non-solved outcomes.
-Word-boundary tables, wrapped sequence training, overlapping 3D extraction,
+Word-boundary tables, overlapping 3D extraction,
 broader semantic/asset lint, live inspection, and the complete exit gate remain open.
 
 ### Deliverables
@@ -791,6 +799,11 @@ polyphonic/harmonic breadth or expressive-performance learning.
   structural recombination, derived BOS-free wrapped cycles, projection-aware
   pass helpers, independent path validation, and canonical `wfcs=1` text on
   native FPC and pas2js.
+- An additive circular source profile now learns per-sample modulo histories,
+  validates weighted context circulation, and retains exact open-model replay.
+  Direct scalar/caller-tokenized learning, constrained circular completion,
+  source import, portable pipeline execution and native/browser Studio share
+  this contract; a finite fragment remains distinct from a closed output.
 - Text Completion Foundation v1 now adds whole, prefix, suffix, fragment, and
   cycle extents; atomic prefix/suffix/mask/locked-span helpers; exact globally
   feasible token domains with aggregate learned weights; a lossless

@@ -402,6 +402,10 @@ var
   LTokenIndex: Integer;
 begin
   Result := 'o' + IntToStr(AModel.Order);
+  { Retain every original open-model key, but bind circular provenance to the
+    applied model as well as its states and counts. The key codec is unchanged. }
+  if AModel.Boundary = wmbWrap then
+    Result := Result + ':boundary-wrap-v2';
   if AStateIndex = 0 then
   begin
     Result := Result + ':n' + IntToStr(AModel.SampleCount);

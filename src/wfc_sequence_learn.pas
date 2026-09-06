@@ -33,6 +33,7 @@ uses
 
 const
   WFC_SEQUENCE_LEARN_ALGORITHM_VERSION = 1;
+  WFC_SEQUENCE_WRAPPED_LEARN_ALGORITHM_VERSION = 2;
 
 type
   TWfcSequenceSample = record
@@ -44,10 +45,12 @@ function MakeWfcSequenceSample(
   const ATokens: TWfcModelTokens): TWfcSequenceSample;
 
 function LearnSequenceModelCorpus(const ASamples: TWfcSequenceSamples;
-  const AOrder: Integer): TWfcSequenceModel;
+  const AOrder: Integer;
+  const ABoundary: TWfcModelBoundary = wmbOpen): TWfcSequenceModel;
 
 function LearnSequenceModel(const ATokens: TWfcModelTokens;
-  const AOrder: Integer): TWfcSequenceModel;
+  const AOrder: Integer;
+  const ABoundary: TWfcModelBoundary = wmbOpen): TWfcSequenceModel;
 
 implementation
 
@@ -205,7 +208,7 @@ begin
 end;
 
 function LearnSequenceModelCorpus(const ASamples: TWfcSequenceSamples;
-  const AOrder: Integer): TWfcSequenceModel;
+  const AOrder: Integer; const ABoundary: TWfcModelBoundary): TWfcSequenceModel;
 var
   H: Integer;
   I: Integer;
@@ -213,6 +216,7 @@ var
   LDistance: Integer;
   LEndCounts: TWfcModelIntegerArray;
   LHistorySize: Integer;
+  LHistoryPosition: Integer;
   LObservationTotal: Integer;
   LPosition: Integer;
   LPublicTokenIndex: Integer;
@@ -226,7 +230,21 @@ var
   LStates: TWfcSequenceStates;
   LTokenCount: Integer;
   LValues: TIntegerArrays;
+  {$IFDEF PAS2JS}LValidOrder: Boolean;{$ENDIF}
 begin
+  case ABoundary of
+    wmbOpen, wmbWrap: ;
+  else
+    raise EWfcSequence.Create('unknown sequence learning boundary');
+  end;
+  {$IFDEF PAS2JS}
+  if ABoundary = wmbWrap then
+  begin
+    asm LValidOrder = typeof AOrder === 'number' && isFinite(AOrder) && Math.floor(AOrder) === AOrder; end;
+    if not LValidOrder then
+      raise EWfcSequence.Create('circular sequence order must be an exact integer');
+  end;
+  {$ENDIF}
   if AOrder < 1 then
     raise EWfcSequence.CreateFmt(
       'sequence order must be positive [%d]', [AOrder]);
@@ -285,7 +303,20 @@ begin
       for H := 0 to LHistorySize - 1 do
       begin
         LDistance := LHistorySize - H;
-        if LPosition < LDistance then
+        if ABoundary = wmbWrap then
+        begin
+          { Reduce the distance first: adding an arbitrarily long sample
+            length to the current position could overflow Integer. Each
+            original position contributes once, even when Order exceeds its
+            sample length. Never read through another corpus sample. }
+          LHistoryPosition := LPosition -
+            (LDistance mod LSampleLengths[LSampleIndex]);
+          if LHistoryPosition < 0 then
+            Inc(LHistoryPosition, LSampleLengths[LSampleIndex]);
+          LCandidate.History[H] := MakeWfcSequenceTokenHistoryItem(
+            LValues[LSampleIndex][LHistoryPosition]);
+        end
+        else if LPosition < LDistance then
           LCandidate.History[H] := MakeWfcSequenceBosHistoryItem
         else
           LCandidate.History[H] := MakeWfcSequenceTokenHistoryItem(
@@ -299,10 +330,11 @@ begin
           LStartCounts, LEndCounts, LStateIndex);
       CheckedIncrement(LStateCounts[LStateIndex],
         'sequence state observation count');
-      if LPosition = 0 then
+      if (ABoundary = wmbOpen) and (LPosition = 0) then
         CheckedIncrement(LStartCounts[LStateIndex],
           'sequence start observation count');
-      if LPosition = LSampleLengths[LSampleIndex] - 1 then
+      if (ABoundary = wmbOpen) and
+          (LPosition = LSampleLengths[LSampleIndex] - 1) then
         CheckedIncrement(LEndCounts[LStateIndex],
           'sequence end observation count');
     end;
@@ -311,17 +343,17 @@ begin
     raise EWfcSequence.Create(
       'a sequence learning corpus must contain observations');
   Result := TWfcSequenceModel.Create(AOrder, LSampleLengths,
-    LPublicTokens, LStates, LStateCounts, LStartCounts, LEndCounts);
+    LPublicTokens, LStates, LStateCounts, LStartCounts, LEndCounts, ABoundary);
 end;
 
 function LearnSequenceModel(const ATokens: TWfcModelTokens;
-  const AOrder: Integer): TWfcSequenceModel;
+  const AOrder: Integer; const ABoundary: TWfcModelBoundary): TWfcSequenceModel;
 var
   LSamples: TWfcSequenceSamples;
 begin
   SetLength(LSamples, 1);
   LSamples[0] := MakeWfcSequenceSample(ATokens);
-  Result := LearnSequenceModelCorpus(LSamples, AOrder);
+  Result := LearnSequenceModelCorpus(LSamples, AOrder, ABoundary);
 end;
 
 end.

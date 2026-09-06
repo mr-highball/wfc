@@ -7,7 +7,7 @@ pas2js. The browser is a presentation edge over that same code, not another
 solver or learner.
 
 The [Studio example](../examples/learning/05_TrainingStudio/README.md) includes a
-browser workbench and a native demonstration of six independently checked
+browser workbench and a native demonstration of seven independently checked
 presets. For file-oriented automation, use [wfc-learn](training.md) and the
 [recipe validator/runner](pipeline-artifacts.md).
 
@@ -65,11 +65,42 @@ end;
 Use `wfc_model`, `wfc_training`, `wfc_training_text`, and
 `wfc_text_training` in the containing program. Variables such as
 `SourceText` belong to the caller. The builder uses the existing project-owned
-version-1 Unicode-scalar tokenizer, one scalar per token, and produces open
+version-1 Unicode-scalar tokenizer, one scalar per token, and defaults to open
 whole-sequence input with the requested order. It is not a word tokenizer or an
 LLM. Whitespace, CR, LF, combining marks, and supplementary Unicode scalars
 remain exact data. There is no line splitting, trimming, case folding,
 normalization, or implied sample boundary.
+
+Pass a final `wmbWrap` argument to `BuildWfcTextTrainingDocument` to declare
+each raw sample an independent circle. The three-argument call and explicit
+`wmbOpen` keep identical existing source/model bytes. Circular training learns
+exactly one observation per input scalar, wrapping its history within that
+sample even when the requested order exceeds the sample length. It adds no
+BOS sentinel or artificial start/end counts, and never invents a seam between
+different samples. The immutable source uses `wfclearn=5`; its learned model
+uses `wfcs=2`, and its recipe requests `wseWrap` output. Generic sequence APIs
+can instead use a finite `wseFragment` of this BOS-free model; the Studio
+recipe intentionally checks the last-to-first output edge. A circumference
+that cannot satisfy the learned constraints fails rather than being padded.
+
+The browser raw-text importer has an explicit **Sample boundary** selector:
+**Open** is the default; **Circular** is opt-in. Conversion replaces the
+editable source and clears derived artifacts. The workspace's visible
+**Boundary policy** reports the trained source and output policy; merely
+changing an importer field does not silently retrain the current source.
+
+Preset 6, **Circular text / rise and rest**, is a small authored demonstration:
+two order-four scalar circles, `rise fall ` and `rise rest ` (trailing spaces
+are data), produce forty wrapped output cells. Loading and then training this
+preset installs visible public locks `r` at 0, `f` at 5, and `r` at 15. These
+force the first phrase to fall and the second to rest; the remaining phrases
+are constraint-solved. Clear or edit them through the ordinary public-lock
+editor. They are run choices, not saved training-source policies: importing or
+retraining the source clears them, and a replay needs the same separate run
+request. Native `TrainingStudio 6 0` uses the same default locks and independently
+checks the resulting public phrase grammar and closing seam. Circularity is
+not a claim of musical development, semantic understanding, or universal
+satisfiability.
 
 The browser textarea normalizes line endings to LF before passing its value
 to Pascal. That is a host input behavior, not tokenizer normalization. For
@@ -196,8 +227,8 @@ or obsolete asynchronous reads cannot overwrite a newer edit. Raw-text
 conversion initializes rank-1 output width to the imported scalar count.
 
 The whole-output quota editor authors exact or bounded quantities over selected
-public tokens. Apply replaces the quota registry in canonical `wfclearn=3`
-source and retrains, so source download/import and later retraining preserve
+public tokens. Apply replaces the quota registry in canonical source and
+retrains, so source download/import and later retraining preserve
 the policy. Unapplied drafts disable solving and derived downloads; discard
 does not restore an older result. Source and model identities stay separate:
 quota-bearing sources cannot export a standalone model because that format
@@ -208,7 +239,9 @@ invalidation, bounds, and format contracts.
 The network editor adds explicit root/terminal XYZ positions, per-token
 participation and directional ports, required-by-value flags, and an
 all-participants option. [Connectivity authoring](training-connectivity.md)
-selects `wfclearn=4`, preserving any quotas in the same source. Editing either
+selects `wfclearn=4` for non-circular sources, preserving any quotas in the same
+source. Circular sequence sources remain `wfclearn=5` with either policy.
+Editing either
 registry preserves the other. Policy drafts are mutually exclusive and block
 training, solving, source replacement, and exports until applied or discarded.
 The route demonstration separates learned local road/grass combinations from

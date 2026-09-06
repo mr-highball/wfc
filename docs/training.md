@@ -25,10 +25,12 @@ wfc_learn --version
 ```
 
 `INPUT` is a file path, or `-` for standard input. Default output is canonical
-`wfcpipeline=1` text, or `wfcpipeline=2` when the source declares output quotas.
-`--model` emits `wfcm=1`/`wfcm=2`/`wfcm=3`, `wfcp=1`, or `wfcs=1`
-according to the quota-free profile. It rejects quota-bearing sources because
-standalone models cannot preserve that policy. `--quiet` still learns and constructs the recipe,
+`wfcpipeline=1` text, `wfcpipeline=2` with output quotas, or `wfcpipeline=3`
+with rooted connectivity (with or without quotas). `--model` emits
+`wfcm=1`/`wfcm=2`/`wfcm=3`, `wfcp=1`, or `wfcs=1`/`wfcs=2`
+according to the profile; circular sequences use `wfcs=2`. It rejects sources
+with quotas or connectivity because standalone models cannot preserve those
+policies. `--quiet` still learns and constructs the recipe,
 but emits nothing. Options are mutually exclusive; `--` allows a path
 beginning with a hyphen.
 
@@ -43,7 +45,7 @@ avoids an FPC object-file collision with `src/wfc_learn.pas`. Build it with
 `-owfc_learn` (`-owfc_learn.exe` on Windows). The host uses
 `tools/wfc_learn_app.pas` and contains only bounded file/standard-stream I/O.
 The portable units also power the [Training Studio](training-studio.md) browser
-editor. CLI version 2 advertises all three supported training text versions.
+editor. The CLI help/version output advertises the supported training formats.
 
 ## Profiles
 
@@ -53,7 +55,7 @@ editor. CLI version 2 advertises all three supported training text versions.
 | `adjacency2d` | Open/wrap; none/d4; footprint 0,0; order 0 | Cardinal adjacency and counts | Rank 2, public `output` |
 | `adjacency3d` | Explicit positive depth; open/wrap; none/d4/cube24/cube48; footprint 0,0; order 0 | Six-face adjacency and counts | Rank 3, public `output` |
 | `pattern2d` | Open/wrap; none/d4; positive footprint of at most 64 cells; order 0 | Overlapping footprints and counts | Rank 2, private `patterns` → public `output`; wrapped input only |
-| `sequence` | Height 1; open; none; footprint 0,0; order 1–64 | Bounded order-N latent states and counts | Rank 1, private `sequence` → public `output`; whole extent |
+| `sequence` | Height 1; open/wrap; none; footprint 0,0; order 1–64 | Bounded order-N latent states and counts; circular history when wrapped | Rank 1, private `sequence` → public `output`; whole extent for open, wrapped extent for circular |
 
 D4 means the existing deterministic eight rotation/reflection observations,
 including repeated observations when a transform is identical. Pattern D4
@@ -63,7 +65,10 @@ pattern projection bridge is wrapped-only.
 
 Every sample has independent boundaries. Adjacency and pattern training never
 join the last token of one sample to the first token of the next. Sequence
-history resets at each sample. Heterogeneous sample dimensions are permitted.
+history stays within each sample. Open sequences use typed beginning-of-sample
+history and observed endpoints; circular sequences wrap within the same sample,
+with no BOS or invented endpoint evidence and exactly one observation per
+input token. Heterogeneous sample dimensions are permitted.
 Tokens and samples retain their declared order, including first-seen vocabulary
 ordering. See the [cardinal](learning.md), [pattern](patterns.md), and
 [sequence](sequences.md) guides for the underlying algorithm contracts.
@@ -83,11 +88,32 @@ Existing kinds retain byte-identical `wfclearn=1` documents. The additive
 tokens in X-fast, then Y, then Z order. No other kind uses version 2. See
 [volume learning](volume-learning.md) for a complete example and symmetry policy.
 
-An explicit nonempty output quota registry selects `wfclearn=3` for any kind.
+An explicit nonempty output quota registry selects `wfclearn=3` unless a
+connectivity or circular-sequence capability requires a later source version.
 It retains authored token identities across training and source save/load,
 uses explicit depth in every sample record, and exports a quota-bearing recipe.
 See [authoring output quotas](training-value-quotas.md) for the complete source,
 workspace, CLI, bounds, and compatibility contract.
+
+Nonempty [rooted connectivity](training-connectivity.md) selects `wfclearn=4`
+for otherwise non-circular sources, preserving optional quotas. A sequence
+source explicitly declaring `boundary=wrap` selects `wfclearn=5`, with or
+without either policy registry; all existing open sequence source identities
+remain unchanged. Version 5 is rejected for any other kind/boundary pairing.
+It uses explicit depth-1 sample records, then both mandatory policy sections:
+`value-quota-version=0` / `value-quotas=0` when absent (or version 1 with a
+nonempty registry), followed by the analogous `connectivity-version` /
+`connectivities` section. Source profile order and coordinates keep their
+existing authored/canonical contracts.
+
+The circular recipe uses `wseWrap`, so the requested output's last-to-first
+edge is checked. A circle does not have an observed beginning or end; the
+generic sequence adapter also permits `wseFragment` when an application wants
+a finite extract rather than a closed loop. Public locks and domains still
+constrain private sequence candidates through the same projection bridge.
+Training circles do not guarantee every circumference can solve and do not
+imply musical development. The [Studio](training-studio.md) exposes both an
+explicit raw-text boundary choice and a checked circular-text preset.
 
 All records below are required and ordered. The document is ASCII with
 canonical percent-encoded UTF-8 token fields, LF line endings, and exactly one
@@ -145,8 +171,9 @@ Recipe metadata and its learned resource both retain:
 
 - the declared license;
 - the source description plus an ordered sample manifest;
-- a `wfclearn-v1/XXXXXXXX` fingerprint, or `wfclearn-v2/XXXXXXXX` for volumes,
-  of the validated training contents.
+- a versioned `wfclearn-vN/XXXXXXXX` fingerprint of the validated training
+  contents: v1 ordinary sources, v2 volumes, v3 authored quotas, v4 rooted
+  connectivity, or v5 circular sequences (including their optional policies).
 
 The manifest is appended as ` | samples=` followed by comma-separated
 `index:encoded-name:widthxheight:XXXXXXXX` entries. Each sample hash covers
@@ -194,6 +221,15 @@ label/minimum/maximum/value-count/value sequence in authored order. Sample
 fingerprints and learned resource payloads do not change solely because quotas
 change. See [training quotas](training-value-quotas.md).
 
+Circular sequences select `wfclearn-v5` and version `5`. After the usual
+non-volume fields and sample payloads, append `sequence-wrap` and capability
+`1`, then only the nonempty quota and connectivity registries in their existing
+domain/version/descriptor order. Their sample hashes remain
+`wfclearn-sample-v1`; no depth field is added to those non-volume hash payloads.
+The whole-source/resource fingerprint distinguishes circular learning even
+when the original sample tokens match an open document. Optional policies
+retain their own versioned hash extensions.
+
 ## Limits and failure behavior
 
 The quota-free version-1/2 resource envelope caps source documents at 8,388,608 encoded ASCII characters and
@@ -207,6 +243,12 @@ Version 3 retains those byte/sample budgets and shares encoded-token capacity
 with quota labels and values. Its separately checked 139,277-line envelope
 permits 4,096 quota descriptors and 65,536 aggregate quota values, with at most
 1,024 values per descriptor. These are authoring limits, not inferred quotas.
+
+Versions 4 and 5 share the checked 274,447-line envelope while retaining the
+same 8,388,608-character source and 4,194,304-character aggregate encoded-token
+budgets. Connectivity adds at most 4,096 networks, 1,024 profiles per network,
+65,536 profiles in total, and 65,536 terminals in total. Circularity does not
+increase sample/token/order, model capacity, or interactive Studio limits.
 
 A separate 16,777,216 extraction/history-visit bound checks expansion from
 footprints, symmetry, and sequence order. It is not a wall-clock timeout or a

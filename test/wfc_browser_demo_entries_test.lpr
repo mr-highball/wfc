@@ -145,6 +145,7 @@ begin
   Expect(3, 'data-volume-contradiction', 'passed');
   Expect(3, 'data-volume-recovery', 'passed');
   Expect(3, 'data-import-race', 'passed');
+  Expect(3, 'data-circular-sequence', 'passed');
   Expect(4, 'data-seed', '0');
   Expect(4, 'data-composition-signature', '216F6EBB');
   Expect(4, 'data-result-status', 'solved');

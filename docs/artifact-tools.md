@@ -57,8 +57,8 @@ filename extensions or a permissive fallback parser.
 | `rules` | `wfcrules=1` | Canonical authored local rules, weights, vocabulary, and reciprocal closure. |
 | `model` | `wfcm=1,2,3` | Canonical cardinal observations and the immutable model contract, including volumes. |
 | `pattern2d` | `wfcp=1` | Canonical overlapping footprints and exact structural model consistency. |
-| `sequence` | `wfcs=1` | Canonical latent sequence states, histories, vocabulary, and observation counts. |
-| `training` | `wfclearn=1,2,3,4` | Canonical editable samples, options, provenance, and authored quota/connectivity policy. No training occurs. |
+| `sequence` | `wfcs=1,2` | Canonical latent sequence states, histories, vocabulary, and observation counts; circular models additionally require balanced weighted contexts and no open endpoints. |
+| `training` | `wfclearn=1,2,3,4,5` | Canonical editable samples, options, provenance, and authored quota/connectivity policy, including explicit circular sequence sources. No training occurs. |
 | `recipe` | `wfcpipeline=1,2,3` | Canonical embedded resources, static topology, pass DAG, bridges, public requirements, and policy. No graph is compiled. |
 | `run` | Recipe, then `wfcpipeline-run=1` | Canonical invocation bound to that recipe, including shape, options, public locks, and domains. Runtime preparation is not performed. |
 | `result` | Recipe, run, then `wfcpipeline-result=1` | Canonical bound terminal record, valid repeated fields, public layer shape/vocabulary, and the result decoder's solved public quota/connectivity checks. Not a complete solution proof. |

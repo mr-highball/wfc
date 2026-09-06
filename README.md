@@ -29,6 +29,7 @@ and explicit exit gates.
 | Build and run locally | [Build guide](docs/building.md), [FPC development tools](docs/development-tools.md) |
 | Try an interactive demo | [Demo table below](#demos), [complete examples index](examples/README.md) |
 | Learn models from examples | [Learning](docs/learning.md), [training documents and CLI](docs/training.md) |
+| Learn cyclic text, rhythms or event patterns | [Circular sequence training](docs/sequences.md#circular-source-training), [Training Studio](docs/training-studio.md) |
 | Save and replay a pipeline | [Portable recipes, runs, and results](docs/pipeline-artifacts.md) |
 | Check or inspect saved work | [Artifact-family validation, inspection, and exact replay](docs/artifact-tools.md) |
 | Extend or evaluate the system | [Roadmap](ROADMAP.md), [research records](docs/research/README.md) |

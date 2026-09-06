@@ -344,6 +344,8 @@ begin
   if not W.Want then Exit;
   if not W.Detail('sequence order=' + N(M.Order) + ' tokens=' + N(M.PublicTokenCount) +
     ' states=' + N(M.StateCount) + ' samples=' + N(M.SampleCount)) then Exit;
+  if M.Boundary = wmbWrap then
+    if not W.Detail('sequence boundary=wrap model-version=' + N(M.ModelVersion)) then Exit;
   for I := 0 to M.SampleCount - 1 do
   begin
     if not W.Want then Exit;

@@ -87,11 +87,14 @@ type
     FRawLicenseInput: TJSHTMLInputElement;
     FRawSourceInput: TJSHTMLInputElement;
     FRawOrderInput: TJSHTMLInputElement;
+    FRawBoundarySelect: TJSHTMLSelectElement;
     FRawTextInput: TJSHTMLTextAreaElement;
     FConvertRawButton: TJSHTMLButtonElement;
 
     FStatusElement: TJSElement;
     FProfileElement: TJSElement;
+    FBoundaryElement: TJSElement;
+    FCircularPresetLocksPending: Boolean;
     FSampleCountElement: TJSElement;
     FSourceTokenCountElement: TJSElement;
     FLockCountElement: TJSElement;
@@ -181,6 +184,7 @@ type
     procedure CommitConnectivities(const AValues: TWfcTrainingConnectivities);
     procedure RefreshConnectivityState;
     procedure RunConnectivitySelfTest;
+    procedure RunCircularSelfTest;
 
     procedure SetState(const AState, AStatus, ADetail: String);
     procedure ShowError(const AMessage: String);
@@ -326,11 +330,13 @@ begin
   FRawLicenseInput := TJSHTMLInputElement(RequireElement('raw-license-input'));
   FRawSourceInput := TJSHTMLInputElement(RequireElement('raw-source-input'));
   FRawOrderInput := TJSHTMLInputElement(RequireElement('raw-order-input'));
+  FRawBoundarySelect := TJSHTMLSelectElement(RequireElement('raw-boundary-select'));
   FRawTextInput := TJSHTMLTextAreaElement(RequireElement('raw-text-input'));
   FConvertRawButton := TJSHTMLButtonElement(RequireElement('convert-raw-button'));
 
   FStatusElement := RequireElement('status');
   FProfileElement := RequireElement('profile-output');
+  FBoundaryElement := RequireElement('boundary-output');
   FSampleCountElement := RequireElement('sample-count');
   FSourceTokenCountElement := RequireElement('source-token-count');
   FLockCountElement := RequireElement('lock-count');
@@ -489,8 +495,12 @@ begin
   WriteOptions(TrainingStudioPresetOptions(AIndex),
     TrainingStudioPresetDepth(AIndex));
   ApplySourceText(TrainingStudioPresetText(AIndex));
+  FCircularPresetLocksPending := AIndex = TRAINING_STUDIO_CIRCULAR_PRESET;
   SetState('source-dirty', 'Preset loaded; train to continue.',
     TrainingStudioPresetName(AIndex) + ' is the current editable source.');
+  if FCircularPresetLocksPending then
+    SetState('source-dirty', 'Circular text preset loaded; train to continue.',
+      'Training this preset adds three visible public locks: r at 0, f at 5, r at 15. The forty-cell output wraps back to its first cell.');
 end;
 
 procedure TBrowserTrainingStudioApplication.ApplySourceText(
@@ -499,6 +509,7 @@ begin
   RequireNoPolicyDraft;
   CancelSourceFileRead;
   FQuotaDraftDirty := False;
+  FCircularPresetLocksPending := False;
   FLocks := nil;
   FVocabulary := nil;
   FSelectedCell := -1;
@@ -519,6 +530,10 @@ begin
   FSelectedCell := -1;
   FWorkspace.SetSourceText(FSourceInput.value);
   FWorkspace.Train;
+  if FCircularPresetLocksPending then
+    FLocks := TrainingStudioPresetLocks(TRAINING_STUDIO_CIRCULAR_PRESET,
+      FWorkspace.PublicPassIndex);
+  FCircularPresetLocksPending := False;
   ReloadQuotaEditor;
   ReloadConnectivityEditor;
   RefreshAll;
@@ -1176,6 +1191,7 @@ var
   LOptions: TWfcTrainingOptions;
   LPasses: TWfcPipelinePasses;
   LProfile: String;
+  LSourceBoundary, LOutputBoundary: String;
   LResultStatus: String;
   LSourceSignature: String;
   LRecipeSignature: String;
@@ -1185,6 +1201,8 @@ var
   LTokens: TWfcModelTokens;
 begin
   LProfile := '';
+  LSourceBoundary := '';
+  LOutputBoundary := '';
   LResultStatus := 'none';
   LSourceSignature := '';
   LRecipeSignature := '';
@@ -1200,6 +1218,14 @@ begin
     LSourceSignature := FWorkspace.TrainingSignatureText;
     if not PolicyDraftDirty then LRecipeSignature := FWorkspace.RecipeSignatureText;
     FProfileElement.textContent := LProfile;
+    if LOptions.Boundary = wmbWrap then LSourceBoundary := 'wrap'
+    else LSourceBoundary := 'open';
+    if FWorkspace.WrapNeighbors then LOutputBoundary := 'wrap'
+    else LOutputBoundary := 'open';
+    if (LOptions.Kind = wtkSequence) and (LOptions.Boundary = wmbWrap) then
+      FBoundaryElement.textContent := 'Circular samples / wrapped output'
+    else FBoundaryElement.textContent := LSourceBoundary + ' source / ' +
+      LOutputBoundary + ' output';
     FSampleCountElement.textContent := IntToStr(FWorkspace.SampleCount);
     FSourceTokenCountElement.textContent :=
       IntToStr(FWorkspace.SourceTokenCount);
@@ -1210,6 +1236,7 @@ begin
   else
   begin
     FProfileElement.textContent := '—';
+    FBoundaryElement.textContent := '—';
     FSampleCountElement.textContent := '0';
     FSourceTokenCountElement.textContent := '0';
     FTrainingSignatureElement.textContent := '—';
@@ -1233,6 +1260,8 @@ begin
 
   FLockCountElement.textContent := IntToStr(Length(FLocks));
   document.body.setAttribute('data-profile', LProfile);
+  document.body.setAttribute('data-source-boundary', LSourceBoundary);
+  document.body.setAttribute('data-output-boundary', LOutputBoundary);
   document.body.setAttribute('data-source-signature', LSourceSignature);
   document.body.setAttribute('data-training-signature', LSourceSignature);
   document.body.setAttribute('data-recipe-signature', LRecipeSignature);
@@ -1658,6 +1687,7 @@ var
   LSamples: TWfcTextTrainingSamples;
   LText: String;
   LOptions: TWfcTrainingSolveOptions;
+  LBoundary: TWfcModelBoundary;
 begin
   RequireNoPolicyDraft;
   CancelSourceFileRead;
@@ -1677,12 +1707,16 @@ begin
       'raw text exceeds the browser storage limit [%d > %d]',
       [Length(LText), RAW_TEXT_STORAGE_LIMIT]);
   LOrder := ReadBoundedInteger(FRawOrderInput, 'sequence order', 1, 64);
+  if FRawBoundarySelect.value = 'open' then LBoundary := wmbOpen
+  else if FRawBoundarySelect.value = 'wrap' then LBoundary := wmbWrap
+  else raise EConvertError.Create('select open or circular raw-text boundary');
   LMetadata := MakeWfcTrainingMetadata(FRawNameInput.value,
     FRawLicenseInput.value, FRawSourceInput.value);
   SetLength(LSamples, 1);
   LSamples[0] := MakeWfcTextTrainingSample(
     FRawSampleNameInput.value, LText);
-  LDocument := BuildWfcTextTrainingDocument(LMetadata, LSamples, LOrder);
+  LDocument := BuildWfcTextTrainingDocument(LMetadata, LSamples, LOrder,
+    LBoundary);
   try
     LSample := LDocument.SampleAt(0);
     if LSample.Width > FLimits.MaxOutputCells then
@@ -2092,6 +2126,97 @@ begin
     'connectivity self-test failed to restore legacy baseline');
 end;
 
+procedure TBrowserTrainingStudioApplication.RunCircularSelfTest;
+var SavedSource, SavedRecipe, SavedResult, OpenSource: String;
+  Tokens: TWfcModelTokens;
+begin
+  document.body.setAttribute('data-circular-sequence', 'pending');
+  AssertTest(FRawBoundarySelect.value = 'open', 'raw text must default to open');
+  LoadPreset(TRAINING_STUDIO_CIRCULAR_PRESET);
+  DispatchDomEvent(FTrainButton, 'click');
+  AssertTest(FWorkspace.HasRecipe and FWorkspace.WrapNeighbors and
+    (FWorkspace.SourceOptions.Boundary = wmbWrap) and
+    (Length(FLocks) = 3) and (FLockList.options.length = 3),
+    'circular preset did not expose wrapped output and three public locks');
+  DispatchDomEvent(FSolveButton, 'click');
+  Tokens := FWorkspace.OutputTokens;
+  AssertTest((FWorkspace.ResultStatus = wprsSolved) and
+    (Length(Tokens) = 40) and TrainingStudioCircularOutputIsValid(Tokens) and
+    (FBoundaryElement.textContent = 'Circular samples / wrapped output'),
+    'circular preset output or visible boundary policy is incorrect');
+  SavedSource := FWorkspace.SourceText;
+  SavedRecipe := FWorkspace.RecipeText;
+  SavedResult := FWorkspace.ResultText;
+  AssertTest(Pos('wfclearn=5'#10, SavedSource) = 1,
+    'circular source did not use the explicit new format');
+
+  FLockXInput.value := '1'; FLockYInput.value := '0'; FLockZInput.value := '0';
+  FLockTokenSelect.value := IntToStr(FindVocabularyToken('r'));
+  DispatchDomEvent(FAddLockButton, 'click');
+  AssertTest(not FWorkspace.HasResult and
+    (document.body.getAttribute('data-output-count') = '0'),
+    'conflicting circular public lock retained stale output');
+  DispatchDomEvent(FSolveButton, 'click');
+  AssertTest((FWorkspace.ResultStatus = wprsContradiction) and
+    (Length(FWorkspace.OutputTokens) = 0),
+    'circular public lock conflict did not produce clean contradiction');
+  FLockList.selectedIndex := 1;
+  DispatchDomEvent(FRemoveLockButton, 'click');
+  DispatchDomEvent(FSolveButton, 'click');
+  AssertTest(FWorkspace.ResultText = SavedResult,
+    'removing circular lock conflict did not restore exact replay');
+
+  { Imported source keeps circular observations, but locks are separate run
+    choices. Reapply the same public choices to demonstrate complete replay. }
+  ApplySourceText(SavedSource);
+  DispatchDomEvent(FTrainButton, 'click');
+  AssertTest((Length(FLocks) = 0) and (FWorkspace.RecipeText = SavedRecipe),
+    'source import invented locks or changed circular learning');
+  FLocks := TrainingStudioPresetLocks(TRAINING_STUDIO_CIRCULAR_PRESET,
+    FWorkspace.PublicPassIndex);
+  RefreshAll;
+  DispatchDomEvent(FSolveButton, 'click');
+  AssertTest(FWorkspace.ResultText = SavedResult,
+    'circular source and public run choices failed exact replay');
+
+  FRawNameInput.value := 'boundary-example';
+  FRawSampleNameInput.value := 'one-circle';
+  FRawLicenseInput.value := 'MIT';
+  FRawSourceInput.value := 'project-authored boundary check';
+  FRawTextInput.value := 'ab'; FRawOrderInput.value := '2';
+  FRawBoundarySelect.value := 'open';
+  DispatchDomEvent(FConvertRawButton, 'click');
+  OpenSource := FWorkspace.SourceText;
+  AssertTest((Pos('wfclearn=1'#10, OpenSource) = 1) and
+    not FWorkspace.HasRecipe and (Length(FLocks) = 0),
+    'default raw conversion changed legacy format or retained derived state');
+  FRawBoundarySelect.value := 'wrap';
+  DispatchDomEvent(FConvertRawButton, 'click');
+  AssertTest((Pos('wfclearn=5'#10, FWorkspace.SourceText) = 1) and
+    not FWorkspace.HasRecipe, 'circular raw conversion did not create a new source draft');
+  DispatchDomEvent(FTrainButton, 'click');
+  DispatchDomEvent(FSolveButton, 'click');
+  AssertTest(FWorkspace.WrapNeighbors and
+    (FWorkspace.ResultStatus = wprsSolved) and
+    (document.body.getAttribute('data-source-boundary') = 'wrap') and
+    (document.body.getAttribute('data-output-boundary') = 'wrap'),
+    'raw circular source did not solve with visible wrapped boundary');
+  FRawBoundarySelect.value := 'open';
+  DispatchDomEvent(FConvertRawButton, 'click');
+  AssertTest((FWorkspace.SourceText = OpenSource) and
+    not FWorkspace.HasRecipe and not FWorkspace.HasResult,
+    'switching raw boundary back to open did not restore exact source bytes');
+
+  LoadPreset(INITIAL_PRESET);
+  DispatchDomEvent(FTrainButton, 'click');
+  DispatchDomEvent(FSolveButton, 'click');
+  AssertTest((FWorkspace.TrainingSignatureText = BASELINE_SOURCE_SIGNATURE) and
+    (FWorkspace.RecipeSignatureText = BASELINE_RECIPE_SIGNATURE) and
+    (FWorkspace.ResultSignatureText = BASELINE_RESULT_SIGNATURE),
+    'circular selftest changed the original terminal fixture');
+  document.body.setAttribute('data-circular-sequence', 'passed');
+end;
+
 procedure TBrowserTrainingStudioApplication.RunSelfTest;
 var
   I: Integer;
@@ -2350,6 +2475,7 @@ begin
     document.body.setAttribute('data-recovery', 'passed');
     RunQuotaSelfTest;
     RunConnectivitySelfTest;
+    RunCircularSelfTest;
     document.body.setAttribute('data-self-test', 'passed');
   except
     on E: Exception do

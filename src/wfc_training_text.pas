@@ -31,9 +31,10 @@ uses
   wfc_training;
 
 const
-  WFC_TRAINING_TEXT_VERSION = 4;
+  WFC_TRAINING_TEXT_VERSION = 5;
   WFC_TRAINING_VALUE_QUOTA_TEXT_VERSION = 3;
   WFC_TRAINING_CONNECTIVITY_TEXT_VERSION = 4;
+  WFC_TRAINING_SEQUENCE_WRAP_TEXT_VERSION = 5;
   WFC_TRAINING_MAX_ENCODED_TEXT_LENGTH = 8388608;
   WFC_TRAINING_MAX_TEXT_LINE_COUNT = 11 +
     WFC_TRAINING_MAX_SAMPLE_COUNT + WFC_TRAINING_MAX_TOTAL_TOKEN_COUNT;
@@ -46,6 +47,8 @@ const
     WFC_TRAINING_MAX_CONNECTIVITY_COUNT +
     WFC_TRAINING_MAX_TOTAL_CONNECTIVITY_VALUE_COUNT +
     WFC_TRAINING_MAX_TOTAL_CONNECTIVITY_TERMINAL_COUNT;
+  WFC_TRAINING_SEQUENCE_WRAP_MAX_TEXT_LINE_COUNT =
+    WFC_TRAINING_CONNECTIVITY_MAX_TEXT_LINE_COUNT;
 
 { The editable source has no caller-supplied signature. Its immutable
   fingerprint is computed from validated contents by TWfcTrainingDocument. }
@@ -177,14 +180,17 @@ var
 begin
   if ADocument = nil then
     Fail('document is nil');
+  LVersion := WfcTrainingDocumentTextVersion(ADocument);
   LLineCount := 11 + ADocument.SampleCount + ADocument.TotalTokenCount;
-  if (ADocument.ValueQuotaCount > 0) or (ADocument.ConnectivityCount > 0) then
+  if (ADocument.ValueQuotaCount > 0) or (ADocument.ConnectivityCount > 0) or
+      (LVersion = WFC_TRAINING_SEQUENCE_WRAP_TEXT_VERSION) then
   begin
     Inc(LLineCount, 2 + ADocument.ValueQuotaCount);
     for I := 0 to ADocument.ValueQuotaCount - 1 do
       Inc(LLineCount, Length(ADocument.ValueQuotaAt(I).Values));
   end;
-  if ADocument.ConnectivityCount > 0 then
+  if (ADocument.ConnectivityCount > 0) or
+      (LVersion = WFC_TRAINING_SEQUENCE_WRAP_TEXT_VERSION) then
   begin
     Inc(LLineCount, 2 + ADocument.ConnectivityCount);
     for I := 0 to ADocument.ConnectivityCount - 1 do
@@ -199,7 +205,6 @@ begin
   LLength := 0;
   LMetadata := ADocument.CopyMetadata;
   LOptions := ADocument.CopyOptions;
-  LVersion := WfcTrainingDocumentTextVersion(ADocument);
   Add('wfclearn=' + IntToStr(LVersion));
   Add('name=' + Token(LMetadata.Name));
   Add('license=' + Token(LMetadata.LicenseIdentifier));
@@ -225,7 +230,8 @@ begin
       Add('token=' + IntToStr(I) + ',' + IntToStr(J) + ',' +
         Token(LSample.Tokens[J]));
   end;
-  if (ADocument.ValueQuotaCount > 0) or (ADocument.ConnectivityCount > 0) then
+  if (ADocument.ValueQuotaCount > 0) or (ADocument.ConnectivityCount > 0) or
+      (LVersion = WFC_TRAINING_SEQUENCE_WRAP_TEXT_VERSION) then
   begin
     Add('value-quota-version=' + IntToStr(ADocument.ValueQuotaVersion));
     Add('value-quotas=' + IntToStr(ADocument.ValueQuotaCount));
@@ -240,9 +246,10 @@ begin
           Token(LQuota.Values[J]));
     end;
   end;
-  if ADocument.ConnectivityCount > 0 then
+  if (ADocument.ConnectivityCount > 0) or
+      (LVersion = WFC_TRAINING_SEQUENCE_WRAP_TEXT_VERSION) then
   begin
-    Add('connectivity-version=' + IntToStr(WFC_TRAINING_CONNECTIVITY_VERSION));
+    Add('connectivity-version=' + IntToStr(ADocument.ConnectivityVersion));
     Add('connectivities=' + IntToStr(ADocument.ConnectivityCount));
     for I := 0 to ADocument.ConnectivityCount - 1 do
     begin
@@ -273,6 +280,8 @@ function WfcTrainingDocumentTextVersion(
   const ADocument: TWfcTrainingDocument): Integer;
 begin
   if ADocument = nil then Fail('document is nil');
+  if WfcTrainingOptionsUseWrappedSequence(ADocument.CopyOptions) then
+    Exit(WFC_TRAINING_SEQUENCE_WRAP_TEXT_VERSION);
   if ADocument.ConnectivityCount > 0 then Exit(WFC_TRAINING_CONNECTIVITY_TEXT_VERSION);
   if ADocument.ValueQuotaCount > 0 then Exit(WFC_TRAINING_VALUE_QUOTA_TEXT_VERSION);
   if ADocument.CopyOptions.Kind = wtkAdjacency3D then Exit(2);
@@ -295,6 +304,8 @@ begin
     LLineLimit := WFC_TRAINING_VALUE_QUOTA_MAX_TEXT_LINE_COUNT
   else if LHeader = 'wfclearn=4'#10 then
     LLineLimit := WFC_TRAINING_CONNECTIVITY_MAX_TEXT_LINE_COUNT
+  else if LHeader = 'wfclearn=5'#10 then
+    LLineLimit := WFC_TRAINING_SEQUENCE_WRAP_MAX_TEXT_LINE_COUNT
   else
     Fail('expected supported wfclearn header');
   LLines := 0;
@@ -328,7 +339,8 @@ var
   LTotal: Integer;
   LVersion: Integer;
   LQuotaCount, LQuotaTokens, LTotalQuotaTokens: Integer;
-  LQuotaVersion, LConnectivityCount, LTerminalCount, LProfileCount: Integer;
+  LQuotaVersion, LConnectivityVersion, LConnectivityCount,
+    LTerminalCount, LProfileCount: Integer;
   LTotalTerminals, LTotalProfiles: Integer;
   LQuotas: TWfcTrainingValueQuotas;
   LConnectivities: TWfcTrainingConnectivities;
@@ -401,6 +413,8 @@ begin
     LVersion := 3
   else if LText = 'wfclearn=4' then
     LVersion := 4
+  else if LText = 'wfclearn=5' then
+    LVersion := 5
   else
     Fail('expected supported wfclearn header');
   LMetadata.Name := Token(ReadValue('name='));
@@ -421,6 +435,13 @@ begin
   if LText = 'open' then LOptions.Boundary := wmbOpen
   else if LText = 'wrap' then LOptions.Boundary := wmbWrap
   else Fail('unknown boundary');
+  if LVersion = WFC_TRAINING_SEQUENCE_WRAP_TEXT_VERSION then
+  begin
+    if not WfcTrainingOptionsUseWrappedSequence(LOptions) then
+      Fail('wfclearn=5 requires wrapped sequence training');
+  end
+  else if WfcTrainingOptionsUseWrappedSequence(LOptions) then
+    Fail('wrapped sequence training requires wfclearn=5');
   LText := ReadValue('symmetry=');
   if LText = 'none' then LOptions.Symmetry := wmsNone
   else if LText = 'd4' then LOptions.Symmetry := wmsD4
@@ -499,7 +520,7 @@ begin
   begin
     LQuotaVersion := Number(ReadValue('value-quota-version='));
     if (LQuotaVersion <> WFC_TRAINING_VALUE_QUOTA_VERSION) and
-        not ((LVersion = WFC_TRAINING_CONNECTIVITY_TEXT_VERSION) and (LQuotaVersion = 0)) then
+        not ((LVersion >= WFC_TRAINING_CONNECTIVITY_TEXT_VERSION) and (LQuotaVersion = 0)) then
       Fail('unsupported training value-quota version');
     LQuotaCount := Number(ReadValue('value-quotas='));
     if (LQuotaCount < 0) or (LQuotaCount > WFC_TRAINING_MAX_VALUE_QUOTA_COUNT) then
@@ -541,14 +562,24 @@ begin
       end;
     end;
   end;
-  if LVersion = WFC_TRAINING_CONNECTIVITY_TEXT_VERSION then
+  if LVersion >= WFC_TRAINING_CONNECTIVITY_TEXT_VERSION then
   begin
-    if Number(ReadValue('connectivity-version=')) <> WFC_TRAINING_CONNECTIVITY_VERSION then
+    LConnectivityVersion := Number(ReadValue('connectivity-version='));
+    if (LConnectivityVersion <> WFC_TRAINING_CONNECTIVITY_VERSION) and
+        not ((LVersion = WFC_TRAINING_SEQUENCE_WRAP_TEXT_VERSION) and
+          (LConnectivityVersion = 0)) then
       Fail('unsupported training connectivity version');
     LConnectivityCount := Number(ReadValue('connectivities='));
-    if (LConnectivityCount < 1) or
+    if (LConnectivityCount < 0) or
         (LConnectivityCount > WFC_TRAINING_MAX_CONNECTIVITY_COUNT) then
+      Fail('connectivity count is outside the allowed range');
+    if (LVersion = WFC_TRAINING_CONNECTIVITY_TEXT_VERSION) and
+        (LConnectivityCount = 0) then
       Fail('version 4 requires a nonempty bounded connectivity registry');
+    if ((LConnectivityCount = 0) and (LConnectivityVersion <> 0)) or
+        ((LConnectivityCount <> 0) and
+          (LConnectivityVersion <> WFC_TRAINING_CONNECTIVITY_VERSION)) then
+      Fail('connectivity capability version does not match its registry');
     if LConnectivityCount > (Length(LLines) - LLine - 1) div 2 then
       Fail('connectivity count exceeds the available records');
     SetLength(LConnectivities, LConnectivityCount);

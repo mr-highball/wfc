@@ -45,6 +45,15 @@ const
     'boundary=open'#10'symmetry=none'#10'footprint=2,2'#10'order=0'#10 +
     'samples=1'#10'sample=0,2,2,tiny'#10'token=0,0,A'#10 +
     'token=0,1,A'#10'token=0,2,A'#10'token=0,3,A'#10'end'#10;
+  CIRCULAR_SEQUENCE_SOURCE = 'wfclearn=5'#10'name=circular'#10'license=MIT'#10 +
+    'source=project-authored%20process%20fixture'#10'kind=sequence'#10 +
+    'boundary=wrap'#10'symmetry=none'#10'footprint=0,0'#10'order=2'#10 +
+    'samples=1'#10'sample=0,2,1,1,ring'#10'token=0,0,A'#10'token=0,1,B'#10 +
+    'value-quota-version=0'#10'value-quotas=0'#10 +
+    'connectivity-version=0'#10'connectivities=0'#10'end'#10;
+  CIRCULAR_SEQUENCE_MODEL = 'wfcs=2'#10'boundary=wrap'#10'order=2'#10 +
+    'samples=1'#10's=0,2'#10'tokens=2'#10't=0,A'#10't=1,B'#10 +
+    'states=2'#10'q=0,1,0,0,T1,E0'#10'q=1,1,0,0,T0,E1'#10'end'#10;
 
 type
   {$IF DECLARED(TIODescriptor)}
@@ -541,6 +550,14 @@ begin
   { Open pattern input is a valid source contract even though its portable
     recipe export is currently unsupported. Inspection must not train/export. }
   TestSingle('training', WriteOwned('open pattern source.wfclearn', OPEN_PATTERN_SOURCE));
+  TestSingle('training', WriteOwned('circular sequence source.wfclearn', CIRCULAR_SEQUENCE_SOURCE));
+  TestSingle('sequence', WriteOwned('circular sequence model.wfcs', CIRCULAR_SEQUENCE_MODEL));
+  Failure(Validator, ['sequence', '-'], StringReplace(CIRCULAR_SEQUENCE_MODEL,
+    'T1,E0', 'B,E0', []), 1, 'wfc-validate: invalid sequence: ',
+    'circular source cannot smuggle an open BOS state');
+  Failure(Inspector, ['training', '-'], StringReplace(CIRCULAR_SEQUENCE_SOURCE,
+    'wfclearn=5', 'wfclearn=4', []), 1, 'wfc-inspect: invalid training: ',
+    'circular training cannot masquerade as a legacy source');
   OversizePath := WriteOwned('oversize training', '');
   LStream := TFileStream.Create(OversizePath, fmOpenWrite);
   try LStream.Size := TRAINING_INPUT_LIMIT + 1; finally LStream.Free; end;
