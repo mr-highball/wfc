@@ -29,7 +29,7 @@ and explicit exit gates.
 | Try an interactive demo | [Demo table below](#demos), [complete examples index](examples/README.md) |
 | Learn models from examples | [Learning](docs/learning.md), [training documents and CLI](docs/training.md) |
 | Save and replay a pipeline | [Portable recipes, runs, and results](docs/pipeline-artifacts.md) |
-| Extend or evaluate the system | [Roadmap](ROADMAP.md), [research records](docs/research/pass-negotiation-v1.md) |
+| Extend or evaluate the system | [Roadmap](ROADMAP.md), [research records](docs/research/README.md) |
 
 ## A small pass-based program
 
