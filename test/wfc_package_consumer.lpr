@@ -33,7 +33,8 @@ uses
   wfc_music_arrangement, wfc_music_form,
   wfc_pipeline_model, wfc_pipeline_text, wfc_pipeline_connectivity,
   wfc_pipeline_run, wfc_pipeline_run_text, wfc_pipeline_runtime,
-  wfc_pipeline_result, wfc_pipeline_result_text;
+  wfc_pipeline_result, wfc_pipeline_result_text, wfc_volume_symmetry,
+  wfc_pattern3d, wfc_pattern3d_learn, wfc_pattern3d_text, wfc_pattern3d_graph;
 
 var Checks: Integer;
 
@@ -170,11 +171,54 @@ begin
   finally Recipe.Free; end;
 end;
 
+procedure UseVolumePatterns;
+var Tokens: TWfcModelTokens; Learned, Decoded: TWfcOverlappingModel3D;
+  TextValue: String; Config: TWfcPattern3DPassConfig;
+  Pipeline: TWfcPattern3DPassPipeline; Composition: TWfcPattern3DComposition;
+  Report: TWfcPattern3DPassReport; Validation: TWfcOverlapping3DValidationReport;
+  Projection: TWfcTokenGrid3D; I: Integer;
+begin
+  Check(WfcVolumeTransformCount(wmsCubeRotations) = 24,
+    'installed cube symmetry helper exposes all proper rotations');
+  SetLength(Tokens, 8);
+  for I := 0 to High(Tokens) do Tokens[I] := 'solid';
+  Learned := LearnOverlappingModel3D(Tokens, 2, 2, 2, 2, 2, 2,
+    wmbWrap, wmsCubeRotations);
+  try TextValue := EncodeWfcPattern3DText(Learned);
+  finally Learned.Free; end;
+  Decoded := DecodeWfcPattern3DText(TextValue);
+  try
+    Check((Pos('wfcp=2'#10'rank=3'#10, TextValue) = 1) and
+      (Pos(#10'relations=overlap'#10, TextValue) > 0),
+      'installed codec preserves compact full-volume serialization');
+    Check((Decoded.PatternDepth = 2) and (Decoded.PatternWeightAt(0) = 192),
+      'installed model owns exact XYZ payloads and raw augmented weights');
+    Config.Width := 2; Config.Height := 2; Config.Depth := 2;
+    Config.Seed := 55; Config.Model := Decoded;
+    Pipeline := TWfcPattern3DPassPipeline.Create(Config);
+    Composition := nil;
+    try
+      Pipeline.LockPublicCell(1, 1, 1, 'solid');
+      Check(Pipeline.TryGenerate(Composition, Report),
+        'installed 3D pass adapter solves a public constrained volume');
+      Check(Pipeline.Validate(Composition, Validation),
+        'installed 3D composition independently validates');
+      Projection := Composition.CopyProjection;
+      Check((Projection.Width = 2) and (Projection.Height = 2) and
+        (Projection.Depth = 2) and (Length(Projection.Tokens) = 8),
+        'installed adapter publishes the exact full XYZ projection');
+      for I := 0 to High(Projection.Tokens) do
+        Check(Projection.Tokens[I] = 'solid', 'installed projected voxel matches its authored token');
+    finally Composition.Free; Pipeline.Free; end;
+  finally Decoded.Free; end;
+end;
+
 begin
   try
     UseGraph;
     UseMusicForm;
     UsePortableConnectivity;
+    UseVolumePatterns;
     WriteLn('Installed package consumer checks: ', Checks);
   except
     on E: Exception do

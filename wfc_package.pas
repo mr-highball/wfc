@@ -30,7 +30,8 @@ uses
   wfc_music_ensemble_midi, wfc_music_voices_graph, wfc_music_voices_training,
   wfc_music_voices_stream, wfc_connectivity_reference, wfc_learn3d,
   wfc_terraces3d, wfc_terraces3d_view, wfc_trace_stream,
-  wfc_pipeline_connectivity, wfc_music_form;
+  wfc_pipeline_connectivity, wfc_music_form, wfc_volume_symmetry,
+  wfc_pattern3d, wfc_pattern3d_learn, wfc_pattern3d_text, wfc_pattern3d_graph;
 
 implementation
 

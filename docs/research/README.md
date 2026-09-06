@@ -27,6 +27,7 @@ the broader work still required.
 | Record | Question and boundary |
 | --- | --- |
 | [Pattern-Projected Pass Composition v1](pattern-projected-passes-v1.md) | Materialize overlapping latent patterns as a public pass consumed by later semantic layers. Version 1 covers wrapped, same-shape, depth-one hard constraints, not general resampling. |
+| [Overlapping volumes and public constraints v1](overlapping-volumes-v1.md) | Literal cuboid learning, exact six-direction overlap and inverse public XYZ domains, including aliased offsets. Native/browser conformance; not yet a full training/workspace or interactive volume vertical slice. |
 | [Volume Observation Orbits v1](volume-observation-orbits-v1.md) | Aggregate transformed six-direction observations exactly, checked against literal coordinate transforms. Scalar token payloads do not rotate; cardinal relations are not joint 3D footprints. |
 | [Model-to-voxel pass experiment v1](model-to-voxel-pass-v1.md) | Connect learned terrain to authored structural interpretations and offset foliage constraints. Independent semantic validation checks the bridge; the fixture does not establish chunked scalability. |
 | [Portable Pipeline Bundle v1](portable-pipeline-bundle-v1.md) | Reconstruct supported declarative pipelines from canonical recipes, runs, and results. This is a closed, versioned execution contract, not serialization of arbitrary live graphs or callbacks. |

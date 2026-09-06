@@ -65,6 +65,9 @@ $musicTestSources = @(
   (Join-Path $repositoryRoot 'test/wfc_music_studio_test.lpr')
 )
 $artifactTestSources = @(
+  (Join-Path $repositoryRoot 'test/wfc_pattern3d_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_pattern3d_text_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_pattern3d_passes_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_sequence_wrap_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_training_sequence_wrap_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_training_circular_studio_test.lpr')

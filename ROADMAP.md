@@ -101,6 +101,12 @@ The repository already contains the beginnings of the ecosystem:
   compiles every overlapping footprint contribution into exact cross-pass
   clauses, a reusable validated `patterns -> projection` owner, and a
   four-pass learned terrain/foliage/structure fixture on native FPC and pas2js;
+- additive [overlapping 3D volumes](docs/overlapping-3d.md): literal cuboid
+  extraction and symmetry, exact six-direction overlap, open/wrapped XYZ
+  projection, compact standalone `wfcp=2`, a wrapped public-pass bridge and
+  transactional owner with inverse public voxel domains; native/browser
+  conformance is present, while training/workspace/artifact-dispatch integration
+  and a dedicated interactive volume demo remain separate work;
 - an immutable bounded sequence model with typed BOS history, deterministic
   order-N learning from pretokenized UTF-8 corpora, raw counts, structural
   suffix/prefix recombination, whole/prefix/suffix/fragment and derived wrapped
@@ -251,11 +257,11 @@ It is not yet the finished system described above:
   interactive trace stepping, search controls, and richer domain-specific
   browser inspection remain;
 - model learning now covers pretokenized cardinal radius-one corpora,
-  structurally compatible overlapping 2D footprints, and bounded order-N
+  structurally compatible overlapping 2D/3D footprints, and bounded order-N
   sequences with explicit projection; Unicode-scalar text tokenization and
   exact completion domains now sit above that sequence layer, while a
   project-owned versioned word-boundary table,
-  overlapping 3D footprints, structured multi-license provenance, media import and
+  overlapping-3D training/workspace integration, structured multi-license provenance, media import and
   word-oriented text import, larger/background browser training, artifact-family
   semantic/asset lint, and live interactive inspection remain;
 - the [hosted gate at `4d3db9b`](https://github.com/mr-highball/wfc/actions/runs/34020117117)
@@ -263,6 +269,10 @@ It is not yet the finished system described above:
   pas2js browser lane on 2026-09-06 UTC, including Linux package/clean-checkout
   checks and native browser completion/rejection fixtures; this verifies that
   revision, not completion of the remaining roadmap;
+- the [hosted gate at `919de23`](https://github.com/mr-highball/wfc/actions/runs/34023626156)
+  also passed all five platforms on 2026-09-06 UTC, including the indexed
+  decision-selection solver and corrected circular-training process fixtures;
+  this is not evidence for later overlapping-volume commits;
 - the portable music path now has project-owned PCM/WAVE rendering, native
   file export, MIDI-to-score import and selected-excerpt training, and an
   interactive browser Music Studio with HTML audio and user-defined-duration
@@ -544,6 +554,16 @@ latent assignments separate from projected tokens, independently validates
 both, and round-trips strict standalone `wfcp=1` artifacts. Its first pass
 adapter now materializes wrapped, same-size, depth-one projections for ordinary
 downstream semantic layers without exposing private pattern keys.
+The additive [3D layer](docs/overlapping-3d.md) now learns actual cuboid payloads,
+including literal gravity-preserving D4, 24 proper cube rotations and all 48
+cube isometries. Equality-checked overlap-slab classes compile all six relations;
+independent full-XYZ checks cover open expansion and wrapped projection.
+Standalone `wfcp=2` derives relations instead of storing a quadratic text table.
+The same-size wrapped pass bridge and owner support semantic consumers and
+inverse public locks/domains, including distinct footprint offsets that alias
+on a small torus. This does not yet extend declarative recipe resources,
+training sources, workspace presets, artifact-family dispatch, or unlike-sized
+pass layouts; existing 2D versions and bytes remain unchanged.
 The sequence version-1 layer learns bounded order-N latent states from ordered
 pretokenized UTF-8 corpora, resets typed BOS history at every sample boundary,
 retains raw observation/start/end counts, derives exact suffix/prefix
@@ -595,7 +615,7 @@ The [artifact tools](docs/artifact-tools.md) now validate all eight saved
 rule/training/pipeline families and explain their structure with explicitly
 bounded reports. Result validation distinguishes static bound-artifact checks
 from opt-in complete runtime replay, including exact non-solved outcomes.
-Word-boundary tables, overlapping 3D extraction,
+Word-boundary tables, overlapping-3D training/workspace integration,
 broader semantic/asset lint, live inspection, and the complete exit gate remain open.
 
 ### Deliverables
@@ -660,6 +680,13 @@ selective recovery without an external runtime library.
 cross-pass invariants; the same model and seed match between native and web.
 
 ### 3D structures
+
+- The overlapping-volume core now complements cardinal volume learning with
+  actual cuboid footprints, literal symmetry, exact public projection and
+  backward-lowered public voxel domains. The native/pas2js pass fixture proves
+  `patterns -> terrain -> foliage` at nonzero depth. A renderer, interactive
+  volume workbench and declarative training vertical slice are not yet bundled
+  for this new model family. See [overlapping 3D](docs/overlapping-3d.md).
 
 - Learned Terraces now connects six-direction volume learning to authored
   socket/support variants and spatial foliage in a three-pass transaction.

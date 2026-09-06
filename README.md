@@ -186,7 +186,7 @@ code is build output, not a second hand-maintained implementation.
 | --- | --- |
 | Solver and replay | [Reference solver](docs/solver.md), [determinism](docs/determinism.md), [restarts and timing](docs/restarts.md) |
 | Pass composition and diagnosis | [DAGs](docs/pass-dags.md), [counts](docs/pass-counts.md), [negotiation](docs/pass-negotiation.md), [selective negotiation](docs/selective-negotiation.md), [causal traces](docs/traces.md), [streaming and bounded inspection](docs/trace-streaming.md) |
-| Learned representations | [Cardinal models](docs/learning.md), [overlapping patterns](docs/patterns.md), [sequences](docs/sequences.md), [training](docs/training.md) |
+| Learned representations | [Cardinal models](docs/learning.md), [2D overlapping patterns](docs/patterns.md), [3D overlapping volumes](docs/overlapping-3d.md), [sequences](docs/sequences.md), [training](docs/training.md) |
 | Spatial domains | [2D worlds](docs/world2d.md), [voxels](docs/voxel3d.md), [learned terraces](docs/learned-terraces3d.md), [Building 3D](docs/building3d.md) |
 | Music and text | [Exact music model](docs/music.md), [polyphonic ensembles](docs/music-ensemble.md), [independent voices](docs/music-voices.md), [audio](docs/music-audio.md), [arrangements](docs/music-arrangement.md), [import](docs/music-import.md), [text completion](docs/text.md) |
 | Portable workflow | [Pipeline artifacts](docs/pipeline-artifacts.md), [validation and inspection tools](docs/artifact-tools.md), [dependency policy](docs/dependencies.md) |

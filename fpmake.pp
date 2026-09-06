@@ -39,6 +39,11 @@ begin
     P.Targets.AddUnit('wfc_pattern2d_learn.pas');
     P.Targets.AddUnit('wfc_pattern2d_graph.pas');
     P.Targets.AddUnit('wfc_pattern2d_text.pas');
+    P.Targets.AddUnit('wfc_volume_symmetry.pas');
+    P.Targets.AddUnit('wfc_pattern3d.pas');
+    P.Targets.AddUnit('wfc_pattern3d_learn.pas');
+    P.Targets.AddUnit('wfc_pattern3d_text.pas');
+    P.Targets.AddUnit('wfc_pattern3d_graph.pas');
     P.Targets.AddUnit('wfc_sequence.pas');
     P.Targets.AddUnit('wfc_sequence_learn.pas');
     P.Targets.AddUnit('wfc_sequence_graph.pas');
