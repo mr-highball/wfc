@@ -925,6 +925,10 @@ for compiler_artifact_suite in \
   "$compiler_source_directory/../test/wfc_pipeline_replace_inverse_test.lpr" \
   "$compiler_source_directory/../test/wfc_pipeline_session_test.lpr" \
   "$compiler_source_directory/../test/wfc_pipeline_session_oracle_test.lpr" \
+  "$compiler_source_directory/../test/wfc_pipeline_session_evidence_test.lpr" \
+  "$compiler_source_directory/../test/wfc_workspace_context_test.lpr" \
+  "$compiler_source_directory/../test/wfc_workspace_journal_test.lpr" \
+  "$compiler_source_directory/../test/wfc_workspace_replay_test.lpr" \
   "$compiler_source_directory/../test/wfc_regeneration_scope_test.lpr" \
   "$compiler_source_directory/../test/wfc_lattice_test.lpr" \
   "$compiler_source_directory/../test/wfc_mapped_passes_test.lpr" \
@@ -991,6 +995,7 @@ done
 for compiler_tool_source in \
   "$compiler_validate_tool_source" \
   "$compiler_tools_directory/wfc_inspect.lpr" \
+  "$compiler_tools_directory/wfc_workspace_cli.lpr" \
   "$compiler_tools_directory/wfc_solver_benchmark.lpr" \
   "$compiler_learn_tool_source" \
   "$compiler_tools_directory/wfc_music_import_cli.lpr" \
@@ -1000,6 +1005,9 @@ for compiler_tool_source in \
   "$compiler_run_tool_source"
 do
   tool_name=$(basename -- "$compiler_tool_source" .lpr)
+  if [[ "$tool_name" == wfc_workspace_cli ]]; then
+    tool_name=wfc_workspace
+  fi
   if [[ "$tool_name" == wfc_music_import_cli ]]; then
     tool_name=wfc_music_import
   fi
@@ -1029,8 +1037,10 @@ do
   case "$host_system" in
     CYGWIN*|MINGW*|MSYS*) tool_executable="${tool_executable}.exe" ;;
   esac
-  printf "Smoke testing '%s --version'.\n" "$tool_executable"
-  "$tool_executable" --version || exit $?
+  tool_smoke_argument=--version
+  if [[ "$tool_name" == wfc_workspace ]]; then tool_smoke_argument=--help; fi
+  printf "Smoke testing '%s %s'.\n" "$tool_executable" "$tool_smoke_argument"
+  "$tool_executable" "$tool_smoke_argument" || exit $?
 done
 
 validator_tool_executable="$binary_output_directory/wfc_validate"
@@ -1098,6 +1108,24 @@ esac
   "$compiler_binary_output_directory/wfc_validate$artifact_tool_suffix" \
   "$compiler_binary_output_directory/wfc_inspect$artifact_tool_suffix" \
   "$mapped_pipeline_process_directory" || exit $?
+
+printf 'Building and running FPC workspace CLI process conformance.\n'
+for workspace_process_source in wfc_workspace_cli_fixture.lpr wfc_workspace_cli_process_test.lpr; do
+  "$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
+    "-Fu$compiler_source_directory" "-Fu$compiler_tools_directory" \
+    "-Fu$compiler_source_directory/../test" \
+    "-FU$compiler_unit_output_directory" "-FE$compiler_binary_output_directory" \
+    "$compiler_source_directory/../test/$workspace_process_source" || exit $?
+done
+workspace_process_parent=$(mktemp -d "$binary_output_directory/workspace-process.XXXXXX") || exit $?
+workspace_process_directory="$workspace_process_parent/fixtures"
+case "$host_system" in
+  CYGWIN*|MINGW*|MSYS*) workspace_process_directory=$(cygpath -m "$workspace_process_directory") || exit $? ;;
+esac
+"$binary_output_directory/wfc_workspace_cli_process_test$artifact_tool_suffix" \
+  "$compiler_binary_output_directory/wfc_workspace$artifact_tool_suffix" \
+  "$compiler_binary_output_directory/wfc_workspace_cli_fixture$artifact_tool_suffix" \
+  "$workspace_process_directory" || exit $?
 
 printf "Building the dependency-free tiled-world example.\n"
 "$compiler" "$@" \

@@ -106,6 +106,14 @@ checks exact producer identity and scope inspection, and executes a
 leaf scope, stale-plan rejection and sufficient provider repair. Detached
 invocation, reports and public states are inspected after all source owners
 are freed. These are behavioral checks, not merely extra `uses` entries.
+The [workspace extension](pipeline-workspaces.md) adds behavioral use of all
+five exported context/evidence/journal/replay units: complete indexed contexts,
+graph-free unverified decoding, actual receipt evidence, distinct lock/clear
+history, explicit provider repair and complete exact replay. It also checks
+that a refused restore/action preserves a live slot and that detached
+receipts/public state survive their source owners. The runtime inventory is
+96 units; Lazarus has 97 entries including its wrapper. These counts do not
+substitute for actually building and running this installed-only consumer.
 This catches both missing package entries and unusable exported interfaces.
 It is intentionally not named `*_test.lpr`: the source-path conformance runner
 must not silently substitute for this package-only check.

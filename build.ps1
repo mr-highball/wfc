@@ -82,6 +82,10 @@ $artifactTestSources = @(
   (Join-Path $repositoryRoot 'test/wfc_pipeline_replace_inverse_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_pipeline_session_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_pipeline_session_oracle_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_pipeline_session_evidence_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_workspace_context_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_workspace_journal_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_workspace_replay_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_regeneration_scope_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_lattice_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_mapped_passes_test.lpr')
@@ -155,6 +159,7 @@ $toolSources = @(
   (Join-Path $repositoryRoot 'tools/wfc_validate.lpr')
   (Join-Path $repositoryRoot 'tools/wfc_inspect.lpr')
   (Join-Path $repositoryRoot 'tools/wfc_run.lpr')
+  (Join-Path $repositoryRoot 'tools/wfc_workspace_cli.lpr')
   (Join-Path $repositoryRoot 'tools/wfc_learn_cli.lpr')
   (Join-Path $repositoryRoot 'tools/wfc_music_import_cli.lpr')
   (Join-Path $repositoryRoot 'tools/wfc_serve.lpr')
@@ -1139,6 +1144,7 @@ foreach ($artifactTestSource in $artifactTestSources) {
 
 foreach ($toolSource in $toolSources) {
   $toolName = [System.IO.Path]::GetFileNameWithoutExtension($toolSource)
+  if ($toolName -eq 'wfc_workspace_cli') { $toolName = 'wfc_workspace' }
   if ($toolName -eq 'wfc_music_import_cli') { $toolName = 'wfc_music_import' }
   if ($toolName -eq 'wfc_learn_cli') {
     $toolName = 'wfc_learn'
@@ -1172,8 +1178,9 @@ foreach ($toolSource in $toolSources) {
   }
 
   $toolExecutable = Join-Path $binaryOutputDirectory $toolExecutableName
-  Write-Host "Smoke testing '$toolExecutable --version'."
-  & $toolExecutable '--version'
+  $toolSmokeArgument = if ($toolName -eq 'wfc_workspace') { '--help' } else { '--version' }
+  Write-Host "Smoke testing '$toolExecutable $toolSmokeArgument'."
+  & $toolExecutable $toolSmokeArgument
   $toolExitCode = $LASTEXITCODE
   if ($toolExitCode -ne 0) {
     exit $toolExitCode
@@ -1225,6 +1232,22 @@ $mappedPipelineProcessDirectory = Join-Path $binaryOutputDirectory `
   $runnerToolExecutable $validatorToolExecutable `
   (Join-Path $binaryOutputDirectory "wfc_inspect$toolExecutableSuffix") `
   $mappedPipelineProcessDirectory
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+Write-Host 'Building and running FPC workspace CLI process conformance.'
+foreach ($workspaceProcessSource in @('wfc_workspace_cli_fixture.lpr','wfc_workspace_cli_process_test.lpr')) {
+  & $Compiler @CompilerOptions -B -Mdelphi -Sa -Cr -Co -Ci `
+    "-Fu$sourceDirectory" "-Fu$toolsDirectory" "-Fu$repositoryRoot/test" `
+    "-FU$unitOutputDirectory" "-FE$binaryOutputDirectory" `
+    (Join-Path $repositoryRoot ('test/' + $workspaceProcessSource))
+  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+}
+$workspaceProcessDirectory = Join-Path $binaryOutputDirectory `
+  ('workspace-process-' + [Guid]::NewGuid().ToString('N'))
+& (Join-Path $binaryOutputDirectory "wfc_workspace_cli_process_test$toolExecutableSuffix") `
+  (Join-Path $binaryOutputDirectory "wfc_workspace$toolExecutableSuffix") `
+  (Join-Path $binaryOutputDirectory "wfc_workspace_cli_fixture$toolExecutableSuffix") `
+  $workspaceProcessDirectory
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 $learnerToolExecutable = Join-Path $binaryOutputDirectory `

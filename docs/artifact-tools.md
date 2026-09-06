@@ -10,6 +10,16 @@ and result can each be checked outside the demo that created it. A valid file
 is not automatically a valid composition or a proof that generation will
 succeed. The commands explicitly distinguish those claims.
 
+Saved edit/repair histories use the separate
+[workspace journal tool](pipeline-workspaces.md#native-cli), not another family
+in this registry. `wfc_workspace inspect --input JOURNAL` checks the canonical
+graph-free envelope and reports unverified claims; `wfc_workspace replay
+--input JOURNAL` executes every action and compares complete evidence bytes.
+Its authoring commands publish new journal files only, including an explicitly
+recorded normal-unsolved exit10. That is distinct from the fresh runner's
+result behavior. `wfc_validate`, `wfc_inspect` and `wfc_run` do not acquire
+journal/evidence input modes through this addition.
+
 ## Build and try
 
 Run `build.ps1` or `bash build.sh` as described in the [build guide](building.md).

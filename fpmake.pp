@@ -100,6 +100,11 @@ begin
     P.Targets.AddUnit('wfc_pipeline_runtime.pas');
     P.Targets.AddUnit('wfc_pipeline_prepare.pas');
     P.Targets.AddUnit('wfc_pipeline_session.pas');
+    P.Targets.AddUnit('wfc_pipeline_session_evidence.pas');
+    P.Targets.AddUnit('wfc_pipeline_workspace_context.pas');
+    P.Targets.AddUnit('wfc_pipeline_workspace_journal.pas');
+    P.Targets.AddUnit('wfc_pipeline_workspace_journal_text.pas');
+    P.Targets.AddUnit('wfc_pipeline_workspace_replay.pas');
     P.Targets.AddUnit('wfc_training.pas');
     P.Targets.AddUnit('wfc_training_text.pas');
     P.Targets.AddUnit('wfc_text_training.pas');

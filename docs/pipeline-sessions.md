@@ -5,7 +5,9 @@ immutable portable recipe. It uses [prepared editable bindings](pipeline-prepara
 and the core's existing ordinary/negotiated full/selective solvers. It is MIT
 Pascal shared by native FPC and pas2js, with no mutable graph escape or external
 dependency. Its purpose is explicit repair permission and honest detached
-evidence, not a new artifact format or a completed workspace application.
+evidence. The separate [workspace layer](pipeline-workspaces.md) adds saved
+history, exact replay, atomic publication and a native CLI above this session;
+the session unit itself remains an in-memory owner.
 
 Use [immutable composition](pipeline-composition.md) to assemble definitions,
 `TWfcPipelineRun` to choose extents and inputs, then
@@ -199,15 +201,21 @@ There is no in-place rollback promise or automatic retry after a poisoned
 candidate. A host needing atomic live publication must replay accepted operations
 into a separate candidate and publish/swap only after complete capture and
 encoding. Do not silently continue from partially applied inputs.
+`TWfcPipelineWorkspaceSlot` implements that separate-candidate publication
+boundary; see [atomic workspace authoring](pipeline-workspaces.md#atomic-authoring-and-ownership).
 
 ## Boundaries and verification
 
-These APIs do not add a saved-operation journal, session/outcome codec, undo
-history serializer, resume command, arbitrary workspace editor or demo migration.
-Existing recipe/run/result formats and fresh result validation stay unchanged.
+The [workspace APIs](pipeline-workspaces.md) separately provide complete
+session-evidence encoding, ordered journals, exact replay, atomic authoring
+and native file commands. They do not turn this session into an arbitrary
+workspace editor or migrate existing demos. Existing recipe/run/result formats
+and fresh result validation stay unchanged.
 A saved fresh invocation cannot represent selective reuse, currentness or
 accepted lock/clear history; do not export these outcomes as result2 by discarding
-that distinction. A future journal must preserve accepted operation order.
+that distinction. Workspace journals preserve accepted operation order,
+including every lock/clear transition; imported evidence stays unverified until
+complete actual replay matches it.
 
 The maintained primary session fixture covers lifecycle, bounds, retained edits,
 poisoned candidates and hostile raw handles. The independently authored oracle

@@ -18,7 +18,7 @@ FPC=/opt/fpc/bin/fpc bash ./build.sh
 Omit the override when `fpc` is on `PATH`. Executables are staged in
 `build/native/bin`; append `.exe` on Windows. Generated files stay under
 ignored `build` directories. This gate compiles and runs the pure conformance
-tests, tool `--version` smoke checks, real command-line process tests, live
+tests, tool help/version smoke checks, real command-line process tests, live
 server tests, and the streamed Music Studio exporter tests. It does not
 substitute for the browser execution gate below.
 
@@ -35,6 +35,40 @@ It compares every maintained source unit with `fpmake.pp`, `wfc.lpk`, and
 and canonical filenames. Add `.exe` on Windows. See
 [package checking](package-checking.md) for the static-checking boundary,
 standalone build, limits, and installed-unit consumer tests.
+
+## Save and restore an editable workspace
+
+The same native gate builds `build/native/bin/wfc_workspace[.exe]` from
+`tools/wfc_workspace_cli.lpr`; its smoke command is `--help`, not `--version`.
+It exposes `inspect`, `replay`, `begin`, `edit`, `initial`, `preview` and
+`repair` over complete explicit files. No browser or server is needed.
+
+Use the [workspace guide](pipeline-workspaces.md#native-cli) for a runnable
+fixture walkthrough, adjustable logical policies, ownership, exact exit codes
+and the difference between graph-free unverified inspection and actual replay.
+Initial/repair exit10 means a normal unsolved attempt was successfully recorded
+in a new journal, not that an arbitrary tool failure should be ignored.
+
+`wfc_workspace_cli_process_test` invokes the actual native executable and
+`wfc_workspace_cli_fixture` with a fresh output directory. It checks all seven
+commands, complete independently constructed histories, refusal/failed-outcome
+statuses, explicit scopes, limits and new-file preservation. The process suite
+stays native; the four context/evidence/journal/replay conformance groups run
+under both FPC and pas2js through the existing browser tooling. This does not
+migrate any demo's UI to a workspace editor.
+
+To run the process suite alone after building, supply exactly these three
+positional arguments (append `.exe` to the executable names on Windows):
+
+```text
+build/native/bin/wfc_workspace_cli_process_test build/native/bin/wfc_workspace build/native/bin/wfc_workspace_cli_fixture build/workspace-cli-check
+```
+
+`build/workspace-cli-check` must not exist; its parent must exist. Evidence is
+retained there in `fixture with spaces` and `logs`. The maintained fixture
+currently exercises 38 real child-process cases with 334 harness checks,
+including two independently compared histories. The suite handles the expected
+exit10 cases individually and still fails on an unexpected child status.
 
 ## Serve a browser demo
 
@@ -398,6 +432,10 @@ The [Ensemble Studio renderer](../examples/music/06_EnsembleStudio/README.md)
 and independent-role `VoiceStudioRender --format wave|midi` use this utility
 after exact duration/frame or MIDI planning. See
 [Voice Studio](../examples/music/07_VoiceStudio/README.md) for actual commands.
+The [workspace CLI](pipeline-workspaces.md#native-cli) uses the same helper
+after complete journal authoring and encoding, with an explicit new output
+path for each accepted action. Existing input/output files are not overwritten;
+file I/O failure does not change the already saved history.
 The browser host uses
 a user-authorized writable-file transaction instead; choosing an existing
 file in the browser save picker can authorize replacement and does not carry

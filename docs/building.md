@@ -128,6 +128,8 @@ Both scripts rebuild with assertions and range, overflow, and I/O checks, run
 `wfc_pipeline_prepare_test`, `wfc_pipeline_prepare_threads_test`,
 `wfc_pipeline_replace_test`, `wfc_pipeline_replace_inverse_test`,
 `wfc_pipeline_session_test`, `wfc_pipeline_session_oracle_test`,
+`wfc_pipeline_session_evidence_test`, `wfc_workspace_context_test`,
+`wfc_workspace_journal_test`, `wfc_workspace_replay_test`,
 `wfc_regeneration_scope_test`,
 `wfc_token_lookup_test`, `wfc_validate_app_test`, `wfc_run_app_test`,
 `wfc_training_test`, `wfc_training_text_test`, `wfc_learn_app_test`,
@@ -182,6 +184,12 @@ The artifact-family extension adds shared document, inspection, and CLI
 application suites plus a native FPC real-process runner for `wfc_validate`
 and `wfc_inspect`. It tests strict file/stdin handling across nine families,
 context binding, solved/non-solved exact replay, and inspection limits.
+Workspace conformance adds four portable context/evidence/journal/replay entry
+groups. The native `wfc_workspace_cli_process_test` instead invokes the real
+`wfc_workspace` host and `wfc_workspace_cli_fixture` in a fresh directory,
+checking ordered histories, exact replay, scope refusal, normal-unsolved
+exit10 and new-file preservation. All browser build/execution scripts exclude
+that native-only process test; they discover the four portable groups normally.
 A compiler error, failed check,
 or example failure produces a nonzero exit code. Compiler units and binaries
 are written beneath `build/native/`; running the gate does not modify tracked
@@ -250,11 +258,33 @@ result, and `70` is an unexpected internal failure. The complete lifecycle,
 ownership, safety bounds, and CLI contracts are in
 [Portable pipeline artifacts](pipeline-artifacts.md).
 
+## Workspace file tools
+
+The separate [workspace host](pipeline-workspaces.md#native-cli) is built as
+`build/native/bin/wfc_workspace[.exe]`. Its smoke argument is `--help`, not
+`--version`; no browser/server is required for these file commands:
+
+```powershell
+.\build\native\bin\wfc_workspace.exe --help
+```
+
+```bash
+./build/native/bin/wfc_workspace --help
+```
+
+The [fixture walkthrough](pipeline-workspaces.md#walk-through-actual-generated-artifacts)
+uses `wfc_workspace_cli_fixture --make` to generate real recipe/run inputs,
+then begins, edits, repairs and replays journal files. The native build also
+builds this fixture and runs its process conformance. A journal decode or
+`inspect` reports unverified claims; only full actual replay verifies history.
+The generic artifact tools and fresh result1/result2 registry are unchanged.
+
 ## FPM package
 
 Every maintained `src/*.pas` unit belongs to both the FPM and runtime-only
 Lazarus packages, including `wfc_music_form`, `wfc_pipeline_connectivity`,
-`wfc_pipeline_prepare` and `wfc_pipeline_session`.
+`wfc_pipeline_prepare`, `wfc_pipeline_session` and the five
+[workspace context/evidence/journal/replay units](pipeline-workspaces.md).
 The normal native gate first runs the included
 [package completeness checker](package-checking.md). It compares source unit
 declarations with all three package lists; source-only compilation cannot
@@ -587,9 +617,12 @@ harness. Mapped World UI import/export and general layout editing remain open.
 
 The [prepared session](pipeline-sessions.md) is a separate in-memory library
 boundary above [reusable input preparation](pipeline-preparation.md); it does
-not yet migrate the Mapped World demo or provide saved journal import/export.
-Its six new portable preparation/replacement/session/scope suites are discovered
-by all browser scripts. `wfc_pipeline_prepare_threads_test` is native-only and
+not itself migrate the Mapped World demo. The separate
+[workspace layer](pipeline-workspaces.md) provides saved journal import/export,
+exact replay and atomic authoring, without adding those controls to the demo UI.
+The six portable preparation/replacement/session/scope suites and the four
+workspace context/evidence/journal/replay groups are discovered by all browser
+scripts. `wfc_pipeline_prepare_threads_test` is native-only and
 excluded by both build and execution scripts on each shell platform.
 
 The [footprint research record](research/mapped-world-footprints-v1.md)

@@ -37,7 +37,9 @@ uses
   wfc_pattern3d, wfc_pattern3d_learn, wfc_pattern3d_text, wfc_pattern3d_graph,
   wfc_token_volume_view, wfc_voxel3d_isometric, wfc_voxel3d_svg, wfc_lattice,
   wfc_pipeline_layout, wfc_pipeline_mapping, wfc_pipeline_compose,
-  wfc_pipeline_prepare, wfc_pipeline_session;
+  wfc_pipeline_prepare, wfc_pipeline_session, wfc_pipeline_session_evidence,
+  wfc_pipeline_workspace_context, wfc_pipeline_workspace_journal,
+  wfc_pipeline_workspace_journal_text, wfc_pipeline_workspace_replay;
 
 var Checks: Integer;
 
@@ -360,6 +362,179 @@ begin
     Preparation.Free; Changed.Free; Run.Free; Recipe.Free; end;
 end;
 
+function WorkspacePolicy: TWfcPipelineWorkspacePolicy;
+begin
+  Result:=Default(TWfcPipelineWorkspacePolicy); Result.Version:=1;
+  with Result.Journal do
+  begin
+    Version:=1; MaxRecipes:=8; MaxRuns:=32; MaxActions:=32;
+    MaxContextTextBytes:=1048576; MaxRootReferences:=64;
+    MaxEvidenceTextBytes:=1048576; MaxEncodedTextBytes:=4194304;
+  end;
+  with Result.Replacement do
+  begin Version:=1; MaxRetainedCellRecords:=1024; MaxRetainedValueItems:=4096; MaxCandidateVisits:=65536; end;
+  with Result.Outcome do
+  begin
+    Version:=1; MaxPublicCellRecords:=1024; MaxEncodedTokenBytes:=65536;
+    MaxReportPassRecords:=1024; MaxTraceEvents:=4096; MaxExcludedAssignmentItems:=4096;
+  end;
+  with Result.Evidence do begin Version:=1; MaxTextBytes:=262144; MaxLines:=8192; end;
+  with Result.Replay do
+  begin Version:=1; MaxEpochs:=8; MaxSolveActions:=32; MaxInstantiatedCellRecords:=8192; MaxEvidenceTextBytes:=1048576; end;
+end;
+
+procedure EqualWorkspaceState(const A,B: TWfcPipelineSessionPublicState);
+var I,J: Integer; L,R: TWfcPipelineSessionLayer;
+begin
+  Check((A=nil)=(B=nil),'installed workspace preserves absent baseline');
+  if A=nil then Exit;
+  Check(A.LayerCount=B.LayerCount,'installed workspace retains public layer count');
+  for I:=0 to A.LayerCount-1 do
+  begin
+    L:=A.LayerAt(I); R:=B.LayerAt(I);
+    Check((L.PassIndex=R.PassIndex) and (L.LabelName=R.LabelName) and (L.Rank=R.Rank),
+      'installed workspace retains public pass identity');
+    Check(SameWfcLatticeLayout(L.Layout,R.Layout),'installed workspace retains every geometry field');
+    Check(Length(L.Cells)=Length(R.Cells),'installed workspace retains exact cell extent');
+    for J:=0 to High(L.Cells) do
+      Check((L.Cells[J].Token=R.Cells[J].Token) and (L.Cells[J].Empty=R.Cells[J].Empty) and
+        (L.Cells[J].Generated=R.Cells[J].Generated),'installed workspace retains actual cell ownership');
+  end;
+end;
+
+procedure UseWorkspace;
+var Recipe,OwnedRecipe: TWfcPipelineModel; Run,OwnedRun: TWfcPipelineRun;
+  RecipeTexts: TWfcPipelineWorkspaceRecipeTexts; RunTexts: TWfcPipelineWorkspaceRunTexts;
+  Contexts: TWfcPipelineWorkspaceContexts; ContextLimits: TWfcPipelineWorkspaceContextLimits;
+  P: TWfcPipelineWorkspacePolicy; Slot,Restored: TWfcPipelineWorkspaceSlot;
+  Receipt,InitialReceipt: TWfcPipelineWorkspaceReceipt;
+  Preview: TWfcPipelineWorkspaceRepairPreview; Scope: TWfcPipelineSessionScope;
+  Journal,Forged: TWfcPipelineWorkspaceJournal; Actions: TWfcPipelineWorkspaceActions;
+  State,Baseline,Actual,InitialState: TWfcPipelineSessionPublicState;
+  Locks: TWfcPipelineCellLocks; Domains: TWfcPipelineCellDomains; Roots: TGraphPassIndices;
+  RecipeText,BaseText,LockText,EmptyText,Saved: String; Revision,I: Integer; Rejected: Boolean;
+begin
+  Recipe:=nil; OwnedRecipe:=nil; Run:=nil; OwnedRun:=nil; Contexts:=nil;
+  Slot:=nil; Restored:=nil; Receipt:=nil; InitialReceipt:=nil; Preview:=nil;
+  Journal:=nil; Forged:=nil; State:=nil; Baseline:=nil; Actual:=nil; InitialState:=nil;
+  try
+    P:=WorkspacePolicy; Recipe:=PackageFragment('route','MIT',True);
+    RecipeText:=EncodeWfcPipelineModelText(Recipe);
+    Run:=TWfcPipelineRun.Create(Recipe,2,1,1,123,wpssOneWay,64,0,True,nil,nil);
+    BaseText:=EncodeWfcPipelineRunText(Run); FreeAndNil(Run);
+    SetLength(Locks,1); Locks[0]:=MakeWfcPipelineCellLock(1,0,0,0,'route');
+    Run:=TWfcPipelineRun.Create(Recipe,2,1,1,123,wpssOneWay,64,0,True,Locks,nil);
+    LockText:=EncodeWfcPipelineRunText(Run); FreeAndNil(Run);
+    SetLength(Domains,1); Domains[0]:=MakeWfcPipelineCellDomain(0,0,0,0,nil);
+    Run:=TWfcPipelineRun.Create(Recipe,2,1,1,123,wpssOneWay,64,0,True,nil,Domains);
+    EmptyText:=EncodeWfcPipelineRunText(Run); FreeAndNil(Run); FreeAndNil(Recipe);
+
+    SetLength(RecipeTexts,2); RecipeTexts[0]:=RecipeText; RecipeTexts[1]:=RecipeText;
+    SetLength(RunTexts,1); RunTexts[0].RecipeIndex:=1; RunTexts[0].Text:=BaseText;
+    ContextLimits.Version:=1; ContextLimits.MaxRecipes:=2; ContextLimits.MaxRuns:=1;
+    ContextLimits.MaxTextBytes:=2*Length(RecipeText)+Length(BaseText);
+    Contexts:=TWfcPipelineWorkspaceContexts.Create(RecipeTexts,RunTexts,ContextLimits);
+    Check((Contexts.RecipeCount=2) and (Contexts.RunTextAt(0).RecipeIndex=1),
+      'installed context registry keeps explicit duplicate rows and binding');
+    Check(Contexts.BorrowRecipe(0)<>Contexts.BorrowRecipe(1),
+      'installed contexts do not deduplicate owned models by signature');
+    OwnedRecipe:=Contexts.CopyRecipe(1); OwnedRun:=Contexts.CopyRun(0); FreeAndNil(Contexts);
+    RecipeTexts[0]:='caller edit'; RunTexts[0].Text:='caller edit';
+    Check((EncodeWfcPipelineModelText(OwnedRecipe)=RecipeText) and
+      (EncodeWfcPipelineRunText(OwnedRun)=BaseText),'installed context copies outlive source registry and caller arrays');
+    FreeAndNil(OwnedRun); FreeAndNil(OwnedRecipe);
+
+    Slot:=TWfcPipelineWorkspaceSlot.Create;
+    Receipt:=Slot.BeginEpoch(RecipeText,BaseText,P,0);
+    Check((Receipt.Kind=wpwakBeginEpoch) and (Receipt.EvidenceText='') and
+      (Receipt.SessionRevision=0) and (Receipt.PublicationRevision=1),
+      'installed workspace begins explicit epoch without invented outcome'); FreeAndNil(Receipt);
+    InitialReceipt:=Slot.ExecuteInitial(P,1);
+    Check(InitialReceipt.BorrowSolveOutcome.Solved and InitialReceipt.HasCurrentOutput,
+      'installed authoring publishes complete initial outcome');
+    Check(EncodeWfcPipelineSessionOutcomeEvidence(InitialReceipt.BorrowSolveOutcome,P.Evidence)=InitialReceipt.EvidenceText,
+      'installed evidence writer preserves exact actual outcome');
+    InitialState:=InitialReceipt.BorrowSolveOutcome.CopyPublicState;
+    Receipt:=Slot.ApplyInputs(LockText,P,2);
+    Check((Receipt.BorrowEditOutcome<>nil) and not Receipt.HasCurrentOutput,
+      'installed alias lock publishes actual edit and revokes current output');
+    Check(EncodeWfcPipelineSessionEditEvidence(Receipt.BorrowEditOutcome,P.Evidence)=Receipt.EvidenceText,
+      'installed evidence writer preserves exact edit outcome'); FreeAndNil(Receipt);
+    Receipt:=Slot.ApplyInputs(BaseText,P,3); FreeAndNil(Receipt);
+    Journal:=DecodeWfcPipelineWorkspaceJournalText(Slot.CopyCanonicalJournal,P.Journal);
+    Check((Journal.ActionCount=4) and (Journal.RunCount=3),
+      'installed authoring retains lock and clear as separate accepted actions');
+    Check(Journal.Verification=wpwvUnverifiedClaims,'installed journal decoding does not execute or verify claims');
+    Check(EncodeWfcPipelineWorkspaceJournalText(Journal)=Slot.CopyCanonicalJournal,
+      'installed journal codec round trip retains every byte'); FreeAndNil(Journal);
+    SetLength(Roots,1); Roots[0]:=1;
+    Preview:=Slot.PreviewRepair(BaseText,Roots,P,4); Scope:=Preview.CopyScope;
+    Check(not Preview.CanExecute and not Preview.MissingBaseline and
+      (Length(Scope.MissingPassIndices)>0) and (Scope.MissingPassIndices[0]=0),
+      'installed detached preview requires explicit backing provider'); FreeAndNil(Preview);
+    Saved:=Slot.CopyCanonicalJournal; Revision:=Slot.PublicationRevision;
+    State:=Slot.CopyPublicState; Baseline:=Slot.CopyLastSuccessfulState; Rejected:=False;
+    try Receipt:=Slot.ExecuteRepair(BaseText,Roots,P,Revision);
+    except on E: EWfcPipelineWorkspaceReplay do
+      begin Rejected:=True; Check(E.Kind=wpwrfScope,'installed refusal has exact scope classification'); end; end;
+    Check(Rejected and (Receipt=nil) and (Slot.PublicationRevision=Revision) and
+      (Slot.CopyCanonicalJournal=Saved),'installed refused repair publishes no receipt or history');
+    Actual:=Slot.CopyPublicState; EqualWorkspaceState(State,Actual); FreeAndNil(Actual);
+    Actual:=Slot.CopyLastSuccessfulState; EqualWorkspaceState(Baseline,Actual); FreeAndNil(Actual);
+    FreeAndNil(State); FreeAndNil(Baseline);
+    Roots[0]:=0; Receipt:=Slot.ExecuteRepair(BaseText,Roots,P,Revision);
+    Check(Receipt.BorrowSolveOutcome.Solved and Receipt.HasCurrentOutput,
+      'installed explicit provider repair recovers the retained world'); FreeAndNil(Receipt);
+    Saved:=Slot.CopyCanonicalJournal; Journal:=DecodeWfcPipelineWorkspaceJournalText(Saved,P.Journal);
+    State:=Slot.CopyPublicState; Baseline:=Slot.CopyLastSuccessfulState;
+    Restored:=TWfcPipelineWorkspaceSlot.Create;
+    Restored.Restore(Journal,P.Journal,P.Replacement,P.Outcome,P.Evidence,P.Replay,0);
+    Check(Restored.HasCurrentOutput and (Restored.CopyCanonicalJournal=Saved),
+      'installed explicit replay verifies and retains complete history');
+    Actual:=Restored.CopyPublicState; EqualWorkspaceState(State,Actual); FreeAndNil(Actual);
+    Actual:=Restored.CopyLastSuccessfulState; EqualWorkspaceState(Baseline,Actual); FreeAndNil(Actual);
+    SetLength(RecipeTexts,Journal.RecipeCount); SetLength(RunTexts,Journal.RunCount);
+    for I:=0 to High(RecipeTexts) do RecipeTexts[I]:=Journal.RecipeTextAt(I);
+    for I:=0 to High(RunTexts) do RunTexts[I]:=Journal.RunTextAt(I);
+    Actions:=Journal.CopyActions; Actions[High(Actions)].EvidenceText:=Actions[High(Actions)].EvidenceText+'forged=1'#10;
+    Forged:=TWfcPipelineWorkspaceJournal.Create(RecipeTexts,RunTexts,Actions,P.Journal);
+    Rejected:=False; Revision:=Restored.PublicationRevision;
+    try Restored.Restore(Forged,P.Journal,P.Replacement,P.Outcome,P.Evidence,P.Replay,Revision);
+    except on E: EWfcPipelineWorkspaceReplay do
+      begin Rejected:=True; Check((E.Kind=wpwrfEvidenceMismatch) and (E.MismatchOffset>0),
+        'installed replay compares complete evidence, not a signature'); end; end;
+    Check(Rejected and (Restored.PublicationRevision=Revision) and (Restored.CopyCanonicalJournal=Saved),
+      'installed rejected restore preserves publication and every accepted byte');
+    Actual:=Restored.CopyPublicState; EqualWorkspaceState(State,Actual); FreeAndNil(Actual);
+    Actual:=Restored.CopyLastSuccessfulState; EqualWorkspaceState(Baseline,Actual); FreeAndNil(Actual);
+    FreeAndNil(State); FreeAndNil(Journal); FreeAndNil(Forged);
+
+    Receipt:=Slot.ApplyInputs(EmptyText,P,Slot.PublicationRevision); FreeAndNil(Receipt);
+    Receipt:=Slot.ExecuteRepair(EmptyText,Roots,P,Slot.PublicationRevision);
+    Check(not Receipt.BorrowSolveOutcome.Solved and not Receipt.HasCurrentOutput and Receipt.HasSuccessfulBaseline,
+      'installed normal failed repair publishes honest noncurrent outcome with retained baseline'); FreeAndNil(Receipt);
+    Journal:=DecodeWfcPipelineWorkspaceJournalText(Slot.CopyCanonicalJournal,P.Journal);
+    Restored.Restore(Journal,P.Journal,P.Replacement,P.Outcome,P.Evidence,P.Replay,Restored.PublicationRevision);
+    Check(not Restored.HasCurrentOutput and Restored.HasSuccessfulBaseline,
+      'installed replay of failed terminal action keeps currentness separate from baseline');
+    State:=Slot.CopyPublicState; Actual:=Restored.CopyPublicState;
+    EqualWorkspaceState(State,Actual); FreeAndNil(Actual);
+    Actual:=Restored.CopyLastSuccessfulState; EqualWorkspaceState(Baseline,Actual); FreeAndNil(Actual);
+    OwnedRun:=Restored.CopyAppliedRun; OwnedRecipe:=Restored.CopyCurrentRecipe;
+    FreeAndNil(Restored); FreeAndNil(Slot); FreeAndNil(Journal);
+    Check((OwnedRun.LockCount=0) and (OwnedRun.DomainCount=1),
+      'installed retained output was never converted into authored locks');
+    Check(EncodeWfcPipelineModelText(OwnedRecipe)=RecipeText,
+      'installed copied current recipe outlives all executions');
+    EqualWorkspaceState(InitialState,InitialReceipt.BorrowPublicState);
+    Actual:=InitialReceipt.BorrowSolveOutcome.CopyPublicState; EqualWorkspaceState(InitialState,Actual);
+  finally
+    Actual.Free; InitialState.Free; Baseline.Free; State.Free; Forged.Free; Journal.Free;
+    Preview.Free; InitialReceipt.Free; Receipt.Free; Restored.Free; Slot.Free;
+    Contexts.Free; OwnedRun.Free; Run.Free; OwnedRecipe.Free; Recipe.Free;
+  end;
+end;
+
 procedure UseMusicForm;
 var Config, Copied: TWfcMusicFormConfig; Cursor: TWfcMusicFormCursor;
   Plan: TWfcMusicFormPhrasePlan; Bars: TWfcMusicFormBars;
@@ -532,6 +707,7 @@ begin
     UsePortableMapping;
     UsePipelineComposition;
     UsePreparedPipeline;
+    UseWorkspace;
     UseMusicForm;
     UsePortableConnectivity;
     UseVolumePatterns;

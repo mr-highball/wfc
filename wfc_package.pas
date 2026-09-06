@@ -34,7 +34,9 @@ uses
   wfc_pattern3d, wfc_pattern3d_learn, wfc_pattern3d_text, wfc_pattern3d_graph,
   wfc_token_volume_view, wfc_lattice, wfc_pipeline_layout,
   wfc_pipeline_mapping, wfc_pipeline_compose, wfc_pipeline_prepare,
-  wfc_pipeline_session;
+  wfc_pipeline_session, wfc_pipeline_session_evidence,
+  wfc_pipeline_workspace_context, wfc_pipeline_workspace_journal,
+  wfc_pipeline_workspace_journal_text, wfc_pipeline_workspace_replay;
 
 implementation
 

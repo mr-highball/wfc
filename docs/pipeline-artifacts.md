@@ -47,7 +47,12 @@ For reusable input lowering and controlled in-memory editing, see
 [prepared sessions](pipeline-sessions.md). Session outcomes preserve actual
 selective reuse, ownership and pending/currentness evidence; they are not a
 new artifact and must not be relabeled as fresh result1/result2 documents.
-Saved session/outcome formats and ordered operation journals remain separate work.
+The separate [workspace journal and evidence layer](pipeline-workspaces.md)
+saves those ordered operations, verifies them by complete actual replay and
+provides atomic authoring. A decoded journal contains unverified claims, not a
+trusted result. Its `wfc-workspace-journal=1` envelope is handled by
+`wfc_workspace`; the generic artifact-family registry and existing
+recipe1–5/run1–2/result1–2 behavior are unchanged.
 
 ## Hand-authored rule models
 

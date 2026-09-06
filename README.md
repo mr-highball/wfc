@@ -34,6 +34,7 @@ and explicit exit gates.
 | Save and replay a pipeline | [Portable recipes, runs, and results](docs/pipeline-artifacts.md) |
 | Assemble independently authored or learned pipelines | [Immutable fragment composition](docs/pipeline-composition.md) |
 | Edit a bound pipeline and authorize repair | [Preparation and input replacement](docs/pipeline-preparation.md), [prepared sessions](docs/pipeline-sessions.md) |
+| Save edit history and restore a live workspace | [Workspace journals, exact replay, atomic authoring and CLI](docs/pipeline-workspaces.md) |
 | Check or inspect saved work | [Artifact-family validation, inspection, and exact replay](docs/artifact-tools.md) |
 | Extend or evaluate the system | [Roadmap](ROADMAP.md), [research records](docs/research/README.md) |
 
@@ -113,8 +114,12 @@ the caller supplies run extents and executes it through the existing runtime.
 The [prepared-session API](docs/pipeline-sessions.md) now adds immediate input
 edits, revision-bound explicit repair plans, cumulative pending requirements and
 complete detached solver/state evidence for one bound recipe. It keeps caller
-ownership and scoped reuse distinct from fresh invocation results. A complete
-editable multi-resource workspace and saved-operation journal remain open.
+ownership and scoped reuse distinct from fresh invocation results. The
+[workspace layer](docs/pipeline-workspaces.md) adds complete ordered journals,
+explicit epochs, exact replay and atomic edit/repair publication through shared
+Pascal APIs and an included FPC CLI. Imported journals remain unverified claims
+until their complete actual evidence replays. A general interactive editor and
+migration of the Mapped World/Ensemble Studio interfaces remain separate work.
 
 Ordinary solving follows `prepare → solve → validate → commit`. A failed
 reference transaction restores its previous entries and random streams.
@@ -215,7 +220,7 @@ code is build output, not a second hand-maintained implementation.
 | Learned representations | [Cardinal models](docs/learning.md), [2D overlapping patterns](docs/patterns.md), [3D overlapping volumes](docs/overlapping-3d.md), [sequences](docs/sequences.md), [training](docs/training.md) |
 | Spatial domains | [2D worlds](docs/world2d.md), [mapped passes](docs/mapped-passes.md), [voxels](docs/voxel3d.md), [learned terraces](docs/learned-terraces3d.md), [Building 3D](docs/building3d.md) |
 | Music and text | [Exact music model](docs/music.md), [polyphonic ensembles](docs/music-ensemble.md), [independent voices](docs/music-voices.md), [audio](docs/music-audio.md), [arrangements](docs/music-arrangement.md), [import](docs/music-import.md), [text completion](docs/text.md) |
-| Portable workflow | [Pipeline artifacts](docs/pipeline-artifacts.md), [validation and inspection tools](docs/artifact-tools.md), [dependency policy](docs/dependencies.md) |
+| Portable workflow | [Pipeline artifacts](docs/pipeline-artifacts.md), [editable workspaces and exact history replay](docs/pipeline-workspaces.md), [validation and inspection tools](docs/artifact-tools.md), [dependency policy](docs/dependencies.md) |
 
 The remaining work includes richer harmonic models, general voice-leading
 constraints, independently learned rhythm roles, larger
