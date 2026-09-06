@@ -30,7 +30,8 @@ uses SysUtils, JS, Web, wfc_browser_test_host;
 
 const
   DEMO_COUNT = 10;
-  PAGE_TIMEOUT_MS = 15000;
+  DEFAULT_PAGE_TIMEOUT_MS = 15000;
+  ENSEMBLE_PAGE_TIMEOUT_MS = 30000;
   POLL_INTERVAL_MS = 25;
 
 type
@@ -38,6 +39,7 @@ type
   TExpectations = array of TExpectation;
   TDemo = record
     Name, Bundle, Stylesheet: String;
+    TimeoutMs: Integer;
     Expectations: TExpectations;
   end;
   TDemoEntries = class
@@ -106,9 +108,16 @@ begin
 
   for I := 0 to DEMO_COUNT - 1 do
   begin
+    FDemos[I].TimeoutMs := DEFAULT_PAGE_TIMEOUT_MS;
     Expect(I, 'data-self-test', 'passed');
     if I <> 7 then Expect(I, 'data-state', 'solved');
   end;
+  { This one entry runs finite/developed generation, WAVE, and all awaited
+    MIDI plan/save/cancel/failure/release fixtures together. Measured complete
+    runs exceed fifteen seconds even while every fixture keeps progressing.
+    Keep all expectations and the host's independent sixty-second deadline;
+    this is a test-work allowance, not a generation performance threshold. }
+  FDemos[6].TimeoutMs := ENSEMBLE_PAGE_TIMEOUT_MS;
   { Preserve the six standalone hosted marker maps, not just their generic
     success flags. These requests load actual staged HTML/CSS/compiled entry
     scripts; no synthetic controller fixture or extra rtl.run call is injected. }
@@ -264,6 +273,8 @@ begin
     FExpectedUrl := TJSURL.new('demo-entries/' + FDemos[FIndex].Name +
       '/index.html?selftest=1', window.location.href).href;
     document.body.setAttribute('data-demo-entries-current', FDemos[FIndex].Name);
+    document.body.setAttribute('data-demo-entries-page-timeout-ms',
+      IntToStr(FDemos[FIndex].TimeoutMs));
     document.body.setAttribute('data-demo-entry-' + FDemos[FIndex].Name, 'pending');
     FFrame := TJSHTMLIFrameElement(document.createElement('iframe'));
     FFrame.width := '1280'; FFrame.height := '900';
@@ -382,9 +393,13 @@ begin
         else FLastMismatch := 'document has not completed loading';
       end;
     end;
-    if (window.performance.now - FStartedAt >= PAGE_TIMEOUT_MS) or
-      (FPolls >= PAGE_TIMEOUT_MS div POLL_INTERVAL_MS) then
-    begin CompletePage(False, 'page deadline exceeded: ' + FLastMismatch); Exit; end;
+    if (window.performance.now - FStartedAt >= FDemos[FIndex].TimeoutMs) or
+      (FPolls >= FDemos[FIndex].TimeoutMs div POLL_INTERVAL_MS) then
+    begin
+      CompletePage(False, 'page deadline exceeded (' +
+        IntToStr(FDemos[FIndex].TimeoutMs) + ' ms): ' + FLastMismatch);
+      Exit;
+    end;
     window.setTimeout(@Poll, POLL_INTERVAL_MS);
   except
     CompletePage(False, ErrorText(JSExceptValue));
