@@ -59,6 +59,8 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
+# The parent can reach readiness before the background child's redirection runs.
+: >"$results/server.log"
 "$server" --root "$web" --port 4180 >"$results/server.log" 2>&1 &
 server_pid=$!
 ready=false
