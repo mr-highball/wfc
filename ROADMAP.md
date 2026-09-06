@@ -179,6 +179,10 @@ The repository already contains the beginnings of the ecosystem:
 - a project-owned collision-safe token lookup plus shared Pascal application
   logic for strict recipe validation and headless recipe-plus-run execution,
   with thin bounded-I/O native hosts;
+- [saved-artifact validation and inspection](docs/artifact-tools.md) across
+  rules, cardinal/pattern/sequence models, training sources, recipes, bound
+  runs, and bound results; explicit exact-byte result replay, terminal-safe
+  bounded reports, and an FPC real-process conformance runner;
 - Portable Training v1: immutable pretokenized corpora, strict editable
   `wfclearn=1` text, explicit capacity preflights, and a shared native
   `wfc-learn` host producing cardinal, overlapping-pattern, or sequence
@@ -245,7 +249,7 @@ It is not yet the finished system described above:
   project-owned versioned word-boundary table, wrapped sequence training,
   overlapping 3D footprints, structured multi-license provenance, media import and
   word-oriented text import, larger/background browser training, artifact-family
-  lint, and general inspection tools remain;
+  semantic/asset lint, and live interactive inspection remain;
 - the [hosted gate at `b3bd1ae`](https://github.com/mr-highball/wfc/actions/runs/34005958438)
   passed stable FPC on Linux/macOS/Windows, development FPC on Linux, and the
   pas2js browser lane on 2026-09-06 UTC, including Linux package/clean-checkout
@@ -569,8 +573,12 @@ Authored quotas use `wfclearn=3`; explicit connectivity selects `wfclearn=4`
 with persistent world-axis profiles and output roots/terminals. Both lower to
 the actual learned public output, remain distinct from sample frequencies,
 and are protected against loss during edits or model-only export.
+The [artifact tools](docs/artifact-tools.md) now validate all eight saved
+rule/training/pipeline families and explain their structure with explicitly
+bounded reports. Result validation distinguishes static bound-artifact checks
+from opt-in complete runtime replay, including exact non-solved outcomes.
 Word-boundary tables, wrapped sequence training, overlapping 3D extraction,
-broader artifact lint/inspection, and the complete exit gate remain open.
+broader semantic/asset lint, live inspection, and the complete exit gate remain open.
 
 ### Deliverables
 
@@ -581,14 +589,15 @@ broader artifact lint/inspection, and the complete exit gate remain open.
 - Extend the current pretokenized `wfc-learn` host beyond cardinal grids,
   overlapping 2D patterns, and sequences with project-owned raw-text/media,
   voxel, and musical-event importers and richer domain extraction.
-- Extend the current strict recipe `wfc-validate` host across the run/result
-  family and add unreachable-value, asymmetric-rule, impossible-input, and
-  missing-asset lint profiles.
+- Extend the eight-family `wfc-validate` host with unreachable-value,
+  asymmetric-rule, impossible-input, and missing-asset lint profiles beyond
+  strict schema/binding checks and explicit deterministic result replay.
 - Extend the current deterministic recipe-plus-run `wfc-run` host with explicit
   reproducible batch orchestration.
-- Generalize the existing fixed-fixture causal-trace inspector into
-  `wfc-inspect` for arbitrary rule graphs, pass layers, entropy/domain views,
-  interactive decision replay, and richer contradiction explanations.
+- Extend the saved-artifact `wfc-inspect` model/pass/layer reports with live
+  entropy/domain views, interactive decision replay, and richer contradiction
+  explanations; the fixed-fixture causal-trace inspector remains a separate
+  demonstration rather than a substitute for those interactive capabilities.
 - Preserve source hashes and corpus licenses in generated model metadata.
 - Add compact binary caching only after the portable text format is stable.
 

@@ -21,38 +21,38 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 *)
-program wfc_validate;
+program wfc_inspect;
 
 {$mode delphi}{$H+}
 
-uses SysUtils, wfc_validate_app, wfc_artifact_cli_io;
+uses SysUtils, wfc_validate_app, wfc_inspect_app, wfc_artifact_cli_io;
 
 function Run: Integer;
 var
-  Args: TWfcValidateArguments; Command: TWfcValidateCommand;
+  Args: TWfcInspectArguments; Command: TWfcInspectCommand;
   InputText, RecipeText, RunText, OutputText, ErrorText, ReadingRole: String;
 begin
   Args := WfcArtifactNativeArguments;
-  if not WfcValidateParseCommand(Args, Command, ErrorText) then
-    Exit(WfcArtifactEmitOutcome('wfc-validate', WFC_VALIDATE_EXIT_USAGE, '',
-      WfcValidateFormatFailure(wvfkUsage, ErrorText)));
+  if not WfcInspectParseCommand(Args, Command, ErrorText) then
+    Exit(WfcArtifactEmitOutcome('wfc-inspect', WFC_VALIDATE_EXIT_USAGE, '',
+      WfcInspectFormatFailure(Command, wvfkUsage, ErrorText)));
   try
     WfcArtifactReadInputs(Command.Kind, Command.InputPath, Command.RecipePath,
       Command.RunPath, InputText, RecipeText, RunText, ReadingRole);
   except
     on E: EWfcArtifactInputLimit do
-      Exit(WfcArtifactEmitOutcome('wfc-validate', WFC_VALIDATE_EXIT_INVALID_ARTIFACT, '',
-        WfcValidateFormatCommandFailure(Command, wvfkInvalidArtifact, E.Message)));
+      Exit(WfcArtifactEmitOutcome('wfc-inspect', WFC_VALIDATE_EXIT_INVALID_ARTIFACT, '',
+        WfcInspectFormatFailure(Command, wvfkInvalidArtifact, E.Message)));
     on E: EOutOfMemory do
-      Exit(WfcArtifactEmitOutcome('wfc-validate', WFC_VALIDATE_EXIT_INTERNAL, '',
-        WfcValidateFormatFailure(wvfkInternal, E.ClassName + ': ' + E.Message)));
+      Exit(WfcArtifactEmitOutcome('wfc-inspect', WFC_VALIDATE_EXIT_INTERNAL, '',
+        WfcInspectFormatFailure(Command, wvfkInternal, E.ClassName + ': ' + E.Message)));
     on E: Exception do
-      Exit(WfcArtifactEmitOutcome('wfc-validate', WFC_VALIDATE_EXIT_IO, '',
-        WfcValidateFormatFailure(wvfkIo, 'cannot read ' + ReadingRole + ': ' + E.Message)));
+      Exit(WfcArtifactEmitOutcome('wfc-inspect', WFC_VALIDATE_EXIT_IO, '',
+        WfcInspectFormatFailure(Command, wvfkIo, 'cannot read ' + ReadingRole + ': ' + E.Message)));
   end;
-  Result := WfcValidateExecuteText(Command, InputText, RecipeText, RunText,
+  Result := WfcInspectExecuteText(Command, InputText, RecipeText, RunText,
     OutputText, ErrorText);
-  Result := WfcArtifactEmitOutcome('wfc-validate', Result, OutputText, ErrorText);
+  Result := WfcArtifactEmitOutcome('wfc-inspect', Result, OutputText, ErrorText);
 end;
 
 var Status: Integer;
@@ -61,8 +61,8 @@ begin
   except
     on E: Exception do
     begin
-      WfcArtifactTryWriteStandardError(WfcValidateFormatFailure(wvfkInternal,
-        E.ClassName + ': ' + E.Message));
+      WfcArtifactTryWriteStandardError('wfc-inspect: internal error: ' +
+        WfcValidateOneLineMessage(E.ClassName + ': ' + E.Message) + #10);
       Status := WFC_VALIDATE_EXIT_INTERNAL;
     end;
   end;

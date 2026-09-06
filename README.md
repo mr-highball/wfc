@@ -30,6 +30,7 @@ and explicit exit gates.
 | Try an interactive demo | [Demo table below](#demos), [complete examples index](examples/README.md) |
 | Learn models from examples | [Learning](docs/learning.md), [training documents and CLI](docs/training.md) |
 | Save and replay a pipeline | [Portable recipes, runs, and results](docs/pipeline-artifacts.md) |
+| Check or inspect saved work | [Artifact-family validation, inspection, and exact replay](docs/artifact-tools.md) |
 | Extend or evaluate the system | [Roadmap](ROADMAP.md), [research records](docs/research/README.md) |
 
 ## A small pass-based program
@@ -184,7 +185,7 @@ code is build output, not a second hand-maintained implementation.
 | Learned representations | [Cardinal models](docs/learning.md), [overlapping patterns](docs/patterns.md), [sequences](docs/sequences.md), [training](docs/training.md) |
 | Spatial domains | [2D worlds](docs/world2d.md), [voxels](docs/voxel3d.md), [learned terraces](docs/learned-terraces3d.md), [Building 3D](docs/building3d.md) |
 | Music and text | [Exact music model](docs/music.md), [polyphonic ensembles](docs/music-ensemble.md), [independent voices](docs/music-voices.md), [audio](docs/music-audio.md), [arrangements](docs/music-arrangement.md), [import](docs/music-import.md), [text completion](docs/text.md) |
-| Portable workflow | [Pipeline artifacts and tools](docs/pipeline-artifacts.md), [dependency policy](docs/dependencies.md) |
+| Portable workflow | [Pipeline artifacts](docs/pipeline-artifacts.md), [validation and inspection tools](docs/artifact-tools.md), [dependency policy](docs/dependencies.md) |
 
 The remaining work includes richer harmonic models, general voice-leading
 constraints, independently learned rhythm roles, larger

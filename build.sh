@@ -855,6 +855,9 @@ for compiler_artifact_suite in \
   "$compiler_pipeline_result_text_test_source" \
   "$compiler_pipeline_runtime_test_source" \
   "$compiler_validate_app_test_source" \
+  "$compiler_tools_directory/../test/wfc_artifact_document_test.lpr" \
+  "$compiler_tools_directory/../test/wfc_artifact_inspect_test.lpr" \
+  "$compiler_tools_directory/../test/wfc_artifact_cli_app_test.lpr" \
   "$compiler_tools_directory/../test/wfc_browser_dom_test.lpr" \
   "$compiler_tools_directory/../test/wfc_browser_args_test.lpr" \
   "$compiler_tools_directory/../test/wfc_browser_socket_test.lpr" \
@@ -913,6 +916,7 @@ done
 
 for compiler_tool_source in \
   "$compiler_validate_tool_source" \
+  "$compiler_tools_directory/wfc_inspect.lpr" \
   "$compiler_learn_tool_source" \
   "$compiler_tools_directory/wfc_music_import_cli.lpr" \
   "$compiler_tools_directory/wfc_serve.lpr" \
@@ -983,6 +987,20 @@ printf 'Running the portable training CLI process conformance suite.\n'
 bash "$repository_root/test/wfc_learn_cli_process_test.sh" \
   "$learner_tool_executable" -- "$validator_tool_executable" -- \
   "$runner_tool_executable" || exit $?
+
+printf 'Building and running FPC artifact-family process conformance.\n'
+"$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
+  "-Fu$compiler_source_directory" "-Fu$compiler_tools_directory" \
+  "-FU$compiler_unit_output_directory" "-FE$compiler_binary_output_directory" \
+  "$compiler_source_directory/../test/wfc_artifact_cli_process_test.lpr" || exit $?
+artifact_tool_suffix=''
+case "$host_system" in
+  CYGWIN*|MINGW*|MSYS*) artifact_tool_suffix='.exe' ;;
+esac
+"$binary_output_directory/wfc_artifact_cli_process_test$artifact_tool_suffix" \
+  "$compiler_binary_output_directory/wfc_validate$artifact_tool_suffix" \
+  "$compiler_binary_output_directory/wfc_inspect$artifact_tool_suffix" \
+  "$compiler_source_directory/.." || exit $?
 
 printf "Building the dependency-free tiled-world example.\n"
 "$compiler" "$@" \

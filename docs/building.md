@@ -167,12 +167,16 @@ canonical files in `test/fixtures/pipeline-cli` and
 exact validator and result bytes (including the domain-sized bundle), quiet
 output, and the documented invalid, usage, I/O, solved, and non-solved exit
 classes are all exercised.
-A second, 30-case process suite checks `wfc_learn`, `wfc_validate`, and
+A second process suite checks `wfc_learn`, `wfc_validate`, and
 `wfc_run` against all five source/model/recipe/run/result bundles in
 `examples/learning/04_TrainingDocuments`. It covers file/stdin training,
 standalone output, recipe validation, solved replay, quiet/version behavior,
 and invalid/usage/I/O diagnostics. The native training-text suite requires
 that absolute fixture directory as its first argument; the build supplies it.
+The artifact-family extension adds shared document, inspection, and CLI
+application suites plus a native FPC real-process runner for `wfc_validate`
+and `wfc_inspect`. It tests strict file/stdin handling across eight families,
+context binding, solved/non-solved exact replay, and inspection limits.
 A compiler error, failed check,
 or example failure produces a nonzero exit code. Compiler units and binaries
 are written beneath `build/native/`; running the gate does not modify tracked
@@ -193,17 +197,23 @@ FPC=/opt/fpc/bin/fpc ./build.sh -O2
 ## Headless pipeline tools
 
 The native builds expose the same project-owned application
-logic through thin hosts. The recipe-only validator accepts one file or
-standard input:
+logic through thin hosts. The validator checks eight artifact families,
+including editable sources and context-bound runs/results:
 
 ```text
 wfc-validate recipe [--quiet | --emit-canonical] [--] INPUT
+wfc-validate run [--quiet | --emit-canonical] [--] RECIPE RUN
+wfc-validate result [--replay] [--quiet | --emit-canonical] [--] RECIPE RUN RESULT
+wfc-inspect recipe [--limit N] [--] INPUT
 ```
 
 Default success output is a one-line static summary. `--emit-canonical` emits
-the exact strictly verified `wfcpipeline=1` input, and `--quiet` emits nothing.
-This command validates the recipe and its embedded resources; it does not
-compile or solve.
+the exact strictly verified primary input, and `--quiet` emits nothing.
+Recipe validation does not compile or solve. Only explicit result replay
+executes the recorded run and compares the complete canonical result.
+The inspector exposes a bounded, terminal-safe view without execution.
+See [artifact tools](artifact-tools.md) for all eight families, their different
+validation scopes, exit codes, limits, and runnable examples.
 
 The runner accepts one recipe and its bound run artifact:
 
@@ -213,7 +223,7 @@ wfc-run [--quiet] [--] RECIPE RUN
 
 These are the distribution-facing command names used in help and diagnostics.
 The checked repository build writes the native source-host names
-`build/native/bin/wfc_validate[.exe]` and
+`build/native/bin/wfc_validate[.exe]`, `build/native/bin/wfc_inspect[.exe]`, and
 `build/native/bin/wfc_run[.exe]`; the training host is
 `build/native/bin/wfc_learn[.exe]`. Portable application logic is also tested
 in real browsers through the [included FPC tools](development-tools.md).

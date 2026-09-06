@@ -363,7 +363,7 @@ and canonical encoding remain in the shared portable Pascal units.
 
 The contracts below use distribution-facing hyphenated command names. Checked
 repository builds retain their Pascal source-host basenames as
-`wfc_validate[.exe]` and `wfc_run[.exe]`;
+`wfc_validate[.exe]`, `wfc_inspect[.exe]`, and `wfc_run[.exe]`;
 packaging may expose the hyphenated names without changing
 behavior.
 
@@ -371,6 +371,8 @@ behavior.
 
 ```text
 wfc-validate recipe [--quiet | --emit-canonical] [--] INPUT
+wfc-validate run [--quiet | --emit-canonical] [--] RECIPE RUN
+wfc-validate result [--replay] [--quiet | --emit-canonical] [--] RECIPE RUN RESULT
 wfc-validate --help
 wfc-validate --version
 ```
@@ -378,9 +380,34 @@ wfc-validate --version
 `INPUT` is one recipe file or `-` for standard input. The default success
 output is a one-line recipe summary. `--quiet` suppresses it;
 `--emit-canonical` writes the exact input after strict decode and byte-for-byte
-canonical verification. The tool validates `wfcpipeline=1` syntax, signatures,
+canonical verification. Recipe validation supports `wfcpipeline=1,2,3` syntax, signatures,
 typed resources, provenance, references, topology, vocabularies, and static
 limits. It does not compile or solve the recipe.
+
+The expanded validator also checks standalone rules, cardinal/overlapping/
+sequence models, training sources, recipe-bound runs, and recipe/run-bound
+results. Only `result --replay` executes: it requires the fresh complete
+canonical result to match every saved byte. A valid stored or exactly replayed
+non-solved result returns `0`, not the runner's `4`. Ordinary result decoding
+does not establish every adjacency, input constraint, private witness, or
+claimed evidence event. See the [artifact tools guide](artifact-tools.md) for
+the precise validation scopes, formats, input limits, and API ownership.
+
+### `wfc-inspect`
+
+```text
+wfc-inspect recipe [--limit N] [--] INPUT
+wfc-inspect run [--limit N] [--] RECIPE RUN
+wfc-inspect result [--limit N] [--] RECIPE RUN RESULT
+```
+
+The inspector supports the same eight artifact families without executing or
+training. Its deterministic report exposes model structure, pass dependencies,
+constraints, provenance, invocation settings, and public result cells.
+Percent-encoded tokens are terminal-safe; explicit record and byte truncation
+make omitted details visible. This is a saved-artifact view, not live domains
+or interactive trace replay. The [complete guide](artifact-tools.md) includes
+the other families and examples.
 
 ### `wfc-run`
 
@@ -401,11 +428,11 @@ not masquerade as a solver result.
 
 | Exit | `wfc-validate` | `wfc-run` |
 | ---: | --- | --- |
-| `0` | valid recipe, help, or version | solved result, help, or version |
-| `1` | invalid recipe artifact | invalid recipe, run, or executable invocation |
+| `0` | valid artifact, successful requested replay, help, or version | solved result, help, or version |
+| `1` | invalid artifact/context or replay failure | invalid recipe, run, or executable invocation |
 | `2` | command-line usage error | command-line usage error |
 | `3` | input/output failure | input/output failure |
-| `4` | reserved; recipe validation does not solve | valid canonical non-solved result |
+| `4` | unused; a valid stored non-solved result validates with `0` | valid canonical non-solved result |
 | `70` | unexpected internal failure | unexpected internal failure |
 
 Options must precede positional paths. `--` permits a path beginning with a

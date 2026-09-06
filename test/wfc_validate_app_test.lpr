@@ -149,7 +149,7 @@ begin
   CheckParseFailure([], 'a command is required',
     'an omitted command is a usage error');
   CheckParseFailure(['unknown'],
-    'the command must be recipe, --help, or --version',
+    'the command must be rules, model, pattern2d, sequence, training, recipe, run, result, --help, or --version',
     'unknown commands are rejected');
   CheckParseFailure(['--help', 'extra'],
     '--help does not accept additional arguments',
@@ -204,12 +204,12 @@ begin
     (LOutput = WfcValidateHelpText) and
     (Pos(' [--] INPUT'#10, LOutput) > 0) and
     (Pos('does not solve it.'#10, LOutput) > 0),
-    'help is exact LF text and states the recipe-only claim');
+    'help is exact LF text and preserves the non-executing recipe claim');
 
   LCommand.Kind := wvckVersion;
   LStatus := WfcValidateExecuteText(LCommand, 'ignored', LOutput, LError);
   Check((LStatus = WFC_VALIDATE_EXIT_SUCCESS) and (LError = '') and
-    (LOutput = 'wfc-validate 1 (wfcpipeline=1,2,3)'#10),
+    (LOutput = 'wfc-validate 2 (wfcpipeline=1,2,3)'#10),
     'version identifies both CLI and artifact contracts');
 end;
 
@@ -296,7 +296,7 @@ begin
   Check(WfcValidateFormatFailure(wvfkIo, '') =
     'wfc-validate: I/O error: unspecified failure'#10,
     'empty host failures retain an actionable class');
-  Check((WFC_VALIDATE_CLI_VERSION = 1) and
+  Check((WFC_VALIDATE_CLI_VERSION = 2) and
     (WFC_VALIDATE_MAX_INPUT_LENGTH = 268435456),
     'the CLI and bounded recipe input contracts are public');
 end;

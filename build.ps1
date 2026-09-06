@@ -90,6 +90,9 @@ $artifactTestSources = @(
   (Join-Path $repositoryRoot 'test/wfc_pipeline_result_text_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_pipeline_runtime_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_validate_app_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_artifact_document_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_artifact_inspect_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_artifact_cli_app_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_browser_dom_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_browser_args_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_browser_socket_test.lpr')
@@ -115,6 +118,7 @@ $artifactTestSources = @(
 )
 $toolSources = @(
   (Join-Path $repositoryRoot 'tools/wfc_validate.lpr')
+  (Join-Path $repositoryRoot 'tools/wfc_inspect.lpr')
   (Join-Path $repositoryRoot 'tools/wfc_run.lpr')
   (Join-Path $repositoryRoot 'tools/wfc_learn_cli.lpr')
   (Join-Path $repositoryRoot 'tools/wfc_music_import_cli.lpr')
@@ -1117,6 +1121,18 @@ Write-Host 'Running the portable pipeline CLI process conformance suite.'
 & $pipelineCliProcessTestSource `
   -Validator $validatorToolExecutable `
   -Runner $runnerToolExecutable
+
+Write-Host 'Building and running FPC artifact-family process conformance.'
+& $Compiler @CompilerOptions -B -Mdelphi -Sa -Cr -Co -Ci `
+  "-Fu$sourceDirectory" "-Fu$toolsDirectory" `
+  "-FU$unitOutputDirectory" "-FE$binaryOutputDirectory" `
+  (Join-Path $repositoryRoot 'test/wfc_artifact_cli_process_test.lpr')
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+& (Join-Path $binaryOutputDirectory "wfc_artifact_cli_process_test$toolExecutableSuffix") `
+  $validatorToolExecutable `
+  (Join-Path $binaryOutputDirectory "wfc_inspect$toolExecutableSuffix") `
+  $repositoryRoot
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 $learnerToolExecutable = Join-Path $binaryOutputDirectory `
   "wfc_learn$toolExecutableSuffix"
