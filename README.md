@@ -91,6 +91,10 @@ Directional rules express same-layer adjacency. Named requirements can read
 the same coordinate, a signed offset, any matching declared neighbor, or an
 inclusive [count range](docs/pass-counts.md). Explicit modes distinguish
 matching offsets from distinct provider cells when wrapped offsets alias.
+Opt-in [mapped passes](docs/mapped-passes.md) give each layer its own integer
+world layout: coarse terrain, fine foliage, and larger building footprints can
+read exact points or every intersecting provider cell, including unique-cell
+count ranges. This core API does not yet extend portable recipe formats.
 
 Ordinary solving follows `prepare → solve → validate → commit`. A failed
 reference transaction restores its previous entries and random streams.

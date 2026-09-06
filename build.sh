@@ -868,6 +868,9 @@ for compiler_artifact_suite in \
   "$compiler_tools_directory/../test/wfc_serve_test.lpr" \
   "$compiler_run_app_test_source" \
   "$compiler_source_directory/../test/wfc_sequence_wrap_test.lpr" \
+  "$compiler_source_directory/../test/wfc_lattice_test.lpr" \
+  "$compiler_source_directory/../test/wfc_mapped_passes_test.lpr" \
+  "$compiler_source_directory/../test/wfc_pass_bridge_layout_test.lpr" \
   "$compiler_source_directory/../test/wfc_pattern3d_test.lpr" \
   "$compiler_source_directory/../test/wfc_pattern3d_text_test.lpr" \
   "$compiler_source_directory/../test/wfc_pattern3d_passes_test.lpr" \

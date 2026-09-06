@@ -237,7 +237,7 @@ function WfcPattern3DCompositionSignatureHex(
 implementation
 
 uses
-  wfc_text_codec;
+  wfc_text_codec, wfc_lattice;
 
 type
   TPatternByteArray = array of Byte;
@@ -473,6 +473,26 @@ begin
       'overlapping projection graph cannot be nil');
 end;
 
+procedure RequireIdenticalBridgeLayout(const ATargetGraph,
+  ASourceGraph: TGraph; const AOperation: String);
+var Target, Source: TWfcLatticeLayout;
+begin
+  Target := ATargetGraph.PassLayout; Source := ASourceGraph.PassLayout;
+  { Compare identity directly: legacy adapters can be prepared before Reshape,
+    when both layouts are empty. Do not validate or normalize either record. }
+  if (Target.Cells.X <> Source.Cells.X) or
+    (Target.Cells.Y <> Source.Cells.Y) or
+    (Target.Cells.Z <> Source.Cells.Z) or
+    (Target.Origin.X <> Source.Origin.X) or
+    (Target.Origin.Y <> Source.Origin.Y) or
+    (Target.Origin.Z <> Source.Origin.Z) or
+    (Target.Pitch.X <> Source.Pitch.X) or
+    (Target.Pitch.Y <> Source.Pitch.Y) or
+    (Target.Pitch.Z <> Source.Pitch.Z) or
+    (Target.Wrap <> Source.Wrap) then
+    raise EWfcPattern3DGraph.Create(AOperation + ' requires identical pass layouts');
+end;
+
 procedure ValidateWrappedVolume(const AGraph: TGraph;
   const AOperation: String);
 var LPlane: Integer;
@@ -598,9 +618,9 @@ begin
   if ATargetGraph.Running then
     raise EWfcPattern3DGraph.Create(
       'overlapping projection cannot change while the pipeline is running');
-  ValidateWrappedVolume(ATargetGraph, 'overlapping projection');
   LTargetGraph := ATargetGraph.PassGraph[
     ATargetGraph.CurrentPassIndex];
+  ValidateWrappedVolume(LTargetGraph, 'overlapping projection');
   if LTargetGraph.PassMode <> gpmOverlay then
     raise EWfcPattern3DGraph.Create(
       'overlapping projection target must be an overlay pass');
@@ -613,6 +633,8 @@ begin
   LSourceGraph := FindPassGraph(ATargetGraph, ASourcePass,
     'overlapping projection');
   ValidateWrappedVolume(LSourceGraph, 'overlapping projection source');
+  RequireIdenticalBridgeLayout(LTargetGraph, LSourceGraph,
+    'overlapping projection');
   if not AppliedPatternModelMatches(AModel, LSourceGraph) then
     raise EWfcPattern3DGraph.Create(
       'overlapping projection source does not contain the matching compiled latent model');
@@ -829,6 +851,8 @@ begin
   if APatternGraph.PassGraph[0] <> AProjectionGraph.PassGraph[0] then
     raise EWfcPattern3DGraph.Create(
       'overlapping projection capture passes must share one pipeline');
+  RequireIdenticalBridgeLayout(APatternGraph, AProjectionGraph,
+    'overlapping projection capture');
   if not AppliedPatternModelMatches(AModel, APatternGraph) then
     raise EWfcPattern3DGraph.Create(
       'overlapping projection capture source model does not match');

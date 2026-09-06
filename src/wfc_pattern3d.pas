@@ -697,26 +697,30 @@ function CaptureSolvedPatternGrid3D(const AModel: TWfcOverlappingModel3D;
   out AReport: TWfcOverlapping3DValidationReport): Boolean;
 var Captured: TWfcPatternGrid3D; N,P,X,Y,Z: Integer;
   E: TGraphEntry; Key: TWfcModelToken;
+  Graph: TGraph;
 begin
   RequireModel(AModel);
   if not Assigned(AGraph) then raise EWfcOverlapping3D.Create('source graph pass must be assigned');
+  //Resolve once: a root's default dimensions/wrapping need not describe its
+  //currently selected pass, while graph entry access is already pass-scoped.
+  Graph := AGraph.PassGraph[AGraph.CurrentPassIndex];
   AGrid := Default(TWfcPatternGrid3D); Captured := Default(TWfcPatternGrid3D);
   InitializeReport(AReport);
-  if (AGraph.Dimension.Width > TGraphCoordinate(High(Integer))) or
-    (AGraph.Dimension.Height > TGraphCoordinate(High(Integer))) or
-    (AGraph.Dimension.Depth > TGraphCoordinate(High(Integer))) then
+  if (Graph.Dimension.Width > TGraphCoordinate(High(Integer))) or
+    (Graph.Dimension.Height > TGraphCoordinate(High(Integer))) or
+    (Graph.Dimension.Depth > TGraphCoordinate(High(Integer))) then
     Exit(Invalid(AReport,wo3ikGridShape));
-  if not GridSize(Integer(AGraph.Dimension.Width),Integer(AGraph.Dimension.Height),
-    Integer(AGraph.Dimension.Depth),N) then Exit(Invalid(AReport,wo3ikGridShape));
-  Captured.Width := Integer(AGraph.Dimension.Width);
-  Captured.Height := Integer(AGraph.Dimension.Height);
-  Captured.Depth := Integer(AGraph.Dimension.Depth);
-  if AGraph.WrapNeighbors then Captured.Boundary := wmbWrap else Captured.Boundary := wmbOpen;
+  if not GridSize(Integer(Graph.Dimension.Width),Integer(Graph.Dimension.Height),
+    Integer(Graph.Dimension.Depth),N) then Exit(Invalid(AReport,wo3ikGridShape));
+  Captured.Width := Integer(Graph.Dimension.Width);
+  Captured.Height := Integer(Graph.Dimension.Height);
+  Captured.Depth := Integer(Graph.Dimension.Depth);
+  if Graph.WrapNeighbors then Captured.Boundary := wmbWrap else Captured.Boundary := wmbOpen;
   SetLength(Captured.Patterns,N);
   for Z := 0 to Captured.Depth - 1 do for Y := 0 to Captured.Height - 1 do
     for X := 0 to Captured.Width - 1 do
     begin
-      E := AGraph.Entry[TGraphCoordinate(X),TGraphCoordinate(Y),TGraphCoordinate(Z)];
+      E := Graph.Entry[TGraphCoordinate(X),TGraphCoordinate(Y),TGraphCoordinate(Z)];
       if not Assigned(E) or E.Empty then
       begin
         AReport.Issue.X := X; AReport.Issue.Y := Y; AReport.Issue.Z := Z;

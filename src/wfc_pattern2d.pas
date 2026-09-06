@@ -1021,6 +1021,7 @@ var
   LEntry: TGraphEntry;
   LKey: TWfcModelToken;
   LPattern: Integer;
+  LGraph: TGraph;
   X: Integer;
   Y: Integer;
 begin
@@ -1030,20 +1031,23 @@ begin
   if not Assigned(AGraph) then
     raise EWfcOverlapping2D.Create(
       'source graph pass must be assigned');
+  //Dimension and wrapping belong to the concrete selected pass, just as its
+  //entries do. The root's Dimension remains the historical default layout.
+  LGraph := AGraph.PassGraph[AGraph.CurrentPassIndex];
   AGrid := Default(TWfcPatternGrid2D);
   InitializeReport(AReport);
-  if (AGraph.Dimension.Width = 0) or
-      (AGraph.Dimension.Height = 0) or
-      (AGraph.Dimension.Width > TGraphCoordinate(High(Integer))) or
-      (AGraph.Dimension.Height > TGraphCoordinate(High(Integer))) or
-      (Integer(AGraph.Dimension.Width) >
-        High(Integer) div Integer(AGraph.Dimension.Height)) or
+  if (LGraph.Dimension.Width = 0) or
+      (LGraph.Dimension.Height = 0) or
+      (LGraph.Dimension.Width > TGraphCoordinate(High(Integer))) or
+      (LGraph.Dimension.Height > TGraphCoordinate(High(Integer))) or
+      (Integer(LGraph.Dimension.Width) >
+        High(Integer) div Integer(LGraph.Dimension.Height)) or
       (AZ < 0) or
-      (TGraphCoordinate(AZ) >= AGraph.Dimension.Depth) then
+      (TGraphCoordinate(AZ) >= LGraph.Dimension.Depth) then
     Exit(InvalidReport(AReport, woikGridShape));
-  AGrid.Width := Integer(AGraph.Dimension.Width);
-  AGrid.Height := Integer(AGraph.Dimension.Height);
-  if AGraph.WrapNeighbors then
+  AGrid.Width := Integer(LGraph.Dimension.Width);
+  AGrid.Height := Integer(LGraph.Dimension.Height);
+  if LGraph.WrapNeighbors then
     AGrid.Boundary := wmbWrap
   else
     AGrid.Boundary := wmbOpen;
@@ -1052,7 +1056,7 @@ begin
   for Y := 0 to AGrid.Height - 1 do
     for X := 0 to AGrid.Width - 1 do
     begin
-      LEntry := AGraph.Entry[TGraphCoordinate(X), TGraphCoordinate(Y),
+      LEntry := LGraph.Entry[TGraphCoordinate(X), TGraphCoordinate(Y),
         TGraphCoordinate(AZ)];
       if LEntry.Empty then
       begin

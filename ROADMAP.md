@@ -565,8 +565,13 @@ inverse public locks/domains, including distinct footprint offsets that alias
 on a small torus. Source v6 and recipe v4 now carry this through declarative
 resources, exact XYZ public constraints, persistent quotas/connectivity,
 workspace replay and artifact-family dispatch. The shared token-volume view
-provides cutaway/yaw SVG in native FPC and pas2js. Unlike-sized pass layouts
-remain open; existing 2D versions and bytes remain unchanged.
+provides cutaway/yaw SVG in native FPC and pas2js. The new
+[core mapped-pass API](docs/mapped-passes.md) supports unlike-sized integer-world
+layouts, exact point/footprint reads, unique-cell counts, and transactional
+selective/negotiated repair in native FPC and pas2js. Existing projection
+adapters retain explicit identical-layout guards. Portable per-pass layouts,
+mapped-clause persistence, and dedicated workspace/demo controls remain open;
+existing 2D versions and bytes remain unchanged.
 The sequence version-1 layer learns bounded order-N latent states from ordered
 pretokenized UTF-8 corpora, resets typed BOS history at every sample boundary,
 retains raw observation/start/end counts, derives exact suffix/prefix

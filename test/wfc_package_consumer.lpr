@@ -35,7 +35,7 @@ uses
   wfc_pipeline_run, wfc_pipeline_run_text, wfc_pipeline_runtime,
   wfc_pipeline_result, wfc_pipeline_result_text, wfc_volume_symmetry,
   wfc_pattern3d, wfc_pattern3d_learn, wfc_pattern3d_text, wfc_pattern3d_graph,
-  wfc_token_volume_view, wfc_voxel3d_isometric, wfc_voxel3d_svg;
+  wfc_token_volume_view, wfc_voxel3d_isometric, wfc_voxel3d_svg, wfc_lattice;
 
 var Checks: Integer;
 
@@ -56,6 +56,29 @@ begin
     Check((Graph.Entry[0, 0, 0].Value = 'route') and
       (Graph.Entry[1, 0, 0].Value = 'route'), 'installed graph publishes complete values');
   finally Graph.Free; end;
+end;
+
+procedure UseLattice;
+var Layout: TWfcLatticeLayout; Box: TWfcLatticeBox;
+  Coverage: TWfcLatticeCoverage; Cell: TWfcLatticeVector;
+begin
+  Layout:=MakeWfcLatticeLayout(5,1,1,MakeWfcLatticeVector(-5,0,0),
+    MakeWfcLatticeVector(2,1,1),True);
+  Check((WFC_LATTICE_VERSION=1) and (WfcLatticeCellCount(Layout)=5),
+    'installed lattice exposes its version and checked shape');
+  Check(TryWfcLatticePoint(Layout,MakeWfcLatticeVector(-6,0,0),Cell)
+    and (Cell.X=4),'installed lattice wraps exact negative-floor coordinates');
+  Box.Minimum:=MakeWfcLatticeVector(-6,0,0);
+  Box.Maximum:=MakeWfcLatticeVector(-4,1,1);
+  Check(TryWfcLatticeCoverage(Layout,Box,Coverage),
+    'installed lattice resolves a seam-crossing world box');
+  Check((Coverage.X.IntervalCount=2) and
+    (WfcLatticeCoverageCellCount(Coverage)=2),
+    'installed lattice retains two unique lazy coverage intervals');
+  Cell:=WfcLatticeCoverageCell(Coverage,0);
+  Check(Cell.X=0,'installed lattice enumerates canonical first cell');
+  Cell:=WfcLatticeCoverageCell(Coverage,1);
+  Check(Cell.X=4,'installed lattice enumerates canonical seam cell');
 end;
 
 procedure UseMusicForm;
@@ -226,6 +249,7 @@ end;
 begin
   try
     UseGraph;
+    UseLattice;
     UseMusicForm;
     UsePortableConnectivity;
     UseVolumePatterns;
