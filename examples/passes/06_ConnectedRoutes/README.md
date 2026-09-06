@@ -75,6 +75,38 @@ validation. The destination must be a new file: an existing path is not
 replaced. Success exits with status 0, malformed input or a host error exits
 with status 1, and a clean unsolved/limit result exits with status 2.
 
+## Portable recipe bundle
+
+The same executable includes a separate small artifact fixture: two gates on
+a 3 × 2 grid must be joined by exactly three route cells. Connectivity and the
+quota are declared on a public exact-copy alias of the routing pass. This is
+a reproducible introduction to saved recipes, not an export of the current
+town/circulation workbench session.
+
+Each option runs alone and writes canonical ASCII to stdout. Choose fresh
+output paths (commands below use standard shell redirection):
+
+```bash
+build/native/bin/ConnectedRoutes --portable-selftest
+build/native/bin/ConnectedRoutes --portable-recipe > routes.wfcpipeline
+build/native/bin/ConnectedRoutes --portable-run > routes.wfcrun
+build/native/bin/ConnectedRoutes --portable-result > routes.wfcresult
+build/native/bin/wfc_validate recipe routes.wfcpipeline
+build/native/bin/wfc_run routes.wfcpipeline routes.wfcrun > replay.wfcresult
+```
+
+Add `.exe` on Windows. `replay.wfcresult` must match `routes.wfcresult`
+byte-for-byte. Recipe signature is `DB5C9A56`; the recipe uses `wfcpipeline=3`,
+while the run/result envelopes stay version 1. Both layers contain `route`
+at flattened cells 0..2 and `empty` at cells 3..5. The native build gate runs
+the portable self-test, and the actual browser `?selftest=1` path requires
+`data-portable-artifacts="passed"` after canonical save/decode/replay.
+
+Use `BuildConnectedRoutesPortableRecipe` in `connected_routes_portable.pas`
+as a complete Pascal starting point. The [portable connectivity contract](../../../docs/pipeline-connectivity.md)
+documents public profiles, learned-state lowering, independent validation,
+format fields, and explicit resource limits.
+
 ## Browser host
 
 Stage the browser application from PowerShell:

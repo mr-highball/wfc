@@ -397,6 +397,7 @@ case "$host_system" in
     ;;
 esac
 "$connectivity_demo_executable" --selftest || exit $?
+"$connectivity_demo_executable" --portable-selftest || exit $?
 "$connectivity_process_test_executable" "$connectivity_runtime_executable" \
   "$compiler_binary_output_directory" || exit $?
 
@@ -825,6 +826,9 @@ for compiler_artifact_suite in \
   "$compiler_tools_directory/../test/wfc_pipeline_value_quota_model_test.lpr" \
   "$compiler_tools_directory/../test/wfc_pipeline_value_quota_text_test.lpr" \
   "$compiler_tools_directory/../test/wfc_pipeline_value_quota_test.lpr" \
+  "$compiler_tools_directory/../test/wfc_pipeline_connectivity_model_test.lpr" \
+  "$compiler_tools_directory/../test/wfc_pipeline_connectivity_text_test.lpr" \
+  "$compiler_tools_directory/../test/wfc_pipeline_connectivity_test.lpr" \
   "$compiler_pipeline_run_test_source" \
   "$compiler_pipeline_run_text_test_source" \
   "$compiler_pipeline_result_test_source" \
@@ -864,6 +868,7 @@ do
     "-Fu$compiler_tools_directory" \
     "-Fu$compiler_learned_pattern_world_example_directory" \
     "-Fu$compiler_training_studio_directory" \
+    "-Fu$compiler_connectivity_demo_directory" \
     "-FU$compiler_unit_output_directory" \
     "-FE$compiler_binary_output_directory" \
     "$compiler_artifact_suite" || exit $?

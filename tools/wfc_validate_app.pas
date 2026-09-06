@@ -114,6 +114,7 @@ function WfcValidateVersionText: String;
 begin
   Result := 'wfc-validate ' + IntToStr(WFC_VALIDATE_CLI_VERSION) +
     ' (wfcpipeline=' + IntToStr(WFC_PIPELINE_TEXT_VERSION) + ',' +
+    IntToStr(WFC_PIPELINE_VALUE_QUOTA_TEXT_VERSION) + ',' +
     IntToStr(WFC_PIPELINE_MAX_SUPPORTED_TEXT_VERSION) + ')'#10;
 end;
 
@@ -333,6 +334,8 @@ begin
     ' requirements=' + IntToStr(AModel.RequirementCount);
   if AModel.ValueQuotaCount > 0 then
     Result := Result + ' value-quotas=' + IntToStr(AModel.ValueQuotaCount);
+  if AModel.ConnectivityCount > 0 then
+    Result := Result + ' connectivities=' + IntToStr(AModel.ConnectivityCount);
   Result := Result + #10;
 end;
 

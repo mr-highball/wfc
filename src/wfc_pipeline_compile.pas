@@ -56,7 +56,8 @@ type
     wpcsBridges,
     wpcsRequirements,
     wpcsVerification,
-    wpcsValueQuotas
+    wpcsValueQuotas,
+    wpcsConnectivity
   );
 
   EWfcPipelineCompile = class(Exception)
@@ -80,7 +81,8 @@ type
     wpcvkPatternBridge,
     wpcvkSequenceBridge,
     wpcvkRequirement,
-    wpcvkValueQuota
+    wpcvkValueQuota,
+    wpcvkConnectivity
   );
 
   TWfcPipelineCommitValidation = record
@@ -89,6 +91,7 @@ type
     BridgeIndex: Integer;
     RequirementIndex: Integer;
     ValueQuotaIndex: Integer;
+    ConnectivityIndex: Integer;
     EntryIndex: Integer;
   end;
 
@@ -107,6 +110,9 @@ type
     procedure ValidateValueQuotaWork;
     procedure InstallValueQuotas;
     function ValidateValueQuotaCommit(out AFailedPassIndex,
+      AFailedEntryIndex: Integer): Boolean;
+    procedure InstallConnectivity;
+    function ValidateConnectivityCommit(out AFailedPassIndex,
       AFailedEntryIndex: Integer): Boolean;
   private
     function ValidatePendingCommit(out AFailedPassIndex,
@@ -137,7 +143,8 @@ uses
   wfc_pattern2d_graph,
   wfc_sequence,
   wfc_sequence_graph,
-  wfc_token_lookup;
+  wfc_token_lookup,
+  wfc_pipeline_connectivity;
 
 type
   TStringArray = array of String;
@@ -185,6 +192,8 @@ begin
       Result := 'verification';
     wpcsValueQuotas:
       Result := 'value-quotas';
+    wpcsConnectivity:
+      Result := 'connectivity';
   else
     Result := 'unknown';
   end;
@@ -312,6 +321,7 @@ begin
   AValue.BridgeIndex := -1;
   AValue.RequirementIndex := -1;
   AValue.ValueQuotaIndex := -1;
+  AValue.ConnectivityIndex := -1;
   AValue.EntryIndex := -1;
 end;
 
@@ -706,6 +716,126 @@ begin
   Result := True;
 end;
 
+procedure TWfcCompiledPipeline.InstallConnectivity;
+var I, J, K, LPassIndex, LBridgeIndex, LSourceIndex, LCount: Integer;
+  Q: TWfcPipelineConnectivity; B: TWfcPipelineBridge;
+  LProfiles, LLatentProfiles: TGraphConnectivityValues;
+  LSourceValues: TGraphValues; LProfileTokens: TWfcModelTokens;
+  LLookup: TWfcTokenLookup; LPattern: TWfcOverlappingModel2D;
+  LSequence: TWfcSequenceModel; LToken: TWfcModelToken; LLabel: String;
+begin
+  for I := 0 to FRecipe.ConnectivityCount - 1 do
+  begin
+    try
+      Q := FRecipe.ConnectivityAt(I);
+      LPassIndex := WfcPipelineMaterializedPublicPass(FRecipe, Q.PassIndex);
+      LLabel := 'pipeline-connectivity:' + IntToStr(I);
+      SetLength(LProfiles, Length(Q.Values));
+      SetLength(LProfileTokens, Length(Q.Values));
+      for J := 0 to Length(Q.Values) - 1 do
+      begin
+        LProfiles[J] := MakeGraphConnectivityValue(
+          TokenToGraphValue(Q.Values[J].Value, 'connectivity public profile'),
+          Q.Values[J].Openings, Q.Values[J].RequiredByValue);
+        LProfileTokens[J] := Q.Values[J].Value;
+      end;
+      FGraph.SwitchToPass(LPassIndex);
+      FGraph.RequireConnectivity(MakeGraphConnectivityConstraint(LLabel,
+        Q.Root, Q.RequiredPositions, LProfiles, Q.RequireAllParticipants));
+      LBridgeIndex := WfcPipelineProjectionBridgeForPass(FRecipe, LPassIndex);
+      if LBridgeIndex < 0 then Continue;
+      B := FRecipe.BridgeAt(LBridgeIndex); LSourceIndex := B.SourcePassIndex;
+      LSourceValues := FGraph.PassGraph[LSourceIndex].CopyRegisteredValues;
+      SetLength(LLatentProfiles, Length(LSourceValues));
+      LLookup := TWfcTokenLookup.Create(LProfileTokens);
+      try
+        LPattern := nil; LSequence := nil;
+        case B.Kind of
+          wpbkPattern2DProjection:
+            begin
+              LPattern := FRecipe.BorrowPattern2DResource(
+                FRecipe.PassAt(LSourceIndex).ResourceIndex);
+              if Length(LSourceValues) <> LPattern.PatternCount then
+                raise EInvalidOperation.Create('connectivity pattern registry mismatch');
+            end;
+          wpbkSequenceProjection:
+            begin
+              LSequence := FRecipe.BorrowSequenceResource(
+                FRecipe.PassAt(LSourceIndex).ResourceIndex);
+              if Length(LSourceValues) <> LSequence.StateCount then
+                raise EInvalidOperation.Create('connectivity sequence registry mismatch');
+            end;
+        else
+          raise EInvalidOperation.Create('unknown connectivity projection bridge');
+        end;
+        LCount := 0;
+        for J := 0 to Length(LSourceValues) - 1 do
+        begin
+          if Assigned(LPattern) then
+            LToken := LPattern.PaletteTokenAt(LPattern.PatternPaletteIndexAt(J, 0, 0))
+          else
+            LToken := LSequence.PublicTokenAt(LSequence.StateEmittedTokenIndexAt(J));
+          K := LLookup.Find(LToken);
+          if K < 0 then Continue;
+          { One latent choice is one public cell. Preserve the exact public
+            ports and mandatory flag on EVERY state emitting this token. }
+          LLatentProfiles[LCount] := MakeGraphConnectivityValue(LSourceValues[J],
+            Q.Values[K].Openings, Q.Values[K].RequiredByValue);
+          Inc(LCount);
+        end;
+      finally LLookup.Free; end;
+      if LCount = 0 then
+        { Existing bridge adapters reject unrepresented public tokens first;
+          do not invent participation when that invariant is broken. }
+        raise EInvalidOperation.Create('connectivity projection has no participating source state');
+      SetLength(LLatentProfiles, LCount);
+      FGraph.SwitchToPass(LSourceIndex);
+      FGraph.RequireConnectivity(MakeGraphConnectivityConstraint(LLabel,
+        Q.Root, Q.RequiredPositions, LLatentProfiles, Q.RequireAllParticipants));
+    except
+      on E: Exception do
+        raise EWfcPipelineCompile.CreateFailure(wpcsConnectivity, I, E.Message);
+    end;
+  end;
+end;
+
+function TWfcCompiledPipeline.ValidateConnectivityCommit(
+  out AFailedPassIndex, AFailedEntryIndex: Integer): Boolean;
+var I, X, Y, Z, LWidth, LHeight, LDepth, LCell: Integer;
+  Q: TWfcPipelineConnectivity; LTokens: TWfcModelTokens;
+begin
+  AFailedPassIndex := -1; AFailedEntryIndex := -1;
+  if FRecipe.ConnectivityCount = 0 then Exit(True);
+  LWidth := Integer(FGraph.Dimension.Width);
+  LHeight := Integer(FGraph.Dimension.Height);
+  LDepth := Integer(FGraph.Dimension.Depth);
+  PreflightWfcPipelineConnectivity(FRecipe, LWidth, LHeight, LDepth, I);
+  SetLength(LTokens, LWidth * LHeight * LDepth);
+  for I := 0 to FRecipe.ConnectivityCount - 1 do
+  begin
+    Q := FRecipe.ConnectivityAt(I);
+    LCell := 0;
+    for Z := 0 to LDepth - 1 do
+      for Y := 0 to LHeight - 1 do
+        for X := 0 to LWidth - 1 do
+        begin
+          LTokens[LCell] := GraphValueToToken(FGraph.PassGraph[Q.PassIndex].Entry[X,Y,Z].Value);
+          Inc(LCell);
+        end;
+    if not ValidateWfcPipelineConnectivity(FRecipe, I, LWidth, LHeight,
+      LDepth, LTokens, AFailedEntryIndex) then
+    begin
+      AFailedPassIndex := Q.PassIndex;
+      FLastValidation.Kind := wpcvkConnectivity;
+      FLastValidation.PassIndex := Q.PassIndex;
+      FLastValidation.ConnectivityIndex := I;
+      FLastValidation.EntryIndex := AFailedEntryIndex;
+      Exit(False);
+    end;
+  end;
+  Result := True;
+end;
+
 procedure TWfcCompiledPipeline.Initialize(const ARecipe: TWfcPipelineModel;
   const AWidth, AHeight, ADepth: Integer);
 var
@@ -739,6 +869,12 @@ begin
   try
     ValidateRankShape(ARecipe, AWidth, AHeight, ADepth);
     ValidateValueQuotaWork;
+    if ARecipe.ConnectivityCount <> 0 then
+    begin
+      LStage := wpcsConnectivity;
+      PreflightWfcPipelineConnectivity(ARecipe, AWidth, AHeight, ADepth, LItemIndex);
+      LStage := wpcsPreflight;
+    end;
     LVersions := ARecipe.CopyVersions;
     if LVersions.BundleGraphAdapterVersion <>
         WFC_PIPELINE_COMPILER_VERSION then
@@ -951,6 +1087,10 @@ begin
     LStage := wpcsValueQuotas;
     LItemIndex := -1;
     InstallValueQuotas;
+
+    LStage := wpcsConnectivity;
+    LItemIndex := -1;
+    InstallConnectivity;
 
     LStage := wpcsVerification;
     for I := 0 to ARecipe.PassCount - 1 do
@@ -1228,6 +1368,8 @@ begin
         end;
   end;
   Result := ValidateValueQuotaCommit(AFailedPassIndex, AFailedEntryIndex);
+  if Result then
+    Result := ValidateConnectivityCommit(AFailedPassIndex, AFailedEntryIndex);
 end;
 
 function CompileWfcPipeline(const ARecipe: TWfcPipelineModel;

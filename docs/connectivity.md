@@ -167,9 +167,10 @@ forbid dangling ports when the domain needs that condition. It adds no
 arbitrary cell cap, but finite graph storage, checked integer capacities,
 available memory, and search complexity remain real constraints.
 
-The first delivery is the fluent graph API, not a new portable recipe
-format. Existing `wfcpipeline`/training codecs do not encode these
-descriptors. The older settlement and voxel adapters keep their existing
+The fluent graph API and [portable recipe extension](pipeline-connectivity.md)
+both preserve these descriptors. Connectivity-bearing recipes use
+`wfcpipeline=3`; training sources do not yet author connectivity profiles.
+The older settlement and voxel adapters keep their existing
 versioned semantics; in particular, their previous post-generation
 reachability checks have not silently changed into this new solver mode.
 

@@ -81,6 +81,9 @@ $artifactTestSources = @(
   (Join-Path $repositoryRoot 'test/wfc_pipeline_value_quota_model_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_pipeline_value_quota_text_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_pipeline_value_quota_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_pipeline_connectivity_model_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_pipeline_connectivity_text_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_pipeline_connectivity_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_pipeline_run_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_pipeline_run_text_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_pipeline_result_test.lpr')
@@ -326,6 +329,8 @@ $connectivityProcessTestName = if ($env:OS -eq 'Windows_NT') {
 } else { 'wfc_connectivity_process_test' }
 $connectivityDemoExecutable = Join-Path $binaryOutputDirectory $connectivityDemoName
 & $connectivityDemoExecutable --selftest
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+& $connectivityDemoExecutable --portable-selftest
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 & (Join-Path $binaryOutputDirectory $connectivityProcessTestName) `
   $connectivityDemoExecutable $binaryOutputDirectory
@@ -994,6 +999,7 @@ foreach ($artifactTestSource in $artifactTestSources) {
     "-Fu$toolsDirectory"
     "-Fu$learnedPatternWorldExampleDirectory"
     "-Fu$trainingStudioExampleDirectory"
+    "-Fu$connectivityDemoDirectory"
     "-FU$unitOutputDirectory"
     "-FE$binaryOutputDirectory"
     $artifactTestSource

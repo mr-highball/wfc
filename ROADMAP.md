@@ -410,9 +410,11 @@ The separate [Rooted Connectivity v1](docs/connectivity.md) primitive now adds
 reciprocal-port possible-graph pruning, mandatory cut participation, exact
 search-time validation, and reversible domains. Its two spatial demo cases
 exercise roads and multi-floor circulation; existing settlement/voxel model
-versions retain their earlier semantics. Portable recipe encoding, stronger
-port-specific filtering and chunk-boundary summaries
-remain future work. The [research record](docs/research/rooted-connectivity-v1.md)
+versions retain their earlier semantics. [Portable connectivity recipes](docs/pipeline-connectivity.md)
+now preserve public profiles, including exact-copy aliases and private learned-state
+lowering, through native/browser artifact replay. Stronger port-specific filtering,
+profile-authoring/training tools, and chunk-boundary summaries remain future work.
+The [research record](docs/research/rooted-connectivity-v1.md)
 states the soundness argument and finite oracle scope without a generalized
 arc-consistency or relative-performance claim.
 

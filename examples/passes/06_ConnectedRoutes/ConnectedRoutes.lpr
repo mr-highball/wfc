@@ -29,6 +29,7 @@ uses
   SysUtils,
   wfc,
   connected_routes_demo,
+  connected_routes_portable,
   wfc_atomic_new_file;
 
 type
@@ -43,6 +44,8 @@ procedure Usage;
 begin
   WriteLn('ConnectedRoutes [OPTIONS]');
   WriteLn('ConnectedRoutes --selftest');
+  WriteLn('ConnectedRoutes --portable-selftest');
+  WriteLn('ConnectedRoutes --portable-recipe | --portable-run | --portable-result');
   WriteLn('  --case town|circulation');
   WriteLn('  --seed UINT32');
   WriteLn('  --portal first|second|both|none');
@@ -246,7 +249,23 @@ var
   A: TConnectedRoutesArguments;
   Baseline, FinalResult: TConnectedRoutesResult;
   Session: TConnectedRoutesSession;
+  RecipeText, RunText, ResultText: String;
 begin
+  if (ParamCount = 1) and (ParamStr(1) = '--portable-selftest') then
+  begin
+    WriteLn('Connected routes portable self-test passed: ',
+      ConnectedRoutesPortableSelfTest);
+    Exit;
+  end;
+  if (ParamCount = 1) and ((ParamStr(1) = '--portable-recipe') or
+      (ParamStr(1) = '--portable-run') or (ParamStr(1) = '--portable-result')) then
+  begin
+    ConnectedRoutesPortableArtifacts(RecipeText, RunText, ResultText);
+    if ParamStr(1) = '--portable-recipe' then Write(RecipeText)
+    else if ParamStr(1) = '--portable-run' then Write(RunText)
+    else Write(ResultText);
+    Exit;
+  end;
   if (ParamCount = 1) and (ParamStr(1) = '--selftest') then
   begin
     WriteLn('Connected routes self-test passed: ', ConnectedRoutesSelfTest);

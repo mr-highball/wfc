@@ -206,6 +206,7 @@ begin
   Expect(8, 'data-circulation', 'passed');
   Expect(8, 'data-circulation-repair', 'passed');
   Expect(8, 'data-invalidation', 'passed');
+  Expect(8, 'data-portable-artifacts', 'passed');
   Expect(9, 'data-signature', '1:6D695B99:2D23CF62');
   Expect(9, 'data-view-signature', 'C3D25917');
   Expect(9, 'data-selective', 'passed');

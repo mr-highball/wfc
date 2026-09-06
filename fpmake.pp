@@ -81,6 +81,7 @@ begin
     P.Targets.AddUnit('wfc_pipeline_text.pas');
     P.Targets.AddUnit('wfc_token_lookup.pas');
     P.Targets.AddUnit('wfc_pipeline_compile.pas');
+    P.Targets.AddUnit('wfc_pipeline_connectivity.pas');
     P.Targets.AddUnit('wfc_pipeline_run.pas');
     P.Targets.AddUnit('wfc_pipeline_run_text.pas');
     P.Targets.AddUnit('wfc_pipeline_result.pas');

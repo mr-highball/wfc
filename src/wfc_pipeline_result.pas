@@ -226,7 +226,8 @@ implementation
 
 uses
   wfc_text_codec,
-  wfc_token_lookup;
+  wfc_token_lookup,
+  wfc_pipeline_connectivity;
 
 type
   TBooleanArray = array of Boolean;
@@ -952,6 +953,8 @@ var
   LQuotaIndex, LQuotaCount, LLayerIndex, LQuotaPassIndex: Integer;
   LQuotaLookups: array of TWfcTokenLookup;
   LQuotaCounts: array of array of Integer;
+  LConnectivity: TWfcPipelineConnectivity;
+  LConnectivityIndex, LFailedEntry: Integer;
 begin
   inherited Create;
   if not Assigned(ARecipe) then
@@ -1131,6 +1134,14 @@ begin
   LTotalCellCount := 0;
   LTotalTokenLength := 0;
   LExpectedPassIndex := 0;
+  if ARecipe.ConnectivityCount <> 0 then
+    try
+      PreflightWfcPipelineConnectivity(ARecipe, FWidth, FHeight, FDepth,
+        LConnectivityIndex);
+    except
+      on E: EWfcPipelineConnectivity do
+        raise EWfcPipelineResult.Create('result connectivity preflight: ' + E.Message);
+    end;
   SetLength(FLayers, Length(ALayers));
   for I := 0 to Length(ALayers) - 1 do
   begin
@@ -1219,6 +1230,27 @@ begin
       for I := 0 to Length(LQuotaLookups) - 1 do LQuotaLookups[I].Free;
     end;
   end;
+  if (FStatus = wprsSolved) and (ARecipe.ConnectivityCount <> 0) then
+    for LConnectivityIndex := 0 to ARecipe.ConnectivityCount - 1 do
+    begin
+      LConnectivity := ARecipe.ConnectivityAt(LConnectivityIndex);
+      LLayerIndex := -1;
+      for I := 0 to Length(FLayers) - 1 do
+        if FLayers[I].PassIndex = LConnectivity.PassIndex then
+        begin LLayerIndex := I; Break; end;
+      if LLayerIndex < 0 then
+        raise EWfcPipelineResult.Create('result connectivity owner layer is absent');
+      try
+        if not ValidateWfcPipelineConnectivity(ARecipe, LConnectivityIndex,
+          FWidth, FHeight, FDepth, FLayers[LLayerIndex].Tokens, LFailedEntry) then
+          raise EWfcPipelineResult.CreateFmt(
+            'result violates recipe connectivity [%d, pass %d, entry %d]',
+            [LConnectivityIndex, LConnectivity.PassIndex, LFailedEntry]);
+      except
+        on E: EWfcPipelineConnectivity do
+          raise EWfcPipelineResult.Create('result connectivity: ' + E.Message);
+      end;
+    end;
   FSignature := CalculateSignature;
 end;
 

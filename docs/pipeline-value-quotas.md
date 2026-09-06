@@ -80,7 +80,7 @@ general independent proof of every adjacency or cross-pass clause.
 
 ## Canonical text and compatibility
 
-Quota-bearing recipes encode as `wfcpipeline=2`. Following the requirement
+Quota-bearing recipes without connectivity encode as `wfcpipeline=2`. Following the requirement
 records, immediately before the signature, the ordered section is:
 
 ```text
@@ -96,12 +96,14 @@ canonical UTF-8 percent escaping. Count, index, and token order must be exact.
 Unknown versions, repeated `(pass, label)` keys, noncanonical numbers, trailing records,
 and version-2 documents with no quotas are rejected.
 
-Quota-free recipes keep exact `wfcpipeline=1` bytes and signatures, including
+Recipes with neither quotas nor connectivity keep exact `wfcpipeline=1` bytes and signatures, including
 the existing version record and seeded solver behavior. Only nonempty quota
 registries append their versioned domain and ordered descriptors to semantic
 identity. Run and result envelopes remain version 1 and bind the new recipe
 signature. `wfc-validate` reports the actual recipe version; `wfc-run` executes
-both recipe versions without an additional option or dependency.
+these recipe versions without an additional option or dependency.
+[Connectivity-bearing recipes](pipeline-connectivity.md) select version 3
+and preserve the same quota section, followed by connectivity descriptors.
 
 Core failures use `gckValueQuota`; canonical result text spells this
 `value-quota`. Its pass identifies where search failed, which may be the

@@ -109,7 +109,7 @@ const SECTION =
   'quota-token=1,0,A'#10'quota-token=1,1,B'#10;
 var M, D, Legacy: TWfcPipelineModel; S, L, Expected: String; Q: TWfcPipelineValueQuota;
 begin
-  Check((WFC_PIPELINE_TEXT_VERSION=1) and (WFC_PIPELINE_MAX_SUPPORTED_TEXT_VERSION=2),
+  Check((WFC_PIPELINE_TEXT_VERSION=1) and (WFC_PIPELINE_MAX_SUPPORTED_TEXT_VERSION=3),
     'legacy version and supported capability are separate');
   Check((WFC_PIPELINE_MAX_TEXT_LINE_COUNT=86618) and
     (WFC_PIPELINE_VALUE_QUOTA_MAX_TEXT_LINE_COUNT=156252), 'version-specific line caps');
@@ -138,7 +138,7 @@ begin
     Check(EncodeWfcPipelineModelText(D)=S, 'decoded quota token arrays are detached');
     Reject(ReplaceOnce(S,'value-quota-version=1'#10,'value-quota-version=2'#10),
       'unknown quota semantic version rejected');
-    Reject(ReplaceOnce(S,'wfcpipeline=2'#10,'wfcpipeline=3'#10), 'unknown outer version rejected');
+    Reject(ReplaceOnce(S,'wfcpipeline=2'#10,'wfcpipeline=4'#10), 'unknown outer version rejected');
     Reject(ReplaceOnce(S,'wfcpipeline=2'#10,'wfcpipeline=1'#10), 'v1 never admits quota sections');
     Reject(ReplaceOnce(L,'wfcpipeline=1'#10,'wfcpipeline=2'#10), 'v2 missing quota section rejected');
     Expected := ReplaceOnce(Expected,SECTION,'value-quota-version=1'#10'value-quotas=0'#10);
