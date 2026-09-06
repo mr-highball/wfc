@@ -17,6 +17,7 @@ the broader work still required.
 
 | Record | Question and boundary |
 | --- | --- |
+| [Indexed decision selection](decision-index-v1.md) | Replace repeated whole-grid observation scans with a reversible-domain-aware index while retaining exact choices, traces and random calls. Controlled whole-solve measurements, not a universal speedup or compressed-domain claim. |
 | [Pass Negotiation v1](pass-negotiation-v1.md) | Recover from downstream contradictions by excluding exact completed upstream assignments. A chronological, bounded baseline; not conflict-directed or optimal search. |
 | [Selective Pass Negotiation v1](selective-pass-negotiation-v1.md) | Restrict negotiation to requested roots and their descendants while preserving clean providers. The authorized repair horizon is not a minimal-edit objective. |
 | [Rooted connectivity v1](rooted-connectivity-v1.md) | Propagate required reachability through possible ports and reversible domains. Finite independent oracles and a [recorded export matrix](rooted-connectivity-v1.csv); not general relative-efficiency evidence. |

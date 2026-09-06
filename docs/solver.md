@@ -232,8 +232,8 @@ sum must fit in `Integer`; an overflow is malformed model state and raises
 without committing entries or advancing the caller-visible streams. A
 definitionless pass has no solver weight vector and retains its copy semantics.
 
-If every normalized weight is `1`, the solver executes its original
-minimum-remaining-values observation path verbatim. Otherwise it observes the
+If every normalized weight is `1`, the solver preserves its original
+minimum-remaining-values observation choices exactly. Otherwise it observes the
 uncollapsed cell with the lowest Q16 approximation of base-2 Shannon entropy:
 
 ```text
@@ -247,6 +247,40 @@ host math-library logarithm. All intermediate integer-valued operations stay
 within the exact range of an IEEE `Double` on native FPC and JavaScript. Equal
 or Q16-colliding scores keep the first cell in pipeline `Mode` Z order and then
 ascending entry order; there is no random entropy noise or secondary tie-break.
+
+### Indexed decision selection
+
+The kernel keeps unresolved cells in a project-owned indexed binary heap.
+Its key is the existing domain count or `EntropyQ16`, followed only by the
+cell's original traversal rank. This changes how the next cell is found, not
+which cell is chosen. It adds no random draws and does not change solver,
+pipeline, or trace versions.
+
+The index is built at the first propagation fixed point. Each actual candidate
+removal or trail restoration marks its cell dirty in a separate, deduplicated
+list. Immediately before the next decision, the solver refreshes each dirty
+cell's cached key and repairs its heap position. Singleton cells leave the
+index; restored unresolved cells re-enter with their original tie-break rank.
+Both upward and downward repairs are necessary: removing a heavily weighted
+candidate can *increase* Shannon entropy. Comparisons use cached keys, so one
+repair cannot accidentally observe another dirty cell's not-yet-repaired key.
+Heap layout is derived state and is not added to the removal trail.
+
+For `C` cells and `D` distinct dirty cells since the previous decision,
+construction is `O(C)`, refreshing is `O(D log C)`, and reading the next cell
+is `O(1)`. This removes repeated whole-grid decision scans; it does not make
+the complete solve logarithmic. A round that dirties nearly every cell can
+do more index work than a linear scan. The index adds five `Integer` arrays
+and one byte array: `21*C` native payload bytes where `Integer` is 32-bit,
+excluding allocation headers. JavaScript array memory is host-dependent.
+Dense domains, relation tables, propagation, global constraints, search frames,
+and retained traces have their own costs and are unchanged.
+
+The [decision-index experiment](research/decision-index-v1.md) records the
+frozen scan baseline, exact report/trace/random comparisons, reproducible
+Pascal benchmark, measurements, and limitations.
+
+### Candidate order and replay
 
 Candidates retain `AddValue` order. Each decision draws one unbiased ticket in
 the active normalized weight sum and maps it through cumulative weights. That

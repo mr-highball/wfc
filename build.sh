@@ -729,6 +729,7 @@ printf "Running '%s'.\n" "$building_test_executable"
 "$building_test_executable" || exit $?
 
 for compiler_trace_suite in \
+  "$compiler_source_directory/../test/wfc_decision_index_test.lpr" \
   "$compiler_trace_reference_test_source" \
   "$compiler_trace_reference_stream_test_source" \
   "$compiler_trace_stream_test_source" \
@@ -920,6 +921,7 @@ done
 for compiler_tool_source in \
   "$compiler_validate_tool_source" \
   "$compiler_tools_directory/wfc_inspect.lpr" \
+  "$compiler_tools_directory/wfc_solver_benchmark.lpr" \
   "$compiler_learn_tool_source" \
   "$compiler_tools_directory/wfc_music_import_cli.lpr" \
   "$compiler_tools_directory/wfc_serve.lpr" \
@@ -962,14 +964,19 @@ do
 done
 
 validator_tool_executable="$binary_output_directory/wfc_validate"
+solver_benchmark_executable="$binary_output_directory/wfc_solver_benchmark"
 server_test_executable="$binary_output_directory/wfc_serve_test"
 server_tool_executable="$compiler_binary_output_directory/wfc_serve"
 case "$host_system" in
   CYGWIN*|MINGW*|MSYS*)
+    solver_benchmark_executable="${solver_benchmark_executable}.exe"
     server_test_executable="${server_test_executable}.exe"
     server_tool_executable="${server_tool_executable}.exe"
     ;;
 esac
+printf 'Smoke testing the deterministic solver benchmark (no timing threshold).\n'
+"$solver_benchmark_executable" --cells 32 --values 4 --weights skewed \
+  --topology line --compatibility dense --trace 1 --repeat 1 || exit $?
 printf 'Running live FPC server conformance.\n'
 "$server_test_executable" --integration "$server_tool_executable" \
   "$compiler_binary_output_directory" || exit $?

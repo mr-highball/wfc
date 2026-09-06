@@ -251,6 +251,18 @@ type
     FDomainCounts: TReferenceIntegerArray;
     FDomainWeightSums: TReferenceIntegerArray;
     FDomainWeightLogSums: TReferenceExactDoubleArray;
+    //A derived index, not search state: cached keys are refreshed only at a
+    //propagation fixed point. Trail restoration dirties cells just like
+    //removal; it never needs to restore an old heap layout.
+    FDecisionHeap: TReferenceIntegerArray;
+    FDecisionPositions: TReferenceIntegerArray;
+    FDecisionRanks: TReferenceIntegerArray;
+    FDecisionKeys: TReferenceIntegerArray;
+    FDecisionDirtyCells: TReferenceIntegerArray;
+    FDecisionDirty: TReferenceByteArray;
+    FDecisionHeapCount: Integer;
+    FDecisionDirtyCount: Integer;
+    FDecisionIndexReady: Boolean;
     FIncomingStarts: TReferenceIntegerArray;
     FIncomingArcs: TReferenceIntegerArray;
     FQueue: TReferenceIntegerArray;
@@ -315,6 +327,13 @@ type
     function ValueQuotaDomainCount(const AConstraint, ACell: Integer): Integer;
     function ReviseValueQuotas: Boolean;
     function Propagate: Boolean;
+    function DecisionPrecedes(const ALeft, ARight: Integer): Boolean; inline;
+    procedure SiftDecisionUp(const APosition: Integer);
+    procedure SiftDecisionDown(const APosition: Integer);
+    procedure RepairDecisionPosition(const APosition: Integer);
+    procedure InitializeDecisionIndex;
+    procedure MarkDecisionDirty(const ACell: Integer); inline;
+    procedure RefreshDecisionIndex;
     function FindDecisionCell: Integer;
     procedure EnsureFrameCapacity;
     procedure TryFrameAlternative(const AFrameIndex,
@@ -903,6 +922,7 @@ begin
   Dec(FDomainWeightSums[ACell], FValueWeights[AValue]);
   FDomainWeightLogSums[ACell] := FDomainWeightLogSums[ACell]
     - FValueWeightLogTerms[AValue];
+  MarkDecisionDirty(ACell);
   if ACauseKind in [rtckAdjacency, rtckRequiredSupport, rtckConnectivity,
       rtckValueQuota] then
     IncrementCounter(FReport.Propagations);
@@ -937,6 +957,7 @@ begin
       Inc(FDomainWeightSums[LCell], FValueWeights[LValue]);
       FDomainWeightLogSums[LCell] := FDomainWeightLogSums[LCell]
         + FValueWeightLogTerms[LValue];
+      MarkDecisionDirty(LCell);
       LEventId := AppendTraceEvent(rtekCandidateRestored,
         rtckBacktrack, ABacktrackEventId, LCell, LValue, -1, -1,
         CurrentDecisionDepth, LBefore, FDomainCounts[LCell]);
@@ -1359,45 +1380,168 @@ begin
   Result := True;
 end;
 
-function TReferenceSolver.FindDecisionCell: Integer;
-var
-  I: Integer;
-  LCell: Integer;
-  LCount: Integer;
-  LEntropy: Integer;
-  LMinimum: Integer;
+function TReferenceSolver.DecisionPrecedes(const ALeft,
+  ARight: Integer): Boolean;
 begin
-  Result := -1;
-  LMinimum := High(Integer);
-  if FAllUnitWeights then
-  begin
-    //Keep the version-1 MRV path exact for every unit-weight model.
-    for I := 0 to Pred(FModel.CellCount) do
-    begin
-      LCell := FModel.CellOrder[I];
-      LCount := FDomainCounts[LCell];
-      if (LCount > 1) and (LCount < LMinimum) then
-      begin
-        Result := LCell;
-        LMinimum := LCount;
-      end;
-    end;
-    Exit;
-  end;
+  //Never read live domain keys here: other dirty cells still have their old
+  //cached keys until their individual repair. Weighted entropy ties retain
+  //CellOrder alone, not domain size, physical cell index, or heap position.
+  Result := (FDecisionKeys[ALeft] < FDecisionKeys[ARight]) or
+    ((FDecisionKeys[ALeft] = FDecisionKeys[ARight]) and
+      (FDecisionRanks[ALeft] < FDecisionRanks[ARight]));
+end;
 
-  for I := 0 to Pred(FModel.CellCount) do
+procedure TReferenceSolver.SiftDecisionUp(const APosition: Integer);
+var
+  LCell, LParent, LPosition: Integer;
+begin
+  LPosition := APosition;
+  LCell := FDecisionHeap[LPosition];
+  while LPosition > 0 do
+  begin
+    LParent := (LPosition - 1) div 2;
+    if not DecisionPrecedes(LCell, FDecisionHeap[LParent]) then Break;
+    FDecisionHeap[LPosition] := FDecisionHeap[LParent];
+    FDecisionPositions[FDecisionHeap[LPosition]] := LPosition;
+    LPosition := LParent;
+  end;
+  FDecisionHeap[LPosition] := LCell;
+  FDecisionPositions[LCell] := LPosition;
+end;
+
+procedure TReferenceSolver.SiftDecisionDown(const APosition: Integer);
+var
+  LCell, LChild, LPosition: Integer;
+begin
+  LPosition := APosition;
+  LCell := FDecisionHeap[LPosition];
+  //Test for an internal node before multiplying: the child index remains
+  //in range even at the checked integer capacity of the cell array.
+  while LPosition < FDecisionHeapCount div 2 do
+  begin
+    LChild := LPosition * 2 + 1;
+    if (LChild + 1 < FDecisionHeapCount) and
+      DecisionPrecedes(FDecisionHeap[LChild + 1], FDecisionHeap[LChild]) then
+      Inc(LChild);
+    if not DecisionPrecedes(FDecisionHeap[LChild], LCell) then Break;
+    FDecisionHeap[LPosition] := FDecisionHeap[LChild];
+    FDecisionPositions[FDecisionHeap[LPosition]] := LPosition;
+    LPosition := LChild;
+  end;
+  FDecisionHeap[LPosition] := LCell;
+  FDecisionPositions[LCell] := LPosition;
+end;
+
+procedure TReferenceSolver.RepairDecisionPosition(const APosition: Integer);
+begin
+  //Removal of a dominant weight can increase entropy. Restoration is not a
+  //monotone key change either, so support both directions for every repair.
+  if (APosition > 0) and
+    DecisionPrecedes(FDecisionHeap[APosition],
+      FDecisionHeap[(APosition - 1) div 2]) then
+    SiftDecisionUp(APosition)
+  else
+    SiftDecisionDown(APosition);
+end;
+
+procedure TReferenceSolver.InitializeDecisionIndex;
+var
+  I, LCell: Integer;
+begin
+  SetLength(FDecisionHeap, FModel.CellCount);
+  SetLength(FDecisionPositions, FModel.CellCount);
+  SetLength(FDecisionRanks, FModel.CellCount);
+  SetLength(FDecisionKeys, FModel.CellCount);
+  SetLength(FDecisionDirtyCells, FModel.CellCount);
+  SetLength(FDecisionDirty, FModel.CellCount);
+  FDecisionHeapCount := 0;
+  FDecisionDirtyCount := 0;
+  for I := 0 to FModel.CellCount - 1 do
   begin
     LCell := FModel.CellOrder[I];
-    LCount := FDomainCounts[LCell];
-    if LCount <= 1 then
-      Continue;
-    LEntropy := EntropyQ16(LCell);
-    if LEntropy < LMinimum then
+    FDecisionRanks[LCell] := I;
+    FDecisionPositions[LCell] := -1;
+    if FDomainCounts[LCell] > 1 then
     begin
-      Result := LCell;
-      LMinimum := LEntropy;
+      if FAllUnitWeights then
+        FDecisionKeys[LCell] := FDomainCounts[LCell]
+      else
+        FDecisionKeys[LCell] := EntropyQ16(LCell);
+      FDecisionPositions[LCell] := FDecisionHeapCount;
+      FDecisionHeap[FDecisionHeapCount] := LCell;
+      Inc(FDecisionHeapCount);
     end;
   end;
+  //Bottom-up construction is linear. Building only after initial propagation
+  //also avoids computing entropies for candidates it has already eliminated.
+  for I := (FDecisionHeapCount div 2) - 1 downto 0 do
+    SiftDecisionDown(I);
+  FDecisionIndexReady := True;
+end;
+
+procedure TReferenceSolver.MarkDecisionDirty(const ACell: Integer);
+begin
+  if not FDecisionIndexReady then Exit;
+  if FDecisionDirty[ACell] <> 0 then Exit;
+  FDecisionDirty[ACell] := 1;
+  FDecisionDirtyCells[FDecisionDirtyCount] := ACell;
+  Inc(FDecisionDirtyCount);
+end;
+
+procedure TReferenceSolver.RefreshDecisionIndex;
+var
+  I, LCell, LPosition: Integer;
+begin
+  for I := 0 to FDecisionDirtyCount - 1 do
+  begin
+    LCell := FDecisionDirtyCells[I];
+    FDecisionDirty[LCell] := 0;
+    LPosition := FDecisionPositions[LCell];
+    if FDomainCounts[LCell] <= 1 then
+    begin
+      if LPosition < 0 then Continue;
+      Dec(FDecisionHeapCount);
+      FDecisionPositions[LCell] := -1;
+      if LPosition < FDecisionHeapCount then
+      begin
+        FDecisionHeap[LPosition] := FDecisionHeap[FDecisionHeapCount];
+        FDecisionPositions[FDecisionHeap[LPosition]] := LPosition;
+        RepairDecisionPosition(LPosition);
+      end;
+    end
+    else
+    begin
+      if FAllUnitWeights then
+        FDecisionKeys[LCell] := FDomainCounts[LCell]
+      else
+        FDecisionKeys[LCell] := EntropyQ16(LCell);
+      if LPosition < 0 then
+      begin
+        //A restored singleton may become unresolved again after its frame
+        //was popped. Reinsert it with its original, immutable tie-break rank.
+        LPosition := FDecisionHeapCount;
+        FDecisionHeap[LPosition] := LCell;
+        FDecisionPositions[LCell] := LPosition;
+        Inc(FDecisionHeapCount);
+        SiftDecisionUp(LPosition);
+      end
+      else
+        RepairDecisionPosition(LPosition);
+    end;
+  end;
+  FDecisionDirtyCount := 0;
+end;
+
+function TReferenceSolver.FindDecisionCell: Integer;
+begin
+  if not FDecisionIndexReady then
+    InitializeDecisionIndex
+  else
+    RefreshDecisionIndex;
+  if FDecisionHeapCount = 0 then
+    Result := -1
+  else
+    Result := FDecisionHeap[0];
 end;
 
 procedure TReferenceSolver.EnsureFrameCapacity;

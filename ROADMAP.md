@@ -349,6 +349,12 @@ integer weights, deterministic Q16 Shannon observation with an exact
 unit-weight minimum-remaining-values path, locks, bounded backtracking,
 structured contradictions, independent validation, atomic pass staging,
 explicit deny-all directions, and pass-local caller domain masks.
+An indexed decision heap now avoids rescanning every cell for each observation
+while retaining the same MRV/Q16 choices, traversal ties, random draws, and
+causal traces. Its [reproducible experiment](docs/research/decision-index-v1.md)
+compares the frozen scan kernel and documents both the additional per-cell
+memory and workloads this optimization does not accelerate. Dense domains and
+relation support scans still need separate scalability work.
 The opt-in restart coordinator retries only local backtrack-limit exhaustion,
 using fixed or capped-doubling budgets and separately versioned seed derivation.
 Its attempt-zero contract preserves ordinary and negotiated replay; diagnostic

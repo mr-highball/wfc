@@ -403,6 +403,24 @@ a user-authorized writable-file transaction instead; choosing an existing
 file in the browser save picker can authorize replacement and does not carry
 the native new-file-only guarantee.
 
+## Native solver benchmark
+
+The native build also produces `wfc_solver_benchmark`, a project-owned FPC
+measurement host. It needs no browser or server. For example:
+
+```text
+build/native/bin/wfc_solver_benchmark --cells 4096 --values 4 --weights skewed --topology independent --compatibility dense --trace 0 --repeat 3
+```
+
+On Windows, the executable has an `.exe` suffix. `--help` lists the full
+strict CLI, including line/equality propagation controls and optional trace
+capture. It reports monotonic whole-solve milliseconds and deterministic
+checksums/counters to stdout; it writes no files. Usage errors return 2,
+failed measurements return 1, and success returns 0. There is no timing
+pass/fail threshold. Its explicit benchmark safety bounds are not library
+or composition limits. Read the [decision-index experiment](research/decision-index-v1.md)
+for the frozen scan baseline, reproduction method, raw results and caveats.
+
 ## Evidence scope
 
 Native conformance tests and real command-line process tests remain separate

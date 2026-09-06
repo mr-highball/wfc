@@ -34,6 +34,7 @@ $selectiveNegotiationTestSource = Join-Path $repositoryRoot `
 $voxelTestSource = Join-Path $repositoryRoot 'test/wfc_voxel3d_test.lpr'
 $buildingTestSource = Join-Path $repositoryRoot 'test/wfc_building3d_test.lpr'
 $traceTestSources = @(
+  (Join-Path $repositoryRoot 'test/wfc_decision_index_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_trace_reference_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_trace_reference_stream_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_trace_test.lpr')
@@ -120,6 +121,7 @@ $artifactTestSources = @(
     'test/wfc_learned_pattern_world_bundle_test.lpr')
 )
 $toolSources = @(
+  (Join-Path $repositoryRoot 'tools/wfc_solver_benchmark.lpr')
   (Join-Path $repositoryRoot 'tools/wfc_validate.lpr')
   (Join-Path $repositoryRoot 'tools/wfc_inspect.lpr')
   (Join-Path $repositoryRoot 'tools/wfc_run.lpr')
@@ -1110,6 +1112,11 @@ foreach ($toolSource in $toolSources) {
 }
 
 $toolExecutableSuffix = if ($env:OS -eq 'Windows_NT') { '.exe' } else { '' }
+Write-Host 'Smoke testing the deterministic solver benchmark (no timing threshold).'
+& (Join-Path $binaryOutputDirectory "wfc_solver_benchmark$toolExecutableSuffix") `
+  --cells 32 --values 4 --weights skewed --topology line `
+  --compatibility dense --trace 1 --repeat 1
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 Write-Host 'Running live FPC server conformance.'
 & (Join-Path $binaryOutputDirectory "wfc_serve_test$toolExecutableSuffix") `
   --integration (Join-Path $binaryOutputDirectory "wfc_serve$toolExecutableSuffix") `
