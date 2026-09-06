@@ -119,6 +119,7 @@ begin
   Result := 'wfc-run ' + IntToStr(WFC_RUN_CLI_VERSION) +
     ' (wfcpipeline=' + IntToStr(WFC_PIPELINE_TEXT_VERSION) + ',' +
     IntToStr(WFC_PIPELINE_VALUE_QUOTA_TEXT_VERSION) + ',' +
+    IntToStr(WFC_PIPELINE_CONNECTIVITY_TEXT_VERSION) + ',' +
     IntToStr(WFC_PIPELINE_MAX_SUPPORTED_TEXT_VERSION) +
     ', wfcpipeline-run=' + IntToStr(WFC_PIPELINE_RUN_TEXT_VERSION) +
     ', wfcpipeline-result=' +

@@ -28,12 +28,12 @@ unit wfc_artifact_document;
 interface
 
 uses
-  SysUtils, wfc_rule_model, wfc_model, wfc_pattern2d, wfc_sequence,
+  SysUtils, wfc_rule_model, wfc_model, wfc_pattern2d, wfc_pattern3d, wfc_sequence,
   wfc_training, wfc_pipeline_model, wfc_pipeline_run, wfc_pipeline_result;
 
 type
   TWfcArtifactKind = (wakRules, wakModel, wakPattern2D, wakSequence,
-    wakTraining, wakRecipe, wakRun, wakResult);
+    wakTraining, wakRecipe, wakRun, wakResult, wakPattern3D);
 
   EWfcArtifactDocument = class(Exception);
   EWfcArtifactInvalid = class(EWfcArtifactDocument);
@@ -53,6 +53,7 @@ type
     FRules: TWfcRuleModel;
     FModel: TWfcModel;
     FPattern2D: TWfcOverlappingModel2D;
+    FPattern3D: TWfcOverlappingModel3D;
     FSequence: TWfcSequenceModel;
     FTraining: TWfcTrainingDocument;
     FRecipe: TWfcPipelineModel;
@@ -72,6 +73,7 @@ type
     property Rules: TWfcRuleModel read FRules;
     property Model: TWfcModel read FModel;
     property Pattern2D: TWfcOverlappingModel2D read FPattern2D;
+    property Pattern3D: TWfcOverlappingModel3D read FPattern3D;
     property Sequence: TWfcSequenceModel read FSequence;
     property Training: TWfcTrainingDocument read FTraining;
     property Recipe: TWfcPipelineModel read FRecipe;
@@ -85,7 +87,7 @@ function WfcArtifactInputLimit(const AKind: TWfcArtifactKind): Integer;
 implementation
 
 uses
-  wfc_rule_text, wfc_model_text, wfc_pattern2d_text, wfc_sequence_text,
+  wfc_rule_text, wfc_model_text, wfc_pattern2d_text, wfc_pattern3d_text, wfc_sequence_text,
   wfc_training_text, wfc_pipeline_text, wfc_pipeline_run_text,
   wfc_pipeline_result_text, wfc_pipeline_runtime, wfc_pipeline_compile;
 
@@ -95,6 +97,7 @@ begin
     wakRules: Result := 'rules';
     wakModel: Result := 'model';
     wakPattern2D: Result := 'pattern2d';
+    wakPattern3D: Result := 'pattern3d';
     wakSequence: Result := 'sequence';
     wakTraining: Result := 'training';
     wakRecipe: Result := 'recipe';
@@ -111,6 +114,7 @@ begin
     wakRules: Result := WFC_RULE_MAX_ENCODED_TEXT_LENGTH;
     wakModel: Result := WFC_MODEL_MAX_ENCODED_TEXT_LENGTH;
     wakPattern2D: Result := WFC_PATTERN_2D_MAX_ENCODED_TEXT_LENGTH;
+    wakPattern3D: Result := WFC_PATTERN_3D_MAX_ENCODED_TEXT_LENGTH;
     wakSequence: Result := WFC_SEQUENCE_MAX_ENCODED_TEXT_LENGTH;
     wakTraining: Result := WFC_TRAINING_MAX_ENCODED_TEXT_LENGTH;
     wakRecipe: Result := WFC_PIPELINE_MAX_ENCODED_TEXT_LENGTH;
@@ -174,6 +178,7 @@ begin
       wakRules: FRules := DecodeWfcRuleText(AInputText);
       wakModel: FModel := DecodeWfcModelText(AInputText);
       wakPattern2D: FPattern2D := DecodeWfcPattern2DText(AInputText);
+      wakPattern3D: FPattern3D := DecodeWfcPattern3DText(AInputText);
       wakSequence: FSequence := DecodeWfcSequenceText(AInputText);
       wakTraining: FTraining := DecodeWfcTrainingText(AInputText);
       wakRecipe: FRecipe := DecodeWfcPipelineModelText(AInputText);
@@ -198,6 +203,7 @@ begin
   FTraining.Free;
   FSequence.Free;
   FPattern2D.Free;
+  FPattern3D.Free;
   FModel.Free;
   FRules.Free;
   inherited Destroy;
@@ -244,6 +250,8 @@ begin
       ' samples=' + IntToStr(FModel.SampleCount) + ' scope=schema';
     wakPattern2D: Result := Result + ' patterns=' + IntToStr(FPattern2D.PatternCount) +
       ' palette=' + IntToStr(FPattern2D.PaletteCount) + ' scope=schema';
+    wakPattern3D: Result := Result + ' patterns=' + IntToStr(FPattern3D.PatternCount) +
+      ' palette=' + IntToStr(FPattern3D.PaletteCount) + ' rank=3 scope=schema';
     wakSequence: Result := Result + ' states=' + IntToStr(FSequence.StateCount) +
       ' tokens=' + IntToStr(FSequence.PublicTokenCount) + ' scope=schema';
     wakTraining: Result := Result + ' samples=' + IntToStr(FTraining.SampleCount) +

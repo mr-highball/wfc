@@ -100,8 +100,12 @@ begin
     if OpenPattern then O.Boundary := wmbOpen;
     S[0] := MakeWfcTrainingSample('square', 2, 2, Tokens(['A', 'B', 'B', 'A']));
   end
-  else if Kind = wtkAdjacency3D then
+  else if Kind in [wtkAdjacency3D,wtkPattern3D] then
+  begin
+    if Kind=wtkPattern3D then
+    begin O.PatternWidth:=2; O.PatternHeight:=1; O.PatternDepth:=2; end;
     S[0] := MakeWfcTrainingSample('volume', 2, 1, 2, Tokens(['A', 'B', 'B', 'A']))
+  end
   else
     S[0] := MakeWfcTrainingSample('strip', 4, 1, Tokens(['A', 'B', 'A', 'B']));
   if Kind = wtkSequence then
@@ -161,6 +165,8 @@ begin
   try Texts[wakModel] := LearnWfcTrainingModelText(D); finally D.Free; end;
   D := Training(wtkPattern2D);
   try Texts[wakPattern2D] := LearnWfcTrainingModelText(D); finally D.Free; end;
+  D := Training(wtkPattern3D);
+  try Texts[wakPattern3D] := LearnWfcTrainingModelText(D); finally D.Free; end;
   D := Training(wtkSequence);
   try Texts[wakSequence] := LearnWfcTrainingModelText(D); finally D.Free; end;
   D := Training(wtkAdjacency1D, True);
@@ -221,7 +227,7 @@ begin
       Check((D.Summary <> '') and (D.Summary[Length(D.Summary)] = #10), 'summary has final LF');
       N := Ord(D.Rules <> nil) + Ord(D.Model <> nil) + Ord(D.Pattern2D <> nil) +
         Ord(D.Sequence <> nil) + Ord(D.Training <> nil) + Ord(D.Recipe <> nil) +
-        Ord(D.Run <> nil) + Ord(D.StoredResult <> nil);
+        Ord(D.Run <> nil) + Ord(D.StoredResult <> nil) + Ord(D.Pattern3D <> nil);
       if K = wakResult then Check(N = 3, 'result owns exactly its binding chain')
       else if K = wakRun then Check(N = 2, 'run owns exactly its recipe and run')
       else Check(N = 1, 'standalone family has one typed owned document');
@@ -229,6 +235,7 @@ begin
         wakRules: Check(D.Rules <> nil, 'typed rules view');
         wakModel: Check(D.Model <> nil, 'typed model view');
         wakPattern2D: Check(D.Pattern2D <> nil, 'typed pattern view');
+        wakPattern3D: Check(D.Pattern3D <> nil,'typed volume footprint view');
         wakSequence: Check(D.Sequence <> nil, 'typed sequence view');
         wakTraining: Check((D.Training.ValueQuotaCount = 1) and
           (D.Training.ConnectivityCount = 1) and (Pos('wfclearn=4'#10, D.CanonicalText) = 1),
@@ -457,7 +464,7 @@ begin
   begin
     case I of
       0: asm K = NaN; end; 1: asm K = Infinity; end; 2: asm K = -1; end;
-      3: asm K = 8; end; 4: asm K = 0.5; end; 5: asm K = '0'; end;
+      3: asm K = 9; end; 4: asm K = 0.5; end; 5: asm K = '0'; end;
       6: asm K = undefined; end; 7: asm K = null; end; 8: asm K = 4294967296; end;
     end;
     Failed := False; Text := '';
@@ -478,7 +485,7 @@ end;
 
 begin
   RunTest('small canonical fixtures', @MakeFixtures);
-  RunTest('eight closed families and borrowed typed views', @TestFamilies);
+  RunTest('nine closed families and borrowed typed views', @TestFamilies);
   RunTest('strict canonical input and mandatory binding', @TestStrictnessAndContexts);
   RunTest('existing per-role codec caps', @TestLimits);
   RunTest('complete solved/non-solved replay and canonical forgeries', @TestReplay);

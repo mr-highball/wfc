@@ -37,7 +37,8 @@ uses
   wfc_pipeline_run,
   wfc_pipeline_result,
   wfc_training,
-  wfc_training_workspace;
+  wfc_training_workspace,
+  wfc_voxel3d_isometric;
 
 type
   TTrainingConnectivityRow = record
@@ -58,6 +59,13 @@ type
     FFileReader: TJSFileReader;
     FSourceDownloadUrl: String;
     FArtifactDownloadUrl: String;
+    FVolumeDownloadUrl, FVolumeSvgText, FVolumeSourceSignature: String;
+    FVolumeScene: TVoxel3DProjectedScene;
+    FVolumeRenderedDepth: Integer;
+    FVolumePanel, FVolumeViewport, FVolumeStatus: TJSElement;
+    FVolumeYaw, FVolumeHiddenToken: TJSHTMLSelectElement;
+    FVolumeDepth: TJSHTMLInputElement;
+    FVolumeDownload: TJSHTMLAnchorElement;
     FQuotaDraftDirty: Boolean;
     FEditingQuotaIndex: Integer;
     FConnectivityDraftDirty: Boolean;
@@ -94,7 +102,7 @@ type
     FStatusElement: TJSElement;
     FProfileElement: TJSElement;
     FBoundaryElement: TJSElement;
-    FCircularPresetLocksPending: Boolean;
+    FPresetLocksPending: Integer;
     FSampleCountElement: TJSElement;
     FSourceTokenCountElement: TJSElement;
     FLockCountElement: TJSElement;
@@ -185,6 +193,9 @@ type
     procedure RefreshConnectivityState;
     procedure RunConnectivitySelfTest;
     procedure RunCircularSelfTest;
+    procedure RunPattern3DSelfTest;
+    procedure ClearVolumeView;
+    procedure RefreshVolumeView;
 
     procedure SetState(const AState, AStatus, ADetail: String);
     procedure ShowError(const AMessage: String);
@@ -234,6 +245,8 @@ type
     function HandleClearLocks(AEvent: TJSMouseEvent): Boolean;
     function HandleOutputClick(AEvent: TJSMouseEvent): Boolean;
     function HandleArtifactChange(AEvent: TJSEvent): Boolean;
+    function HandleVolumeOptions(AEvent: TJSEvent): Boolean;
+    function HandleVolumeClick(AEvent: TJSMouseEvent): Boolean;
     function HandleQuotaInput(AEvent: TJSEvent): Boolean;
     function HandleQuotaSelect(AEvent: TJSEvent): Boolean;
     function HandleQuotaApply(AEvent: TJSMouseEvent): Boolean;
@@ -262,7 +275,9 @@ uses
   wfc_training_text,
   wfc_text_training,
   training_studio_presets,
-  training_studio_connectivity;
+  training_studio_demo,
+  training_studio_connectivity,
+  wfc_voxel3d, wfc_voxel3d_svg, wfc_token_volume_view;
 
 const
   MAX_SEED = Cardinal($FFFFFFFF);
@@ -294,6 +309,8 @@ begin
   FEditingQuotaIndex := -1;
   FEditingConnectivityIndex := -1;
   FConnectivityDraftDirty := False;
+  FPresetLocksPending := -1;
+  FVolumeScene := nil;
 end;
 
 destructor TBrowserTrainingStudioApplication.Destroy;
@@ -302,6 +319,8 @@ begin
     TJSURL.revokeObjectURL(FSourceDownloadUrl);
   if FArtifactDownloadUrl <> '' then
     TJSURL.revokeObjectURL(FArtifactDownloadUrl);
+  if FVolumeDownloadUrl<>'' then TJSURL.revokeObjectURL(FVolumeDownloadUrl);
+  FVolumeScene.Free;
   FWorkspace.Free;
   inherited Destroy;
 end;
@@ -398,6 +417,13 @@ begin
   FResultStatusElement := RequireElement('result-status');
   FOutputGrid := RequireElement('output-grid');
   FOutputPlaceholder := RequireElement('output-placeholder');
+  FVolumePanel:=RequireElement('volume-panel');
+  FVolumeViewport:=RequireElement('volume-viewport');
+  FVolumeStatus:=RequireElement('volume-status');
+  FVolumeYaw:=TJSHTMLSelectElement(RequireElement('volume-yaw'));
+  FVolumeHiddenToken:=TJSHTMLSelectElement(RequireElement('volume-hidden-token'));
+  FVolumeDepth:=TJSHTMLInputElement(RequireElement('volume-visible-depth'));
+  FVolumeDownload:=TJSHTMLAnchorElement(RequireElement('volume-download'));
   FPassReportElement := RequireElement('pass-report');
   FFailureReportElement := RequireElement('failure-report');
 
@@ -430,6 +456,10 @@ begin
   FRemoveLockButton.onclick := @HandleRemoveLock;
   FClearLocksButton.onclick := @HandleClearLocks;
   FArtifactSelect.onchange := @HandleArtifactChange;
+  FVolumeYaw.onchange:=@HandleVolumeOptions;
+  FVolumeHiddenToken.onchange:=@HandleVolumeOptions;
+  FVolumeDepth.onchange:=@HandleVolumeOptions;
+  TJSHTMLElement(FVolumeViewport).onclick:=@HandleVolumeClick;
   FQuotaLabelInput.oninput := @HandleQuotaInput;
   FQuotaMinimumInput.oninput := @HandleQuotaInput;
   FQuotaMaximumInput.oninput := @HandleQuotaInput;
@@ -477,6 +507,8 @@ begin
   FWidthInput.value := IntToStr(AOptions.Width);
   FHeightInput.value := IntToStr(AOptions.Height);
   FDepthInput.value := IntToStr(ADepth);
+  FVolumeDepth.value:=IntToStr(ADepth);
+  FVolumeDepth.max:=IntToStr(ADepth);
   FLockZInput.value := '0';
   FSeedInput.value := UIntToStr(AOptions.Seed);
   if AOptions.Strategy = wpssNegotiated then
@@ -495,12 +527,16 @@ begin
   WriteOptions(TrainingStudioPresetOptions(AIndex),
     TrainingStudioPresetDepth(AIndex));
   ApplySourceText(TrainingStudioPresetText(AIndex));
-  FCircularPresetLocksPending := AIndex = TRAINING_STUDIO_CIRCULAR_PRESET;
+  if AIndex in [TRAINING_STUDIO_CIRCULAR_PRESET,TRAINING_STUDIO_PATTERN3D_PRESET] then
+    FPresetLocksPending := AIndex;
   SetState('source-dirty', 'Preset loaded; train to continue.',
     TrainingStudioPresetName(AIndex) + ' is the current editable source.');
-  if FCircularPresetLocksPending then
+  if AIndex=TRAINING_STUDIO_CIRCULAR_PRESET then
     SetState('source-dirty', 'Circular text preset loaded; train to continue.',
       'Training this preset adds three visible public locks: r at 0, f at 5, r at 15. The forty-cell output wraps back to its first cell.');
+  if AIndex=TRAINING_STUDIO_PATTERN3D_PRESET then
+    SetState('source-dirty','Overlapping volume preset loaded; train to continue.',
+      'Training learns joint 2 x 2 x 2 footprints and adds three visible XYZ locks: a stone floor, a planted cell, and an open courtyard.');
 end;
 
 procedure TBrowserTrainingStudioApplication.ApplySourceText(
@@ -509,7 +545,7 @@ begin
   RequireNoPolicyDraft;
   CancelSourceFileRead;
   FQuotaDraftDirty := False;
-  FCircularPresetLocksPending := False;
+  FPresetLocksPending := -1;
   FLocks := nil;
   FVocabulary := nil;
   FSelectedCell := -1;
@@ -530,10 +566,10 @@ begin
   FSelectedCell := -1;
   FWorkspace.SetSourceText(FSourceInput.value);
   FWorkspace.Train;
-  if FCircularPresetLocksPending then
-    FLocks := TrainingStudioPresetLocks(TRAINING_STUDIO_CIRCULAR_PRESET,
+  if FPresetLocksPending>=0 then
+    FLocks := TrainingStudioPresetLocks(FPresetLocksPending,
       FWorkspace.PublicPassIndex);
-  FCircularPresetLocksPending := False;
+  FPresetLocksPending := -1;
   ReloadQuotaEditor;
   ReloadConnectivityEditor;
   RefreshAll;
@@ -1336,6 +1372,7 @@ end;
 
 procedure TBrowserTrainingStudioApplication.ClearOutput;
 begin
+  ClearVolumeView;
   FOutputGrid.textContent := '';
   FOutputPlaceholder.removeAttribute('hidden');
   FSelectedCell := -1;
@@ -1420,6 +1457,112 @@ begin
     FOutputGrid.appendChild(LSlice);
   end;
   FOutputPlaceholder.setAttribute('hidden', '');
+  { An optional view failure must not interrupt reports or artifact downloads. }
+  if FConfiguredDepth>1 then HandleVolumeOptions(nil);
+end;
+
+procedure TBrowserTrainingStudioApplication.ClearVolumeView;
+begin
+  FreeAndNil(FVolumeScene);
+  FVolumeSvgText:='';
+  FVolumeViewport.textContent:='';
+  FVolumeViewport.removeAttribute('data-view-signature');
+  FVolumeViewport.removeAttribute('data-view-quads');
+  FVolumePanel.setAttribute('hidden','');
+  FVolumeDownload.removeAttribute('href');
+  FVolumeDownload.setAttribute('aria-disabled','true');
+  FVolumeDownload.className:='button-link disabled';
+  if FVolumeDownloadUrl<>'' then TJSURL.revokeObjectURL(FVolumeDownloadUrl);
+  FVolumeDownloadUrl:='';
+end;
+
+procedure TBrowserTrainingStudioApplication.RefreshVolumeView;
+var Options: TWfcTokenVolumeViewOptions; SvgOptions: TVoxel3DSvgOptions;
+  I,Yaw,Hidden: Integer; Item: TJSHTMLOptionElement; Parts: TJSArray;
+  BlobOptions: TJSBlobInit; SvgBlob: TJSBlob; SourceSignature: String;
+begin
+  ClearVolumeView;
+  if not FWorkspace.HasResult or (FWorkspace.ResultStatus<>wprsSolved) or
+    (FConfiguredDepth<=1) then Exit;
+  FVolumePanel.removeAttribute('hidden');
+  SourceSignature:=FWorkspace.TrainingSignatureText;
+  if FVolumeRenderedDepth<>FConfiguredDepth then
+  begin
+    FVolumeDepth.value:=IntToStr(FConfiguredDepth);
+    FVolumeRenderedDepth:=FConfiguredDepth;
+  end;
+  if FVolumeSourceSignature<>SourceSignature then
+  begin
+    FVolumeSourceSignature:=SourceSignature;
+    FVolumeHiddenToken.textContent:='';
+    Item:=TJSHTMLOptionElement(document.createElement('option'));
+    Item.value:='-1'; Item.textContent:='Show every token'; FVolumeHiddenToken.appendChild(Item);
+    Hidden:=-1;
+    for I:=0 to High(FVocabulary) do
+    begin
+      Item:=TJSHTMLOptionElement(document.createElement('option'));
+      Item.value:=IntToStr(I); Item.textContent:='Hide '+DisplayToken(FVocabulary[I]);
+      FVolumeHiddenToken.appendChild(Item);
+      if FVocabulary[I]='air' then Hidden:=I;
+    end;
+    FVolumeHiddenToken.value:=IntToStr(Hidden);
+    FVolumeDepth.value:=IntToStr(FConfiguredDepth);
+  end;
+  FVolumeDepth.max:=IntToStr(FConfiguredDepth);
+  if not TryStrToInt(FVolumeYaw.value,Yaw) or (Yaw<0) or (Yaw>3) then
+    raise EConvertError.Create('select one of the four volume view rotations');
+  if not TryStrToInt(FVolumeHiddenToken.value,Hidden) or
+    (Hidden< -1) or (Hidden>=Length(FVocabulary)) then
+    raise EConvertError.Create('select a current palette token to hide');
+  Options:=DefaultWfcTokenVolumeViewOptions(FConfiguredDepth);
+  Options.Projection.Yaw:=TVoxel3DViewYaw(Yaw);
+  Options.HiddenTokenIndex:=Hidden;
+  Options.VisibleDepth:=ReadBoundedInteger(FVolumeDepth,'visible Z layers',1,FConfiguredDepth);
+  FVolumeScene:=ProjectWfcTokenVolume3D(FWorkspace.OutputTokens,
+    FConfiguredOptions.Width,FConfiguredOptions.Height,FConfiguredDepth,FVocabulary,Options);
+  SvgOptions:=DefaultVoxel3DSvgOptions;
+  SvgOptions.Title:='WFC public volume - '+FWorkspace.ResultSignatureText;
+  FVolumeSvgText:=EncodeVoxel3DProjectedSceneSvg(FVolumeScene,SvgOptions);
+  //Only the project-owned, escaped SVG encoder supplies this markup.
+  FVolumeViewport.innerHTML:=FVolumeSvgText;
+  FVolumeViewport.setAttribute('data-view-signature',Voxel3DSignatureHex(FVolumeScene.Signature));
+  FVolumeViewport.setAttribute('data-view-quads',IntToStr(FVolumeScene.QuadCount));
+  Parts:=TJSArray.new; Parts.push(FVolumeSvgText);
+  BlobOptions:=TJSBlobInit.new; BlobOptions['type']:='image/svg+xml;charset=utf-8';
+  SvgBlob:=TJSBlob.new(Parts,BlobOptions);
+  FVolumeDownloadUrl:=TJSURL.createObjectURL(SvgBlob);
+  FVolumeDownload.href:=FVolumeDownloadUrl;
+  FVolumeDownload.download:='training-volume-'+FWorkspace.ResultSignatureText+'.svg';
+  FVolumeDownload.setAttribute('aria-disabled','false');
+  FVolumeDownload.className:='button-link';
+  FVolumeStatus.textContent:=IntToStr(FVolumeScene.QuadCount)+' visible faces · Z 0–'+
+    IntToStr(Options.VisibleDepth-1)+' · view '+Voxel3DSignatureHex(FVolumeScene.Signature)+
+    '. Click a face to select its public XYZ cell. Cutaway and hiding affect this view only.';
+end;
+
+function TBrowserTrainingStudioApplication.HandleVolumeOptions(AEvent: TJSEvent): Boolean;
+begin
+  Result:=False;
+  try RefreshVolumeView;
+  except on E: Exception do
+    begin ClearVolumeView; FVolumePanel.removeAttribute('hidden');
+      FVolumeStatus.textContent:='View unavailable: '+E.Message; end;
+  end;
+end;
+
+function TBrowserTrainingStudioApplication.HandleVolumeClick(AEvent: TJSMouseEvent): Boolean;
+var Element,Cell: TJSElement; Index: Integer; Quad: TVoxel3DProjectedQuad;
+begin
+  Result:=False;
+  if not Assigned(FVolumeScene) then Exit;
+  Element:=TJSElement(AEvent.target);
+  if not Assigned(Element) or not Element.hasAttribute('data-index') then Exit;
+  if not TryStrToInt(Element.getAttribute('data-index'),Index) or
+    (Index<0) or (Index>=FVolumeScene.QuadCount) then Exit;
+  Quad:=FVolumeScene.QuadAt(Index);
+  Cell:=document.getElementById('output-cell-'+IntToStr(Quad.CellX)+'-'+
+    IntToStr(Quad.CellY)+'-'+IntToStr(Quad.CellZ));
+  if Assigned(Cell) then DispatchDomEvent(Cell,'click');
 end;
 
 procedure TBrowserTrainingStudioApplication.RefreshReports;
@@ -1596,6 +1739,7 @@ begin
     wtkAdjacency1D: Result := 'adjacency1d';
     wtkAdjacency2D: Result := 'adjacency2d';
     wtkPattern2D: Result := 'pattern2d';
+    wtkPattern3D: Result := 'pattern3d';
     wtkSequence: Result := 'sequence';
     wtkAdjacency3D: Result := 'adjacency3d';
   else
@@ -1630,6 +1774,7 @@ begin
     wpakModel: Result := 'adjacency';
     wpakRules: Result := 'rules';
     wpakPattern2D: Result := 'pattern2d';
+    wpakPattern3D: Result := 'pattern3d';
     wpakSequence: Result := 'sequence';
   else
     Result := 'unknown';
@@ -1805,8 +1950,11 @@ end;
 
 procedure TBrowserTrainingStudioApplication.DispatchDomEvent(
   const AElement: TJSElement; const AEventName: String);
+var Init: TJSEventInit;
 begin
-  AElement.dispatchEvent(TJSEvent.new(AEventName));
+  Init := Default(TJSEventInit);
+  Init.bubbles := True;
+  AElement.dispatchEvent(TJSEvent.new(AEventName,Init));
 end;
 
 procedure TBrowserTrainingStudioApplication.RunQuotaSelfTest;
@@ -2217,6 +2365,141 @@ begin
   document.body.setAttribute('data-circular-sequence', 'passed');
 end;
 
+procedure TBrowserTrainingStudioApplication.RunPattern3DSelfTest;
+var SavedSource, SavedRecipe, SavedResult, FirstView, LayoutDetails: String;
+  I, ConflictIndex: Integer; Quad: TVoxel3DProjectedQuad; Face: TJSElement;
+  LayoutNodes: TJSNodeList;
+begin
+  document.body.setAttribute('data-overlapping-volume', 'pending');
+  LoadPreset(VOLUME_PRESET); DispatchDomEvent(FTrainButton,'click');
+  DispatchDomEvent(FSolveButton,'click');
+  FDepthInput.value := '2'; DispatchDomEvent(FDepthInput,'input');
+  DispatchDomEvent(FSolveButton,'click');
+  AssertTest((FWorkspace.ResultStatus = wprsSolved) and
+    (Length(FWorkspace.OutputTokens) = 32) and Assigned(FVolumeScene) and
+    (FVolumeDepth.value = '2'), 'shape reduction retained an invalid view depth');
+  FVolumeDepth.value := '0'; DispatchDomEvent(FVolumeDepth,'change');
+  AssertTest(FWorkspace.HasResult and not Assigned(FVolumeScene) and
+    (FVolumeDownload.getAttribute('aria-disabled') = 'true'),
+    'invalid view control retained an old SVG or invalidated the solved result');
+  FSeedInput.value := '1'; DispatchDomEvent(FSeedInput,'input');
+  DispatchDomEvent(FSolveButton,'click');
+  FArtifactSelect.value := 'result'; DispatchDomEvent(FArtifactSelect,'change');
+  AssertTest((FWorkspace.ResultStatus = wprsSolved) and
+    (document.body.getAttribute('data-state') = 'solved') and
+    (FArtifactOutput.value = FWorkspace.ResultText) and
+    (FArtifactDownloadLink.getAttribute('aria-disabled') = 'false') and
+    not Assigned(FVolumeScene), 'bad view controls interrupted successful artifact publication');
+  FVolumeDepth.value := '2'; DispatchDomEvent(FVolumeDepth,'change');
+  AssertTest(Assigned(FVolumeScene), 'correcting view depth failed to restore the preview');
+  document.body.setAttribute('data-volume-view-isolation', 'passed');
+  LoadPreset(TRAINING_STUDIO_PATTERN3D_PRESET);
+  DispatchDomEvent(FTrainButton, 'click');
+  AssertTest(FWorkspace.HasRecipe and (FWorkspace.Rank = 3) and
+    (FWorkspace.PublicPassIndex = 1) and (Length(FLocks) = 3),
+    'overlapping volume training did not expose its public XYZ bridge');
+  DispatchDomEvent(FSolveButton, 'click');
+  AssertTest((FWorkspace.ResultStatus = wprsSolved) and
+    TrainingStudioLatticeOutputIsValid(4,4,4,FWorkspace.OutputTokens),
+    'overlapping volume public domain validation failed');
+  AssertTest(Assigned(FVolumeScene), 'volume projection missing: '+FStatusElement.textContent);
+  AssertTest((FVolumeScene.QuadCount > 0) and
+    not FVolumePanel.hasAttribute('hidden') and
+    (FVolumeDownload.getAttribute('aria-disabled') = 'false'),
+    'volume preview/download missing: '+FStatusElement.textContent);
+  LayoutDetails := '';
+  if document.documentElement.scrollWidth > window.innerWidth then
+  begin
+    LayoutNodes := document.querySelectorAll('body *');
+    for I := 0 to LayoutNodes.length-1 do
+    begin
+      Face := TJSElement(LayoutNodes.item(I));
+      if Face.getBoundingClientRect.right > window.innerWidth then
+        LayoutDetails := LayoutDetails+' '+Face.nodeName+'#'+Face.id+'.'+
+          String(Face.getAttribute('class'));
+      if Length(LayoutDetails) > 800 then Break;
+    end;
+  end;
+  AssertTest(document.documentElement.scrollWidth <= window.innerWidth,
+    'Studio layout horizontally overflows the viewport: '+
+    IntToStr(document.documentElement.scrollWidth)+' > '+IntToStr(window.innerWidth)+LayoutDetails);
+  document.body.setAttribute('data-volume-layout', 'passed');
+  SavedSource := FWorkspace.SourceText;
+  SavedRecipe := FWorkspace.RecipeText;
+  SavedResult := FWorkspace.ResultText;
+  AssertTest((Pos('wfclearn=6'#10,SavedSource) = 1) and
+    (Pos('wfcpipeline=4'#10,SavedRecipe) = 1) and
+    (Pos('wfcp=2'#10,FWorkspace.ModelText) = 1),
+    'overlapping volume artifacts lost their feature versions');
+  FVolumeYaw.value := '0'; DispatchDomEvent(FVolumeYaw,'change');
+  FirstView := FVolumeViewport.getAttribute('data-view-signature');
+  for I := 1 to 3 do
+  begin
+    FVolumeYaw.value := IntToStr(I); DispatchDomEvent(FVolumeYaw,'change');
+    AssertTest(Assigned(FVolumeScene) and (FWorkspace.ResultText = SavedResult) and
+      (FVolumeViewport.getAttribute('data-view-signature') <> FirstView),
+      'rotation changed the composition or failed to update its view');
+  end;
+  FVolumeDepth.value := '2'; DispatchDomEvent(FVolumeDepth,'change');
+  AssertTest(Assigned(FVolumeScene) and (FWorkspace.ResultText = SavedResult) and
+    (Length(FWorkspace.OutputTokens) = 64), 'cutaway changed saved volume extent');
+  for I := 0 to FVolumeScene.QuadCount-1 do
+    AssertTest(FVolumeScene.QuadAt(I).CellZ < 2, 'cutaway retained an upper-layer face');
+  FVolumeHiddenToken.value := '-1'; DispatchDomEvent(FVolumeHiddenToken,'change');
+  AssertTest(Assigned(FVolumeScene) and (FWorkspace.ResultText = SavedResult),
+    'showing every token changed the public result');
+  Quad := FVolumeScene.QuadAt(0);
+  Face := FVolumeViewport.querySelector('polygon[data-index="0"]');
+  AssertTest(Assigned(Face), 'SVG lacks public face selection metadata');
+  DispatchDomEvent(Face,'click');
+  AssertTest((FLockXInput.value = IntToStr(Quad.CellX)) and
+    (FLockYInput.value = IntToStr(Quad.CellY)) and
+    (FLockZInput.value = IntToStr(Quad.CellZ)) and
+    (FWorkspace.ResultText = SavedResult), 'projected face selected the wrong XYZ cell');
+  document.body.setAttribute('data-overlapping-volume-view', 'passed');
+
+  { Leaf above the existing leaf violates a learned joint vertical footprint. }
+  FLockXInput.value := '2'; FLockYInput.value := '2'; FLockZInput.value := '2';
+  FLockTokenSelect.value := IntToStr(FindVocabularyToken('leaf'));
+  DispatchDomEvent(FAddLockButton,'click');
+  AssertTest(not FWorkspace.HasResult and not Assigned(FVolumeScene) and
+    (FVolumeSvgText = '') and not FVolumeViewport.hasAttribute('data-view-signature') and
+    (FVolumeDownload.getAttribute('aria-disabled') = 'true'),
+    'public lock retained stale 3D output or download');
+  DispatchDomEvent(FSolveButton,'click');
+  AssertTest((FWorkspace.ResultStatus = wprsContradiction) and
+    (Length(FWorkspace.OutputTokens) = 0) and not Assigned(FVolumeScene),
+    'joint vertical lock conflict did not clear the public volume');
+  ConflictIndex := -1;
+  for I := 0 to High(FLocks) do
+    if (FLocks[I].X = 2) and (FLocks[I].Y = 2) and (FLocks[I].Z = 2) then
+      ConflictIndex := I;
+  AssertTest(ConflictIndex >= 0, 'conflicting XYZ lock disappeared');
+  FLockList.selectedIndex := ConflictIndex;
+  DispatchDomEvent(FRemoveLockButton,'click'); DispatchDomEvent(FSolveButton,'click');
+  AssertTest((FWorkspace.ResultText = SavedResult) and Assigned(FVolumeScene),
+    'removing the conflicting XYZ lock failed exact recovery');
+  document.body.setAttribute('data-overlapping-volume-recovery', 'passed');
+
+  ApplySourceText(SavedSource); DispatchDomEvent(FTrainButton,'click');
+  AssertTest((Length(FLocks) = 0) and (FWorkspace.RecipeText = SavedRecipe) and
+    not Assigned(FVolumeScene), 'volume source reload retained run-owned locks or stale view');
+  FLocks := TrainingStudioPresetLocks(TRAINING_STUDIO_PATTERN3D_PRESET,
+    FWorkspace.PublicPassIndex);
+  RefreshAll; DispatchDomEvent(FSolveButton,'click');
+  AssertTest(FWorkspace.ResultText = SavedResult, 'saved volume source failed exact replay');
+  FSeedInput.value := '1'; DispatchDomEvent(FSeedInput,'input');
+  AssertTest(FWorkspace.HasRecipe and not FWorkspace.HasResult and
+    not Assigned(FVolumeScene) and (FVolumeSvgText = ''), 'seed edit retained stale SVG');
+  LoadPreset(INITIAL_PRESET); DispatchDomEvent(FTrainButton,'click');
+  DispatchDomEvent(FSolveButton,'click');
+  AssertTest((FWorkspace.TrainingSignatureText = BASELINE_SOURCE_SIGNATURE) and
+    (FWorkspace.RecipeSignatureText = BASELINE_RECIPE_SIGNATURE) and
+    (FWorkspace.ResultSignatureText = BASELINE_RESULT_SIGNATURE) and
+    FVolumePanel.hasAttribute('hidden'), '3D selftest failed to restore the legacy baseline');
+  document.body.setAttribute('data-overlapping-volume', 'passed');
+end;
+
 procedure TBrowserTrainingStudioApplication.RunSelfTest;
 var
   I: Integer;
@@ -2476,6 +2759,7 @@ begin
     RunQuotaSelfTest;
     RunConnectivitySelfTest;
     RunCircularSelfTest;
+    RunPattern3DSelfTest;
     document.body.setAttribute('data-self-test', 'passed');
   except
     on E: Exception do
@@ -2898,15 +3182,24 @@ begin
 end;
 
 procedure TBrowserTrainingStudioApplication.Run;
+var Query: TJSURLSearchParams; PresetIndex: Integer; PresetText: String;
 begin
   try
     BindDocument;
     PopulatePresets;
     BindEvents;
-    LoadPreset(INITIAL_PRESET);
+    Query := TJSURLSearchParams.new(window.location.search);
+    PresetIndex := INITIAL_PRESET;
+    PresetText := '';
+    if Query.has('preset') then PresetText := String(Query.get('preset'));
+    if (String(Query.get('selftest')) <> '1') and (PresetText <> '') then
+      if not TryStrToInt(PresetText,PresetIndex) or (PresetIndex < 0) or
+        (PresetIndex >= TRAINING_STUDIO_PRESET_COUNT) then
+        raise EConvertError.Create('preset must name an available numbered preset');
+    LoadPreset(PresetIndex);
     TrainWorkspace;
     SolveWorkspace;
-    if Pos('selftest=1', window.location.search) > 0 then
+    if String(Query.get('selftest')) = '1' then
       RunSelfTest
     else
       document.body.setAttribute('data-self-test', 'not-requested');

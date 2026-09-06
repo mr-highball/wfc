@@ -34,7 +34,8 @@ const
   WFC_PIPELINE_TEXT_VERSION = 1;
   WFC_PIPELINE_VALUE_QUOTA_TEXT_VERSION = 2;
   WFC_PIPELINE_CONNECTIVITY_TEXT_VERSION = 3;
-  WFC_PIPELINE_MAX_SUPPORTED_TEXT_VERSION = WFC_PIPELINE_CONNECTIVITY_TEXT_VERSION;
+  WFC_PIPELINE_PATTERN_3D_TEXT_VERSION = 4;
+  WFC_PIPELINE_MAX_SUPPORTED_TEXT_VERSION = WFC_PIPELINE_PATTERN_3D_TEXT_VERSION;
   WFC_PIPELINE_MAX_ENCODED_TEXT_LENGTH = 268435456;
   WFC_PIPELINE_MAX_TEXT_LINE_COUNT = 26 +
     WFC_PIPELINE_MAX_RESOURCE_COUNT + WFC_PIPELINE_MAX_PASS_COUNT +
@@ -51,6 +52,8 @@ const
     WFC_PIPELINE_MAX_CONNECTIVITY_COUNT +
     WFC_PIPELINE_MAX_TOTAL_CONNECTIVITY_REQUIRED_POSITION_COUNT +
     WFC_PIPELINE_MAX_TOTAL_CONNECTIVITY_VALUE_COUNT;
+  WFC_PIPELINE_PATTERN_3D_MAX_TEXT_LINE_COUNT =
+    WFC_PIPELINE_CONNECTIVITY_MAX_TEXT_LINE_COUNT + 2;
 
 function WfcPipelineModelTextVersion(const AModel: TWfcPipelineModel): Integer;
 function EncodeWfcPipelineModelText(
@@ -186,6 +189,11 @@ begin
     AVersion := WFC_PIPELINE_CONNECTIVITY_TEXT_VERSION;
     LMaximumLines := WFC_PIPELINE_CONNECTIVITY_MAX_TEXT_LINE_COUNT;
   end
+  else if Copy(AText, 1, 14) = 'wfcpipeline=4'#10 then
+  begin
+    AVersion := WFC_PIPELINE_PATTERN_3D_TEXT_VERSION;
+    LMaximumLines := WFC_PIPELINE_PATTERN_3D_MAX_TEXT_LINE_COUNT;
+  end
   else
   begin
     { Preserve V1's early envelope diagnostic for malformed, line-heavy
@@ -286,6 +294,8 @@ begin
       Result := 'pattern2d';
     wprkSequence:
       Result := 'sequence';
+    wprkPattern3D:
+      Result := 'pattern3d';
   else
     raise ERangeError.Create('unknown WFC pipeline resource kind');
   end;
@@ -302,6 +312,8 @@ begin
     Result := wprkPattern2D
   else if AText = 'sequence' then
     Result := wprkSequence
+  else if AText = 'pattern3d' then
+    Result := wprkPattern3D
   else
     TextError('resource has an unknown kind');
 end;
@@ -370,6 +382,8 @@ begin
       Result := 'pattern2d';
     wpakSequence:
       Result := 'sequence';
+    wpakPattern3D:
+      Result := 'pattern3d';
   else
     raise ERangeError.Create('unknown WFC pipeline adapter kind');
   end;
@@ -388,6 +402,8 @@ begin
     Result := wpakPattern2D
   else if AText = 'sequence' then
     Result := wpakSequence
+  else if AText = 'pattern3d' then
+    Result := wpakPattern3D
   else
     TextError('pass has an unknown adapter kind');
 end;
@@ -400,6 +416,8 @@ begin
       Result := 'pattern2d-projection';
     wpbkSequenceProjection:
       Result := 'sequence-projection';
+    wpbkPattern3DProjection:
+      Result := 'pattern3d-projection';
   else
     raise ERangeError.Create('unknown WFC pipeline bridge kind');
   end;
@@ -412,6 +430,8 @@ begin
     Result := wpbkPattern2DProjection
   else if AText = 'sequence-projection' then
     Result := wpbkSequenceProjection
+  else if AText = 'pattern3d-projection' then
+    Result := wpbkPattern3DProjection
   else
     TextError('bridge has an unknown kind');
 end;
@@ -583,7 +603,8 @@ function WfcPipelineModelTextVersion(const AModel: TWfcPipelineModel): Integer;
 begin
   if not Assigned(AModel) then
     raise EArgumentNilException.Create('WFC pipeline model cannot be nil');
-  if AModel.ConnectivityCount <> 0 then Result := WFC_PIPELINE_CONNECTIVITY_TEXT_VERSION
+  if AModel.HasPattern3D then Result := WFC_PIPELINE_PATTERN_3D_TEXT_VERSION
+  else if AModel.ConnectivityCount <> 0 then Result := WFC_PIPELINE_CONNECTIVITY_TEXT_VERSION
   else if AModel.ValueQuotaCount = 0 then Result := WFC_PIPELINE_TEXT_VERSION
   else Result := WFC_PIPELINE_VALUE_QUOTA_TEXT_VERSION;
 end;
@@ -660,7 +681,7 @@ begin
         WFC_PIPELINE_VALUE_QUOTA_MAX_TEXT_LINE_COUNT);
     end;
   end;
-  if LTextVersion = WFC_PIPELINE_CONNECTIVITY_TEXT_VERSION then
+  if LTextVersion >= WFC_PIPELINE_CONNECTIVITY_TEXT_VERSION then
   begin
     AddLineCapacity(LExpectedLineCount, 2 + AModel.ConnectivityCount,
       WFC_PIPELINE_CONNECTIVITY_MAX_TEXT_LINE_COUNT);
@@ -673,6 +694,8 @@ begin
         WFC_PIPELINE_CONNECTIVITY_MAX_TEXT_LINE_COUNT);
     end;
   end;
+  if LTextVersion = WFC_PIPELINE_PATTERN_3D_TEXT_VERSION then
+    AddLineCapacity(LExpectedLineCount, 2, WFC_PIPELINE_PATTERN_3D_MAX_TEXT_LINE_COUNT);
   SetLength(LLines, LExpectedLineCount);
   LCount := 0;
   AppendLine(LLines, LCount, 'wfcpipeline=' +
@@ -707,6 +730,13 @@ begin
     IntToStr(LVersions.Pattern2DBridgeVersion));
   AppendLine(LLines, LCount, 'sequence-bridge-version=' +
     IntToStr(LVersions.SequenceBridgeVersion));
+  if LTextVersion = WFC_PIPELINE_PATTERN_3D_TEXT_VERSION then
+  begin
+    AppendLine(LLines, LCount, 'pattern3d-graph-adapter-version=' +
+      IntToStr(LVersions.Pattern3DGraphAdapterVersion));
+    AppendLine(LLines, LCount, 'pattern3d-bridge-version=' +
+      IntToStr(LVersions.Pattern3DBridgeVersion));
+  end;
 
   AppendLine(LLines, LCount, 'rank=' + IntToStr(AModel.Rank));
   AppendLine(LLines, LCount, 'wrap=' +
@@ -811,7 +841,7 @@ begin
     end;
   end;
 
-  if LTextVersion = WFC_PIPELINE_CONNECTIVITY_TEXT_VERSION then
+  if LTextVersion >= WFC_PIPELINE_CONNECTIVITY_TEXT_VERSION then
   begin
     AppendLine(LLines, LCount, 'connectivity-version=' + IntToStr(AModel.ConnectivityVersion));
     AppendLine(LLines, LCount, 'connectivities=' + IntToStr(AModel.ConnectivityCount));
@@ -901,6 +931,7 @@ var
   LQuotaTail: Integer;
   LConnectivityTail: Integer;
   LQuotaVersion: Integer;
+  LConnectivityVersion: Integer;
   LQuotaCount: Integer;
   LQuotaTokenCount: Integer;
   LTotalQuotaTokenCount: Integer;
@@ -983,6 +1014,13 @@ begin
     LConnectivityTail := 4;
     LQuotaTail := 2 + LConnectivityTail;
   end;
+  if LTextVersion = WFC_PIPELINE_PATTERN_3D_TEXT_VERSION then
+  begin
+    { Both optional registries still have explicit zero-version/zero-count
+      sections in V4. The two new version lines precede all registries. }
+    LConnectivityTail := 2;
+    LQuotaTail := 2 + LConnectivityTail;
+  end;
 
   { Pascal does not define argument evaluation order. Read stateful fields
     one at a time before any constructor/helper call. }
@@ -996,6 +1034,7 @@ begin
   LMetadata.SourceFingerprint := DecodeOuterToken(ReadValueLine(LLines,
     LLineIndex, 'fingerprint=', 'fingerprint'), 'fingerprint');
 
+  LVersions := CurrentWfcPipelineVersions;
   LVersions.GraphModelVersion := ParseCanonicalInteger(
     ReadValueLine(LLines, LLineIndex, 'graph-model-version=',
       'graph-model version'), 'graph-model version');
@@ -1029,6 +1068,15 @@ begin
   LVersions.SequenceBridgeVersion := ParseCanonicalInteger(
     ReadValueLine(LLines, LLineIndex, 'sequence-bridge-version=',
       'sequence bridge version'), 'sequence bridge version');
+  if LTextVersion = WFC_PIPELINE_PATTERN_3D_TEXT_VERSION then
+  begin
+    LVersions.Pattern3DGraphAdapterVersion := ParseCanonicalInteger(
+      ReadValueLine(LLines, LLineIndex, 'pattern3d-graph-adapter-version=',
+        'pattern3d graph-adapter version'), 'pattern3d graph-adapter version');
+    LVersions.Pattern3DBridgeVersion := ParseCanonicalInteger(
+      ReadValueLine(LLines, LLineIndex, 'pattern3d-bridge-version=',
+        'pattern3d bridge version'), 'pattern3d bridge version');
+  end;
 
   LRank := ParseCanonicalInteger(ReadValueLine(LLines, LLineIndex,
     'rank=', 'rank'), 'rank');
@@ -1227,7 +1275,7 @@ begin
     LQuotaVersion := ParseCanonicalInteger(ReadValueLine(LLines, LLineIndex,
         'value-quota-version=', 'value-quota version'), 'value-quota version');
     if (LQuotaVersion <> WFC_PIPELINE_VALUE_QUOTA_VERSION) and
-        not ((LTextVersion = WFC_PIPELINE_CONNECTIVITY_TEXT_VERSION) and (LQuotaVersion = 0)) then
+        not ((LTextVersion >= WFC_PIPELINE_CONNECTIVITY_TEXT_VERSION) and (LQuotaVersion = 0)) then
       TextError('unsupported value-quota version');
     LQuotaCount := ParseBoundedCount(ReadValueLine(LLines, LLineIndex,
       'value-quotas=', 'value-quota count'), 'value-quota count',
@@ -1278,16 +1326,21 @@ begin
     end;
   end;
 
-  if LTextVersion = WFC_PIPELINE_CONNECTIVITY_TEXT_VERSION then
+  if LTextVersion >= WFC_PIPELINE_CONNECTIVITY_TEXT_VERSION then
   begin
-    if ParseCanonicalInteger(ReadValueLine(LLines, LLineIndex,
-        'connectivity-version=', 'connectivity version'), 'connectivity version') <>
-        WFC_PIPELINE_CONNECTIVITY_VERSION then
+    LConnectivityVersion := ParseCanonicalInteger(ReadValueLine(LLines, LLineIndex,
+      'connectivity-version=', 'connectivity version'), 'connectivity version');
+    if (LConnectivityVersion <> WFC_PIPELINE_CONNECTIVITY_VERSION) and
+        not ((LTextVersion = WFC_PIPELINE_PATTERN_3D_TEXT_VERSION) and (LConnectivityVersion = 0)) then
       TextError('unsupported connectivity version');
     LConnectivityCount := ParseBoundedCount(ReadValueLine(LLines, LLineIndex,
       'connectivities=', 'connectivity count'), 'connectivity count',
       WFC_PIPELINE_MAX_CONNECTIVITY_COUNT);
-    if LConnectivityCount = 0 then TextError('version 3 requires at least one connectivity');
+    if (LTextVersion = WFC_PIPELINE_CONNECTIVITY_TEXT_VERSION) and (LConnectivityCount = 0) then
+      TextError('version 3 requires at least one connectivity');
+    if ((LConnectivityCount = 0) and (LConnectivityVersion <> 0)) or
+        ((LConnectivityCount <> 0) and (LConnectivityVersion = 0)) then
+      TextError('connectivity version must be zero exactly when the registry is empty');
     RequireRecordCapacity(2 * LConnectivityCount, 2, LLineIndex, LLines, 'connectivity');
     SetLength(LConnectivities, LConnectivityCount);
     LTotalTerminalCount := 0;
@@ -1369,6 +1422,8 @@ begin
       on E: EWfcPipelineModel do
         TextError(E.Message);
     end;
+    if (LTextVersion = WFC_PIPELINE_PATTERN_3D_TEXT_VERSION) <> LModel.HasPattern3D then
+      TextError('version 4 is required exactly for pattern3d recipes');
     if WfcPipelineSignatureHex(LModel.Signature) <> LSignatureText then
       TextError('pipeline signature does not match its semantic recipe');
     if EncodeWfcPipelineModelText(LModel) <> AText then

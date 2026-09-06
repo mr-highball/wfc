@@ -34,7 +34,8 @@ uses
   wfc_pipeline_model, wfc_pipeline_text, wfc_pipeline_connectivity,
   wfc_pipeline_run, wfc_pipeline_run_text, wfc_pipeline_runtime,
   wfc_pipeline_result, wfc_pipeline_result_text, wfc_volume_symmetry,
-  wfc_pattern3d, wfc_pattern3d_learn, wfc_pattern3d_text, wfc_pattern3d_graph;
+  wfc_pattern3d, wfc_pattern3d_learn, wfc_pattern3d_text, wfc_pattern3d_graph,
+  wfc_token_volume_view, wfc_voxel3d_isometric, wfc_voxel3d_svg;
 
 var Checks: Integer;
 
@@ -176,7 +177,8 @@ var Tokens: TWfcModelTokens; Learned, Decoded: TWfcOverlappingModel3D;
   TextValue: String; Config: TWfcPattern3DPassConfig;
   Pipeline: TWfcPattern3DPassPipeline; Composition: TWfcPattern3DComposition;
   Report: TWfcPattern3DPassReport; Validation: TWfcOverlapping3DValidationReport;
-  Projection: TWfcTokenGrid3D; I: Integer;
+  Projection: TWfcTokenGrid3D; I: Integer; Palette: TWfcModelTokens;
+  ViewOptions: TWfcTokenVolumeViewOptions; Scene: TVoxel3DProjectedScene;
 begin
   Check(WfcVolumeTransformCount(wmsCubeRotations) = 24,
     'installed cube symmetry helper exposes all proper rotations');
@@ -209,6 +211,14 @@ begin
         'installed adapter publishes the exact full XYZ projection');
       for I := 0 to High(Projection.Tokens) do
         Check(Projection.Tokens[I] = 'solid', 'installed projected voxel matches its authored token');
+      SetLength(Palette, 1); Palette[0] := 'solid';
+      ViewOptions := DefaultWfcTokenVolumeViewOptions(2);
+      Scene := ProjectWfcTokenVolume3D(Projection.Tokens, 2, 2, 2, Palette, ViewOptions);
+      try
+        Check(Scene.QuadCount = 24, 'installed public volume view culls interior faces');
+        Check(Pos('<svg ', EncodeVoxel3DProjectedSceneSvg(Scene,
+          DefaultVoxel3DSvgOptions)) > 0, 'installed view exports dependency-free SVG');
+      finally Scene.Free; end;
     finally Composition.Free; Pipeline.Free; end;
   finally Decoded.Free; end;
 end;

@@ -175,7 +175,7 @@ and invalid/usage/I/O diagnostics. The native training-text suite requires
 that absolute fixture directory as its first argument; the build supplies it.
 The artifact-family extension adds shared document, inspection, and CLI
 application suites plus a native FPC real-process runner for `wfc_validate`
-and `wfc_inspect`. It tests strict file/stdin handling across eight families,
+and `wfc_inspect`. It tests strict file/stdin handling across nine families,
 context binding, solved/non-solved exact replay, and inspection limits.
 A compiler error, failed check,
 or example failure produces a nonzero exit code. Compiler units and binaries
@@ -212,7 +212,7 @@ the exact strictly verified primary input, and `--quiet` emits nothing.
 Recipe validation does not compile or solve. Only explicit result replay
 executes the recorded run and compares the complete canonical result.
 The inspector exposes a bounded, terminal-safe view without execution.
-See [artifact tools](artifact-tools.md) for all eight families, their different
+See [artifact tools](artifact-tools.md) for all nine families, their different
 validation scopes, exit codes, limits, and runnable examples.
 
 The runner accepts one recipe and its bound run artifact:

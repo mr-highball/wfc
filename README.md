@@ -115,6 +115,7 @@ The native and browser hosts share Pascal generation and validation code.
 | Polyphonic music | Synchronized chord-capable voices, training, repair, streamed audio and MIDI | [Ensemble Studio](examples/music/06_EnsembleStudio/README.md) |
 | Independent musical roles | Learned role vocabularies, novel vertical combinations, collective harmony, streamed WAV/MIDI | [Voice Studio](examples/music/07_VoiceStudio/README.md) |
 | Training | Editable 1D/2D/3D corpora → models → recipes → validated results | [Training Studio](examples/learning/05_TrainingStudio/README.md) |
+| Overlapping volumes | Joint XYZ learning, saved public constraints/replay, native cutaway SVG | [Training Studio lattice preset](examples/learning/05_TrainingStudio/README.md#native-volume-svg) |
 | Pass counts | Lower/upper bounds, wrapped aliases, scoped repair | [Neighborhood Counts](examples/passes/04_NeighborhoodCounts/README.md) |
 | Connected routes | Solver-propagated roads and multi-floor circulation, independent BFS, SVG, scoped repair | [Connected Routes](examples/passes/06_ConnectedRoutes/README.md) |
 

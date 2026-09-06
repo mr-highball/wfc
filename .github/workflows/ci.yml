@@ -310,6 +310,12 @@ jobs:
             --expect 'data-connectivity-contradiction=passed' \
             --expect 'data-connectivity-invalidation=passed' \
             --expect 'data-connectivity-volume=passed' \
+            --expect 'data-circular-sequence=passed' \
+            --expect 'data-overlapping-volume=passed' \
+            --expect 'data-overlapping-volume-view=passed' \
+            --expect 'data-overlapping-volume-recovery=passed' \
+            --expect 'data-volume-view-isolation=passed' \
+            --expect 'data-volume-layout=passed' \
             --expect 'data-cell-count=16' \
             --expect 'data-source-invalidation=passed' \
             --expect 'data-run-invalidation=passed' \

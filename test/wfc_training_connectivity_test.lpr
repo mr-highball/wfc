@@ -103,14 +103,14 @@ begin
         Result.Samples[0] := MakeWfcTrainingSample('square', 2, 2,
           Tokens(['road', 'void', 'void', 'road']));
       end;
-    wtkAdjacency3D:
+    wtkAdjacency3D, wtkPattern3D:
       begin
         Result.Width := 2; Result.Height := 2; Result.Depth := 2;
         Result.Samples[0] := MakeWfcTrainingSample('volume', 2, 2, 2,
           Tokens(['road', 'void', 'void', 'road', 'void', 'road', 'road', 'void']));
       end;
   end;
-  if Kind = wtkPattern2D then
+  if Kind in [wtkPattern2D, wtkPattern3D] then
   begin Result.Options.PatternWidth := 1; Result.Options.PatternHeight := 1; end;
   if Kind = wtkSequence then
   begin Result.Options.Boundary := wmbOpen; Result.Options.Order := 2; end;
@@ -190,20 +190,28 @@ begin
       Check((D.ConnectivityCount = 1) and (D.ConnectivityVersion = 1) and
         (D.ValueQuotaCount = 1), 'all training kinds own explicit connectivity plus quotas');
       Text := EncodeWfcTrainingText(D);
-      Check((Pos('wfclearn=4'#10, Text) = 1) and (WfcTrainingDocumentTextVersion(D) = 4),
-        'only connectivity-bearing source selects v4');
+      if K = wtkPattern3D then
+        Check((Pos('wfclearn=6'#10, Text) = 1) and (WfcTrainingDocumentTextVersion(D) = 6),
+          'pattern volume retains v6 with connectivity')
+      else
+        Check((Pos('wfclearn=4'#10, Text) = 1) and (WfcTrainingDocumentTextVersion(D) = 4),
+          'legacy connectivity-bearing source selects v4');
       CopyD := DecodeWfcTrainingText(Text);
       try Check((CopyD.Signature = D.Signature) and (EncodeWfcTrainingText(CopyD) = Text),
         'v4 authored source has exact round-trip identity'); finally CopyD.Free; end;
       R := LearnWfcTrainingRecipe(D);
       try
         Check(R.ResourceAt(0).Document = OldModel, 'author policy does not alter learned resource payload bytes');
-        Check(Pos('wfclearn-v4/', R.ResourceAt(0).SourceFingerprint) = 1,
-          'learned resource provenance binds v4 author intent');
+        if K = wtkPattern3D then
+          Check(Pos('wfclearn-v6/', R.ResourceAt(0).SourceFingerprint) = 1,
+            'learned volume provenance binds v6 author intent')
+        else
+          Check(Pos('wfclearn-v4/', R.ResourceAt(0).SourceFingerprint) = 1,
+            'learned resource provenance binds v4 author intent');
         C := R.ConnectivityAt(0); P := R.FindPass('output');
         Check((C.PassIndex = P) and (R.PassAt(P).Visibility = wppvPublic),
           'connectivity binds only the current public output');
-        if K in [wtkSequence, wtkPattern2D] then Check(P = 1, 'latent learners resolve output pass one')
+        if K in [wtkSequence, wtkPattern2D, wtkPattern3D] then Check(P = 1, 'latent learners resolve output pass one')
         else Check(P = 0, 'direct learners resolve output pass zero');
         Check((C.Values[0].Value = 'road') and (C.Values[1].Value = 'void') and
           (not C.Values[0].RequiredByValue) and C.Values[1].RequiredByValue,
@@ -231,8 +239,9 @@ begin
             ResultText := EncodeWfcPipelineResultText(Output);
             CopyR := DecodeWfcPipelineModelText(EncodeWfcPipelineModelText(R));
             try
-              Check((CopyR.Signature = R.Signature) and (Pos('wfcpipeline=3'#10,
-                EncodeWfcPipelineModelText(CopyR)) = 1), 'portable recipe preserves full policies');
+              Check((CopyR.Signature = R.Signature) and
+                (EncodeWfcPipelineModelText(CopyR) = EncodeWfcPipelineModelText(R)),
+                'portable recipe preserves full policies and its feature-selected version');
               CopyRun := DecodeWfcPipelineRunText(EncodeWfcPipelineRunText(Run), CopyR);
               try
                 Replay := ExecuteWfcPipeline(CopyR, CopyRun);

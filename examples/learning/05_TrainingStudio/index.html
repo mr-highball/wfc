@@ -200,6 +200,19 @@
         <div><p class="step">03 / RESULT</p><h2 id="result-heading">Public output</h2></div>
         <strong id="result-status" class="result-chip">not run</strong>
       </div>
+      <section id="volume-panel" class="volume-panel" aria-label="Interactive public volume" hidden>
+        <div class="toolbar volume-toolbar">
+          <label><span>View rotation</span><select id="volume-yaw">
+            <option value="0">0°</option><option value="1">90°</option>
+            <option value="2">180°</option><option value="3">270°</option>
+          </select></label>
+          <label><span>Empty / hidden token</span><select id="volume-hidden-token"><option value="-1">Show every token</option></select></label>
+          <label><span>Visible Z layers</span><input id="volume-visible-depth" type="number" min="1" value="1" step="1"></label>
+          <a id="volume-download" class="button-link disabled" aria-disabled="true">Download view SVG</a>
+        </div>
+        <div id="volume-viewport" class="volume-viewport"></div>
+        <p id="volume-status" class="hint">The 3D view uses the same public cells as the exact slices below.</p>
+      </section>
       <div id="output-grid" class="output-grid" role="grid" aria-label="Solved public output by Z slice"></div>
       <p id="output-placeholder" class="placeholder">Train and solve to inspect public cells.</p>
       <div class="reports">

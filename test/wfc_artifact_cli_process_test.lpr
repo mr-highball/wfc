@@ -54,6 +54,16 @@ const
   CIRCULAR_SEQUENCE_MODEL = 'wfcs=2'#10'boundary=wrap'#10'order=2'#10 +
     'samples=1'#10's=0,2'#10'tokens=2'#10't=0,A'#10't=1,B'#10 +
     'states=2'#10'q=0,1,0,0,T1,E0'#10'q=1,1,0,0,T0,E1'#10'end'#10;
+  VOLUME_PATTERN_SOURCE = 'wfclearn=6'#10'name=volume'#10'license=MIT'#10 +
+    'source=project-authored%20process%20fixture'#10'kind=pattern3d'#10 +
+    'boundary=open'#10'symmetry=none'#10'footprint=1,1,1'#10'order=0'#10 +
+    'samples=1'#10'sample=0,1,1,2,column'#10'token=0,0,stone'#10'token=0,1,air'#10 +
+    'value-quota-version=0'#10'value-quotas=0'#10 +
+    'connectivity-version=0'#10'connectivities=0'#10'end'#10;
+  VOLUME_PATTERN_MODEL = 'wfcp=2'#10'rank=3'#10'samples=1'#10's=0,1,1,2'#10 +
+    'footprint=1,1,1'#10'boundary=open'#10'symmetry=none'#10 +
+    'directions=N,E,S,W,U,D'#10'palette=2'#10't=0,stone'#10't=1,air'#10 +
+    'patterns=2'#10'p=0,1,0'#10'p=1,1,1'#10'relations=overlap'#10'end'#10;
 
 type
   {$IF DECLARED(TIODescriptor)}
@@ -456,7 +466,7 @@ procedure TestArguments;
 var LTool, LPrefix, LText, LName: String; I: Integer;
 begin
   Check(Success(Validator, ['--version'], '', 'validator version') =
-    'wfc-validate 2 (wfcpipeline=1,2,3)'#10, 'validator exact version bytes');
+    'wfc-validate 2 (wfcpipeline=1,2,3,4)'#10, 'validator exact version bytes');
   Check(Success(Inspector, ['--version'], '', 'inspector version') =
     'wfc-inspect 1'#10, 'inspector exact version bytes');
   for I := 0 to 1 do
@@ -552,6 +562,13 @@ begin
   TestSingle('training', WriteOwned('open pattern source.wfclearn', OPEN_PATTERN_SOURCE));
   TestSingle('training', WriteOwned('circular sequence source.wfclearn', CIRCULAR_SEQUENCE_SOURCE));
   TestSingle('sequence', WriteOwned('circular sequence model.wfcs', CIRCULAR_SEQUENCE_MODEL));
+  TestSingle('training',WriteOwned('volume pattern source.wfclearn',VOLUME_PATTERN_SOURCE));
+  TestSingle('pattern3d',WriteOwned('volume pattern model.wfcp',VOLUME_PATTERN_MODEL));
+  Failure(Validator,['pattern2d','-'],VOLUME_PATTERN_MODEL,1,
+    'wfc-validate: invalid pattern2d: ','volume model cannot masquerade as a plane');
+  Failure(Inspector,['training','-'],StringReplace(VOLUME_PATTERN_SOURCE,
+    'wfclearn=6','wfclearn=5',[]),1,'wfc-inspect: invalid training: ',
+    'joint volume source cannot masquerade as an older source version');
   Failure(Validator, ['sequence', '-'], StringReplace(CIRCULAR_SEQUENCE_MODEL,
     'T1,E0', 'B,E0', []), 1, 'wfc-validate: invalid sequence: ',
     'circular source cannot smuggle an open BOS state');

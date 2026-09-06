@@ -33,6 +33,7 @@ uses
   wfc_model,
   wfc_rule_model,
   wfc_pattern2d,
+  wfc_pattern3d,
   wfc_sequence;
 
 const
@@ -48,6 +49,7 @@ const
     forward-only contract. }
   WFC_PIPELINE_PATTERN_BRIDGE_VERSION = 2;
   WFC_PIPELINE_SEQUENCE_BRIDGE_VERSION = 2;
+  WFC_PIPELINE_PATTERN_3D_BRIDGE_VERSION = 1;
 
   WFC_PIPELINE_NO_INDEX = -1;
 
@@ -89,7 +91,8 @@ type
     wprkModel,
     wprkRules,
     wprkPattern2D,
-    wprkSequence
+    wprkSequence,
+    wprkPattern3D
   );
 
   TWfcPipelinePassVisibility = (
@@ -102,12 +105,14 @@ type
     wpakModel,
     wpakRules,
     wpakPattern2D,
-    wpakSequence
+    wpakSequence,
+    wpakPattern3D
   );
 
   TWfcPipelineBridgeKind = (
     wpbkPattern2DProjection,
-    wpbkSequenceProjection
+    wpbkSequenceProjection,
+    wpbkPattern3DProjection
   );
 
   TWfcPipelineRequirementKind = (
@@ -128,6 +133,10 @@ type
     SequenceGraphAdapterVersion: Integer;
     Pattern2DBridgeVersion: Integer;
     SequenceBridgeVersion: Integer;
+    { Read only for recipes that use a 3D overlapping resource/adapter/bridge.
+      Legacy callers may still initialize only the original eleven fields. }
+    Pattern3DGraphAdapterVersion: Integer;
+    Pattern3DBridgeVersion: Integer;
   end;
 
   TWfcPipelineMetadata = record
@@ -254,6 +263,8 @@ type
     FRuleResources: array of TWfcRuleModel;
     FPatternResources: array of TWfcOverlappingModel2D;
     FSequenceResources: array of TWfcSequenceModel;
+    FPattern3DResources: array of TWfcOverlappingModel3D;
+    FHasPattern3D: Boolean;
     FSignature: TWfcPipelineSignature;
 
     function GetResourceCount: Integer;
@@ -370,6 +381,8 @@ type
       const AIndex: Integer): TWfcOverlappingModel2D;
     function BorrowSequenceResource(
       const AIndex: Integer): TWfcSequenceModel;
+    function BorrowPattern3DResource(
+      const AIndex: Integer): TWfcOverlappingModel3D;
 
     property Rank: Integer read FRank;
     property WrapNeighbors: Boolean read FWrapNeighbors;
@@ -385,6 +398,7 @@ type
     property ConnectivityCount: Integer read GetConnectivityCount;
     property ConnectivityVersion: Integer read GetConnectivityVersion;
     property Signature: TWfcPipelineSignature read FSignature;
+    property HasPattern3D: Boolean read FHasPattern3D;
   end;
 
 function CurrentWfcPipelineVersions: TWfcPipelineVersions;
@@ -457,6 +471,8 @@ uses
   wfc_rule_text,
   wfc_pattern2d_text,
   wfc_pattern2d_graph,
+  wfc_pattern3d_text,
+  wfc_pattern3d_graph,
   wfc_sequence_text,
   wfc_sequence_graph;
 
@@ -480,7 +496,7 @@ procedure RequireEnumResourceKind(const AValue: TWfcPipelineResourceKind;
   const ALabel: String);
 begin
   case AValue of
-    wprkModel, wprkRules, wprkPattern2D, wprkSequence:
+    wprkModel, wprkRules, wprkPattern2D, wprkSequence, wprkPattern3D:
       Exit;
   else
     raise EWfcPipelineModel.CreateFmt('%s is unknown [%d]',
@@ -504,7 +520,7 @@ procedure RequireEnumAdapter(const AValue: TWfcPipelineAdapterKind;
   const ALabel: String);
 begin
   case AValue of
-    wpakEmpty, wpakModel, wpakRules, wpakPattern2D, wpakSequence:
+    wpakEmpty, wpakModel, wpakRules, wpakPattern2D, wpakSequence, wpakPattern3D:
       Exit;
   else
     raise EWfcPipelineModel.CreateFmt('%s is unknown [%d]',
@@ -516,7 +532,7 @@ procedure RequireEnumBridge(const AValue: TWfcPipelineBridgeKind;
   const ALabel: String);
 begin
   case AValue of
-    wpbkPattern2DProjection, wpbkSequenceProjection:
+    wpbkPattern2DProjection, wpbkSequenceProjection, wpbkPattern3DProjection:
       Exit;
   else
     raise EWfcPipelineModel.CreateFmt('%s is unknown [%d]',
@@ -674,6 +690,19 @@ begin
   {$ENDIF}
 end;
 
+procedure RequirePattern3DSignedInteger(const AValue: Integer; const ALabel: String);
+{$IFDEF PAS2JS}var Valid: Boolean;{$ENDIF}
+begin
+  {$IFDEF PAS2JS}
+  asm
+    Valid = typeof AValue === 'number' && Number.isFinite(AValue) &&
+      Math.floor(AValue) === AValue && AValue >= -2147483648 && AValue <= 2147483647;
+  end;
+  if not Valid then
+    raise EWfcPipelineModel.Create(ALabel + ' must be an exact signed Integer');
+  {$ENDIF}
+end;
+
 function CloneConnectivity(const AValue: TWfcPipelineConnectivity):
   TWfcPipelineConnectivity;
 begin
@@ -753,6 +782,38 @@ begin
   Result.SequenceGraphAdapterVersion := WFC_SEQUENCE_GRAPH_ADAPTER_VERSION;
   Result.Pattern2DBridgeVersion := WFC_PIPELINE_PATTERN_BRIDGE_VERSION;
   Result.SequenceBridgeVersion := WFC_PIPELINE_SEQUENCE_BRIDGE_VERSION;
+  Result.Pattern3DGraphAdapterVersion := WFC_PATTERN_3D_GRAPH_ADAPTER_VERSION;
+  Result.Pattern3DBridgeVersion := WFC_PIPELINE_PATTERN_3D_BRIDGE_VERSION;
+end;
+
+function NormalizeVersions(const AValue: TWfcPipelineVersions;
+  const AHasPattern3D: Boolean): TWfcPipelineVersions;
+begin
+  { Do not copy the complete caller record: the appended scalar fields may be
+    uninitialized in legacy native callers (or absent properties in JS). }
+  Result := CurrentWfcPipelineVersions;
+  Result.GraphModelVersion := AValue.GraphModelVersion;
+  Result.RandomAlgorithmVersion := AValue.RandomAlgorithmVersion;
+  Result.SolverAlgorithmVersion := AValue.SolverAlgorithmVersion;
+  Result.PipelineAlgorithmVersion := AValue.PipelineAlgorithmVersion;
+  Result.BundleGraphAdapterVersion := AValue.BundleGraphAdapterVersion;
+  Result.ModelGraphAdapterVersion := AValue.ModelGraphAdapterVersion;
+  Result.RulesGraphAdapterVersion := AValue.RulesGraphAdapterVersion;
+  Result.Pattern2DGraphAdapterVersion := AValue.Pattern2DGraphAdapterVersion;
+  Result.SequenceGraphAdapterVersion := AValue.SequenceGraphAdapterVersion;
+  Result.Pattern2DBridgeVersion := AValue.Pattern2DBridgeVersion;
+  Result.SequenceBridgeVersion := AValue.SequenceBridgeVersion;
+  if AHasPattern3D then
+  begin
+    RequireQuotaInteger(AValue.Pattern3DGraphAdapterVersion, 'pattern3d graph-adapter version');
+    RequireQuotaInteger(AValue.Pattern3DBridgeVersion, 'pattern3d bridge version');
+    if AValue.Pattern3DGraphAdapterVersion <> WFC_PATTERN_3D_GRAPH_ADAPTER_VERSION then
+      raise EWfcPipelineModel.Create('unsupported pattern3d graph-adapter version');
+    if AValue.Pattern3DBridgeVersion <> WFC_PIPELINE_PATTERN_3D_BRIDGE_VERSION then
+      raise EWfcPipelineModel.Create('unsupported pattern3d bridge version');
+    Result.Pattern3DGraphAdapterVersion := AValue.Pattern3DGraphAdapterVersion;
+    Result.Pattern3DBridgeVersion := AValue.Pattern3DBridgeVersion;
+  end;
 end;
 
 procedure ValidateVersions(const AValue: TWfcPipelineVersions);
@@ -1110,6 +1171,12 @@ begin
   HashInteger(Result, LVersions.SequenceGraphAdapterVersion);
   HashInteger(Result, LVersions.Pattern2DBridgeVersion);
   HashInteger(Result, LVersions.SequenceBridgeVersion);
+  if AModel.HasPattern3D then
+  begin
+    HashAscii(Result, 'pattern3d-feature-v1');
+    HashInteger(Result, LVersions.Pattern3DGraphAdapterVersion);
+    HashInteger(Result, LVersions.Pattern3DBridgeVersion);
+  end;
 
   LMetadata := AModel.CopyMetadata;
   HashToken(Result, LMetadata.Name);
@@ -1351,6 +1418,8 @@ destructor TWfcPipelineModel.Destroy;
 var
   I: Integer;
 begin
+  for I := 0 to Length(FPattern3DResources) - 1 do
+    FPattern3DResources[I].Free;
   for I := 0 to Length(FSequenceResources) - 1 do
     FSequenceResources[I].Free;
   for I := 0 to Length(FPatternResources) - 1 do
@@ -1410,6 +1479,7 @@ var
   procedure ValidateIndex(const AIndex, ACount: Integer;
     const ALabel: String);
   begin
+    if FHasPattern3D then RequireQuotaInteger(AIndex, ALabel);
     if (AIndex < 0) or (AIndex >= ACount) then
       raise EWfcPipelineModel.CreateFmt('%s is out of bounds [%d]',
         [ALabel, AIndex]);
@@ -1465,7 +1535,6 @@ var
 
 begin
   ValidateVersions(AVersions);
-  LVersions := AVersions;
 
   if (ARank < 1) or (ARank > 3) then
     raise EWfcPipelineModel.CreateFmt(
@@ -1490,6 +1559,19 @@ begin
     'pipeline value-quota count', WFC_PIPELINE_MAX_VALUE_QUOTA_COUNT);
   LConnectivityCount := CheckedLength(Length(AConnectivities),
     'pipeline connectivity count', WFC_PIPELINE_MAX_CONNECTIVITY_COUNT);
+  FHasPattern3D := False;
+  for I := 0 to LResourceCount - 1 do
+    if AResources[I].Kind = wprkPattern3D then FHasPattern3D := True;
+  for I := 0 to LPassCount - 1 do
+    if APasses[I].AdapterKind = wpakPattern3D then FHasPattern3D := True;
+  for I := 0 to LBridgeCount - 1 do
+    if ABridges[I].Kind = wpbkPattern3DProjection then FHasPattern3D := True;
+  LVersions := NormalizeVersions(AVersions, FHasPattern3D);
+  if FHasPattern3D then
+  begin
+    RequireQuotaInteger(ARank, 'pattern3d recipe rank');
+    RequireConnectivityBoolean(AWrapNeighbors, 'pattern3d recipe wrap policy');
+  end;
   if LConnectivityCount <> 0 then
     RequireQuotaInteger(ARank, 'connectivity recipe rank');
 
@@ -1663,6 +1745,7 @@ begin
   SetLength(FRuleResources, LResourceCount);
   SetLength(FPatternResources, LResourceCount);
   SetLength(FSequenceResources, LResourceCount);
+  SetLength(FPattern3DResources, LResourceCount);
   for I := 0 to LResourceCount - 1 do
   begin
     RequireEnumResourceKind(AResources[I].Kind,
@@ -1729,6 +1812,16 @@ begin
               raise EWfcPipelineModel.CreateFmt(
                 'resource %d sequence document is not canonical', [I]);
           end;
+        wprkPattern3D:
+          begin
+            FPattern3DResources[I] := DecodeWfcPattern3DText(AResources[I].Document);
+            LCurrentRelationSlotCount := CheckedDenseRelationSlotCount(
+              FPattern3DResources[I].PatternCount,
+              Format('resource %d pattern3d relation slots', [I]), 6);
+            if EncodeWfcPattern3DText(FPattern3DResources[I]) <> AResources[I].Document then
+              raise EWfcPipelineModel.CreateFmt(
+                'resource %d pattern3d document is not canonical', [I]);
+          end;
       end;
       if LTotalResourceRelationSlotCount >
           WFC_PIPELINE_MAX_TOTAL_RESOURCE_RELATION_SLOT_COUNT -
@@ -1760,6 +1853,9 @@ begin
     RequireEnumPassMode(APasses[I].Mode, Format('pass %d mode', [I]));
     RequireEnumAdapter(APasses[I].AdapterKind,
       Format('pass %d adapter', [I]));
+    if FHasPattern3D then
+      RequireConnectivityBoolean(APasses[I].HasSequenceExtent,
+        Format('pass %d sequence extent flag', [I]));
 
     if APasses[I].Mode = gpmTransform then
     begin
@@ -1867,6 +1963,26 @@ begin
               (APasses[I].SequenceExtent = wseWrap) then
             raise EWfcPipelineModel.CreateFmt(
               'open sequence pass %d cannot use wrap extent', [I]);
+        end;
+      wpakPattern3D:
+        begin
+          RequireQuotaInteger(APasses[I].ResourceIndex, Format('pass %d resource', [I]));
+          ValidateIndex(APasses[I].ResourceIndex, LResourceCount,
+            Format('pass %d resource', [I]));
+          if FResources[APasses[I].ResourceIndex].Kind <> wprkPattern3D then
+            raise EWfcPipelineModel.CreateFmt(
+              'pass %d pattern3d adapter requires a pattern3d resource', [I]);
+          if ARank <> 3 then
+            raise EWfcPipelineModel.CreateFmt(
+              'pass %d pattern3d adapter requires pipeline rank 3', [I]);
+          if APasses[I].Visibility <> wppvPrivate then
+            raise EWfcPipelineModel.CreateFmt(
+              'pass %d pattern3d adapter must remain private', [I]);
+          RequireConnectivityBoolean(APasses[I].HasSequenceExtent,
+            Format('pattern3d pass %d sequence extent flag', [I]));
+          if APasses[I].HasSequenceExtent or (APasses[I].SequenceExtent <> wseWhole) then
+            raise EWfcPipelineModel.CreateFmt(
+              'pattern3d pass %d cannot name a sequence extent', [I]);
         end;
     end;
     FPasses[I] := APasses[I];
@@ -1997,6 +2113,32 @@ begin
               FPasses[ABridges[I].SourcePassIndex].ResourceIndex].CopyPublicTokens,
             Format('sequence bridge %d', [I]));
         end;
+      wpbkPattern3DProjection:
+        begin
+          if (ARank <> 3) or (not AWrapNeighbors) then
+            raise EWfcPipelineModel.CreateFmt(
+              'pattern3d bridge %d requires a wrapped rank-3 pipeline', [I]);
+          if (FPasses[ABridges[I].SourcePassIndex].AdapterKind <> wpakPattern3D) or
+              (FPasses[ABridges[I].SourcePassIndex].Visibility <> wppvPrivate) then
+            raise EWfcPipelineModel.CreateFmt(
+              'pattern3d bridge %d requires a private pattern3d source', [I]);
+          if (FPasses[ABridges[I].TargetPassIndex].AdapterKind <> wpakEmpty) or
+              (FPasses[ABridges[I].TargetPassIndex].Visibility <> wppvPublic) or
+              (FPasses[ABridges[I].TargetPassIndex].Mode <> gpmOverlay) then
+            raise EWfcPipelineModel.CreateFmt(
+              'pattern3d bridge %d requires an empty public overlay target', [I]);
+          for J := 0 to FPattern3DResources[
+              FPasses[ABridges[I].SourcePassIndex].ResourceIndex].PaletteCount - 1 do
+            if WfcPattern3DTokenUsesReservedKeySyntax(FPattern3DResources[
+                FPasses[ABridges[I].SourcePassIndex].ResourceIndex].PaletteTokenAt(J)) then
+              raise EWfcPipelineModel.CreateFmt(
+                'pattern3d bridge %d palette token %d uses the reserved latent-key syntax', [I, J]);
+          { A palette token need not occur at every footprint offset. A wrapped
+            output may use only a feasible subset, or be contradictory. }
+          AssignVocabulary(ABridges[I].TargetPassIndex,
+            FPattern3DResources[FPasses[ABridges[I].SourcePassIndex].ResourceIndex].CopyPalette,
+            Format('pattern3d bridge %d', [I]));
+        end;
     end;
     FBridges[I] := ABridges[I];
   end;
@@ -2068,6 +2210,11 @@ begin
         'any requirement %d must contain at least one term', [I]);
     if ARequirements[I].Kind = wprqCount then
     begin
+      if FHasPattern3D then
+      begin
+        RequireQuotaInteger(ARequirements[I].MinimumCount, 'pattern3d requirement minimum');
+        RequireQuotaInteger(ARequirements[I].MaximumCount, 'pattern3d requirement maximum');
+      end;
       if LTermCount = 0 then
         raise EWfcPipelineModel.CreateFmt(
           'count requirement %d must contain at least one term', [I]);
@@ -2084,6 +2231,12 @@ begin
 
     for J := 0 to LTermCount - 1 do
     begin
+      if FHasPattern3D then
+      begin
+        RequirePattern3DSignedInteger(ARequirements[I].Terms[J].OffsetX, 'pattern3d requirement offset X');
+        RequirePattern3DSignedInteger(ARequirements[I].Terms[J].OffsetY, 'pattern3d requirement offset Y');
+        RequirePattern3DSignedInteger(ARequirements[I].Terms[J].OffsetZ, 'pattern3d requirement offset Z');
+      end;
       if (ARank = 1) and
           ((ARequirements[I].Terms[J].OffsetY <> 0) or
            (ARequirements[I].Terms[J].OffsetZ <> 0)) then
@@ -2521,6 +2674,16 @@ begin
     raise EWfcPipelineModel.CreateFmt(
       'resource %d is not a sequence resource', [AIndex]);
   Result := FSequenceResources[AIndex];
+end;
+
+function TWfcPipelineModel.BorrowPattern3DResource(
+  const AIndex: Integer): TWfcOverlappingModel3D;
+begin
+  RequireQuotaInteger(AIndex, 'pattern3d resource index');
+  ValidateResourceIndex(AIndex);
+  if FResources[AIndex].Kind <> wprkPattern3D then
+    raise EWfcPipelineModel.CreateFmt('resource %d is not a pattern3d resource', [AIndex]);
+  Result := FPattern3DResources[AIndex];
 end;
 
 end.

@@ -191,10 +191,14 @@ begin
       if P = TRAINING_STUDIO_CIRCULAR_PRESET then
         Check(Pos('wfclearn=5'#10, W.SourceText) = 1,
           'circular preset quota preserves wrapped source v5')
+      else if P=TRAINING_STUDIO_PATTERN3D_PRESET then
+        Check(Pos('wfclearn=6'#10,W.SourceText)=1,'overlapping volume quota retains source v6')
       else Check(Pos('wfclearn=3'#10, W.SourceText) = 1,
         'original preset quota retains source v3: ' + IntToStr(P));
-      Check(Pos('wfcpipeline=2'#10, W.RecipeText) = 1,
-        'every preset quota selects pipeline v2: ' + IntToStr(P));
+      if P=TRAINING_STUDIO_PATTERN3D_PRESET then
+        Check(Pos('wfcpipeline=4'#10,W.RecipeText)=1,'overlapping volume quota retains recipe v4')
+      else Check(Pos('wfcpipeline=2'#10, W.RecipeText) = 1,
+        'legacy preset quota selects pipeline v2: ' + IntToStr(P));
       Check((W.ValueQuotaCount = 1) and
         (W.TrainingSignatureText <> OldTraining),
         'authoring changes source identity and retains one descriptor');
@@ -214,14 +218,17 @@ begin
           (Model.ValueQuotaAt(0).PassIndex = W.PublicPassIndex) and
           (Model.PassAt(W.PublicPassIndex).Visibility = wppvPublic),
           'learning binds quota to current public output, never a private state pass');
-        if P in [2, 3, 4, TRAINING_STUDIO_CIRCULAR_PRESET] then
+        if P in [2, 3, 4, TRAINING_STUDIO_CIRCULAR_PRESET,TRAINING_STUDIO_PATTERN3D_PRESET] then
           Check(W.PublicPassIndex = 1, 'projection authoring resolves public pass one')
         else Check(W.PublicPassIndex = 0, 'direct authoring resolves public pass zero');
       finally Model.Free; end;
       Configure(W, O, Depth, P); W.Solve; Output := W.OutputTokens;
       Check((W.ResultStatus = wprsSolved) and (Count(Output, Token) = N),
         'hard authored count independently matches every output cell');
-      if P = 5 then
+      if P=TRAINING_STUDIO_PATTERN3D_PRESET then
+        Check(TrainingStudioLatticeOutputIsValid(O.Width,O.Height,Depth,Output),
+          'authored volume quota preserves supported planting semantics')
+      else if P = 5 then
         Check(TrainingStudioVolumeOutputIsValid(O.Width, O.Height, Depth, Output) and
           (Length(Output) = O.Width * O.Height * Depth), 'volume quota counts all Z slices')
       else Check(TrainingStudioOutputIsValid(P, O.Width, O.Height, Output),

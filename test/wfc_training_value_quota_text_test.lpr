@@ -95,7 +95,7 @@ begin
       LOptions := MakeWfcTrainingOptions(LKind, wmbWrap, wmsNone, 0, 0, 0);
       if LKind = wtkSequence then
       begin LOptions.Boundary := wmbOpen; LOptions.Order := 1; end;
-      if LKind = wtkPattern2D then
+      if LKind in [wtkPattern2D, wtkPattern3D] then
       begin LOptions.PatternWidth := 1; LOptions.PatternHeight := 1; end;
       LAgain := TWfcTrainingDocument.Create(LDocument.CopyMetadata,
         LOptions, LDocument.CopySamples, LDocument.CopyValueQuotas);
@@ -110,12 +110,18 @@ begin
         LLegacy := TWfcTrainingDocument.Create(LAgain.CopyMetadata,
           LAgain.CopyOptions, LAgain.CopySamples, nil);
         try
-          if LKind = wtkAdjacency3D then
+          if LKind = wtkPattern3D then
+            Check(WfcTrainingDocumentTextVersion(LLegacy) = 6, 'pattern volume stays v6')
+          else if LKind = wtkAdjacency3D then
             Check(WfcTrainingDocumentTextVersion(LLegacy) = 2, 'empty volume stays v2')
           else
             Check(WfcTrainingDocumentTextVersion(LLegacy) = 1, 'empty legacy stays v1');
-          Check(Pos('value-quota', EncodeWfcTrainingText(LLegacy)) = 0,
-            'removing last quota removes the feature section');
+          if LKind = wtkPattern3D then
+            Check(Pos('value-quota-version=0'#10'value-quotas=0'#10,
+              EncodeWfcTrainingText(LLegacy)) > 0, 'v6 retains explicit empty policy section')
+          else
+            Check(Pos('value-quota', EncodeWfcTrainingText(LLegacy)) = 0,
+              'removing last quota removes the feature section');
         finally LLegacy.Free; end;
       finally LAgain.Free; end;
     end;

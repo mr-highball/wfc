@@ -7,11 +7,27 @@ pas2js. The browser is a presentation edge over that same code, not another
 solver or learner.
 
 The [Studio example](../examples/learning/05_TrainingStudio/README.md) includes a
-browser workbench and a native demonstration of seven independently checked
+browser workbench and a native demonstration of eight independently checked
 presets. For file-oriented automation, use [wfc-learn](training.md) and the
 [recipe validator/runner](pipeline-artifacts.md).
 
 ## Editing has explicit consequences
+
+Preset 7, **Arched lattice / overlapping volumes**, is available directly at
+`index.html?preset=7`. Its editable 4×4×4 corpus trains 35 joint 2×2×2 patterns
+and a private-pattern → public-output recipe. Three visible XYZ locks select
+stone, leaf and air positions. Source/model/recipe formats are respectively
+`wfclearn=6`, `wfcp=2`, and `wfcpipeline=4`; exporting the separate run retains
+locks and seed. Quotas and connectivity apply to public tokens, not hidden
+pattern identities.
+
+Solved rank-3 outputs have an isometric SVG view as well as exact labeled Z
+slices. Rotate, hide one palette token, or cut away upper layers; these affect
+only the view, never saved output. Clicking a face selects its public XYZ cell
+for the ordinary lock editor. Invalidated results clear the scene and revoke
+the SVG download. Native `TrainingStudioVolume --help` exposes the same
+project-owned view and generation without a browser or graphics dependency.
+See [overlapping volumes](overlapping-3d.md) for the contracts and limits.
 
 A workspace owns one source draft, its trained recipe, one configured run, and
 one terminal result. It never exposes an owned graph, recipe, or result object.
@@ -240,7 +256,8 @@ The network editor adds explicit root/terminal XYZ positions, per-token
 participation and directional ports, required-by-value flags, and an
 all-participants option. [Connectivity authoring](training-connectivity.md)
 selects `wfclearn=4` for non-circular sources, preserving any quotas in the same
-source. Circular sequence sources remain `wfclearn=5` with either policy.
+source. Circular sequence sources remain `wfclearn=5` with either policy;
+overlapping volumes remain `wfclearn=6`.
 Editing either
 registry preserves the other. Policy drafts are mutually exclusive and block
 training, solving, source replacement, and exports until applied or discarded.

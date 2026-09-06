@@ -174,6 +174,8 @@ begin
       case ARecipe.BridgeAt(LBridgeIndex).Kind of
         wpbkPattern2DProjection:
           LCount := ARecipe.BorrowPattern2DResource(P.ResourceIndex).PatternCount;
+        wpbkPattern3DProjection:
+          LCount := ARecipe.BorrowPattern3DResource(P.ResourceIndex).PatternCount;
         wpbkSequenceProjection:
           LCount := ARecipe.BorrowSequenceResource(P.ResourceIndex).StateCount;
       else

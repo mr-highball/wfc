@@ -194,7 +194,9 @@ Neither policy makes an unsatisfiable wrapped size possible: the alternating
 checkerboard requires even cycle lengths. Locks and budgets are inputs, not
 promises of a successful solve.
 
-Overlapping 3D footprints, orientation-aware token transforms, raw voxel/mesh
+The separate [overlapping-volume layer](overlapping-3d.md) now supplies joint
+3D footprints, saved training/recipes and a native/browser token-volume view.
+Orientation-aware token transforms, raw voxel/mesh
 file import, streamed/chunked volume generation, and semantic physical
 validation remain separate extensions. A learned label model is not an authored
 `TVoxel3DKit`; it has no inferred sockets, prototype meshes, support strength,

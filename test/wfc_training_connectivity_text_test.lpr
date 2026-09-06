@@ -59,11 +59,11 @@ begin
       S[0] := MakeWfcTrainingSample('line', 4, 1, Tokens(['road', Cafe, 'road', Cafe]));
     wtkAdjacency2D, wtkPattern2D:
       S[0] := MakeWfcTrainingSample('plane', 2, 2, Tokens(['road', Cafe, Cafe, 'road']));
-    wtkAdjacency3D:
+    wtkAdjacency3D, wtkPattern3D:
       S[0] := MakeWfcTrainingSample('volume', 2, 2, 2,
         Tokens(['road', Cafe, Cafe, 'road', Cafe, 'road', 'road', Cafe]));
   end;
-  if AKind = wtkPattern2D then begin O.PatternWidth := 1; O.PatternHeight := 1; end;
+  if AKind in [wtkPattern2D, wtkPattern3D] then begin O.PatternWidth := 1; O.PatternHeight := 1; end;
   if AKind = wtkSequence then begin O.Boundary := wmbOpen; O.Order := 1; end;
   if AQuotas then
   begin
@@ -115,7 +115,9 @@ begin
       D := Fixture(K, HasQuota);
       try
         TextValue := EncodeWfcTrainingText(D);
-        Check(Pos('wfclearn=4'#10, TextValue) = 1, 'new profile explicitly selects v4');
+        if K = wtkPattern3D then
+          Check(Pos('wfclearn=6'#10, TextValue) = 1, 'pattern volume profile explicitly selects v6')
+        else Check(Pos('wfclearn=4'#10, TextValue) = 1, 'new profile explicitly selects v4');
         if HasQuota then
           Check(Pos('value-quota-version=1'#10'value-quotas=1'#10, TextValue) > 0, 'nonempty quota section')
         else
@@ -128,7 +130,9 @@ begin
             WfcTextDecodeToken('caf%C3%A9', 'fixture'), 'authored Unicode profile order preserved');
           Recipe := LearnWfcTrainingRecipe(Loaded);
           try
-            Check(Pos('wfcpipeline=3'#10, EncodeWfcPipelineModelText(Recipe)) = 1, 'lowered recipe carries connectivity');
+            if K = wtkPattern3D then
+              Check(Pos('wfcpipeline=4'#10, EncodeWfcPipelineModelText(Recipe)) = 1, 'lowered volume recipe carries connectivity')
+            else Check(Pos('wfcpipeline=3'#10, EncodeWfcPipelineModelText(Recipe)) = 1, 'lowered recipe carries connectivity');
             Check(Recipe.ConnectivityCount = 1, 'one public connectivity descriptor');
           finally Recipe.Free; end;
         finally Loaded.Free; end;
@@ -136,7 +140,8 @@ begin
           D.CopySamples, D.CopyValueQuotas);
         try
           OldText := EncodeWfcTrainingText(Old);
-          if HasQuota then Check(Pos('wfclearn=3'#10, OldText) = 1, 'quota-only keeps v3')
+          if K = wtkPattern3D then Check(Pos('wfclearn=6'#10, OldText) = 1, 'volume pattern keeps v6')
+          else if HasQuota then Check(Pos('wfclearn=3'#10, OldText) = 1, 'quota-only keeps v3')
           else if K = wtkAdjacency3D then Check(Pos('wfclearn=2'#10, OldText) = 1, 'volume keeps v2')
           else Check(Pos('wfclearn=1'#10, OldText) = 1, 'legacy kind keeps v1');
           Loaded := TWfcTrainingDocument.Create(D.CopyMetadata, D.CopyOptions,

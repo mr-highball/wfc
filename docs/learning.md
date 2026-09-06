@@ -303,7 +303,8 @@ exact suffix/prefix compatibility intentionally permits recombination. These
 generic learners retain their explicit token boundary; the specialized
 [text foundation](text.md) now converts raw in-memory documents with a
 project-owned Unicode-scalar tokenizer or caller callback. The ecosystem does
-not yet stream spatial corpora, extract overlapping 3D footprints, smooth
+now also extracts [joint overlapping 3D footprints](overlapping-3d.md), but does
+not yet stream spatial corpora, smooth
 unseen relations, infer semantic tags, or implement a probabilistic language
 model. Training documents and recipes retain declared source/license provenance;
 standalone models retain observations, not those declarations. These are

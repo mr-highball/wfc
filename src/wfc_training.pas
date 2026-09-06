@@ -38,6 +38,7 @@ const
   WFC_TRAINING_VALUE_QUOTA_VERSION = 1;
   WFC_TRAINING_CONNECTIVITY_VERSION = 1;
   WFC_TRAINING_SEQUENCE_WRAP_VERSION = 1;
+  WFC_TRAINING_PATTERN_3D_VERSION = 1;
 
   WFC_TRAINING_MAX_SAMPLE_COUNT = 4096;
   WFC_TRAINING_MAX_TOTAL_TOKEN_COUNT = 65536;
@@ -64,7 +65,8 @@ type
     wtkAdjacency2D,
     wtkPattern2D,
     wtkSequence,
-    wtkAdjacency3D
+    wtkAdjacency3D,
+    wtkPattern3D
   );
 
   TWfcTrainingSample = record
@@ -91,6 +93,8 @@ type
     PatternWidth: Integer;
     PatternHeight: Integer;
     Order: Integer;
+    { Appended: legacy kinds normalize to one without reading caller storage. }
+    PatternDepth: Integer;
   end;
 
   { Explicit author policy on the learned public output, not an inference
@@ -191,7 +195,12 @@ function MakeWfcTrainingOptions(const AKind: TWfcTrainingKind;
   const ABoundary: TWfcModelBoundary;
   const ASymmetry: TWfcModelSymmetry;
   const APatternWidth, APatternHeight,
-  AOrder: Integer): TWfcTrainingOptions;
+  AOrder: Integer): TWfcTrainingOptions; overload;
+function MakeWfcTrainingOptions(const AKind: TWfcTrainingKind;
+  const ABoundary: TWfcModelBoundary;
+  const ASymmetry: TWfcModelSymmetry;
+  const APatternWidth, APatternHeight, APatternDepth,
+  AOrder: Integer): TWfcTrainingOptions; overload;
 
 function MakeWfcTrainingValueQuota(const ALabelText: TWfcModelToken;
   const AValues: TWfcModelTokens;
@@ -227,6 +236,9 @@ uses
   wfc_pattern2d,
   wfc_pattern2d_learn,
   wfc_pattern2d_text,
+  wfc_pattern3d,
+  wfc_pattern3d_learn,
+  wfc_pattern3d_text,
   wfc_sequence,
   wfc_sequence_learn,
   wfc_sequence_text,
@@ -370,6 +382,8 @@ begin
       Result := 'sequence';
     wtkAdjacency3D:
       Result := 'adjacency3d';
+    wtkPattern3D:
+      Result := 'pattern3d';
   else
     raise EWfcTraining.Create('unknown training kind');
   end;
@@ -435,7 +449,12 @@ var
   J: Integer;
 begin
   Result := FNV_OFFSET_BASIS;
-  if WfcTrainingOptionsUseWrappedSequence(AOptions) then
+  if AOptions.Kind = wtkPattern3D then
+  begin
+    HashAscii(Result, 'wfclearn-v6');
+    HashAscii(Result, '6');
+  end
+  else if WfcTrainingOptionsUseWrappedSequence(AOptions) then
   begin
     HashAscii(Result, 'wfclearn-v5');
     HashAscii(Result, '5');
@@ -468,6 +487,8 @@ begin
   HashAscii(Result, SymmetryCode(AOptions.Symmetry));
   HashAscii(Result, IntToStr(AOptions.PatternWidth));
   HashAscii(Result, IntToStr(AOptions.PatternHeight));
+  if AOptions.Kind = wtkPattern3D then
+    HashAscii(Result, IntToStr(AOptions.PatternDepth));
   HashAscii(Result, IntToStr(AOptions.Order));
   HashAscii(Result, IntToStr(Length(ASamples)));
   for I := 0 to Length(ASamples) - 1 do
@@ -475,11 +496,16 @@ begin
     HashAscii(Result, CanonicalToken(ASamples[I].Name));
     HashAscii(Result, IntToStr(ASamples[I].Width));
     HashAscii(Result, IntToStr(ASamples[I].Height));
-    if AOptions.Kind = wtkAdjacency3D then
+    if AOptions.Kind in [wtkAdjacency3D, wtkPattern3D] then
       HashAscii(Result, IntToStr(ASamples[I].Depth));
     HashAscii(Result, IntToStr(Length(ASamples[I].Tokens)));
     for J := 0 to Length(ASamples[I].Tokens) - 1 do
       HashAscii(Result, CanonicalToken(ASamples[I].Tokens[J]));
+  end;
+  if AOptions.Kind = wtkPattern3D then
+  begin
+    HashAscii(Result, 'pattern3d');
+    HashAscii(Result, IntToStr(WFC_TRAINING_PATTERN_3D_VERSION));
   end;
   if WfcTrainingOptionsUseWrappedSequence(AOptions) then
   begin
@@ -803,7 +829,7 @@ begin
   case AOptions.Kind of
     wtkAdjacency1D, wtkSequence: LRank := 1;
     wtkAdjacency2D, wtkPattern2D: LRank := 2;
-    wtkAdjacency3D: LRank := 3;
+    wtkAdjacency3D, wtkPattern3D: LRank := 3;
   else raise EWfcTraining.Create('unknown training kind'); end;
   LTotalValues := 0; LTotalTerminals := 0;
   { Preflight the complete externally supplied shape before owned registries
@@ -958,6 +984,25 @@ begin
           raise EWfcTraining.Create(
             'adjacency3d training order must be 0');
       end;
+    wtkPattern3D:
+      begin
+        RequireWrappedSequenceInteger(AOptions.PatternWidth, 'pattern3d footprint width');
+        RequireWrappedSequenceInteger(AOptions.PatternHeight, 'pattern3d footprint height');
+        RequireWrappedSequenceInteger(AOptions.PatternDepth, 'pattern3d footprint depth');
+        RequireQuotaInteger(AOptions.Order, 'pattern3d order');
+        if AOptions.Order <> 0 then
+          raise EWfcTraining.Create('pattern3d training order must be 0');
+        CheckedMultiply(CheckedMultiply(AOptions.PatternWidth,AOptions.PatternHeight,
+          WFC_TRAINING_MAX_FOOTPRINT_CELL_COUNT,'pattern3d footprint plane'),
+          AOptions.PatternDepth,WFC_TRAINING_MAX_FOOTPRINT_CELL_COUNT,
+          'pattern3d footprint cell count');
+        if (AOptions.Symmetry = wmsD4) and (AOptions.PatternWidth <> AOptions.PatternHeight) then
+          raise EWfcTraining.Create('D4 pattern3d training requires a square XY footprint');
+        if (AOptions.Symmetry in [wmsCubeRotations,wmsCubeFull]) and
+          ((AOptions.PatternWidth <> AOptions.PatternHeight) or
+           (AOptions.PatternWidth <> AOptions.PatternDepth)) then
+          raise EWfcTraining.Create('cube pattern3d training requires a cubic footprint');
+      end;
   end;
 end;
 
@@ -990,6 +1035,8 @@ begin
       LTokenLimit := WFC_MODEL_MAX_VALUE_COUNT;
     wtkPattern2D:
       LTokenLimit := WFC_PATTERN_2D_MAX_PALETTE_COUNT;
+    wtkPattern3D:
+      LTokenLimit := WFC_PATTERN_3D_MAX_PALETTE_COUNT;
     wtkSequence:
       LTokenLimit := WFC_SEQUENCE_MAX_PUBLIC_TOKEN_COUNT;
   else
@@ -1119,6 +1166,11 @@ begin
     LFootprintCells := CheckedMultiply(AOptions.PatternWidth,
       AOptions.PatternHeight, WFC_TRAINING_MAX_FOOTPRINT_CELL_COUNT,
       'pattern2d footprint cell count')
+  else if AOptions.Kind = wtkPattern3D then
+    LFootprintCells := CheckedMultiply(CheckedMultiply(AOptions.PatternWidth,
+      AOptions.PatternHeight,WFC_TRAINING_MAX_FOOTPRINT_CELL_COUNT,
+      'pattern3d footprint plane'),AOptions.PatternDepth,
+      WFC_TRAINING_MAX_FOOTPRINT_CELL_COUNT,'pattern3d footprint cell count')
   else
     LFootprintCells := 1;
 
@@ -1128,6 +1180,12 @@ begin
     begin
       RequireWrappedSequenceInteger(ASamples[I].Width, 'circular sample width');
       RequireWrappedSequenceInteger(ASamples[I].Height, 'circular sample height');
+    end;
+    if AOptions.Kind = wtkPattern3D then
+    begin
+      RequireWrappedSequenceInteger(ASamples[I].Width, 'pattern3d sample width');
+      RequireWrappedSequenceInteger(ASamples[I].Height, 'pattern3d sample height');
+      RequireWrappedSequenceInteger(ASamples[I].Depth, 'pattern3d sample depth');
     end;
     AccumulateEncodedToken(ASamples[I].Name,
       'training sample name', LEncodedTotal);
@@ -1150,7 +1208,7 @@ begin
       raise EWfcTraining.CreateFmt(
         'training sample dimensions are outside the version-1 limit [%d]',
         [I]);
-    if (AOptions.Kind = wtkAdjacency3D) and
+    if (AOptions.Kind in [wtkAdjacency3D,wtkPattern3D]) and
         ((ASamples[I].Depth < 1) or
         (ASamples[I].Depth > WFC_TRAINING_MAX_DIMENSION)) then
       raise EWfcTraining.CreateFmt(
@@ -1162,7 +1220,7 @@ begin
     LSampleCells := CheckedMultiply(ASamples[I].Width,
       ASamples[I].Height, WFC_TRAINING_MAX_TOTAL_TOKEN_COUNT,
       'training sample cell count');
-    if AOptions.Kind = wtkAdjacency3D then
+    if AOptions.Kind in [wtkAdjacency3D,wtkPattern3D] then
       LSampleCells := CheckedMultiply(LSampleCells, ASamples[I].Depth,
         WFC_TRAINING_MAX_TOTAL_TOKEN_COUNT,
         'training sample volume cell count');
@@ -1207,6 +1265,27 @@ begin
           LBaseVisits := CheckedMultiply(LBaseVisits, LFootprintCells,
             WFC_TRAINING_MAX_VISIT_COUNT,
             'pattern2d payload visit count');
+        end;
+      wtkPattern3D:
+        begin
+          if AOptions.Boundary = wmbOpen then
+          begin
+            if (ASamples[I].Width < AOptions.PatternWidth) or
+              (ASamples[I].Height < AOptions.PatternHeight) or
+              (ASamples[I].Depth < AOptions.PatternDepth) then
+              raise EWfcTraining.Create('open pattern3d source is smaller than its footprint');
+            LBaseVisits := CheckedMultiply(CheckedMultiply(
+              ASamples[I].Width-AOptions.PatternWidth+1,
+              ASamples[I].Height-AOptions.PatternHeight+1,
+              WFC_TRAINING_MAX_VISIT_COUNT,'pattern3d origin plane'),
+              ASamples[I].Depth-AOptions.PatternDepth+1,
+              WFC_TRAINING_MAX_VISIT_COUNT,'pattern3d origin volume');
+          end
+          else LBaseVisits := LSampleCells;
+          LBaseVisits := CheckedMultiply(LBaseVisits,LTransformCount,
+            WFC_TRAINING_MAX_VISIT_COUNT,'pattern3d transformed visits');
+          LBaseVisits := CheckedMultiply(LBaseVisits,LFootprintCells,
+            WFC_TRAINING_MAX_VISIT_COUNT,'pattern3d payload visits');
         end;
       wtkSequence:
         LBaseVisits := CheckedMultiply(LSampleCells, AOptions.Order,
@@ -1260,6 +1339,32 @@ begin
   Result.PatternWidth := APatternWidth;
   Result.PatternHeight := APatternHeight;
   Result.Order := AOrder;
+  Result.PatternDepth := 1;
+end;
+
+function MakeWfcTrainingOptions(const AKind: TWfcTrainingKind;
+  const ABoundary: TWfcModelBoundary;
+  const ASymmetry: TWfcModelSymmetry;
+  const APatternWidth, APatternHeight, APatternDepth,
+  AOrder: Integer): TWfcTrainingOptions;
+begin
+  Result := MakeWfcTrainingOptions(AKind,ABoundary,ASymmetry,
+    APatternWidth,APatternHeight,AOrder);
+  if AKind = wtkPattern3D then Result.PatternDepth := APatternDepth;
+end;
+
+function NormalizeTrainingOptions(const AOptions: TWfcTrainingOptions): TWfcTrainingOptions;
+begin
+  { Do not copy the whole caller record: pre-extension callers can leave its
+    appended field uninitialized (or install a throwing JS getter there). }
+  Result.Kind := AOptions.Kind;
+  Result.Boundary := AOptions.Boundary;
+  Result.Symmetry := AOptions.Symmetry;
+  Result.PatternWidth := AOptions.PatternWidth;
+  Result.PatternHeight := AOptions.PatternHeight;
+  Result.Order := AOptions.Order;
+  if Result.Kind = wtkPattern3D then Result.PatternDepth := AOptions.PatternDepth
+  else Result.PatternDepth := 1;
 end;
 
 function WfcTrainingSignatureHex(const ASignature: Cardinal): String;
@@ -1344,12 +1449,14 @@ procedure TWfcTrainingDocument.Initialize(
   const AConnectivities: TWfcTrainingConnectivities);
 var
   LTotalTokenCount: Integer;
+  LOptions: TWfcTrainingOptions;
 begin
-  ValidateTrainingInput(AMetadata, AOptions, ASamples, AValueQuotas, AConnectivities,
+  LOptions := NormalizeTrainingOptions(AOptions);
+  ValidateTrainingInput(AMetadata, LOptions, ASamples, AValueQuotas, AConnectivities,
     LTotalTokenCount);
   FMetadata := AMetadata;
-  FOptions := AOptions;
-  FSamples := CloneSamples(ASamples, AOptions.Kind = wtkAdjacency3D);
+  FOptions := LOptions;
+  FSamples := CloneSamples(ASamples, LOptions.Kind in [wtkAdjacency3D,wtkPattern3D]);
   FValueQuotas := CloneValueQuotas(AValueQuotas);
   FConnectivities := CloneConnectivities(AConnectivities);
   FTotalTokenCount := LTotalTokenCount;
@@ -1500,6 +1607,7 @@ var
   LModel: TWfcModel;
   LOptions: TWfcTrainingOptions;
   LPattern: TWfcOverlappingModel2D;
+  LPattern3D: TWfcOverlappingModel3D;
   LSamples: TWfcLearnSamples;
   LSequence: TWfcSequenceModel;
   LSequenceSamples: TWfcSequenceSamples;
@@ -1574,6 +1682,18 @@ begin
         finally
           LModel.Free;
         end;
+      end;
+    wtkPattern3D:
+      begin
+        LVolumeSamples := BuildLearnVolumeSamples(ADocument);
+        LPattern3D := LearnOverlappingModel3DCorpus(LVolumeSamples,
+          LOptions.PatternWidth,LOptions.PatternHeight,LOptions.PatternDepth,
+          LOptions.Boundary,LOptions.Symmetry);
+        try
+          Result := EncodeWfcPattern3DText(LPattern3D);
+          if (ADocument.ValueQuotaCount <> 0) or (ADocument.ConnectivityCount <> 0) then
+            APublicVocabulary := LPattern3D.CopyPalette;
+        finally LPattern3D.Free; end;
       end;
   else
     raise EWfcTraining.Create('unknown training kind');
@@ -1714,11 +1834,11 @@ begin
     Result := Result + TWfcModelToken(IntToStr(I) + ':' +
       CanonicalToken(LSample.Name) + ':' + IntToStr(LSample.Width) + 'x' +
       IntToStr(LSample.Height));
-    if LOptions.Kind = wtkAdjacency3D then
+    if LOptions.Kind in [wtkAdjacency3D,wtkPattern3D] then
       Result := Result + TWfcModelToken('x' + IntToStr(LSample.Depth));
     Result := Result + TWfcModelToken(':' +
       WfcTrainingSignatureHex(CalculateSampleSignature(LSample,
-        LOptions.Kind = wtkAdjacency3D)));
+        LOptions.Kind in [wtkAdjacency3D,wtkPattern3D])));
   end;
   LEncoded := WfcTextEncodeToken(Result,
     'WFC training recipe source description');
@@ -1758,7 +1878,10 @@ begin
       'pattern2d recipe export currently requires wrapped training input');
 
   LMetadata := ADocument.CopyMetadata;
-  if WfcTrainingOptionsUseWrappedSequence(LOptions) then
+  if LOptions.Kind = wtkPattern3D then
+    LFingerprint := TWfcModelToken('wfclearn-v6/' +
+      WfcTrainingSignatureHex(ADocument.Signature))
+  else if WfcTrainingOptionsUseWrappedSequence(LOptions) then
     LFingerprint := TWfcModelToken('wfclearn-v5/' +
       WfcTrainingSignatureHex(ADocument.Signature))
   else if ADocument.ConnectivityCount <> 0 then
@@ -1788,6 +1911,8 @@ begin
       LResourceKind := wprkModel;
     wtkPattern2D:
       LResourceKind := wprkPattern2D;
+    wtkPattern3D:
+      LResourceKind := wprkPattern3D;
     wtkSequence:
       LResourceKind := wprkSequence;
   else
@@ -1840,6 +1965,17 @@ begin
         LBridges[0] := MakeWfcPipelineBridge(
           wpbkPattern2DProjection, 0, 1);
       end;
+    wtkPattern3D:
+      begin
+        LRank := 3;
+        SetLength(LPasses,2);
+        LPasses[0] := MakeWfcPipelinePass('patterns',wppvPrivate,
+          gpmOverlay,WFC_PIPELINE_NO_INDEX,wpakPattern3D,0,False,wseWhole);
+        LPasses[1] := MakeWfcPipelinePass('output',wppvPublic,
+          gpmOverlay,WFC_PIPELINE_NO_INDEX,wpakEmpty,WFC_PIPELINE_NO_INDEX,False,wseWhole);
+        SetLength(LDependencies,1); LDependencies[0] := MakeWfcPipelineDependency(1,0);
+        SetLength(LBridges,1); LBridges[0] := MakeWfcPipelineBridge(wpbkPattern3DProjection,0,1);
+      end;
     wtkSequence:
       begin
         LRank := 1;
@@ -1863,6 +1999,9 @@ begin
   end;
 
   LWrap := LOptions.Boundary = wmbWrap;
+  { Output topology belongs to the public same-size bridge. Source extraction
+    remains independently open/wrapped inside the immutable learned resource. }
+  if LOptions.Kind = wtkPattern3D then LWrap := True;
   LPublicPassIndex := WFC_PIPELINE_NO_INDEX;
   for I := 0 to Length(LPasses) - 1 do
     if LPasses[I].LabelName = 'output' then

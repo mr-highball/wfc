@@ -7,7 +7,8 @@ pipeline without serializing a live `TGraph`:
 - `wfcpipeline=1` stores an immutable declarative pipeline recipe containing
   typed resources, passes, dependencies, projection bridges, and public-token
   requirements; opt-in `wfcpipeline=2` adds whole-pass public-token quotas,
-  and `wfcpipeline=3` adds rooted public-token connectivity;
+  `wfcpipeline=3` adds rooted public-token connectivity, and `wfcpipeline=4`
+  adds overlapping-volume resources/adapters/bridges while preserving both policies;
 - `wfcpipeline-run=1` stores one recipe-bound invocation, including shape,
   seed, solve policy, public locks, and public allowed-token domains; and
 - `wfcpipeline-result=1` stores the terminal status, evidence identity, pass
@@ -141,10 +142,11 @@ passes must be private because their graph keys are representation details.
 They can reach a public layer only through one of the closed bridge kinds:
 
 - `pattern2d-projection` declares a wrapped rank-2 palette projection;
+- `pattern3d-projection` declares a wrapped, same-sized rank-3 XYZ projection;
 - `sequence-projection` declares the emitted-token projection of a rank-1
   sequence.
 
-The two bridge-version fields are independent. Versions 1 and 2 are accepted;
+The 2D pattern and sequence bridge-version fields are independent. Versions 1 and 2 are accepted;
 newly constructed recipes select version 2. Version 1 retains the original
 forward-only materialization contract. Version 2 additionally lowers public
 locks and domains through its matching bridge before the private source pass
@@ -155,9 +157,15 @@ This preparation behavior is the `WFC_PIPELINE_RUNTIME_VERSION = 2`
 contract; it does not change the outer run or result text envelopes. Recipes
 without global extensions remain version 1; [quota-only recipes](pipeline-value-quotas.md)
 select version 2, and [connectivity-bearing recipes](pipeline-connectivity.md)
-select version 3, with or without quotas.
+select version 3, with or without quotas. A recipe containing an overlapping
+volume resource, adapter or bridge selects version 4. It adds independent
+`pattern3d-graph-adapter-version=1` and `pattern3d-bridge-version=1` fields;
+the latter includes inverse public XYZ domains from its first version. Both
+policy sections are present, with zero version/count when absent. Legacy
+recipes never read the appended 3D version fields and keep exact identities.
+See [overlapping volumes](overlapping-3d.md).
 
-Pattern projection rejects palette tokens in the reserved private-key form
+2D pattern projection rejects palette tokens in the reserved private-key form
 `@p` followed only by decimal digits. The recipe and runtime adapter call the
 same project-owned predicate, so a recipe cannot validate and later fail only
 because its public vocabulary collides with latent graph keys.
@@ -166,7 +174,7 @@ The IR validates bridge topology, endpoints, dependency and vocabulary
 ownership, and derives target vocabularies. The compiler materializes those
 bridges into a fresh graph. Its tentative-commit hook independently checks
 private pattern and sequence captures, exact transform copies, both projection
-kinds, public-token requirements, and declared quotas before the core can publish staged
+kinds (including full XYZ footprints), public-token requirements, and declared quotas before the core can publish staged
 entries. Rule and generic-model passes use the graph's complete local
 constraint surface because those adapters do not expose a separate solved
 capture validator.
@@ -212,7 +220,8 @@ validator both enforce the range; see the [complete count contract](pass-counts.
 ## Canonical recipe, run, and result text
 
 `wfc_pipeline_text` encodes and decodes `wfcpipeline=1`, quota-bearing
-`wfcpipeline=2`, and connectivity-bearing `wfcpipeline=3`. Its line-oriented
+`wfcpipeline=2`, connectivity-bearing `wfcpipeline=3`, and feature-selected
+overlapping-volume `wfcpipeline=4`. Its line-oriented
 format has fixed field order and contiguous indexed records for resources,
 passes, dependencies, bridges, requirements, terms, and allowed tokens.
 Embedded documents are carried as one canonical percent-encoded field.
@@ -380,7 +389,7 @@ wfc-validate --version
 `INPUT` is one recipe file or `-` for standard input. The default success
 output is a one-line recipe summary. `--quiet` suppresses it;
 `--emit-canonical` writes the exact input after strict decode and byte-for-byte
-canonical verification. Recipe validation supports `wfcpipeline=1,2,3` syntax, signatures,
+canonical verification. Recipe validation supports `wfcpipeline=1,2,3,4` syntax, signatures,
 typed resources, provenance, references, topology, vocabularies, and static
 limits. It does not compile or solve the recipe.
 

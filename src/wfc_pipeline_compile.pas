@@ -82,7 +82,9 @@ type
     wpcvkSequenceBridge,
     wpcvkRequirement,
     wpcvkValueQuota,
-    wpcvkConnectivity
+    wpcvkConnectivity,
+    wpcvkPattern3DPass,
+    wpcvkPattern3DBridge
   );
 
   TWfcPipelineCommitValidation = record
@@ -141,6 +143,8 @@ uses
   wfc_rule_model,
   wfc_pattern2d,
   wfc_pattern2d_graph,
+  wfc_pattern3d,
+  wfc_pattern3d_graph,
   wfc_sequence,
   wfc_sequence_graph,
   wfc_token_lookup,
@@ -459,6 +463,29 @@ begin
   Result := AIssue.Y * Integer(AGraph.Dimension.Width) + AIssue.X;
 end;
 
+function Pattern3DIssueEntry(const AGraph: TGraph;
+  const AIssue: TWfcOverlapping3DIssue;
+  const AProjection: Boolean = False): Integer;
+var X, Y, Z, W, H, D: Integer;
+begin
+  Result := -1;
+  W := Integer(AGraph.Dimension.Width); H := Integer(AGraph.Dimension.Height);
+  D := Integer(AGraph.Dimension.Depth);
+  if (AIssue.X < 0) or (AIssue.Y < 0) or (AIssue.Z < 0) or
+      (AIssue.X >= W) or (AIssue.Y >= H) or (AIssue.Z >= D) then Exit;
+  X := AIssue.X; Y := AIssue.Y; Z := AIssue.Z;
+  if AProjection and (AIssue.Kind = wo3ikProjectionToken) then
+  begin
+    { A projection mismatch reports its contributing anchor and footprint
+      offset. Attribute a public commit failure to the actual wrapped voxel,
+      not to that private anchor. Both dimensions and offsets are bounded. }
+    X := (X + AIssue.PatternOffsetX) mod W;
+    Y := (Y + AIssue.PatternOffsetY) mod H;
+    Z := (Z + AIssue.PatternOffsetZ) mod D;
+  end;
+  Result := (Z * H + Y) * W + X;
+end;
+
 constructor TWfcPipelineCommitGraph.CreatePass(const ARoot: TGraph;
   const APassIndex: Integer);
 begin
@@ -540,6 +567,8 @@ begin
     case FRecipe.BridgeAt(LBridgeIndex).Kind of
       wpbkPattern2DProjection:
         LCount := FRecipe.BorrowPattern2DResource(LPass.ResourceIndex).PatternCount;
+      wpbkPattern3DProjection:
+        LCount := FRecipe.BorrowPattern3DResource(LPass.ResourceIndex).PatternCount;
       wpbkSequenceProjection:
         LCount := FRecipe.BorrowSequenceResource(LPass.ResourceIndex).StateCount;
     else
@@ -560,6 +589,7 @@ var
   LValues, LSourceValues, LAllowedValues: TGraphValues;
   LLookup: TWfcTokenLookup;
   LPattern: TWfcOverlappingModel2D;
+  LPattern3D: TWfcOverlappingModel3D;
   LSequence: TWfcSequenceModel;
   LToken: TWfcModelToken;
   LLabel: String;
@@ -589,6 +619,7 @@ begin
       LLookup := TWfcTokenLookup.Create(LQuota.Values);
       try
         LPattern := nil;
+        LPattern3D := nil;
         LSequence := nil;
         case LBridge.Kind of
           wpbkPattern2DProjection:
@@ -597,6 +628,13 @@ begin
                 FRecipe.PassAt(LSourceIndex).ResourceIndex);
               if Length(LSourceValues) <> LPattern.PatternCount then
                 raise EInvalidOperation.Create('quota pattern registry mismatch');
+            end;
+          wpbkPattern3DProjection:
+            begin
+              LPattern3D := FRecipe.BorrowPattern3DResource(
+                FRecipe.PassAt(LSourceIndex).ResourceIndex);
+              if Length(LSourceValues) <> LPattern3D.PatternCount then
+                raise EInvalidOperation.Create('quota volume pattern registry mismatch');
             end;
           wpbkSequenceProjection:
             begin
@@ -613,6 +651,9 @@ begin
               not count every overlapping footprint occurrence. }
             LToken := LPattern.PaletteTokenAt(
               LPattern.PatternPaletteIndexAt(J, 0, 0))
+          else if Assigned(LPattern3D) then
+            LToken := LPattern3D.PaletteTokenAt(
+              LPattern3D.PatternPaletteIndexAt(J, 0, 0, 0))
           else
             LToken := LSequence.PublicTokenAt(
               LSequence.StateEmittedTokenIndexAt(J));
@@ -722,6 +763,7 @@ var I, J, K, LPassIndex, LBridgeIndex, LSourceIndex, LCount: Integer;
   LProfiles, LLatentProfiles: TGraphConnectivityValues;
   LSourceValues: TGraphValues; LProfileTokens: TWfcModelTokens;
   LLookup: TWfcTokenLookup; LPattern: TWfcOverlappingModel2D;
+  LPattern3D: TWfcOverlappingModel3D;
   LSequence: TWfcSequenceModel; LToken: TWfcModelToken; LLabel: String;
 begin
   for I := 0 to FRecipe.ConnectivityCount - 1 do
@@ -749,7 +791,7 @@ begin
       SetLength(LLatentProfiles, Length(LSourceValues));
       LLookup := TWfcTokenLookup.Create(LProfileTokens);
       try
-        LPattern := nil; LSequence := nil;
+        LPattern := nil; LPattern3D := nil; LSequence := nil;
         case B.Kind of
           wpbkPattern2DProjection:
             begin
@@ -757,6 +799,13 @@ begin
                 FRecipe.PassAt(LSourceIndex).ResourceIndex);
               if Length(LSourceValues) <> LPattern.PatternCount then
                 raise EInvalidOperation.Create('connectivity pattern registry mismatch');
+            end;
+          wpbkPattern3DProjection:
+            begin
+              LPattern3D := FRecipe.BorrowPattern3DResource(
+                FRecipe.PassAt(LSourceIndex).ResourceIndex);
+              if Length(LSourceValues) <> LPattern3D.PatternCount then
+                raise EInvalidOperation.Create('connectivity volume pattern registry mismatch');
             end;
           wpbkSequenceProjection:
             begin
@@ -773,6 +822,8 @@ begin
         begin
           if Assigned(LPattern) then
             LToken := LPattern.PaletteTokenAt(LPattern.PatternPaletteIndexAt(J, 0, 0))
+          else if Assigned(LPattern3D) then
+            LToken := LPattern3D.PaletteTokenAt(LPattern3D.PatternPaletteIndexAt(J, 0, 0, 0))
           else
             LToken := LSequence.PublicTokenAt(LSequence.StateEmittedTokenIndexAt(J));
           K := LLookup.Find(LToken);
@@ -977,6 +1028,9 @@ begin
         wpakPattern2D:
           ApplyOverlappingModel2DToGraph(
             ARecipe.BorrowPattern2DResource(LPass.ResourceIndex), FGraph);
+        wpakPattern3D:
+          ApplyOverlappingModel3DToGraph(
+            ARecipe.BorrowPattern3DResource(LPass.ResourceIndex), FGraph);
         wpakSequence:
           ApplySequenceModelToGraph(
             ARecipe.BorrowSequenceResource(LPass.ResourceIndex), FGraph,
@@ -996,6 +1050,11 @@ begin
         wpbkPattern2DProjection:
           ApplyOverlappingProjectionFromPass2D(
             ARecipe.BorrowPattern2DResource(
+              ARecipe.PassAt(LBridge.SourcePassIndex).ResourceIndex),
+            FGraph, LGraphLabels[LBridge.SourcePassIndex]);
+        wpbkPattern3DProjection:
+          ApplyOverlappingProjectionFromPass3D(
+            ARecipe.BorrowPattern3DResource(
               ARecipe.PassAt(LBridge.SourcePassIndex).ResourceIndex),
             FGraph, LGraphLabels[LBridge.SourcePassIndex]);
         wpbkSequenceProjection:
@@ -1156,6 +1215,9 @@ var
   LPatternGrid: TWfcPatternGrid2D;
   LPatternReport: TWfcOverlapping2DValidationReport;
   LProjection: TWfcTokenGrid2D;
+  LPatternGrid3D: TWfcPatternGrid3D;
+  LPatternReport3D: TWfcOverlapping3DValidationReport;
+  LProjection3D: TWfcTokenGrid3D;
   LProviderGraph: TGraph;
   LRequirement: TWfcPipelineRequirement;
   LSequence: TWfcGeneratedSequence;
@@ -1192,6 +1254,19 @@ begin
           FLastValidation.PassIndex := I;
           FLastValidation.EntryIndex := PatternIssueEntry(
             FGraph.PassGraph[I], LPatternReport.Issue);
+          AFailedPassIndex := I;
+          AFailedEntryIndex := FLastValidation.EntryIndex;
+          Exit(False);
+        end;
+      wpakPattern3D:
+        if not CaptureSolvedPatternGrid3D(
+            FRecipe.BorrowPattern3DResource(LPass.ResourceIndex),
+            FGraph.PassGraph[I], LPatternGrid3D, LPatternReport3D) then
+        begin
+          FLastValidation.Kind := wpcvkPattern3DPass;
+          FLastValidation.PassIndex := I;
+          FLastValidation.EntryIndex := Pattern3DIssueEntry(
+            FGraph.PassGraph[I], LPatternReport3D.Issue);
           AFailedPassIndex := I;
           AFailedEntryIndex := FLastValidation.EntryIndex;
           Exit(False);
@@ -1262,6 +1337,23 @@ begin
           FLastValidation.EntryIndex := PatternIssueEntry(
             FGraph.PassGraph[LBridge.TargetPassIndex],
             LPatternReport.Issue);
+          AFailedPassIndex := LBridge.TargetPassIndex;
+          AFailedEntryIndex := FLastValidation.EntryIndex;
+          Exit(False);
+        end;
+      wpbkPattern3DProjection:
+        if not CaptureSolvedOverlappingProjectionPass3D(
+            FRecipe.BorrowPattern3DResource(
+              FRecipe.PassAt(LBridge.SourcePassIndex).ResourceIndex),
+            FGraph.PassGraph[LBridge.SourcePassIndex],
+            FGraph.PassGraph[LBridge.TargetPassIndex],
+            LPatternGrid3D, LProjection3D, LPatternReport3D) then
+        begin
+          FLastValidation.Kind := wpcvkPattern3DBridge;
+          FLastValidation.PassIndex := LBridge.TargetPassIndex;
+          FLastValidation.BridgeIndex := I;
+          FLastValidation.EntryIndex := Pattern3DIssueEntry(
+            FGraph.PassGraph[LBridge.TargetPassIndex], LPatternReport3D.Issue, True);
           AFailedPassIndex := LBridge.TargetPassIndex;
           AFailedEntryIndex := FLastValidation.EntryIndex;
           Exit(False);

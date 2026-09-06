@@ -31,10 +31,11 @@ uses
   wfc_training;
 
 const
-  WFC_TRAINING_TEXT_VERSION = 5;
+  WFC_TRAINING_TEXT_VERSION = 6;
   WFC_TRAINING_VALUE_QUOTA_TEXT_VERSION = 3;
   WFC_TRAINING_CONNECTIVITY_TEXT_VERSION = 4;
   WFC_TRAINING_SEQUENCE_WRAP_TEXT_VERSION = 5;
+  WFC_TRAINING_PATTERN_3D_TEXT_VERSION = 6;
   WFC_TRAINING_MAX_ENCODED_TEXT_LENGTH = 8388608;
   WFC_TRAINING_MAX_TEXT_LINE_COUNT = 11 +
     WFC_TRAINING_MAX_SAMPLE_COUNT + WFC_TRAINING_MAX_TOTAL_TOKEN_COUNT;
@@ -49,6 +50,8 @@ const
     WFC_TRAINING_MAX_TOTAL_CONNECTIVITY_TERMINAL_COUNT;
   WFC_TRAINING_SEQUENCE_WRAP_MAX_TEXT_LINE_COUNT =
     WFC_TRAINING_CONNECTIVITY_MAX_TEXT_LINE_COUNT;
+  WFC_TRAINING_PATTERN_3D_MAX_TEXT_LINE_COUNT =
+    WFC_TRAINING_SEQUENCE_WRAP_MAX_TEXT_LINE_COUNT;
 
 { The editable source has no caller-supplied signature. Its immutable
   fingerprint is computed from validated contents by TWfcTrainingDocument. }
@@ -83,6 +86,7 @@ begin
     wtkPattern2D: Result := 'pattern2d';
     wtkSequence: Result := 'sequence';
     wtkAdjacency3D: Result := 'adjacency3d';
+    wtkPattern3D: Result := 'pattern3d';
   end;
   if Result = '' then
     Fail('unknown training kind');
@@ -183,14 +187,14 @@ begin
   LVersion := WfcTrainingDocumentTextVersion(ADocument);
   LLineCount := 11 + ADocument.SampleCount + ADocument.TotalTokenCount;
   if (ADocument.ValueQuotaCount > 0) or (ADocument.ConnectivityCount > 0) or
-      (LVersion = WFC_TRAINING_SEQUENCE_WRAP_TEXT_VERSION) then
+      (LVersion >= WFC_TRAINING_SEQUENCE_WRAP_TEXT_VERSION) then
   begin
     Inc(LLineCount, 2 + ADocument.ValueQuotaCount);
     for I := 0 to ADocument.ValueQuotaCount - 1 do
       Inc(LLineCount, Length(ADocument.ValueQuotaAt(I).Values));
   end;
   if (ADocument.ConnectivityCount > 0) or
-      (LVersion = WFC_TRAINING_SEQUENCE_WRAP_TEXT_VERSION) then
+      (LVersion >= WFC_TRAINING_SEQUENCE_WRAP_TEXT_VERSION) then
   begin
     Inc(LLineCount, 2 + ADocument.ConnectivityCount);
     for I := 0 to ADocument.ConnectivityCount - 1 do
@@ -212,8 +216,12 @@ begin
   Add('kind=' + KindName(LOptions.Kind));
   Add('boundary=' + BoundaryName(LOptions.Boundary));
   Add('symmetry=' + SymmetryName(LOptions.Symmetry));
-  Add('footprint=' + IntToStr(LOptions.PatternWidth) + ',' +
-    IntToStr(LOptions.PatternHeight));
+  if LVersion = WFC_TRAINING_PATTERN_3D_TEXT_VERSION then
+    Add('footprint=' + IntToStr(LOptions.PatternWidth) + ',' +
+      IntToStr(LOptions.PatternHeight) + ',' + IntToStr(LOptions.PatternDepth))
+  else
+    Add('footprint=' + IntToStr(LOptions.PatternWidth) + ',' +
+      IntToStr(LOptions.PatternHeight));
   Add('order=' + IntToStr(LOptions.Order));
   Add('samples=' + IntToStr(ADocument.SampleCount));
   for I := 0 to ADocument.SampleCount - 1 do
@@ -231,7 +239,7 @@ begin
         Token(LSample.Tokens[J]));
   end;
   if (ADocument.ValueQuotaCount > 0) or (ADocument.ConnectivityCount > 0) or
-      (LVersion = WFC_TRAINING_SEQUENCE_WRAP_TEXT_VERSION) then
+      (LVersion >= WFC_TRAINING_SEQUENCE_WRAP_TEXT_VERSION) then
   begin
     Add('value-quota-version=' + IntToStr(ADocument.ValueQuotaVersion));
     Add('value-quotas=' + IntToStr(ADocument.ValueQuotaCount));
@@ -247,7 +255,7 @@ begin
     end;
   end;
   if (ADocument.ConnectivityCount > 0) or
-      (LVersion = WFC_TRAINING_SEQUENCE_WRAP_TEXT_VERSION) then
+      (LVersion >= WFC_TRAINING_SEQUENCE_WRAP_TEXT_VERSION) then
   begin
     Add('connectivity-version=' + IntToStr(ADocument.ConnectivityVersion));
     Add('connectivities=' + IntToStr(ADocument.ConnectivityCount));
@@ -280,6 +288,8 @@ function WfcTrainingDocumentTextVersion(
   const ADocument: TWfcTrainingDocument): Integer;
 begin
   if ADocument = nil then Fail('document is nil');
+  if ADocument.CopyOptions.Kind = wtkPattern3D then
+    Exit(WFC_TRAINING_PATTERN_3D_TEXT_VERSION);
   if WfcTrainingOptionsUseWrappedSequence(ADocument.CopyOptions) then
     Exit(WFC_TRAINING_SEQUENCE_WRAP_TEXT_VERSION);
   if ADocument.ConnectivityCount > 0 then Exit(WFC_TRAINING_CONNECTIVITY_TEXT_VERSION);
@@ -294,7 +304,12 @@ var
   LLines: Integer;
   LLineLimit: Integer;
   LHeader: String;
+  {$IFDEF PAS2JS}LString: Boolean;{$ENDIF}
 begin
+  {$IFDEF PAS2JS}
+  asm LString = typeof AText === 'string'; end;
+  if not LString then Fail('document must be a string');
+  {$ENDIF}
   if Length(AText) > WFC_TRAINING_MAX_ENCODED_TEXT_LENGTH then
     Fail('document exceeds the version-1 encoded length limit');
   LHeader := Copy(AText, 1, 11);
@@ -306,6 +321,8 @@ begin
     LLineLimit := WFC_TRAINING_CONNECTIVITY_MAX_TEXT_LINE_COUNT
   else if LHeader = 'wfclearn=5'#10 then
     LLineLimit := WFC_TRAINING_SEQUENCE_WRAP_MAX_TEXT_LINE_COUNT
+  else if LHeader = 'wfclearn=6'#10 then
+    LLineLimit := WFC_TRAINING_PATTERN_3D_MAX_TEXT_LINE_COUNT
   else
     Fail('expected supported wfclearn header');
   LLines := 0;
@@ -404,6 +421,8 @@ begin
   WfcTextSplitCanonicalLines(AText, ARTIFACT_NAME, LLines);
   LLine := 0;
   LEncodedTotal := 0;
+  LOptions := Default(TWfcTrainingOptions);
+  LOptions.PatternDepth := 1;
   LText := ReadLine;
   if LText = 'wfclearn=1' then
     LVersion := 1
@@ -415,6 +434,8 @@ begin
     LVersion := 4
   else if LText = 'wfclearn=5' then
     LVersion := 5
+  else if LText = 'wfclearn=6' then
+    LVersion := 6
   else
     Fail('expected supported wfclearn header');
   LMetadata.Name := Token(ReadValue('name='));
@@ -426,7 +447,10 @@ begin
   else if LText = 'pattern2d' then LOptions.Kind := wtkPattern2D
   else if LText = 'sequence' then LOptions.Kind := wtkSequence
   else if LText = 'adjacency3d' then LOptions.Kind := wtkAdjacency3D
+  else if LText = 'pattern3d' then LOptions.Kind := wtkPattern3D
   else Fail('unknown training kind');
+  if (LVersion = WFC_TRAINING_PATTERN_3D_TEXT_VERSION) <> (LOptions.Kind = wtkPattern3D) then
+    Fail('wfclearn=6 is required exactly for pattern3d training');
   if (LVersion = 1) and (LOptions.Kind = wtkAdjacency3D) then
     Fail('wfclearn=1 cannot encode adjacency3d training')
   else if (LVersion = 2) and (LOptions.Kind <> wtkAdjacency3D) then
@@ -451,10 +475,31 @@ begin
   if (LVersion = 1) and
       not (LOptions.Symmetry in [wmsNone, wmsD4]) then
     Fail('wfclearn=1 cannot encode cube symmetry');
-  Fields(ReadValue('footprint='), 2);
+  if LVersion = WFC_TRAINING_PATTERN_3D_TEXT_VERSION then
+    Fields(ReadValue('footprint='), 3)
+  else Fields(ReadValue('footprint='), 2);
   LOptions.PatternWidth := Number(LFields[0]);
   LOptions.PatternHeight := Number(LFields[1]);
+  if LVersion = WFC_TRAINING_PATTERN_3D_TEXT_VERSION then
+    LOptions.PatternDepth := Number(LFields[2]);
   LOptions.Order := Number(ReadValue('order='));
+  if LVersion = WFC_TRAINING_PATTERN_3D_TEXT_VERSION then
+  begin
+    if (LOptions.PatternWidth < 1) or (LOptions.PatternHeight < 1) or
+      (LOptions.PatternDepth < 1) then Fail('pattern3d footprint dimensions must be positive');
+    if LOptions.PatternWidth > WFC_TRAINING_MAX_FOOTPRINT_CELL_COUNT div LOptions.PatternHeight then
+      Fail('pattern3d footprint plane exceeds the training limit');
+    if LOptions.PatternWidth * LOptions.PatternHeight >
+      WFC_TRAINING_MAX_FOOTPRINT_CELL_COUNT div LOptions.PatternDepth then
+      Fail('pattern3d footprint volume exceeds the training limit');
+    if LOptions.Order <> 0 then Fail('pattern3d order must be zero');
+    if (LOptions.Symmetry = wmsD4) and (LOptions.PatternWidth <> LOptions.PatternHeight) then
+      Fail('D4 pattern3d footprint must be square in XY');
+    if (LOptions.Symmetry in [wmsCubeRotations,wmsCubeFull]) and
+      ((LOptions.PatternWidth <> LOptions.PatternHeight) or
+      (LOptions.PatternWidth <> LOptions.PatternDepth)) then
+      Fail('cube pattern3d footprint must be cubic');
+  end;
   LCount := Number(ReadValue('samples='));
   if (LCount < 1) or (LCount > WFC_TRAINING_MAX_SAMPLE_COUNT) then
     Fail('sample count is outside the version-1 limit');
@@ -490,7 +535,7 @@ begin
     if (LVersion >= 2) and ((LSamples[I].Depth < 1) or
         (LSamples[I].Depth > WFC_TRAINING_MAX_DIMENSION)) then
       Fail('sample depth is outside the version-1 limit');
-    if (LOptions.Kind <> wtkAdjacency3D) and (LSamples[I].Depth <> 1) then
+    if not (LOptions.Kind in [wtkAdjacency3D,wtkPattern3D]) and (LSamples[I].Depth <> 1) then
       Fail('non-volume samples require depth one');
     if LSamples[I].Width > WFC_TRAINING_MAX_TOTAL_TOKEN_COUNT div
         LSamples[I].Height then
@@ -566,7 +611,7 @@ begin
   begin
     LConnectivityVersion := Number(ReadValue('connectivity-version='));
     if (LConnectivityVersion <> WFC_TRAINING_CONNECTIVITY_VERSION) and
-        not ((LVersion = WFC_TRAINING_SEQUENCE_WRAP_TEXT_VERSION) and
+        not ((LVersion >= WFC_TRAINING_SEQUENCE_WRAP_TEXT_VERSION) and
           (LConnectivityVersion = 0)) then
       Fail('unsupported training connectivity version');
     LConnectivityCount := Number(ReadValue('connectivities='));

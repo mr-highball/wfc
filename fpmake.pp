@@ -75,6 +75,7 @@ begin
     P.Targets.AddUnit('wfc_voxel3d_mesh.pas');
     P.Targets.AddUnit('wfc_voxel3d_isometric.pas');
     P.Targets.AddUnit('wfc_voxel3d_svg.pas');
+    P.Targets.AddUnit('wfc_token_volume_view.pas');
     P.Targets.AddUnit('wfc_voxel3d_passes.pas');
     P.Targets.AddUnit('wfc_terraces3d.pas');
     P.Targets.AddUnit('wfc_terraces3d_view.pas');

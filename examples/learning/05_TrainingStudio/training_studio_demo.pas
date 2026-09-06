@@ -33,6 +33,8 @@ function TrainingStudioOutputIsValid(const APreset, AWidth, AHeight: Integer;
   const ATokens: TWfcModelTokens): Boolean;
 function TrainingStudioVolumeOutputIsValid(const AWidth, AHeight,
   ADepth: Integer; const ATokens: TWfcModelTokens): Boolean;
+function TrainingStudioLatticeOutputIsValid(const AWidth, AHeight,
+  ADepth: Integer; const ATokens: TWfcModelTokens): Boolean;
 procedure RunTrainingStudioDemo;
 
 implementation
@@ -113,6 +115,33 @@ begin
   Result := True;
 end;
 
+function TrainingStudioLatticeOutputIsValid(const AWidth, AHeight,
+  ADepth: Integer; const ATokens: TWfcModelTokens): Boolean;
+var I,Z,Plane,LeafCount,StoneCount,AirCount: Integer;
+begin
+  Result:=False;
+  if (AWidth<1) or (AHeight<1) or (ADepth<1) then Exit;
+  if AWidth>High(Integer) div AHeight then Exit;
+  Plane:=AWidth*AHeight;
+  if Plane>High(Integer) div ADepth then Exit;
+  if Length(ATokens)<>Plane*ADepth then Exit;
+  LeafCount:=0; StoneCount:=0; AirCount:=0;
+  { A small independent public-domain check in addition to the recipe's
+    complete footprint validator: planted cells need stone below and air
+    above. This is authored symbolism, not a physical simulation. }
+  for I:=0 to High(ATokens) do
+    if ATokens[I]='stone' then Inc(StoneCount)
+    else if ATokens[I]='air' then Inc(AirCount)
+    else if ATokens[I]='leaf' then
+    begin
+      Inc(LeafCount); Z:=I div Plane;
+      if (ATokens[((Z+ADepth-1) mod ADepth)*Plane+I mod Plane]<>'stone') or
+        (ATokens[((Z+1) mod ADepth)*Plane+I mod Plane]<>'air') then Exit;
+    end
+    else Exit;
+  Result:=(LeafCount>0) and (StoneCount>0) and (AirCount>0);
+end;
+
 procedure RunOne(const APreset: Integer; const ASeed: TGraphSeed);
 var
   LWorkspace: TWfcTrainingWorkspace;
@@ -130,12 +159,15 @@ begin
     LOptions.Seed := ASeed;
     LDepth := TrainingStudioPresetDepth(APreset);
     if LWorkspace.Rank = 3 then
-      LWorkspace.ConfigureVolumeRun(LOptions, LDepth, nil, nil)
+      LWorkspace.ConfigureVolumeRun(LOptions, LDepth,
+        TrainingStudioPresetLocks(APreset,LWorkspace.PublicPassIndex), nil)
     else LWorkspace.ConfigureRun(LOptions,
       TrainingStudioPresetLocks(APreset, LWorkspace.PublicPassIndex), nil);
     LWorkspace.Solve;
     LTokens := LWorkspace.OutputTokens;
-    if LWorkspace.Rank = 3 then
+    if APreset=TRAINING_STUDIO_PATTERN3D_PRESET then
+      LValid:=TrainingStudioLatticeOutputIsValid(LOptions.Width,LOptions.Height,LDepth,LTokens)
+    else if LWorkspace.Rank = 3 then
       LValid := TrainingStudioVolumeOutputIsValid(LOptions.Width,
         LOptions.Height, LDepth, LTokens)
     else LValid := TrainingStudioOutputIsValid(APreset, LOptions.Width,
@@ -255,7 +287,7 @@ begin
     Exit;
   end;
   if ParamCount > 2 then
-    raise Exception.Create('usage: TrainingStudio [preset 0..6] [decimal seed] | --selftest | --quota-demo | --quota-selftest | --connectivity-demo | --connectivity-selftest');
+    raise Exception.Create('usage: TrainingStudio [preset 0..7] [decimal seed] | --selftest | --quota-demo | --quota-selftest | --connectivity-demo | --connectivity-selftest');
   LPreset := 2;
   LSeed := 0;
   if ParamCount >= 1 then

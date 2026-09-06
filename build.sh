@@ -871,6 +871,12 @@ for compiler_artifact_suite in \
   "$compiler_source_directory/../test/wfc_pattern3d_test.lpr" \
   "$compiler_source_directory/../test/wfc_pattern3d_text_test.lpr" \
   "$compiler_source_directory/../test/wfc_pattern3d_passes_test.lpr" \
+  "$compiler_source_directory/../test/wfc_pipeline_pattern3d_model_test.lpr" \
+  "$compiler_source_directory/../test/wfc_pipeline_pattern3d_text_test.lpr" \
+  "$compiler_source_directory/../test/wfc_pipeline_pattern3d_runtime_test.lpr" \
+  "$compiler_source_directory/../test/wfc_training_pattern3d_test.lpr" \
+  "$compiler_source_directory/../test/wfc_training_pattern3d_workspace_test.lpr" \
+  "$compiler_source_directory/../test/wfc_token_volume_view_test.lpr" \
   "$compiler_source_directory/../test/wfc_training_sequence_wrap_test.lpr" \
   "$compiler_source_directory/../test/wfc_training_circular_studio_test.lpr" \
   "$compiler_training_test_source" \
@@ -1429,6 +1435,18 @@ esac
 "$training_studio_executable" --selftest || exit $?
 "$training_studio_executable" --quota-selftest || exit $?
 "$training_studio_executable" --connectivity-selftest || exit $?
+
+printf 'Building and checking the native overlapping-volume SVG export.\n'
+"$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
+  "-Fu$compiler_source_directory" "-Fu$compiler_tools_directory" \
+  "-Fu$compiler_training_studio_directory" \
+  "-FU$compiler_unit_output_directory" "-FE$compiler_binary_output_directory" \
+  "$compiler_training_studio_directory/TrainingStudioVolume.lpr" || exit $?
+training_volume_executable="$binary_output_directory/TrainingStudioVolume"
+case "$host_system" in
+  CYGWIN*|MINGW*|MSYS*) training_volume_executable="${training_volume_executable}.exe" ;;
+esac
+"$training_volume_executable" --seed 0 >/dev/null || exit $?
 
 printf 'Building and checking Music Studio.\n'
 "$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \

@@ -155,7 +155,7 @@ var S: TWfcTrainingSamples; O: TWfcTrainingOptions;
 begin
   SetLength(S, 1);
   O := MakeWfcTrainingOptions(AKind, wmbWrap, wmsNone, 0, 0, 0);
-  if AKind = wtkPattern2D then
+  if AKind in [wtkPattern2D,wtkPattern3D] then
   begin
     O.PatternWidth := 1; O.PatternHeight := 1;
     S[0] := MakeWfcTrainingSample('grid', 2, 2, Tokens(['A', 'B', 'B', 'A']));
@@ -222,6 +222,8 @@ begin
   try CheckArtifact('model', LearnWfcTrainingModelText(D), '', ''); finally D.Free; end;
   D := Training(wtkPattern2D, False);
   try CheckArtifact('pattern2d', LearnWfcTrainingModelText(D), '', ''); finally D.Free; end;
+  D := Training(wtkPattern3D,False);
+  try CheckArtifact('pattern3d',LearnWfcTrainingModelText(D),'',''); finally D.Free; end;
   D := Training(wtkSequence, False);
   try CheckArtifact('sequence', LearnWfcTrainingModelText(D), '', ''); finally D.Free; end;
   D := Training(wtkAdjacency1D, True);

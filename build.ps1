@@ -68,6 +68,12 @@ $artifactTestSources = @(
   (Join-Path $repositoryRoot 'test/wfc_pattern3d_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_pattern3d_text_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_pattern3d_passes_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_pipeline_pattern3d_model_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_pipeline_pattern3d_text_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_pipeline_pattern3d_runtime_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_training_pattern3d_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_training_pattern3d_workspace_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_token_volume_view_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_sequence_wrap_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_training_sequence_wrap_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_training_circular_studio_test.lpr')
@@ -1840,6 +1846,18 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 & (Join-Path $binaryOutputDirectory $trainingStudioExecutableName) --quota-selftest
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 & (Join-Path $binaryOutputDirectory $trainingStudioExecutableName) --connectivity-selftest
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+Write-Host 'Building and checking the native overlapping-volume SVG export.'
+& $Compiler @CompilerOptions -B -Mdelphi -Sa -Cr -Co -Ci `
+  "-Fu$sourceDirectory" "-Fu$toolsDirectory" "-Fu$trainingStudioExampleDirectory" `
+  "-FU$unitOutputDirectory" "-FE$binaryOutputDirectory" `
+  (Join-Path $trainingStudioExampleDirectory 'TrainingStudioVolume.lpr')
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+$trainingVolumeExecutableName = if ($env:OS -eq 'Windows_NT') {
+  'TrainingStudioVolume.exe'
+} else { 'TrainingStudioVolume' }
+& (Join-Path $binaryOutputDirectory $trainingVolumeExecutableName) --seed 0 | Out-Null
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 Write-Host 'Building and checking Music Studio.'

@@ -61,7 +61,7 @@ uses SysUtils, wfc_text_codec, wfc_artifact_document, wfc_artifact_inspect;
 function WfcInspectHelpText: String;
 begin
   Result := 'Usage:'#10 +
-    '  wfc-inspect rules|model|pattern2d|sequence|training|recipe [--limit N] [--] INPUT'#10 +
+    '  wfc-inspect rules|model|pattern2d|pattern3d|sequence|training|recipe [--limit N] [--] INPUT'#10 +
     '  wfc-inspect run [--limit N] [--] RECIPE RUN'#10 +
     '  wfc-inspect result [--limit N] [--] RECIPE RUN RESULT'#10 +
     '  wfc-inspect --help'#10 + '  wfc-inspect --version'#10 + #10 +
@@ -160,7 +160,7 @@ begin
   case ACommand.Kind of
     wvckHelp: begin AStandardOutput := WfcInspectHelpText; Exit(0); end;
     wvckVersion: begin AStandardOutput := WfcInspectVersionText; Exit(0); end;
-    wvckRules, wvckModel, wvckPattern2D, wvckSequence, wvckTraining,
+    wvckRules, wvckModel, wvckPattern2D, wvckPattern3D, wvckSequence, wvckTraining,
     wvckRecipe, wvckRun, wvckResult: ;
   else
     AStandardError := WfcInspectFormatFailure(ACommand, wvfkUsage, 'unknown command kind');

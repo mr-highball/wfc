@@ -100,7 +100,7 @@ begin
   SetLength(S, 1);
   S[0] := MakeWfcTrainingSample('sample', 1, 1, 1, Tokens([LToken]));
   O := MakeWfcTrainingOptions(AKind, wmbWrap, wmsNone, 0, 0, 0);
-  if AKind = wtkPattern2D then begin O.PatternWidth := 1; O.PatternHeight := 1; end;
+  if AKind in [wtkPattern2D,wtkPattern3D] then begin O.PatternWidth := 1; O.PatternHeight := 1; end;
   if AKind = wtkSequence then begin O.Order := 1; O.Boundary := wmbOpen; end;
   if APolicy then
   begin
@@ -125,6 +125,7 @@ begin
     T := Source(K, False);
     try
       case K of wtkPattern2D: A := wakPattern2D; wtkSequence: A := wakSequence;
+      wtkPattern3D: A := wakPattern3D;
       else A := wakModel; end;
       D := TWfcArtifactDocument.Create(A, LearnWfcTrainingModelText(T), '', '');
       try
@@ -132,6 +133,8 @@ begin
         Check(Pos('road%20%1B%0A%3D%F0%9F%8C%B1', S) > 0, 'portable escaped Unicode token');
         Check(Pos('truncated=false'#10, S) > 0, 'complete small learned artifact');
         if K = wtkPattern2D then Check(Pos('pattern-cell pattern=0 xy=0,0 palette=0'#10, S) > 0, 'latent footprint exposed')
+        else if K=wtkPattern3D then Check(Pos('pattern-cell pattern=0 xyz=0,0,0 palette=0'#10,S)>0,
+          'full XYZ footprint exposed without private keys')
         else if K = wtkSequence then Check(Pos('state index=0 emitted=0 count=1 starts=1 ends=1'#10, S) > 0, 'sequence state counts exposed')
         else Check(Pos('observation direction=E source=0 target=0 count=1'#10, S) > 0, 'actual observed edge count');
       finally D.Free; end;

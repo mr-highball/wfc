@@ -133,7 +133,8 @@ var W: TWfcTrainingWorkspace; O: TWfcTrainingSolveOptions;
   Locks, OriginalLocks: TWfcPipelineCellLocks; Tokens: TWfcModelTokens;
   S, Recipe, Solved: String; I, Seed: Integer;
 begin
-  Check(TRAINING_STUDIO_PRESET_COUNT = 7, 'circular preset appends without renumbering old presets');
+  Check((TRAINING_STUDIO_PRESET_COUNT = 8) and (TRAINING_STUDIO_CIRCULAR_PRESET=6),
+    'volume preset appends without renumbering circular or older presets');
   for I := 0 to 5 do Check(Length(TrainingStudioPresetLocks(I, 0)) = 0,
     'historical preset keeps its unlocked run');
   W := TWfcTrainingWorkspace.Create(InteractiveWfcTrainingWorkspaceLimits);

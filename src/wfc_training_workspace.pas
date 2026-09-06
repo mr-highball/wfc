@@ -284,6 +284,7 @@ begin
     case LResource.Kind of
       wprkModel: LItems := LRecipe.BorrowModelResource(0).ValueCount;
       wprkPattern2D: LItems := LRecipe.BorrowPattern2DResource(0).PatternCount;
+      wprkPattern3D: LItems := LRecipe.BorrowPattern3DResource(0).PatternCount;
       wprkSequence: LItems := LRecipe.BorrowSequenceResource(0).StateCount;
     else
       raise EWfcTrainingWorkspace.Create('unsupported trained resource kind');

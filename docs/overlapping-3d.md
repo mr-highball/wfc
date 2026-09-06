@@ -16,8 +16,33 @@ The five project-owned MIT Pascal units work with native FPC and pas2js:
 | [wfc_pattern3d_graph](../src/wfc_pattern3d_graph.pas) | Wrapped public-pass bridge, inverse public domains, transactional owner, composition signatures |
 
 They use repository code and the FPC/pas2js runtime, with no external
-generation, geometry, or training library. This is a core volume-footprint
-workflow, not a claim that every 3D ecosystem integration is complete.
+generation, geometry, or training library. The same models now participate in
+editable training sources, declarative pipeline recipes, public XYZ run
+constraints, workspace exports, and an interactive token-volume view.
+
+## Start in Training Studio
+
+Open [Training Studio](../examples/learning/05_TrainingStudio/README.md) through
+the included FPC server, using `index.html?preset=7` to select the volume
+example directly. Otherwise select preset **7, “Arched lattice / overlapping
+volumes”**, load it, train, then solve. This is distinct from preset 5's
+radius-one volume adjacency example: preset 7 learns joint `2 × 2 × 2`
+footprints from a project-authored `4 × 4 × 4` corpus with gravity-preserving
+D4 symmetry. Its initial public locks select stone at `(0,0,0)`, leaf at
+`(2,2,1)`, and air at `(1,1,2)`.
+
+The result retains exact Z slices and adds a selectable isometric view.
+**View rotation**, **Empty / hidden token**, and **Visible Z layers** change
+only presentation; they do not regenerate the composition, change its
+signature, or remove tokens from exported result data. Click a visible face
+to select its public XYZ cell for the ordinary lock editor. Applying a lock
+is a separate run edit and requires another solve. “Download view SVG” saves
+the current view, not a replacement for the canonical result artifact.
+
+Save the source to retain the authored corpus and quota/connectivity policy;
+save the recipe, run and result to retain their respective replay context.
+The native companion's `TrainingStudioVolume --help` describes its installed
+command interface; see the demo README for build and launch instructions.
 
 ## Learn, constrain, and consume public tokens
 
@@ -117,11 +142,16 @@ The two examples intentionally use different constraint mechanisms:
   back into the latent domains before solving. Its graph is not exposed for
   arbitrary additional passes.
 - The free `ApplyOverlappingProjectionFromPass3D` bridge lets you build a larger
-graph. A caller lock on its public pass is a normal graph constraint; it does
+  graph. A caller lock on its public pass is a normal graph constraint; it does
   **not** automatically invoke the owner’s inverse-domain implementation.
   The example uses [pass negotiation](pass-negotiation.md) so a rejected public
   lock can reopen an earlier completed pattern assignment. Ordinary
   `TrySolve` remains forward staged solving, not unrestricted global search.
+
+The declarative pipeline runtime provides a third entry point: a
+`wpbkPattern3DProjection` bridge in a recipe owns inverse lowering of that
+invocation's public locks/domains. It handles larger declarative DAGs and
+public exact-copy aliases without requiring the fixed two-pass owner.
 
 The model is caller-owned and must outlive its owner/graph usage. Free the
 returned composition yourself. Copy methods detach nested arrays;
@@ -131,6 +161,173 @@ strings and Unicode model tokens. Tokens that cannot round-trip through the
 host graph-string representation reject during preflight, rather than being
 silently substituted. Valid Unicode in a learned model or artifact alone does
 not guarantee that every native graph-string environment can represent it.
+
+## Editable source, portable recipe, and workspace
+
+[`wfc_training`](../src/wfc_training.pas) dispatches `wtkPattern3D` to the
+actual overlapping-volume corpus learner. Use the **seven-argument** options
+factory: kind, boundary, symmetry, footprint width, height, depth, and order.
+Order is zero for overlapping volumes; it is not the depth argument. The
+older six-argument factory remains source-compatible and defaults the
+appended depth to one.
+
+This complete example trains, applies a public far-Z lock, solves, and builds
+a caller-owned view. Its constructor arguments and public pass index come
+from the maintained APIs, not private pattern-key conventions.
+
+```pascal
+{ SPDX-License-Identifier: MIT }
+program TrainingVolume;
+{$mode delphi}{$H+}
+uses SysUtils, wfc, wfc_model, wfc_training, wfc_training_text,
+  wfc_training_workspace, wfc_pipeline_run, wfc_pipeline_result,
+  wfc_token_volume_view, wfc_voxel3d_isometric;
+const Source: array[0..7] of String =
+  ('land','water','water','land','water','land','land','water');
+var
+  Tokens: TWfcModelTokens;
+  Samples: TWfcTrainingSamples;
+  Document: TWfcTrainingDocument;
+  Workspace: TWfcTrainingWorkspace;
+  Options: TWfcTrainingSolveOptions;
+  Locks: TWfcPipelineCellLocks;
+  ViewOptions: TWfcTokenVolumeViewOptions;
+  Scene: TVoxel3DProjectedScene;
+  I: Integer;
+begin
+  SetLength(Tokens,8);
+  for I := 0 to 7 do Tokens[I] := TWfcModelToken(Source[I]);
+  SetLength(Samples,1);
+  Samples[0] := MakeWfcTrainingSample('checker',2,2,2,Tokens);
+  Document := TWfcTrainingDocument.Create(
+    MakeWfcTrainingMetadata('volume','MIT','authored checker'),
+    MakeWfcTrainingOptions(wtkPattern3D,wmbWrap,wmsNone,2,2,2,0),
+    Samples);
+  Workspace := nil; Scene := nil;
+  try
+    Workspace := TWfcTrainingWorkspace.Create;
+    Workspace.SetSourceText(EncodeWfcTrainingText(Document));
+    Workspace.Train;
+    Options := DefaultWfcTrainingSolveOptions;
+    Options.Width := 4; Options.Height := 2; Options.Seed := 0;
+    Options.MaxBacktracks := 0;
+    SetLength(Locks,1);
+    Locks[0] := MakeWfcPipelineCellLock(
+      Workspace.PublicPassIndex,3,1,3,'land');
+    Workspace.ConfigureVolumeRun(Options,4,Locks,nil);
+    Workspace.Solve;
+    if Workspace.ResultStatus <> wprsSolved then
+      raise Exception.Create('volume did not solve within the run budgets');
+    Tokens := Workspace.OutputTokens;
+    if Tokens[31] <> 'land' then raise Exception.Create('public lock mismatch');
+    ViewOptions := DefaultWfcTokenVolumeViewOptions(4);
+    ViewOptions.VisibleDepth := 3;  { Show Z=0,1,2; retain the full result. }
+    ViewOptions.Projection.Yaw := v3vy90;
+    Scene := ProjectWfcTokenVolume3D(Tokens,4,2,4,
+      Workspace.PublicVocabulary,ViewOptions);
+    WriteLn('result: ',Workspace.ResultSignatureText);
+    WriteLn('visible faces: ',Scene.QuadCount);
+  finally Scene.Free; Workspace.Free; Document.Free; end;
+end.
+```
+
+The workspace deliberately separates editable source from derived artifacts.
+`SetSourceText` invalidates the model/recipe/run/result; `Train` reconstructs
+the typed recipe. `ConfigureVolumeRun` requires explicit depth and replaces
+the current run/result. A failed policy mutation does not leave a previous
+derived result available for export. Source-policy replacements preserve the
+other registry and require a fresh run; retained editable source is not a
+claim that its requested model solved. See
+[`wfc_training_workspace`](../src/wfc_training_workspace.pas) for the precise
+failure lifecycle and default/interactive limits.
+
+For a policy-free document, `LearnWfcTrainingModelText(Document)` returns the
+canonical `wfcp=2` learned model. It rejects documents with authored quotas
+or connectivity rather than silently dropping those policies; export their
+source or recipe instead. `LearnWfcTrainingRecipe(Document)` retains the
+policies, binds source provenance and creates private `patterns` followed by
+public `output`.
+Its output recipe is intentionally **wrapped rank 3 with one shared XYZ
+extent**, even when source extraction uses `wmbOpen`. The embedded model
+still records the actual source boundary. This does not add an open-halo
+pass mapping or guarantee that an open-trained model tiles the output torus.
+
+Training-owned quotas and connectivity profiles bind public tokens, not
+learned indices. The compiler resolves their order against the actual
+learned palette. Quotas count a public cell once, regardless of how many
+footprints cover it. Connectivity uses public world-axis ports, including
+Up/Down; source symmetry does not rotate an authored policy. Both are also
+lowered to latent patterns using their token at footprint `(0,0,0)`, then
+independently checked on completed public output. Exact-copy public aliases
+preserve their own declarations while lowering through their materialized
+owner. See [portable quotas](value-quotas.md) and
+[connectivity](connectivity.md) for policy semantics.
+
+## Feature-selected document versions
+
+| Artifact | Volume capability | Existing artifacts |
+| --- | --- | --- |
+| Learned overlapping model | `wfcp=2`, rank 3 | 2D `wfcp=1` unchanged |
+| Editable training source | `wfclearn=6`, only `kind=pattern3d` | Versions 1–5 retain their prior selection, bytes and fingerprints |
+| Declarative recipe | `wfcpipeline=4`, only when a 3D resource/adapter/bridge is present | Versions 1–3 retain their prior bytes and signatures |
+| Invocation and result | Existing `wfcpipeline-run=1` / `wfcpipeline-result=1` | No global replay-envelope bump |
+
+Training v6 adds explicit footprint XYZ and source XYZ, with order zero and
+the full optional quota/connectivity sections. In recipe v4, resource and
+adapter spellings are `pattern3d`; the bridge is `pattern3d-projection`.
+Two new lines follow the existing `sequence-bridge-version` line:
+
+```text
+pattern3d-graph-adapter-version=1
+pattern3d-bridge-version=1
+```
+
+Both v6 source and v4 recipe encode optional registries explicitly: version
+0/count 0 when empty, or version 1/nonempty count. Wrong feature/version
+combinations reject; newer headers are not blanket upgrades for old recipes.
+The appended `PatternDepth`, `Pattern3DGraphAdapterVersion`, and
+`Pattern3DBridgeVersion` fields are normalized for legacy callers without
+reading uninitialized appended storage. New feature identity is hashed only
+where applicable. Graph, solver, pipeline compiler and runtime algorithm
+versions are not globally bumped.
+
+The pipeline model owns `BorrowPattern3DResource(Index)`; callers must not
+free that borrowed immutable model. Its exact actual-token payload keys
+prevent equal local indices in different models from becoming equivalent.
+Run and result artifacts bind their recipe/invocation signatures; explicit
+replay rebuilds and executes the named recipe, then compares the canonical
+result, including valid non-solved terminal statuses. A checksum is not a
+cryptographic authentication scheme.
+
+## Reusable token-volume presentation
+
+[`wfc_token_volume_view`](../src/wfc_token_volume_view.pas) accepts an ordinary
+XYZ token array and its ordered palette; it is not tied to a solver owner or
+training workspace. `ProjectWfcTokenVolume3D` returns a caller-owned
+`TVoxel3DProjectedScene`. Existing
+[`wfc_voxel3d_isometric`](../src/wfc_voxel3d_isometric.pas) handles four yaws,
+fixed-subcell projection, stable painter order and hit testing;
+[`wfc_voxel3d_svg`](../src/wfc_voxel3d_svg.pas) exports SVG.
+
+Visible tokens are opaque unit cubes. Internal faces between any two visible
+neighbors are culled, even when the tokens differ. A selected hidden token
+is omitted; `VisibleDepth=N` displays Z `0..N-1`, exposing the cut surface.
+Outer faces remain visible even if the generating recipe wraps. This is a
+finite cutout, not periodic geometry, collision geometry, or physical
+validation. Stone/leaf/air colors are presentation conventions only.
+
+Renderer metadata uses safe `token-N` palette indices and exact public XYZ,
+not arbitrary raw Unicode tokens or private graph keys. The caller can map
+those indices back to its public palette. View changes may change view/SVG
+signatures, but must not change the stored composition signature.
+
+`MaxQuads` defaults to 131,072 and is caller-configurable. The adapter
+validates every input token, including hidden/cut-away cells, and counts all
+exposed faces before allocating large quad arrays. Exceeding the budget
+rejects rather than silently truncating geometry. Conservative enclosing-
+cutout fixed-subcell products must fit Integer; the existing projector also
+enforces its 32,767-pixel content-span and checked fitting limits. These are
+view limits, not new solver limits or an available-memory guarantee.
 
 ## Literal extraction and source symmetry
 
@@ -357,7 +554,7 @@ Integer work bounds do not make arbitrarily large grids cheap. Generation is
 finite, in memory, with existing bounded search options; this milestone does
 not provide chunk streaming, cancellation, or an infinite-volume solver.
 
-## Verified scope and pending integration
+## Verified scope and remaining work
 
 The [core tests](../test/wfc_pattern3d_test.lpr) compare a separate literal
 transform/extraction oracle, all six overlap planes, chirality, source isolation,
@@ -367,12 +564,26 @@ volume artifacts; [pass tests](../test/wfc_pattern3d_passes_test.lpr) exercise
 semantic consumers, inverse masks, torus aliasing, independent public capture,
 and transactional replay. Finite tests are evidence, not a proof over all
 possible models.
-The [overlapping-volume experiment](research/overlapping-volumes-v1.md)
-records the measured scope, checks, and remaining performance boundaries.
+The [core overlapping-volume experiment](research/overlapping-volumes-v1.md)
+records its original scope. The subsequent
+[portable volume workspace record](research/overlapping-volumes-workspace-v1.md)
+records training v6, recipe v4, invocation/replay, public quota/connectivity
+lowering and view conformance. Native stable/current FPC and actual-browser
+tests preserve existing versioned golden artifacts; passing finite fixtures
+is not a proof for every corpus or a claim of universal model quality.
 
-Still pending: training-source/workspace support for overlapping volumes,
-declarative pipeline-resource lowering, artifact-family dispatch in the
-inspection/validation tools, and a fully featured browser volume demo.
-Existing radius-one volume training and 2D pattern tools do not automatically
-gain this new footprint capability. General resampling between passes,
-streamed spatial solving, and broader 3D authoring remain separate work.
+The smaller training profile allows 65,536 corpus tokens and 64 cells per
+footprint; it does not automatically inherit the low-level learner's larger
+capacity. Interactive Training Studio further defaults to 512 source tokens,
+128 learned items and 512 output cells. The general workspace can use its
+documented larger limits. Runtime inverse lowering separately bounds total
+contributions (1,048,576), candidate visits (16,777,216), and private indices
+(4,194,304) before graph construction. These limits are cumulative across
+applicable bridges, not per-constraint allowances.
+
+General resampling between passes, open-halo declarative bridges, streamed
+spatial solving, cancellable/asynchronous training and broader 3D authoring
+remain separate work. Existing radius-one volume training remains available;
+it is not silently reinterpreted as joint-footprint learning. No result here
+establishes physical support, structural engineering validity, arbitrary
+capacity, or aesthetic superiority.

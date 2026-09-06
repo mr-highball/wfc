@@ -25,7 +25,7 @@ function WfcInspectArtifact(const ADocument: TWfcArtifactDocument;
 implementation
 
 uses
-  wfc, wfc_model, wfc_rule_model, wfc_pattern2d, wfc_sequence,
+  wfc, wfc_model, wfc_rule_model, wfc_pattern2d, wfc_pattern3d, wfc_sequence,
   wfc_training, wfc_pipeline_model, wfc_pipeline_run, wfc_pipeline_result,
   wfc_text_codec;
 
@@ -94,6 +94,7 @@ begin
   case AValue of
     wprkRules: Result := 'rules'; wprkModel: Result := 'model';
     wprkPattern2D: Result := 'pattern2d'; wprkSequence: Result := 'sequence';
+    wprkPattern3D: Result := 'pattern3d';
   else raise EWfcArtifactInspect.Create('unknown resource kind'); end;
 end;
 
@@ -103,6 +104,7 @@ begin
     wpakEmpty: Result := 'empty'; wpakRules: Result := 'rules';
     wpakModel: Result := 'model'; wpakPattern2D: Result := 'pattern2d';
     wpakSequence: Result := 'sequence';
+    wpakPattern3D: Result := 'pattern3d';
   else raise EWfcArtifactInspect.Create('unknown adapter kind'); end;
 end;
 
@@ -149,6 +151,7 @@ begin
     wtkAdjacency1D: Result := 'adjacency1d'; wtkAdjacency2D: Result := 'adjacency2d';
     wtkAdjacency3D: Result := 'adjacency3d'; wtkPattern2D: Result := 'pattern2d';
     wtkSequence: Result := 'sequence';
+    wtkPattern3D: Result := 'pattern3d';
   else raise EWfcArtifactInspect.Create('unknown training kind'); end;
 end;
 
@@ -338,6 +341,39 @@ begin
   end;
 end;
 
+procedure InspectVolumePatterns(const W: TInspectWriter; const M: TWfcOverlappingModel3D);
+var I,X,Y,Z: Integer; S: TWfcModelSampleShape;
+begin
+  if not W.Want then Exit;
+  if not W.Detail('pattern3d footprint=' + XYZ(M.PatternWidth,M.PatternHeight,M.PatternDepth) +
+    ' palette=' + N(M.PaletteCount) + ' patterns=' + N(M.PatternCount) +
+    ' sources=' + N(M.SourceCount) + ' boundary=' + BoundaryName(M.SourceBoundary) +
+    ' symmetry=' + SymmetryName(M.Symmetry) + ' relations=overlap') then Exit;
+  for I:=0 to M.SourceCount-1 do
+  begin
+    if not W.Want then Exit;
+    S:=M.SourceShapeAt(I);
+    if not W.Detail('sample index=' + N(I) + ' shape=' + XYZ(S.Width,S.Height,S.Depth)) then Exit;
+  end;
+  for I:=0 to M.PaletteCount-1 do
+  begin
+    if not W.Want then Exit;
+    if not W.Detail('palette index=' + N(I) + ' token=' + Token(M.PaletteTokenAt(I))) then Exit;
+  end;
+  for I:=0 to M.PatternCount-1 do
+  begin
+    if not W.Want then Exit;
+    if not W.Detail('pattern index=' + N(I) + ' weight=' + N(M.PatternWeightAt(I))) then Exit;
+    for Z:=0 to M.PatternDepth-1 do for Y:=0 to M.PatternHeight-1 do
+      for X:=0 to M.PatternWidth-1 do
+      begin
+        if not W.Want then Exit;
+        if not W.Detail('pattern-cell pattern=' + N(I) + ' xyz=' + XYZ(X,Y,Z) +
+          ' palette=' + N(M.PatternPaletteIndexAt(I,X,Y,Z))) then Exit;
+      end;
+  end;
+end;
+
 procedure InspectSequence(const W: TInspectWriter; const M: TWfcSequenceModel);
 var I, J: Integer; H: TWfcSequenceHistoryItem; LAtom: String;
 begin
@@ -375,13 +411,16 @@ end;
 procedure InspectTraining(const W: TInspectWriter; const M: TWfcTrainingDocument);
 var I, J: Integer; MD: TWfcTrainingMetadata; O: TWfcTrainingOptions;
   S: TWfcTrainingSample; Q: TWfcTrainingValueQuota; C: TWfcTrainingConnectivity;
+  LFootprint: String;
 begin
   if not W.Want then Exit;
   MD := M.CopyMetadata; O := M.CopyOptions;
+  LFootprint := N(O.PatternWidth) + ',' + N(O.PatternHeight);
+  if O.Kind=wtkPattern3D then LFootprint := LFootprint + ',' + N(O.PatternDepth);
   if not W.Detail('training name=' + Token(MD.Name) + ' license=' + Token(MD.LicenseIdentifier) +
     ' source=' + Token(MD.SourceDescription) + ' kind=' + TrainingKindName(O.Kind) +
     ' boundary=' + BoundaryName(O.Boundary) + ' symmetry=' + SymmetryName(O.Symmetry) +
-    ' footprint=' + N(O.PatternWidth) + ',' + N(O.PatternHeight) + ' order=' + N(O.Order) +
+    ' footprint=' + LFootprint + ' order=' + N(O.Order) +
     ' samples=' + N(M.SampleCount) + ' tokens=' + N(M.TotalTokenCount)) then Exit;
   for I := 0 to M.SampleCount - 1 do
   begin
@@ -463,7 +502,11 @@ begin
   begin
     if not W.Want then Exit;
     G := M.BridgeAt(I);
-    if G.Kind = wpbkPattern2DProjection then LKind := 'pattern2d-projection' else LKind := 'sequence-projection';
+    case G.Kind of
+      wpbkPattern2DProjection: LKind := 'pattern2d-projection';
+      wpbkPattern3DProjection: LKind := 'pattern3d-projection';
+      wpbkSequenceProjection: LKind := 'sequence-projection';
+    else raise EWfcArtifactInspect.Create('unknown projection bridge'); end;
     if not W.Detail('bridge index=' + N(I) + ' kind=' + LKind +
       ' source=' + N(G.SourcePassIndex) + ' target=' + N(G.TargetPassIndex)) then Exit;
   end;
@@ -629,6 +672,7 @@ begin
       wakRules: InspectRules(W, ADocument.Rules);
       wakModel: InspectModel(W, ADocument.Model);
       wakPattern2D: InspectPatterns(W, ADocument.Pattern2D);
+      wakPattern3D: InspectVolumePatterns(W, ADocument.Pattern3D);
       wakSequence: InspectSequence(W, ADocument.Sequence);
       wakTraining: InspectTraining(W, ADocument.Training);
       wakRecipe: InspectRecipe(W, ADocument.Recipe);

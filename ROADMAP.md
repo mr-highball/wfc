@@ -105,8 +105,9 @@ The repository already contains the beginnings of the ecosystem:
   extraction and symmetry, exact six-direction overlap, open/wrapped XYZ
   projection, compact standalone `wfcp=2`, a wrapped public-pass bridge and
   transactional owner with inverse public voxel domains; native/browser
-  conformance is present, while training/workspace/artifact-dispatch integration
-  and a dedicated interactive volume demo remain separate work;
+  conformance now includes saved training v6, declarative recipes v4, public
+  quotas/connectivity, exact workspace replay, artifact tools, and a rotatable
+  Studio lattice preset with shared native/browser SVG export;
 - an immutable bounded sequence model with typed BOS history, deterministic
   order-N learning from pretokenized UTF-8 corpora, raw counts, structural
   suffix/prefix recombination, whole/prefix/suffix/fragment and derived wrapped
@@ -261,7 +262,7 @@ It is not yet the finished system described above:
   sequences with explicit projection; Unicode-scalar text tokenization and
   exact completion domains now sit above that sequence layer, while a
   project-owned versioned word-boundary table,
-  overlapping-3D training/workspace integration, structured multi-license provenance, media import and
+  structured multi-license provenance, media import and
   word-oriented text import, larger/background browser training, artifact-family
   semantic/asset lint, and live interactive inspection remain;
 - the [hosted gate at `4d3db9b`](https://github.com/mr-highball/wfc/actions/runs/34020117117)
@@ -561,9 +562,11 @@ independent full-XYZ checks cover open expansion and wrapped projection.
 Standalone `wfcp=2` derives relations instead of storing a quadratic text table.
 The same-size wrapped pass bridge and owner support semantic consumers and
 inverse public locks/domains, including distinct footprint offsets that alias
-on a small torus. This does not yet extend declarative recipe resources,
-training sources, workspace presets, artifact-family dispatch, or unlike-sized
-pass layouts; existing 2D versions and bytes remain unchanged.
+on a small torus. Source v6 and recipe v4 now carry this through declarative
+resources, exact XYZ public constraints, persistent quotas/connectivity,
+workspace replay and artifact-family dispatch. The shared token-volume view
+provides cutaway/yaw SVG in native FPC and pas2js. Unlike-sized pass layouts
+remain open; existing 2D versions and bytes remain unchanged.
 The sequence version-1 layer learns bounded order-N latent states from ordered
 pretokenized UTF-8 corpora, resets typed BOS history at every sample boundary,
 retains raw observation/start/end counts, derives exact suffix/prefix
@@ -596,7 +599,7 @@ options, source/license labels and content fingerprints while exporting
 cardinal, overlapping-pattern, or whole-sequence recipes. Four bundled corpora
 replay exact source-to-result artifacts on native FPC.
 Training Studio now connects editable corpora and explicit Unicode-scalar raw
-text to that workflow through one reusable invalidation-aware workspace, seven
+text to that workflow through one reusable invalidation-aware workspace, eight
 native presets, and a browser lock/inspection/export workbench. Full-volume
 training uses `wfclearn=2`, depth-sensitive provenance, XYZ locks/domains, and
 labeled browser Z slices. A fifth exact CLI bundle replays the volume preset.
@@ -611,11 +614,14 @@ Circular sequence training additionally selects `wfclearn=5`, emits `wfcs=2`,
 and lowers to a wrapped sequence pass. It learns each sample's seam explicitly,
 retains raw balanced context counts without BOS or endpoint evidence, and
 exposes source boundary choice through both direct text learning and Studio.
-The [artifact tools](docs/artifact-tools.md) now validate all eight saved
+Overlapping-volume training additionally uses `wfclearn=6` and recipe v4;
+the lattice preset teaches joint cuboids and exposes full XYZ public locking,
+cutaway views and native SVG output without new dependencies.
+The [artifact tools](docs/artifact-tools.md) now validate all nine saved
 rule/training/pipeline families and explain their structure with explicitly
 bounded reports. Result validation distinguishes static bound-artifact checks
 from opt-in complete runtime replay, including exact non-solved outcomes.
-Word-boundary tables, overlapping-3D training/workspace integration,
+Word-boundary tables,
 broader semantic/asset lint, live inspection, and the complete exit gate remain open.
 
 ### Deliverables
@@ -684,9 +690,11 @@ cross-pass invariants; the same model and seed match between native and web.
 - The overlapping-volume core now complements cardinal volume learning with
   actual cuboid footprints, literal symmetry, exact public projection and
   backward-lowered public voxel domains. The native/pas2js pass fixture proves
-  `patterns -> terrain -> foliage` at nonzero depth. A renderer, interactive
-  volume workbench and declarative training vertical slice are not yet bundled
-  for this new model family. See [overlapping 3D](docs/overlapping-3d.md).
+  `patterns -> terrain -> foliage` at nonzero depth. The full declarative
+  training/workspace slice now includes Studio preset 7, public XYZ policies,
+  saved replay and a dependency-free, shared isometric SVG renderer with
+  rotation and cutaways. These are symbolic volumes, not physical building
+  certification. See [overlapping 3D](docs/overlapping-3d.md).
 
 - Learned Terraces now connects six-direction volume learning to authored
   socket/support variants and spatial foliage in a three-pass transaction.

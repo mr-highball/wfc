@@ -62,7 +62,8 @@ type
     wvckSequence,
     wvckTraining,
     wvckRun,
-    wvckResult
+    wvckResult,
+    wvckPattern3D
   );
 
   TWfcValidateOutputMode = (
@@ -121,7 +122,7 @@ begin
   Result :=
     'Usage:'#10 +
     '  wfc-validate recipe [--quiet | --emit-canonical] [--] INPUT'#10 +
-    '  wfc-validate rules|model|pattern2d|sequence|training [--quiet | --emit-canonical] [--] INPUT'#10 +
+    '  wfc-validate rules|model|pattern2d|pattern3d|sequence|training [--quiet | --emit-canonical] [--] INPUT'#10 +
     '  wfc-validate run [--quiet | --emit-canonical] [--] RECIPE RUN'#10 +
     '  wfc-validate result [--replay] [--quiet | --emit-canonical] [--] RECIPE RUN RESULT'#10 +
     '  wfc-validate --help'#10 +
@@ -140,6 +141,7 @@ begin
   Result := 'wfc-validate ' + IntToStr(WFC_VALIDATE_CLI_VERSION) +
     ' (wfcpipeline=' + IntToStr(WFC_PIPELINE_TEXT_VERSION) + ',' +
     IntToStr(WFC_PIPELINE_VALUE_QUOTA_TEXT_VERSION) + ',' +
+    IntToStr(WFC_PIPELINE_CONNECTIVITY_TEXT_VERSION) + ',' +
     IntToStr(WFC_PIPELINE_MAX_SUPPORTED_TEXT_VERSION) + ')'#10;
 end;
 
@@ -201,6 +203,7 @@ begin
     wvckRules: Result := wakRules;
     wvckModel: Result := wakModel;
     wvckPattern2D: Result := wakPattern2D;
+    wvckPattern3D: Result := wakPattern3D;
     wvckSequence: Result := wakSequence;
     wvckTraining: Result := wakTraining;
     wvckRun: Result := wakRun;
@@ -381,6 +384,7 @@ begin
   if AArguments[0] = 'rules' then ACommand.Kind := wvckRules
   else if AArguments[0] = 'model' then ACommand.Kind := wvckModel
   else if AArguments[0] = 'pattern2d' then ACommand.Kind := wvckPattern2D
+  else if AArguments[0] = 'pattern3d' then ACommand.Kind := wvckPattern3D
   else if AArguments[0] = 'sequence' then ACommand.Kind := wvckSequence
   else if AArguments[0] = 'training' then ACommand.Kind := wvckTraining
   else if AArguments[0] = 'run' then ACommand.Kind := wvckRun
@@ -503,7 +507,7 @@ begin
         AStandardOutput := WfcValidateVersionText;
         Exit(WFC_VALIDATE_EXIT_SUCCESS);
       end;
-    wvckRecipe, wvckRules, wvckModel, wvckPattern2D, wvckSequence,
+    wvckRecipe, wvckRules, wvckModel, wvckPattern2D, wvckPattern3D, wvckSequence,
     wvckTraining, wvckRun, wvckResult:
       ;
   else

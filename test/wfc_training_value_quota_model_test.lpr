@@ -111,14 +111,14 @@ begin
       Result.Samples[0].Width := 3;
       Result.Samples[0].Height := 2;
     end;
-    wtkAdjacency3D:
+    wtkAdjacency3D, wtkPattern3D:
     begin
       Result.Samples[0].Width := 3;
       Result.Samples[0].Depth := 2;
     end;
     wtkSequence: Result.Options.Order := 1;
   end;
-  if AKind = wtkPattern2D then
+  if AKind in [wtkPattern2D, wtkPattern3D] then
   begin
     Result.Options.Boundary := wmbWrap;
     Result.Options.PatternWidth := 1;
@@ -206,7 +206,7 @@ begin
       Check(AuthoredRecipe.ResourceAt(0).Document = S,
         'hard quotas never alter learned observations/model payload');
       Owner := AuthoredRecipe.FindPass('output');
-      if K in [wtkPattern2D, wtkSequence] then
+      if K in [wtkPattern2D, wtkPattern3D, wtkSequence] then
         Check(Owner = 1, 'projection quota resolves public output, not latent pass')
       else
         Check(Owner = 0, 'direct quota resolves public output');
@@ -219,8 +219,12 @@ begin
       Check((Q.LabelText = NoteToken) and (Q.Values[0] = 'A') and
         (Q.MinimumCount = 2) and (Q.MaximumCount = 3),
         'quota ordinal, Unicode label and individual token set survive lowering');
-      Check((Pos('wfclearn-v3/', String(AuthoredRecipe.CopyMetadata.SourceFingerprint)) = 1) and
-        (AuthoredRecipe.CopyMetadata.SourceFingerprint =
+      if K = wtkPattern3D then
+        Check(Pos('wfclearn-v6/', String(AuthoredRecipe.CopyMetadata.SourceFingerprint)) = 1,
+          'pattern volume provenance retains its newer capability')
+      else Check(Pos('wfclearn-v3/', String(AuthoredRecipe.CopyMetadata.SourceFingerprint)) = 1,
+        'quota-only legacy provenance retains v3');
+      Check((AuthoredRecipe.CopyMetadata.SourceFingerprint =
         AuthoredRecipe.ResourceAt(0).SourceFingerprint),
         'recipe and resource provenance identify authored training source');
       Failed := False;

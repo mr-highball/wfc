@@ -6,6 +6,13 @@ workspace, learners, presets, and independent output checker.
 
 ## Run the browser workbench
 
+For joint 3D patterns, select **Arched lattice / overlapping volumes** (preset
+7), or open `index.html?preset=7` after serving the workbench. Train and solve
+the editable courtyard corpus, then rotate the SVG, hide air, and cut away
+upper Z layers. Click a face to select the exact XYZ cell for a public lock.
+The view and its SVG download never alter the full saved result. Source,
+recipe, run and result downloads retain the complete replay path.
+
 From the repository root, with pas2js and its matching standard RTL configured:
 
 ```powershell
@@ -93,7 +100,7 @@ explicit CR or CRLF tokens without textarea normalization.
 
 ## Native demonstrations
 
-The checked native build (`build.ps1` or `build.sh`) also runs all seven
+The checked native build (`build.ps1` or `build.sh`) also runs all eight
 presets. Manually:
 
 ```text
@@ -107,7 +114,7 @@ build/native/bin/TrainingStudio 5 0
 build/native/bin/TrainingStudio 6 0
 ```
 
-Use `TrainingStudio.exe` on Windows. Arguments are preset index 0–6 and
+Use `TrainingStudio.exe` on Windows. Arguments are preset index 0–7 and
 an optional unsigned decimal seed; default is preset 2, seed 0. The native
 demonstration is a self-checking console view, not an interactive native window.
 For arbitrary file-based training and replay, use `wfc_learn`/`wfc_run`.
@@ -132,6 +139,8 @@ and trace disabled:
 | 3 — whole token phrases | `red fox .` | `920A363A` |
 | 4 — raw Unicode-scalar text | `a cat.` | `F65D4875` |
 | 5 — volume checkerboard | 4×4×4, alternating along X/Y/Z | `CBDC737A` |
+| 6 — circular text | Forty cells, three public locks, explicit closing seam | `3437A49D` |
+| 7 — arched lattice | 4×4×4, 35 joint patterns, three public XYZ locks | `32E7DE7F` |
 
 The first four presets reproduce the editable source/model/recipe bytes from
 [TrainingDocuments](../04_TrainingDocuments/README.md). Their run/result
@@ -163,12 +172,40 @@ data-connectivity-contradiction="passed"
 data-connectivity-invalidation="passed"
 data-connectivity-volume="passed"
 data-circular-sequence="passed"
+data-overlapping-volume="passed"
+data-overlapping-volume-view="passed"
+data-overlapping-volume-recovery="passed"
+data-volume-view-isolation="passed"
 ```
 
 The interactive envelope is deliberately finite: 512 source tokens, 64
 samples, 128 learned values/patterns/states, 512 output cells, and at most
-4,096 local/64 pass backtracks. The UI runs synchronously. Open pattern
+4,096 local/64 pass backtracks. The UI runs synchronously. Open 2D pattern
 training remains model-only in the CLI and cannot export a Studio recipe.
+Open 3D input can export a wrapped-output recipe; an incompatible periodic
+extent produces a contradiction, not padding or relaxed constraints.
+
+## Native volume SVG
+
+The native build also produces `TrainingStudioVolume` (`.exe` on Windows):
+
+```text
+TrainingStudioVolume --help
+TrainingStudioVolume --seed 0 --output courtyard.svg
+TrainingStudioVolume --seed 4 --width 8 --height 4 --depth 4 --yaw 90 --cut-depth 2 --output courtyard-cut.svg
+```
+
+Without `--output`, SVG goes to stdout. An explicit path must be new: existing
+files are never overwritten. The host reuses preset 7, its three fixed public
+XYZ locks, the shared workspace and the same Pascal SVG renderer. Native
+callers can set `--max-cells`, `--max-quads`, and `--backtracks` explicitly;
+the default 512-cell interactive budget is not a core volume limit. Numeric,
+memory and search constraints still apply; an unsolved run emits no SVG.
+
+Preset 7 uses source signature `C87487A5`, recipe `E63D8AD3`, and seed-zero
+result `32E7DE7F`. Its complete source6/model2/recipe4/run/result chain is
+replay-tested natively and in pas2js. Its symbolic stone/leaf/air rules are
+not a claim of physically buildable architecture.
 
 See the [workspace and raw-text guide](../../../docs/training-studio.md) for
 API ownership, exact invalidation behavior, provenance, policy limits, and

@@ -26,8 +26,9 @@ wfc_learn --version
 
 `INPUT` is a file path, or `-` for standard input. Default output is canonical
 `wfcpipeline=1` text, `wfcpipeline=2` with output quotas, or `wfcpipeline=3`
-with rooted connectivity (with or without quotas). `--model` emits
-`wfcm=1`/`wfcm=2`/`wfcm=3`, `wfcp=1`, or `wfcs=1`/`wfcs=2`
+with rooted connectivity (with or without quotas). Overlapping volumes select
+`wfcpipeline=4`, with either policy. `--model` emits
+`wfcm=1`/`wfcm=2`/`wfcm=3`, `wfcp=1`/`wfcp=2`, or `wfcs=1`/`wfcs=2`
 according to the profile; circular sequences use `wfcs=2`. It rejects sources
 with quotas or connectivity because standalone models cannot preserve those
 policies. `--quiet` still learns and constructs the recipe,
@@ -55,13 +56,18 @@ editor. The CLI help/version output advertises the supported training formats.
 | `adjacency2d` | Open/wrap; none/d4; footprint 0,0; order 0 | Cardinal adjacency and counts | Rank 2, public `output` |
 | `adjacency3d` | Explicit positive depth; open/wrap; none/d4/cube24/cube48; footprint 0,0; order 0 | Six-face adjacency and counts | Rank 3, public `output` |
 | `pattern2d` | Open/wrap; none/d4; positive footprint of at most 64 cells; order 0 | Overlapping footprints and counts | Rank 2, private `patterns` → public `output`; wrapped input only |
+| `pattern3d` | Open/wrap; none/d4/cube24/cube48; positive XYZ footprint of at most 64 cells; order 0 | Joint overlapping cuboids and counts | Rank 3, private `patterns` → public `output`; wrapped output |
 | `sequence` | Height 1; open/wrap; none; footprint 0,0; order 1–64 | Bounded order-N latent states and counts; circular history when wrapped | Rank 1, private `sequence` → public `output`; whole extent for open, wrapped extent for circular |
 
 D4 means the existing deterministic eight rotation/reflection observations,
 including repeated observations when a transform is identical. Pattern D4
-requires a square footprint. Open patterns remain supported by `--model`;
+requires square XY footprints; cube transforms require cubic footprints.
+Open 2D patterns remain supported by `--model`;
 default and quiet recipe export reject them explicitly because the current
-pattern projection bridge is wrapped-only.
+2D pattern projection bridge is wrapped-only. For `pattern3d`, open input is
+supported for both model and recipe export: it controls extraction boundaries,
+while the recipe explicitly requests same-sized wrapped XYZ output. An open
+corpus may have no feasible periodic tiling; the runtime reports contradiction.
 
 Every sample has independent boundaries. Adjacency and pattern training never
 join the last token of one sample to the first token of the next. Sequence
@@ -75,12 +81,24 @@ ordering. See the [cardinal](learning.md), [pattern](patterns.md), and
 
 The exported recipe contains resource `learned`, no authored cross-pass
 requirements, and bottom-up traversal. It inherits the declared open/wrapped
-topology. Pattern and sequence recipes use current bridge-v2 projection, so
+topology, except `pattern3d` which explicitly requests wrapped output. 2D pattern
+and sequence recipes use current bridge-v2 projection; 3D patterns use their
+separate version-1 XYZ bridge. Thus
 run locks/domains on public `output` constrain private candidates before
 solving; private state keys are not user input. Output sizes, seed, locks,
 domains, budgets, and strategy belong to the separate recipe-bound run request.
 
 ## Editable training formats
+
+Overlapping volumes use `wfclearn=6`, `kind=pattern3d`,
+`footprint=width,height,depth`, and XYZ sample records. Both quota and
+connectivity sections are mandatory, using capability version/count `0/0`
+when absent. Other kinds cannot use version 6. The seven-argument factory is
+`MakeWfcTrainingOptions(Kind, Boundary, Symmetry, Width, Height, Depth, Order)`;
+the existing six-argument factory retains its old meaning and sets depth 1.
+Legacy callers' appended depth field is not read. See
+[overlapping volumes](overlapping-3d.md)
+for training, recipe, locking, rendering, and exact replay examples.
 
 Existing kinds retain byte-identical `wfclearn=1` documents. The additive
 `adjacency3d` kind requires `wfclearn=2` and

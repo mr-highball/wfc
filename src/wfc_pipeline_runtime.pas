@@ -45,9 +45,9 @@ const
     cannot multiply a small-looking run into an unbounded allocation. }
   WFC_PIPELINE_RUNTIME_MAX_TOTAL_PASS_CELL_COUNT = 16777216;
 
-  { Fixed aggregate work and storage boundaries for bridge-v2 inverse public
+  { Fixed aggregate work and storage boundaries for versioned inverse public
     input lowering. They apply to one runtime construction across every
-    Pattern2D and Sequence bridge. }
+    Pattern2D-v2, Sequence-v2 and Pattern3D-v1 bridge. }
   WFC_PIPELINE_RUNTIME_MAX_INVERSE_CONTRIBUTION_COUNT = 1048576;
   WFC_PIPELINE_RUNTIME_MAX_INVERSE_CANDIDATE_VISIT_COUNT = 16777216;
   WFC_PIPELINE_RUNTIME_MAX_INVERSE_PRIVATE_INDEX_COUNT = 4194304;
@@ -86,6 +86,7 @@ uses
   wfc_text_codec,
   wfc_token_lookup,
   wfc_pattern2d,
+  wfc_pattern3d,
   wfc_sequence;
 
 type
@@ -135,6 +136,7 @@ type
     ConstraintIndex: Integer;
     OffsetX: Integer;
     OffsetY: Integer;
+    OffsetZ: Integer;
     CandidateCount: Integer;
   end;
   TInverseContributions = array of TInverseContribution;
@@ -847,12 +849,30 @@ var
   LContributionCount: Integer;
   LFootprintSize: Integer;
   LModel2D: TWfcOverlappingModel2D;
+  LModel3D: TWfcOverlappingModel3D;
   LSequence: TWfcSequenceModel;
   LVersions: TWfcPipelineVersions;
   LVisitCount: Integer;
   LWrite: Integer;
   X: Integer;
   Y: Integer;
+  Z: Integer;
+
+  function VolumeFootprint(const AModel: TWfcOverlappingModel3D): Integer;
+  var LPlane: Integer;
+  begin
+    { Keep products checked here as well as at the immutable model boundary:
+      this runtime work preflight precedes contribution and graph allocation. }
+    Result := 0;
+    AddBoundedWork(Result, AModel.PatternWidth, AModel.PatternHeight,
+      WFC_PIPELINE_RUNTIME_MAX_INVERSE_CONTRIBUTION_COUNT,
+      'inverse volume footprint');
+    LPlane := Result;
+    Result := 0;
+    AddBoundedWork(Result, LPlane, AModel.PatternDepth,
+      WFC_PIPELINE_RUNTIME_MAX_INVERSE_CONTRIBUTION_COUNT,
+      'inverse volume footprint');
+  end;
 begin
   AValues := nil;
   LVersions := ARecipe.CopyVersions;
@@ -865,7 +885,9 @@ begin
     if ((LBridge.Kind = wpbkPattern2DProjection) and
         (LVersions.Pattern2DBridgeVersion = 2)) or
         ((LBridge.Kind = wpbkSequenceProjection) and
-        (LVersions.SequenceBridgeVersion = 2)) then
+        (LVersions.SequenceBridgeVersion = 2)) or
+        ((LBridge.Kind = wpbkPattern3DProjection) and
+        (LVersions.Pattern3DBridgeVersion = 1)) then
       LBridgeForTarget[LBridge.TargetPassIndex] := I;
   end;
 
@@ -889,6 +911,18 @@ begin
             'inverse bridge contribution count');
           AddBoundedWork(LVisitCount, LFootprintSize,
             LModel2D.PatternCount,
+            WFC_PIPELINE_RUNTIME_MAX_INVERSE_CANDIDATE_VISIT_COUNT,
+            'inverse bridge candidate visits');
+        end;
+      wpbkPattern3DProjection:
+        begin
+          LModel3D := ARecipe.BorrowPattern3DResource(
+            ARecipe.PassAt(LBridge.SourcePassIndex).ResourceIndex);
+          LFootprintSize := VolumeFootprint(LModel3D);
+          AddBoundedWork(LContributionCount, 1, LFootprintSize,
+            WFC_PIPELINE_RUNTIME_MAX_INVERSE_CONTRIBUTION_COUNT,
+            'inverse bridge contribution count');
+          AddBoundedWork(LVisitCount, LFootprintSize, LModel3D.PatternCount,
             WFC_PIPELINE_RUNTIME_MAX_INVERSE_CANDIDATE_VISIT_COUNT,
             'inverse bridge candidate visits');
         end;
@@ -935,9 +969,34 @@ begin
               AValues[LWrite].ConstraintIndex := I;
               AValues[LWrite].OffsetX := X;
               AValues[LWrite].OffsetY := Y;
+              AValues[LWrite].OffsetZ := 0;
               AValues[LWrite].CandidateCount := LModel2D.PatternCount;
               Inc(LWrite);
             end;
+        end;
+      wpbkPattern3DProjection:
+        begin
+          LModel3D := ARecipe.BorrowPattern3DResource(
+            ARecipe.PassAt(LBridge.SourcePassIndex).ResourceIndex);
+          for Z := 0 to LModel3D.PatternDepth - 1 do
+            for Y := 0 to LModel3D.PatternHeight - 1 do
+              for X := 0 to LModel3D.PatternWidth - 1 do
+              begin
+                AValues[LWrite].PassIndex := LBridge.SourcePassIndex;
+                AValues[LWrite].X := WrappedSubtract(AConstraints[I].X, X, ARun.Width);
+                AValues[LWrite].Y := WrappedSubtract(AConstraints[I].Y, Y, ARun.Height);
+                AValues[LWrite].Z := WrappedSubtract(AConstraints[I].Z, Z, ARun.Depth);
+                AValues[LWrite].Key := CellKey(LBridge.SourcePassIndex,
+                  AValues[LWrite].X, AValues[LWrite].Y, AValues[LWrite].Z,
+                  ACellCount, ARun);
+                AValues[LWrite].BridgeIndex := J;
+                AValues[LWrite].ConstraintIndex := I;
+                AValues[LWrite].OffsetX := X;
+                AValues[LWrite].OffsetY := Y;
+                AValues[LWrite].OffsetZ := Z;
+                AValues[LWrite].CandidateCount := LModel3D.PatternCount;
+                Inc(LWrite);
+              end;
         end;
       wpbkSequenceProjection:
         begin
@@ -953,6 +1012,7 @@ begin
           AValues[LWrite].ConstraintIndex := I;
           AValues[LWrite].OffsetX := 0;
           AValues[LWrite].OffsetY := 0;
+          AValues[LWrite].OffsetZ := 0;
           AValues[LWrite].CandidateCount := LSequence.StateCount;
           Inc(LWrite);
         end;
@@ -981,6 +1041,7 @@ var
   I: Integer;
   LBridge: TWfcPipelineBridge;
   LModel2D: TWfcOverlappingModel2D;
+  LModel3D: TWfcOverlappingModel3D;
   LSequence: TWfcSequenceModel;
   LWrite: Integer;
 begin
@@ -997,6 +1058,19 @@ begin
           if ContainsIndex(AConstraint.AllowedTokenIndices,
               LModel2D.PatternPaletteIndexAt(I,
                 AContribution.OffsetX, AContribution.OffsetY)) then
+          begin
+            Result[LWrite] := I;
+            Inc(LWrite);
+          end;
+      end;
+    wpbkPattern3DProjection:
+      begin
+        LModel3D := ARecipe.BorrowPattern3DResource(
+          ARecipe.PassAt(LBridge.SourcePassIndex).ResourceIndex);
+        for I := 0 to LModel3D.PatternCount - 1 do
+          if ContainsIndex(AConstraint.AllowedTokenIndices,
+              LModel3D.PatternPaletteIndexAt(I, AContribution.OffsetX,
+                AContribution.OffsetY, AContribution.OffsetZ)) then
           begin
             Result[LWrite] := I;
             Inc(LWrite);
