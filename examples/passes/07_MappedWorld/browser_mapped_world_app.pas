@@ -3,7 +3,7 @@
 unit browser_mapped_world_app;
 {$mode delphi}{$H+}
 interface
-uses JS, Web, SysUtils, wfc, wfc_lattice,
+uses JS, Web, WebOrWorker, SysUtils, wfc, wfc_lattice,
   mapped_world_types, mapped_world_workbench;
 type
   TMappedWorldEditError = (mweeCell, mweeDemand);
@@ -71,10 +71,12 @@ end;
 
 destructor TBrowserMappedWorldApplication.Destroy;
 var Nodes:TJSNodeList; I:Integer; E:TJSHTMLElement;
+  ErrorHandler:WebOrWorker.TJSEventHandler;
 begin
   FTesting:=False; CancelPending;
   if FBound then begin
-    window.removeEventListener('error',@HandleRuntimeError);
+    ErrorHandler:=@HandleRuntimeError;
+    window.removeEventListener('error',ErrorHandler);
     Nodes:=Element('workbench').querySelectorAll('input,select,button');
     for I:=0 to Nodes.length-1 do begin
       E:=TJSHTMLElement(Nodes[I]); E.onclick:=nil; E.oninput:=nil; E.onchange:=nil;
@@ -200,8 +202,10 @@ const DefinitionIds:array[0..8] of String=('seed-input','region-min-input',
   'region-max-input','land-weight-input','water-weight-input','clear-weight-input',
   'tree-weight-input','preset-select','sampling-select');
 var I:Integer; E:TJSNodeList;
+  ErrorHandler:WebOrWorker.TJSEventHandler;
 begin
-  window.addEventListener('error',@HandleRuntimeError);
+  ErrorHandler:=@HandleRuntimeError;
+  window.addEventListener('error',ErrorHandler);
   for I:=0 to High(DefinitionIds) do begin
     TJSHTMLElement(Element(DefinitionIds[I])).oninput:=@DefinitionInput;
     TJSHTMLElement(Element(DefinitionIds[I])).onchange:=@DefinitionInput;
