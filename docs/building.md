@@ -551,3 +551,8 @@ Ensemble Studio and Voice Studio controllers) in headless Chrome using the inclu
 development tools. A canary runs
 against the current official FPC development image and records the image digest
 and compiler revision in the job log. The checkout contains no submodules.
+
+A [dated native verification record](verification/hosted-native-2026-09-06.md)
+links the observed compiler matrix, test coverage, package checks, and known
+browser-lane failure at that revision. It is historical evidence, not a
+substitute for the current workflow result.

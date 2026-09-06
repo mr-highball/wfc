@@ -237,8 +237,10 @@ It is not yet the finished system described above:
   overlapping 3D footprints, structured multi-license provenance, media import and
   word-oriented text import, larger/background browser training, artifact-family
   lint, and general inspection tools remain;
-- the hosted CI definition is present, but its first remote run still needs to
-  be observed before the Phase 0 exit gate is claimed complete;
+- the [hosted native matrix](docs/verification/hosted-native-2026-09-06.md)
+  has passed on stable FPC for Linux/macOS/Windows and development FPC on Linux,
+  including Linux package and clean-checkout checks; the hosted browser lane
+  still needs a fully successful run, and no fully green CI gate is claimed;
 - the portable music path now has project-owned PCM/WAVE rendering, native
   file export, MIDI-to-score import and selected-excerpt training, and an
   interactive browser Music Studio with HTML audio and user-defined-duration
