@@ -12,6 +12,10 @@
   data-result-signature="" data-result-status="none"
   data-output-count="0" data-cell-count="0" data-output-depth="0"
   data-pass-count="0" data-lock-count="0"
+  data-quota-count="0" data-quota-draft="false"
+  data-quota-edit="not-run" data-quota-replay="not-run"
+  data-quota-contradiction="not-run" data-quota-invalidation="not-run"
+  data-quota-volume="not-run"
   data-source-invalidation="not-run" data-run-invalidation="not-run"
   data-contradiction="not-run" data-recovery="not-run"
   data-preset-sweep="not-run" data-import-race="not-run"
@@ -93,6 +97,32 @@
         <label><span>Local backtracks</span><input id="backtracks-input" type="number" min="0" max="4096" value="1024"></label>
         <label><span>Pass backtracks</span><input id="pass-backtracks-input" type="number" min="0" max="64" value="0"></label>
         <label class="check-field"><input id="trace-input" type="checkbox"><span>Capture causal evidence</span></label>
+      </div>
+
+      <div class="quota-editor" aria-labelledby="quota-heading">
+        <div class="section-heading">
+          <div><h3 id="quota-heading">Whole-output quotas</h3>
+            <p>Hard quantities, separate from learned frequencies. A cell counts once if its token is in the selected set. Every saved quota must hold.</p></div>
+          <button id="quota-new-button" type="button">New quota</button>
+        </div>
+        <div class="quota-fields">
+          <label><span>Unique label</span><input id="quota-label-input" autocomplete="off" spellcheck="false"></label>
+          <label><span>Accepted public tokens</span><select id="quota-tokens-select" multiple size="5" aria-describedby="quota-token-hint"></select></label>
+          <label><span>Minimum cells</span><input id="quota-minimum-input" inputmode="numeric" value="0" autocomplete="off"></label>
+          <label><span>Maximum cells</span><input id="quota-maximum-input" inputmode="numeric" value="0" autocomplete="off"></label>
+        </div>
+        <p id="quota-token-hint" class="hint">Select one or more tokens (Ctrl / Command or Shift on desktop). Tokens are displayed with canonical escaping. Bounds are absolute integers, not percentages; resizing does not change them.</p>
+        <div class="toolbar">
+          <button id="quota-apply-button" class="primary" type="button">Apply add / replace</button>
+          <button id="quota-discard-button" type="button">Discard draft</button>
+        </div>
+        <select id="quota-list" size="4" aria-label="Saved whole-output quotas"></select>
+        <div class="toolbar">
+          <button id="quota-remove-button" type="button">Remove selected</button>
+          <button id="quota-clear-button" type="button">Clear all quotas</button>
+        </div>
+        <p id="quota-status" class="hint" aria-live="polite">Train the current source to choose public tokens.</p>
+        <p class="hint">Apply rebuilds the recipe and saves quotas in the editable .wfclearn source. Download source to keep them. Standalone model export cannot retain quotas; use the source or recipe.</p>
       </div>
 
       <div class="lock-editor">

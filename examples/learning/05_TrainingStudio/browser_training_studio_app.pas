@@ -52,6 +52,8 @@ type
     FFileReader: TJSFileReader;
     FSourceDownloadUrl: String;
     FArtifactDownloadUrl: String;
+    FQuotaDraftDirty: Boolean;
+    FEditingQuotaIndex: Integer;
 
     FPresetSelect: TJSHTMLSelectElement;
     FLoadPresetButton: TJSHTMLButtonElement;
@@ -97,6 +99,18 @@ type
     FRemoveLockButton: TJSHTMLButtonElement;
     FClearLocksButton: TJSHTMLButtonElement;
 
+    FQuotaLabelInput: TJSHTMLInputElement;
+    FQuotaTokensSelect: TJSHTMLSelectElement;
+    FQuotaMinimumInput: TJSHTMLInputElement;
+    FQuotaMaximumInput: TJSHTMLInputElement;
+    FQuotaList: TJSHTMLSelectElement;
+    FQuotaApplyButton: TJSHTMLButtonElement;
+    FQuotaNewButton: TJSHTMLButtonElement;
+    FQuotaRemoveButton: TJSHTMLButtonElement;
+    FQuotaClearButton: TJSHTMLButtonElement;
+    FQuotaDiscardButton: TJSHTMLButtonElement;
+    FQuotaStatusElement: TJSElement;
+
     FResultStatusElement: TJSElement;
     FOutputGrid: TJSElement;
     FOutputPlaceholder: TJSElement;
@@ -131,6 +145,13 @@ type
     procedure AddOrReplaceLock(const AX, AY, AZ: Integer;
       const AToken: TWfcModelToken);
     procedure SortLocks;
+    procedure ReloadQuotaEditor;
+    procedure LoadQuotaFields(const AIndex: Integer);
+    procedure BeginQuotaDraft;
+    procedure CommitValueQuotas(const AQuotas: TWfcTrainingValueQuotas);
+    procedure ApplyQuotaDraft;
+    procedure RefreshQuotaState;
+    procedure RunQuotaSelfTest;
 
     procedure SetState(const AState, AStatus, ADetail: String);
     procedure ShowError(const AMessage: String);
@@ -180,6 +201,13 @@ type
     function HandleClearLocks(AEvent: TJSMouseEvent): Boolean;
     function HandleOutputClick(AEvent: TJSMouseEvent): Boolean;
     function HandleArtifactChange(AEvent: TJSEvent): Boolean;
+    function HandleQuotaInput(AEvent: TJSEvent): Boolean;
+    function HandleQuotaSelect(AEvent: TJSEvent): Boolean;
+    function HandleQuotaApply(AEvent: TJSMouseEvent): Boolean;
+    function HandleQuotaNew(AEvent: TJSMouseEvent): Boolean;
+    function HandleQuotaRemove(AEvent: TJSMouseEvent): Boolean;
+    function HandleQuotaClear(AEvent: TJSMouseEvent): Boolean;
+    function HandleQuotaDiscard(AEvent: TJSMouseEvent): Boolean;
   public
     constructor Create;
     destructor Destroy; override;
@@ -220,6 +248,8 @@ begin
   FFileReader := nil;
   FSourceDownloadUrl := '';
   FArtifactDownloadUrl := '';
+  FQuotaDraftDirty := False;
+  FEditingQuotaIndex := -1;
 end;
 
 destructor TBrowserTrainingStudioApplication.Destroy;
@@ -292,6 +322,18 @@ begin
   FClearLocksButton := TJSHTMLButtonElement(
     RequireElement('clear-locks-button'));
 
+  FQuotaLabelInput := TJSHTMLInputElement(RequireElement('quota-label-input'));
+  FQuotaTokensSelect := TJSHTMLSelectElement(RequireElement('quota-tokens-select'));
+  FQuotaMinimumInput := TJSHTMLInputElement(RequireElement('quota-minimum-input'));
+  FQuotaMaximumInput := TJSHTMLInputElement(RequireElement('quota-maximum-input'));
+  FQuotaList := TJSHTMLSelectElement(RequireElement('quota-list'));
+  FQuotaApplyButton := TJSHTMLButtonElement(RequireElement('quota-apply-button'));
+  FQuotaNewButton := TJSHTMLButtonElement(RequireElement('quota-new-button'));
+  FQuotaRemoveButton := TJSHTMLButtonElement(RequireElement('quota-remove-button'));
+  FQuotaClearButton := TJSHTMLButtonElement(RequireElement('quota-clear-button'));
+  FQuotaDiscardButton := TJSHTMLButtonElement(RequireElement('quota-discard-button'));
+  FQuotaStatusElement := RequireElement('quota-status');
+
   FResultStatusElement := RequireElement('result-status');
   FOutputGrid := RequireElement('output-grid');
   FOutputPlaceholder := RequireElement('output-placeholder');
@@ -327,6 +369,16 @@ begin
   FRemoveLockButton.onclick := @HandleRemoveLock;
   FClearLocksButton.onclick := @HandleClearLocks;
   FArtifactSelect.onchange := @HandleArtifactChange;
+  FQuotaLabelInput.oninput := @HandleQuotaInput;
+  FQuotaMinimumInput.oninput := @HandleQuotaInput;
+  FQuotaMaximumInput.oninput := @HandleQuotaInput;
+  FQuotaTokensSelect.onchange := @HandleQuotaInput;
+  FQuotaList.onchange := @HandleQuotaSelect;
+  FQuotaApplyButton.onclick := @HandleQuotaApply;
+  FQuotaNewButton.onclick := @HandleQuotaNew;
+  FQuotaRemoveButton.onclick := @HandleQuotaRemove;
+  FQuotaClearButton.onclick := @HandleQuotaClear;
+  FQuotaDiscardButton.onclick := @HandleQuotaDiscard;
 end;
 
 procedure TBrowserTrainingStudioApplication.PopulatePresets;
@@ -376,11 +428,13 @@ procedure TBrowserTrainingStudioApplication.ApplySourceText(
   const AText: String);
 begin
   CancelSourceFileRead;
+  FQuotaDraftDirty := False;
   FLocks := nil;
   FVocabulary := nil;
   FSelectedCell := -1;
   FSourceInput.value := AText;
   FWorkspace.SetSourceText(AText);
+  ReloadQuotaEditor;
   RefreshAll;
   SetState('source-dirty', 'Source changed; derived artifacts cleared.',
     'Train the current source before configuring another run.');
@@ -388,11 +442,14 @@ end;
 
 procedure TBrowserTrainingStudioApplication.TrainWorkspace;
 begin
+  if FQuotaDraftDirty then
+    raise EWfcTrainingWorkspace.Create('apply or discard the quota draft before training');
   CancelSourceFileRead;
   FLocks := nil;
   FSelectedCell := -1;
   FWorkspace.SetSourceText(FSourceInput.value);
   FWorkspace.Train;
+  ReloadQuotaEditor;
   RefreshAll;
   SetState('trained', 'Recipe trained.',
     'The model and recipe are current; configure and solve a bounded run.');
@@ -404,6 +461,8 @@ var
   LOptions: TWfcTrainingSolveOptions;
   LStatus: TWfcPipelineResultStatus;
 begin
+  if FQuotaDraftDirty then
+    raise EWfcTrainingWorkspace.Create('apply or discard the quota draft before solving');
   { Clearing first is deliberate: malformed edited options cannot leave an
     older run or result looking current. }
   FWorkspace.ClearRun;
@@ -607,12 +666,181 @@ begin
   end;
 end;
 
+procedure TBrowserTrainingStudioApplication.LoadQuotaFields(const AIndex: Integer);
+var I, J: Integer; Q: TWfcTrainingValueQuota;
+begin
+  FEditingQuotaIndex := AIndex;
+  FQuotaList.selectedIndex := AIndex;
+  FQuotaLabelInput.value := '';
+  FQuotaMinimumInput.value := '0';
+  FQuotaMaximumInput.value := '0';
+  for I := 0 to FQuotaTokensSelect.options.length - 1 do
+    TJSHTMLOptionElement(FQuotaTokensSelect.options[I]).selected := False;
+  if AIndex < 0 then Exit;
+  Q := FWorkspace.CopyValueQuotas[AIndex];
+  FQuotaLabelInput.value := String(Q.LabelText);
+  FQuotaMinimumInput.value := IntToStr(Q.MinimumCount);
+  FQuotaMaximumInput.value := IntToStr(Q.MaximumCount);
+  for I := 0 to Length(FVocabulary) - 1 do
+    for J := 0 to Length(Q.Values) - 1 do
+      if FVocabulary[I] = Q.Values[J] then
+        TJSHTMLOptionElement(FQuotaTokensSelect.options[I]).selected := True;
+end;
+
+procedure TBrowserTrainingStudioApplication.ReloadQuotaEditor;
+var I, J: Integer; LOption: TJSHTMLOptionElement;
+  Q: TWfcTrainingValueQuotas; LText: String;
+begin
+  FEditingQuotaIndex := -1;
+  FQuotaList.textContent := '';
+  FQuotaTokensSelect.textContent := '';
+  if FWorkspace.HasRecipe then
+  begin
+    FVocabulary := FWorkspace.PublicVocabulary;
+    for I := 0 to Length(FVocabulary) - 1 do
+    begin
+      LOption := TJSHTMLOptionElement(document.createElement('option'));
+      LOption.value := IntToStr(I);
+      LOption.textContent := DisplayToken(FVocabulary[I]);
+      FQuotaTokensSelect.appendChild(LOption);
+    end;
+    Q := FWorkspace.CopyValueQuotas;
+    for I := 0 to Length(Q) - 1 do
+    begin
+      LText := DisplayToken(Q[I].LabelText) + ' : ' +
+        IntToStr(Q[I].MinimumCount) + '..' + IntToStr(Q[I].MaximumCount) + ' {';
+      for J := 0 to Length(Q[I].Values) - 1 do
+      begin
+        if J > 0 then LText := LText + ', ';
+        LText := LText + DisplayToken(Q[I].Values[J]);
+      end;
+      LOption := TJSHTMLOptionElement(document.createElement('option'));
+      LOption.value := IntToStr(I);
+      LOption.textContent := LText + '}';
+      FQuotaList.appendChild(LOption);
+    end;
+  end;
+  LoadQuotaFields(-1);
+end;
+
+procedure TBrowserTrainingStudioApplication.BeginQuotaDraft;
+begin
+  CancelSourceFileRead;
+  if not FWorkspace.HasRecipe then
+    raise EWfcTrainingWorkspace.Create('train the current source before editing quotas');
+  FQuotaDraftDirty := True;
+  FWorkspace.ClearRun;
+  FSelectedCell := -1;
+  RefreshAll;
+  SetState('quota-dirty', 'Quota draft changed; apply or discard it.',
+    'No old output or derived download is current. Source download waits for the draft too.');
+end;
+
+procedure TBrowserTrainingStudioApplication.CommitValueQuotas(
+  const AQuotas: TWfcTrainingValueQuotas);
+begin
+  BeginQuotaDraft;
+  try
+    FWorkspace.ReplaceValueQuotas(AQuotas);
+    FQuotaDraftDirty := False;
+    ReloadQuotaEditor;
+  finally
+    { Successful edits are canonical source changes. On a failed rebuild the
+      retained source is the only recoverable artifact, never an old run. }
+    FSourceInput.value := FWorkspace.SourceText;
+    RefreshAll;
+  end;
+  SetState('trained', 'Quotas saved in the training source; recipe rebuilt.',
+    'Configure and solve again. Download source to preserve these exact hard bounds.');
+end;
+
+procedure TBrowserTrainingStudioApplication.ApplyQuotaDraft;
+var Q: TWfcTrainingValueQuotas; V: TWfcModelTokens;
+  I, N, LMinimum, LMaximum: Integer; LQuota: TWfcTrainingValueQuota;
+begin
+  BeginQuotaDraft;
+  LMinimum := WfcTextParseCanonicalInteger(FQuotaMinimumInput.value,
+    'quota minimum', 'training studio');
+  LMaximum := WfcTextParseCanonicalInteger(FQuotaMaximumInput.value,
+    'quota maximum', 'training studio');
+  V := nil;
+  { DOM option positions refer only to the current detached public vocabulary.
+    Tokens, not their indices or displayed percent-escaped labels, are saved. }
+  for I := 0 to FQuotaTokensSelect.options.length - 1 do
+    if TJSHTMLOptionElement(FQuotaTokensSelect.options[I]).selected then
+    begin
+      if I >= Length(FVocabulary) then
+        raise EWfcTrainingWorkspace.Create('quota vocabulary selection is stale');
+      N := Length(V); SetLength(V, N + 1); V[N] := FVocabulary[I];
+    end;
+  LQuota := MakeWfcTrainingValueQuota(FQuotaLabelInput.value, V, LMinimum, LMaximum);
+  Q := FWorkspace.CopyValueQuotas;
+  if FEditingQuotaIndex >= 0 then
+  begin
+    if FEditingQuotaIndex >= Length(Q) then
+      raise EWfcTrainingWorkspace.Create('selected quota is stale');
+    Q[FEditingQuotaIndex] := LQuota;
+  end
+  else
+  begin
+    N := Length(Q); SetLength(Q, N + 1); Q[N] := LQuota;
+  end;
+  CommitValueQuotas(Q);
+end;
+
+procedure TBrowserTrainingStudioApplication.RefreshQuotaState;
+var LHasRecipe: Boolean; LCount: Integer;
+begin
+  LHasRecipe := FWorkspace.HasRecipe;
+  LCount := 0;
+  if LHasRecipe then LCount := FWorkspace.ValueQuotaCount
+  else
+  begin
+    FQuotaList.textContent := '';
+    FEditingQuotaIndex := -1;
+  end;
+  FQuotaLabelInput.disabled := not LHasRecipe;
+  FQuotaTokensSelect.disabled := not LHasRecipe;
+  FQuotaMinimumInput.disabled := not LHasRecipe;
+  FQuotaMaximumInput.disabled := not LHasRecipe;
+  FQuotaApplyButton.disabled := not LHasRecipe;
+  if FEditingQuotaIndex < 0 then FQuotaApplyButton.textContent := 'Apply new quota'
+  else FQuotaApplyButton.textContent := 'Apply selected quota';
+  FQuotaNewButton.disabled := (not LHasRecipe) or FQuotaDraftDirty;
+  FQuotaList.disabled := (not LHasRecipe) or FQuotaDraftDirty;
+  FQuotaRemoveButton.disabled := (not LHasRecipe) or FQuotaDraftDirty or
+    (FEditingQuotaIndex < 0);
+  FQuotaClearButton.disabled := (not LHasRecipe) or FQuotaDraftDirty or (LCount = 0);
+  FQuotaDiscardButton.disabled := not FQuotaDraftDirty;
+  FSolveButton.disabled := (not LHasRecipe) or FQuotaDraftDirty;
+  FTrainButton.disabled := FQuotaDraftDirty;
+  document.body.setAttribute('data-quota-count', IntToStr(LCount));
+  document.body.setAttribute('data-quota-draft', LowerCase(BoolToStr(FQuotaDraftDirty, True)));
+  if FQuotaDraftDirty then
+    FQuotaStatusElement.textContent := 'Unapplied draft. Apply or discard before solving or downloading. ' +
+      'If rebuilding failed, discard the draft and train the retained source again.'
+  else if not LHasRecipe then
+    FQuotaStatusElement.textContent := 'Train the current source to choose public tokens.'
+  else
+    FQuotaStatusElement.textContent := IntToStr(LCount) +
+      ' saved whole-output quotas. Bounds count the complete XYZ output once, not each row or slice.';
+end;
+
 procedure TBrowserTrainingStudioApplication.SetState(
   const AState, AStatus, ADetail: String);
 begin
-  document.body.setAttribute('data-state', AState);
-  FStatusElement.textContent := AStatus;
-  FStatusDetailElement.textContent := ADetail;
+  if FQuotaDraftDirty and (AState = 'run-dirty') then
+  begin
+    document.body.setAttribute('data-state', 'quota-dirty');
+    FStatusElement.textContent := 'Run edited; quota draft still needs apply or discard.';
+    FStatusDetailElement.textContent := 'Both edits are pending. Resolve the quota draft before configuring another solve.';
+  end
+  else
+  begin
+    document.body.setAttribute('data-state', AState);
+    FStatusElement.textContent := AStatus;
+    FStatusDetailElement.textContent := ADetail;
+  end;
 end;
 
 procedure TBrowserTrainingStudioApplication.ShowError(
@@ -630,6 +858,7 @@ end;
 procedure TBrowserTrainingStudioApplication.RefreshAll;
 begin
   RefreshVocabulary;
+  RefreshQuotaState;
   RefreshLocks;
   RefreshMetrics;
   RefreshResult;
@@ -665,7 +894,7 @@ begin
     LOptions := FWorkspace.SourceOptions;
     LProfile := ProfileName(LOptions.Kind);
     LSourceSignature := FWorkspace.TrainingSignatureText;
-    LRecipeSignature := FWorkspace.RecipeSignatureText;
+    if not FQuotaDraftDirty then LRecipeSignature := FWorkspace.RecipeSignatureText;
     FProfileElement.textContent := LProfile;
     FSampleCountElement.textContent := IntToStr(FWorkspace.SampleCount);
     FSourceTokenCountElement.textContent :=
@@ -956,18 +1185,22 @@ end;
 
 procedure TBrowserTrainingStudioApplication.RefreshDownloads;
 begin
-  SetDownloadLink(FSourceDownloadLink, FWorkspace.SourceText,
+  if FQuotaDraftDirty then
+    SetDownloadLink(FSourceDownloadLink, '', 'training-source.wfclearn', FSourceDownloadUrl)
+  else SetDownloadLink(FSourceDownloadLink, FWorkspace.SourceText,
     'training-source.wfclearn', FSourceDownloadUrl);
 end;
 
 function TBrowserTrainingStudioApplication.SelectedArtifactText: String;
 begin
   Result := '';
+  if FQuotaDraftDirty then Exit;
   if FArtifactSelect.value = 'source' then
     Result := FWorkspace.SourceText
   else if FArtifactSelect.value = 'model' then
   begin
-    if FWorkspace.HasRecipe then Result := FWorkspace.ModelText;
+    if FWorkspace.HasRecipe and (FWorkspace.ValueQuotaCount = 0) then
+      Result := FWorkspace.ModelText;
   end
   else if FArtifactSelect.value = 'recipe' then
   begin
@@ -1009,7 +1242,12 @@ begin
   FArtifactOutput.value := LText;
   SetDownloadLink(FArtifactDownloadLink, LText,
     SelectedArtifactFileName, FArtifactDownloadUrl);
-  if LText = '' then
+  if FQuotaDraftDirty then
+    FArtifactStatus.textContent := 'Apply or discard the quota draft before exporting.'
+  else if (FArtifactSelect.value = 'model') and FWorkspace.HasRecipe and
+      (FWorkspace.ValueQuotaCount > 0) then
+    FArtifactStatus.textContent := 'Standalone models cannot retain hard output quotas. Download the source or pipeline recipe instead.'
+  else if LText = '' then
     FArtifactStatus.textContent :=
       'This artifact is unavailable for the current workspace state.'
   else
@@ -1094,6 +1332,7 @@ begin
     gckEntryDomain: Result := 'entry-domain';
     gckExcludedAssignment: Result := 'excluded-assignment';
     gckConnectivity: Result := 'connectivity';
+    gckValueQuota: Result := 'value-quota';
   else
     Result := 'unknown';
   end;
@@ -1158,11 +1397,13 @@ end;
 
 procedure TBrowserTrainingStudioApplication.DiscardSourceForImportError;
 begin
+  FQuotaDraftDirty := False;
   FLocks := nil;
   FVocabulary := nil;
   FSelectedCell := -1;
   FSourceInput.value := '';
   FWorkspace.SetSourceText('');
+  ReloadQuotaEditor;
   RefreshAll;
 end;
 
@@ -1223,6 +1464,178 @@ procedure TBrowserTrainingStudioApplication.DispatchDomEvent(
   const AElement: TJSElement; const AEventName: String);
 begin
   AElement.dispatchEvent(TJSEvent.new(AEventName));
+end;
+
+procedure TBrowserTrainingStudioApplication.RunQuotaSelfTest;
+var LCafe: TWfcModelToken; S, P, R, V: String;
+  LTokens: TWfcModelTokens; I, LCount: Integer; LStaleReader: TJSFileReader;
+
+  procedure SelectPreset(const AIndex: Integer);
+  begin
+    FPresetSelect.value := IntToStr(AIndex);
+    DispatchDomEvent(FLoadPresetButton, 'click');
+    DispatchDomEvent(FTrainButton, 'click');
+    DispatchDomEvent(FSolveButton, 'click');
+    AssertTest(FWorkspace.HasResult and (FWorkspace.ResultStatus = wprsSolved),
+      'quota fixture preset did not solve');
+  end;
+
+  procedure Draft(const ALabel, AToken: TWfcModelToken;
+    const AMinimum, AMaximum: String);
+  var J: Integer;
+  begin
+    FQuotaLabelInput.value := String(ALabel);
+    FQuotaMinimumInput.value := AMinimum;
+    FQuotaMaximumInput.value := AMaximum;
+    for J := 0 to Length(FVocabulary) - 1 do
+      TJSHTMLOptionElement(FQuotaTokensSelect.options[J]).selected := FVocabulary[J] = AToken;
+    DispatchDomEvent(FQuotaLabelInput, 'input');
+  end;
+
+  procedure ApplyAndSolve;
+  begin
+    DispatchDomEvent(FQuotaApplyButton, 'click');
+    AssertTest(not FQuotaDraftDirty and FWorkspace.HasRecipe,
+      'quota edit failed to publish a current recipe');
+    AssertTest(FSourceInput.value = FWorkspace.SourceText,
+      'applied quota source textarea is stale');
+    DispatchDomEvent(FSolveButton, 'click');
+    AssertTest(FWorkspace.HasResult, 'quota solve did not produce a terminal result');
+  end;
+begin
+  document.body.setAttribute('data-quota-edit', 'pending');
+  document.body.setAttribute('data-quota-replay', 'pending');
+  document.body.setAttribute('data-quota-contradiction', 'pending');
+  document.body.setAttribute('data-quota-invalidation', 'pending');
+  document.body.setAttribute('data-quota-volume', 'pending');
+  LCafe := 'caf' + Chr($E9);
+  SelectPreset(3);
+  AssertTest(FWorkspace.OutputTokens[0] = 'red', 'seed-zero phrase baseline changed');
+  FArtifactSelect.value := 'result';
+  DispatchDomEvent(FArtifactSelect, 'change');
+  LStaleReader := TJSFileReader.new;
+  FFileReader := LStaleReader;
+  Draft('prefer ' + LCafe, LCafe, '1', '1');
+  CommitSourceFileText(LStaleReader, 'obsolete quota-era import');
+  AssertTest((FWorkspace.SourceText = TrainingStudioPresetText(3)) and
+    (FFileReader = nil), 'quota editing did not cancel stale source reads');
+  AssertTest(FQuotaDraftDirty and FSolveButton.disabled and FTrainButton.disabled and
+    not FWorkspace.HasRun and not FWorkspace.HasResult and
+    (FArtifactOutput.value = '') and (not FArtifactDownloadLink.hasAttribute('href')) and
+    (not FSourceDownloadLink.hasAttribute('href')) and
+    (document.body.getAttribute('data-recipe-signature') = ''),
+    'quota draft exposed stale solving, signatures or downloads');
+  FArtifactSelect.value := 'recipe'; DispatchDomEvent(FArtifactSelect, 'change');
+  AssertTest(FArtifactOutput.value = '', 'quota draft exposed old recipe export');
+  DispatchDomEvent(FSeedInput, 'input');
+  AssertTest((document.body.getAttribute('data-state') = 'quota-dirty') and
+    FSolveButton.disabled and FQuotaDraftDirty,
+    'editing a run field hid the unresolved quota draft');
+  DispatchDomEvent(FSolveButton, 'click');
+  AssertTest(not FWorkspace.HasResult, 'programmatic solve bypassed draft guard');
+  ApplyAndSolve;
+  LTokens := FWorkspace.OutputTokens;
+  AssertTest((FWorkspace.ResultStatus = wprsSolved) and (Length(LTokens) = 3) and
+    (LTokens[0] = LCafe) and (LTokens[1] = 'fox') and (LTokens[2] = '.'),
+    'public Unicode quota did not guide private sequence state selection');
+  AssertTest((FWorkspace.ValueQuotaCount = 1) and
+    (Pos('wfclearn=3'#10, FWorkspace.SourceText) = 1) and
+    (Pos('caf%C3%A9', FWorkspace.SourceText) > 0) and
+    (Pos('wfcpipeline=2'#10, FWorkspace.RecipeText) = 1),
+    'quota source/recipe did not retain canonical versioned Unicode policy');
+  document.body.setAttribute('data-quota-edit', 'passed');
+  S := FWorkspace.SourceText; P := FWorkspace.RecipeText;
+  R := FWorkspace.RunText; V := FWorkspace.ResultText;
+  FArtifactSelect.value := 'model'; DispatchDomEvent(FArtifactSelect, 'change');
+  AssertTest((FArtifactOutput.value = '') and (not FArtifactDownloadLink.hasAttribute('href')) and
+    (Pos('cannot retain', FArtifactStatus.textContent) > 0), 'model-only export silently lost quotas');
+  FArtifactSelect.value := 'source'; DispatchDomEvent(FArtifactSelect, 'change');
+  AssertTest((FArtifactOutput.value = S) and FArtifactDownloadLink.hasAttribute('href'),
+    'canonical quota source cannot be saved');
+  FSourceInput.value := S; DispatchDomEvent(FSourceInput, 'input');
+  AssertTest(not FWorkspace.HasRecipe, 'reimport did not invalidate its old lineage');
+  DispatchDomEvent(FTrainButton, 'click'); DispatchDomEvent(FSolveButton, 'click');
+  AssertTest((FWorkspace.SourceText = S) and (FWorkspace.RecipeText = P) and
+    (FWorkspace.RunText = R) and (FWorkspace.ResultText = V) and
+    (FQuotaList.options.length = 1), 'saved quota source did not retrain and replay exactly');
+  document.body.setAttribute('data-quota-replay', 'passed');
+
+  { An additional multi-token quota counts set membership once, not one
+    contribution per accepted token. It remains conjunctive with cafe=1. }
+  Draft('opening alternatives', 'red', '1', '1');
+  for I := 0 to Length(FVocabulary) - 1 do
+    if FVocabulary[I] = LCafe then
+      TJSHTMLOptionElement(FQuotaTokensSelect.options[I]).selected := True;
+  DispatchDomEvent(FQuotaTokensSelect, 'change');
+  ApplyAndSolve;
+  AssertTest((FWorkspace.ValueQuotaCount = 2) and (FWorkspace.OutputTokens[0] = LCafe),
+    'multi-token quota did not retain conjunctive public semantics');
+
+  FQuotaList.selectedIndex := 0; DispatchDomEvent(FQuotaList, 'change');
+  FQuotaMinimumInput.value := '1.5'; DispatchDomEvent(FQuotaMinimumInput, 'input');
+  DispatchDomEvent(FQuotaApplyButton, 'click');
+  AssertTest(FQuotaDraftDirty and not FWorkspace.HasResult and FSolveButton.disabled,
+    'invalid numeric draft exposed old result');
+  DispatchDomEvent(FQuotaDiscardButton, 'click');
+  AssertTest(not FQuotaDraftDirty and not FWorkspace.HasRun and not FWorkspace.HasResult,
+    'discarding draft resurrected an old invocation');
+  { Valid numbers but reversed bounds enter the shared destructive editor
+    mutation: only the retained source remains after rejection. }
+  FQuotaList.selectedIndex := 0; DispatchDomEvent(FQuotaList, 'change');
+  Draft('invalid bounds', LCafe, '2', '1');
+  DispatchDomEvent(FQuotaApplyButton, 'click');
+  AssertTest(FQuotaDraftDirty and not FWorkspace.HasRecipe and
+    not FWorkspace.HasRun and not FWorkspace.HasResult and
+    (FQuotaList.options.length = 0) and
+    (FSourceInput.value = FWorkspace.SourceText), 'failed rebuild kept stale derived artifacts');
+  DispatchDomEvent(FQuotaDiscardButton, 'click');
+  DispatchDomEvent(FTrainButton, 'click'); DispatchDomEvent(FSolveButton, 'click');
+  AssertTest(FWorkspace.HasResult and (FWorkspace.OutputTokens[0] = LCafe),
+    'discard/retrain could not recover the retained quota source');
+  document.body.setAttribute('data-quota-invalidation', 'passed');
+
+  SelectPreset(INITIAL_PRESET);
+  Draft('half A', 'A', '8', '8'); ApplyAndSolve;
+  AssertTest(FWorkspace.ResultStatus = wprsSolved, 'legal pattern quota did not solve');
+  LTokens := FWorkspace.OutputTokens; LCount := 0;
+  for I := 0 to Length(LTokens) - 1 do if LTokens[I] = 'A' then Inc(LCount);
+  AssertTest(LCount = 8, 'pattern quota count mismatch');
+  FQuotaList.selectedIndex := 0; DispatchDomEvent(FQuotaList, 'change');
+  Draft('half A', 'A', '7', '7'); ApplyAndSolve;
+  AssertTest((FWorkspace.ResultStatus = wprsContradiction) and
+    (Length(FWorkspace.OutputTokens) = 0) and
+    (document.querySelectorAll('#output-grid .output-cell').length = 0),
+    'impossible pattern quota showed old output');
+  AssertTest(ContradictionName(gckValueQuota) = 'value-quota', 'quota diagnostic label is missing');
+  FQuotaList.selectedIndex := 0; DispatchDomEvent(FQuotaList, 'change');
+  DispatchDomEvent(FQuotaRemoveButton, 'click'); DispatchDomEvent(FSolveButton, 'click');
+  AssertTest((FWorkspace.ValueQuotaCount = 0) and
+    (FWorkspace.ResultSignatureText = BASELINE_RESULT_SIGNATURE),
+    'removing final quota did not restore old version-one replay');
+  document.body.setAttribute('data-quota-contradiction', 'passed');
+
+  SelectPreset(VOLUME_PRESET);
+  Draft('whole volume A', 'A', '32', '32'); ApplyAndSolve;
+  AssertTest((FWorkspace.ResultStatus = wprsSolved) and
+    (Length(FWorkspace.OutputTokens) = 64), 'volume quota counted a slice instead of all XYZ cells');
+  FDepthInput.value := '2'; DispatchDomEvent(FDepthInput, 'input');
+  AssertTest(not FWorkspace.HasResult and
+    (FWorkspace.CopyValueQuotas[0].MinimumCount = 32), 'shape edit changed absolute quota bounds');
+  DispatchDomEvent(FSolveButton, 'click');
+  AssertTest(FWorkspace.HasResult and (FWorkspace.ResultStatus = wprsContradiction) and
+    (Length(FWorkspace.OutputTokens) = 0), 'smaller volume silently clamped its quota');
+  DispatchDomEvent(FQuotaClearButton, 'click');
+  FDepthInput.value := '4'; DispatchDomEvent(FDepthInput, 'input');
+  DispatchDomEvent(FSolveButton, 'click');
+  AssertTest(FWorkspace.ResultSignatureText = VOLUME_RESULT_SIGNATURE,
+    'clear quotas did not restore unchanged volume replay');
+  document.body.setAttribute('data-quota-volume', 'passed');
+  SelectPreset(INITIAL_PRESET);
+  AssertTest((FWorkspace.TrainingSignatureText = BASELINE_SOURCE_SIGNATURE) and
+    (FWorkspace.RecipeSignatureText = BASELINE_RECIPE_SIGNATURE) and
+    (FWorkspace.ResultSignatureText = BASELINE_RESULT_SIGNATURE) and
+    (FWorkspace.ValueQuotaCount = 0) and not FQuotaDraftDirty,
+    'quota self-test did not restore the untouched baseline');
 end;
 
 procedure TBrowserTrainingStudioApplication.RunSelfTest;
@@ -1481,6 +1894,7 @@ begin
       (document.body.getAttribute('data-cell-count') = '16'),
       'final baseline state has stale locks or cells');
     document.body.setAttribute('data-recovery', 'passed');
+    RunQuotaSelfTest;
     document.body.setAttribute('data-self-test', 'passed');
   except
     on E: Exception do
@@ -1490,6 +1904,89 @@ begin
       ShowError(E.Message);
     end;
   end;
+end;
+
+function TBrowserTrainingStudioApplication.HandleQuotaInput(AEvent: TJSEvent): Boolean;
+begin
+  Result := False;
+  try BeginQuotaDraft; except on E: Exception do ShowError(E.Message); end;
+end;
+
+function TBrowserTrainingStudioApplication.HandleQuotaSelect(AEvent: TJSEvent): Boolean;
+var LIndex: Integer;
+begin
+  Result := False;
+  try
+    if FQuotaDraftDirty then
+    begin
+      FQuotaList.selectedIndex := FEditingQuotaIndex;
+      raise EWfcTrainingWorkspace.Create('apply or discard the quota draft before selecting another');
+    end;
+    LIndex := FQuotaList.selectedIndex;
+    if (LIndex < 0) or (LIndex >= FWorkspace.ValueQuotaCount) then Exit;
+    LoadQuotaFields(LIndex);
+    RefreshQuotaState;
+  except on E: Exception do ShowError(E.Message); end;
+end;
+
+function TBrowserTrainingStudioApplication.HandleQuotaApply(AEvent: TJSMouseEvent): Boolean;
+begin
+  Result := False;
+  try ApplyQuotaDraft; except on E: Exception do ShowError(E.Message); end;
+end;
+
+function TBrowserTrainingStudioApplication.HandleQuotaNew(AEvent: TJSMouseEvent): Boolean;
+begin
+  Result := False;
+  try
+    if FQuotaDraftDirty then
+      raise EWfcTrainingWorkspace.Create('apply or discard the quota draft before starting another');
+    LoadQuotaFields(-1);
+    RefreshQuotaState;
+  except on E: Exception do ShowError(E.Message); end;
+end;
+
+function TBrowserTrainingStudioApplication.HandleQuotaRemove(AEvent: TJSMouseEvent): Boolean;
+var Q: TWfcTrainingValueQuotas; I: Integer;
+begin
+  Result := False;
+  try
+    if FQuotaDraftDirty then
+      raise EWfcTrainingWorkspace.Create('apply or discard the quota draft before removing a saved quota');
+    Q := FWorkspace.CopyValueQuotas;
+    if (FEditingQuotaIndex < 0) or (FEditingQuotaIndex >= Length(Q)) then
+      raise EWfcTrainingWorkspace.Create('select a saved quota to remove');
+    for I := FEditingQuotaIndex to Length(Q) - 2 do Q[I] := Q[I + 1];
+    SetLength(Q, Length(Q) - 1);
+    CommitValueQuotas(Q);
+  except on E: Exception do ShowError(E.Message); end;
+end;
+
+function TBrowserTrainingStudioApplication.HandleQuotaClear(AEvent: TJSMouseEvent): Boolean;
+begin
+  Result := False;
+  try
+    if FQuotaDraftDirty then
+      raise EWfcTrainingWorkspace.Create('apply or discard the quota draft before clearing saved quotas');
+    CommitValueQuotas(nil);
+  except on E: Exception do ShowError(E.Message); end;
+end;
+
+function TBrowserTrainingStudioApplication.HandleQuotaDiscard(AEvent: TJSMouseEvent): Boolean;
+begin
+  Result := False;
+  try
+    CancelSourceFileRead;
+    FQuotaDraftDirty := False;
+    ReloadQuotaEditor;
+    RefreshAll;
+    if FWorkspace.HasRecipe then
+      SetState('trained', 'Quota draft discarded; saved source is unchanged.',
+        'The old run and result stay cleared. Configure and solve again.')
+    else
+      SetState('source-dirty', 'Quota draft discarded; train the retained source.',
+        'The failed rebuild left no recipe, run, or result.');
+  except on E: Exception do ShowError(E.Message); end;
 end;
 
 function TBrowserTrainingStudioApplication.HandleLoadPreset(

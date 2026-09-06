@@ -250,7 +250,7 @@ begin
   LCommand.Kind := wlckVersion;
   LStatus := WfcLearnExecuteText(LCommand, 'ignored', LOutput, LError);
   Check((LStatus = WFC_LEARN_EXIT_SUCCESS) and (LError = '') and
-    (LOutput = 'wfc-learn 2 (wfclearn=1,2)'#10),
+    (LOutput = 'wfc-learn 2 (wfclearn=1,2,3)'#10),
     'version identifies the CLI and training-text contracts');
 end;
 

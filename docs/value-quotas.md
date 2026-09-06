@@ -117,8 +117,8 @@ Finite grids still require memory and checked numeric capacity. Portable
 recipes can carry public-token quotas through the opt-in `wfcpipeline=2`
 envelope; see [portable quota recipes](pipeline-value-quotas.md). Quota-free
 recipes retain their exact version-1 bytes and identities. Training documents
-do not infer quotas from observed frequencies: add explicit bounds to the
-resulting recipe when those quantities are hard design requirements.
+can preserve [explicit authored bounds](training-value-quotas.md) in their
+source; they never infer quotas from observed frequencies.
 
 These differ from [cross-pass neighborhood counts](pass-counts.md), which
 inspect complete provider cells while filtering a candidate. See the

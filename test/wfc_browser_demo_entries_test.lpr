@@ -125,6 +125,11 @@ begin
   Expect(3, 'data-recipe-signature', 'DBCBA621');
   Expect(3, 'data-result-signature', '947C4AFD');
   Expect(3, 'data-cell-count', '16');
+  Expect(3, 'data-quota-edit', 'passed');
+  Expect(3, 'data-quota-replay', 'passed');
+  Expect(3, 'data-quota-contradiction', 'passed');
+  Expect(3, 'data-quota-invalidation', 'passed');
+  Expect(3, 'data-quota-volume', 'passed');
   Expect(3, 'data-source-invalidation', 'passed');
   Expect(3, 'data-run-invalidation', 'passed');
   Expect(3, 'data-contradiction', 'passed');

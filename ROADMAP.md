@@ -420,9 +420,13 @@ arc-consistency or relative-performance claim.
 bounds over explicit value sets in unresolved same-pass domains. It composes
 with provider requirements and connectivity, trails its removals, independently
 recounts published and preserved assignments, and identifies clauses in traces.
-Its finite brute-force oracle checks satisfiability and sound pruning. Regional
-quotas, stronger propagation over interacting sets, efficient incremental count
-maintenance, and portable recipe encoding remain future work.
+Its finite brute-force oracle checks satisfiability and sound pruning.
+[Portable recipe quotas](docs/pipeline-value-quotas.md) now lower public sets
+through exact-copy and learned-state projection passes before solving, with
+independent public recount. [Training source authoring](docs/training-value-quotas.md)
+preserves explicit policy across native/browser edit, save/load, and retrain.
+Regional quotas, stronger propagation over interacting sets, and efficient
+incremental search-time count maintenance remain future work.
 
 The first packaged domain fixture proves the sequential subset with terrain →
 biome → foliage. The selective-settlement fixture expands that proof to

@@ -99,6 +99,9 @@ $artifactTestSources = @(
   (Join-Path $repositoryRoot 'test/wfc_text_training_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_training_workspace_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_training_text_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_training_value_quota_model_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_training_value_quota_text_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_training_value_quota_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_learn_app_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_music_import_app_test.lpr')
   (Join-Path $repositoryRoot `
@@ -1763,7 +1766,7 @@ Write-Host "Smoke testing '$buildingSvgExecutable' with seed 0."
 & $buildingSvgExecutable 0 $buildingSvgOutput | Out-Null
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-Write-Host 'Building and checking all five Training Studio presets.'
+Write-Host 'Building and checking Training Studio presets and quota authoring.'
 & $Compiler @CompilerOptions -B -Mdelphi -Sa -Cr -Co -Ci `
   "-Fu$sourceDirectory" "-Fu$trainingStudioExampleDirectory" `
   "-FU$unitOutputDirectory" "-FE$binaryOutputDirectory" `
@@ -1773,6 +1776,8 @@ $trainingStudioExecutableName = if ($env:OS -eq 'Windows_NT') {
   'TrainingStudio.exe'
 } else { 'TrainingStudio' }
 & (Join-Path $binaryOutputDirectory $trainingStudioExecutableName) --selftest
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+& (Join-Path $binaryOutputDirectory $trainingStudioExecutableName) --quota-selftest
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 Write-Host 'Building and checking Music Studio.'

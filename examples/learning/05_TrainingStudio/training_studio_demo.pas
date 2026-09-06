@@ -39,7 +39,7 @@ implementation
 
 uses
   SysUtils, wfc, wfc_text_codec, wfc_text_tokenize,
-  wfc_training_workspace, wfc_pipeline_result, training_studio_presets;
+  wfc_training, wfc_training_workspace, wfc_pipeline_result, training_studio_presets;
 
 function TrainingStudioOutputIsValid(const APreset, AWidth, AHeight: Integer;
   const ATokens: TWfcModelTokens): Boolean;
@@ -157,19 +157,89 @@ begin
   end;
 end;
 
+procedure RunQuotaDemo;
+var
+  W: TWfcTrainingWorkspace;
+  O: TWfcTrainingSolveOptions;
+  Q: TWfcTrainingValueQuotas;
+  Tokens: TWfcModelTokens;
+  Source, Recipe, Solved: String;
+  I, Count: Integer;
+begin
+  W := TWfcTrainingWorkspace.Create(InteractiveWfcTrainingWorkspaceLimits);
+  try
+    W.SetSourceText(TrainingStudioPresetText(3));
+    W.Train;
+    Source := W.SourceText;
+    Recipe := W.RecipeText;
+    SetLength(Tokens, 1);
+    Tokens[0] := 'red';
+    SetLength(Q, 1);
+    Q[0] := MakeWfcTrainingValueQuota('one-red', Tokens, 1, 1);
+    W.ReplaceValueQuotas(Q);
+    if (Pos('wfclearn=3'#10, W.SourceText) <> 1) or
+        (Pos('wfcpipeline=2'#10, W.RecipeText) <> 1) then
+      raise Exception.Create('quota authoring did not persist versioned source and recipe');
+    O := TrainingStudioPresetOptions(3);
+    W.ConfigureRun(O, nil, nil);
+    W.Solve;
+    Tokens := W.OutputTokens;
+    Count := 0;
+    for I := 0 to High(Tokens) do if Tokens[I] = 'red' then Inc(Count);
+    if (W.ResultStatus <> wprsSolved) or (Count <> 1) or
+        (not TrainingStudioOutputIsValid(3, O.Width, O.Height, Tokens)) then
+      raise Exception.Create('independent authored quota demonstration failed');
+    Solved := W.ResultText;
+    WriteLn('quota-demo label=one-red minimum=1 maximum=1 observed=', Count);
+    WriteLn('seed=', O.Seed, ' source=', W.TrainingSignatureText,
+      ' recipe=', W.RecipeSignatureText, ' result=', W.ResultSignatureText);
+    for I := 0 to High(Tokens) do
+    begin
+      if I <> 0 then Write(' ');
+      Write(WfcTextEncodeToken(Tokens[I], 'quota demo'));
+    end;
+    WriteLn;
+    W.Train;
+    W.ConfigureRun(O, nil, nil);
+    W.Solve;
+    if W.ResultText <> Solved then
+      raise Exception.Create('persisted quota source did not replay after retraining');
+    Q[0].MinimumCount := 4;
+    Q[0].MaximumCount := 4;
+    W.ReplaceValueQuotas(Q);
+    W.ConfigureRun(O, nil, nil);
+    W.Solve;
+    if (W.ResultStatus <> wprsContradiction) or (Length(W.OutputTokens) <> 0) then
+      raise Exception.Create('impossible quota did not produce a clean contradiction');
+    WriteLn('impossible-quota=contradiction public-cells=0');
+    W.ReplaceValueQuotas(nil);
+    if (W.SourceText <> Source) or (W.RecipeText <> Recipe) then
+      raise Exception.Create('removing the last quota changed legacy source identity');
+    WriteLn('quota-source-replay=passed legacy-restore=passed');
+  finally W.Free; end;
+end;
+
 procedure RunTrainingStudioDemo;
 var
   LPreset: Integer;
   LSeed: TGraphSeed;
   I: Integer;
 begin
+  if (ParamCount >= 1) and
+      ((ParamStr(1) = '--quota-demo') or (ParamStr(1) = '--quota-selftest')) then
+  begin
+    if ParamCount <> 1 then
+      raise Exception.Create('usage: TrainingStudio --quota-demo | --quota-selftest');
+    RunQuotaDemo;
+    Exit;
+  end;
   if (ParamCount = 1) and (ParamStr(1) = '--selftest') then
   begin
     for I := 0 to TRAINING_STUDIO_PRESET_COUNT - 1 do RunOne(I, 0);
     Exit;
   end;
   if ParamCount > 2 then
-    raise Exception.Create('usage: TrainingStudio [preset 0..5] [decimal seed] | --selftest');
+    raise Exception.Create('usage: TrainingStudio [preset 0..5] [decimal seed] | --selftest | --quota-demo | --quota-selftest');
   LPreset := 2;
   LSeed := 0;
   if ParamCount >= 1 then

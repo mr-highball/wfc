@@ -33,6 +33,15 @@ then try editing its token records, changing seed/size, adding two adjacent
 same-token locks, and clearing the conflict. Recipe/run/result exports can be
 replayed through the existing validator and runner.
 
+The **Whole-output quotas** editor adds explicit token-count requirements to
+the saved training source. Try the whole-token phrase preset: select `café`,
+set minimum and maximum to `1`, apply, then solve. Download/import the source
+and retrain to preserve that policy. The 4×4 overlapping checkerboard also
+makes a clear failure example: `A=8` solves, `A=7` contradicts, and clearing
+quotas restores the original result. Draft edits must be applied or discarded
+before solving; model-only export is disabled when it would lose quotas.
+See [quota authoring](../../../docs/training-value-quotas.md).
+
 Select **Volume checkerboard / six neighbors** for a 3D corpus. Width, height,
 and depth control the requested volume; output is displayed in labeled Z
 slices. Click any slice cell to copy X/Y/Z, add a lock, and solve again. With
@@ -54,6 +63,8 @@ presets. Manually:
 
 ```text
 build/native/bin/TrainingStudio --selftest
+build/native/bin/TrainingStudio --quota-demo
+build/native/bin/TrainingStudio --quota-selftest
 build/native/bin/TrainingStudio 2 0
 build/native/bin/TrainingStudio 5 0
 ```
@@ -62,6 +73,8 @@ Use `TrainingStudio.exe` on Windows. Arguments are preset index 0–5 and
 an optional unsigned decimal seed; default is preset 2, seed 0. The native
 demonstration is a self-checking console view, not an interactive native window.
 For arbitrary file-based training and replay, use `wfc_learn`/`wfc_run`.
+The quota demonstration is a separate checked native path; it uses the same
+source-owned editing, retraining, contradiction, and replay workspace as the UI.
 
 The console and browser token grid show percent-encoded values so whitespace and Unicode
 remain visible and byte-portable.

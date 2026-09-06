@@ -25,8 +25,10 @@ wfc_learn --version
 ```
 
 `INPUT` is a file path, or `-` for standard input. Default output is canonical
-`wfcpipeline=1` text. `--model` emits `wfcm=1`/`wfcm=2`/`wfcm=3`, `wfcp=1`, or `wfcs=1`
-according to the profile. `--quiet` still learns and constructs the recipe,
+`wfcpipeline=1` text, or `wfcpipeline=2` when the source declares output quotas.
+`--model` emits `wfcm=1`/`wfcm=2`/`wfcm=3`, `wfcp=1`, or `wfcs=1`
+according to the quota-free profile. It rejects quota-bearing sources because
+standalone models cannot preserve that policy. `--quiet` still learns and constructs the recipe,
 but emits nothing. Options are mutually exclusive; `--` allows a path
 beginning with a hyphen.
 
@@ -41,7 +43,7 @@ avoids an FPC object-file collision with `src/wfc_learn.pas`. Build it with
 `-owfc_learn` (`-owfc_learn.exe` on Windows). The host uses
 `tools/wfc_learn_app.pas` and contains only bounded file/standard-stream I/O.
 The portable units also power the [Training Studio](training-studio.md) browser
-editor. CLI version 2 advertises both supported training text profiles.
+editor. CLI version 2 advertises all three supported training text versions.
 
 ## Profiles
 
@@ -80,6 +82,12 @@ Existing kinds retain byte-identical `wfclearn=1` documents. The additive
 `sample=index,width,height,depth,name`, followed by exactly `width*height*depth`
 tokens in X-fast, then Y, then Z order. No other kind uses version 2. See
 [volume learning](volume-learning.md) for a complete example and symmetry policy.
+
+An explicit nonempty output quota registry selects `wfclearn=3` for any kind.
+It retains authored token identities across training and source save/load,
+uses explicit depth in every sample record, and exports a quota-bearing recipe.
+See [authoring output quotas](training-value-quotas.md) for the complete source,
+workspace, CLI, bounds, and compatibility contract.
 
 All records below are required and ordered. The document is ASCII with
 canonical percent-encoded UTF-8 token fields, LF line endings, and exactly one
@@ -179,14 +187,26 @@ depth immediately after height in both hashes. Token order becomes
 `x + width*y + width*height*z`. The remaining field order is unchanged;
 version-1 kinds never hash an appended depth field.
 
+Nonempty authored quotas select prefix `wfclearn-v3` and version `3`, preserve
+the existing sample payload (depth participates for volumes), then append the
+`value-quotas` domain, capability version `1`, descriptor count, and each
+label/minimum/maximum/value-count/value sequence in authored order. Sample
+fingerprints and learned resource payloads do not change solely because quotas
+change. See [training quotas](training-value-quotas.md).
+
 ## Limits and failure behavior
 
-The resource envelope, shared by both text profiles, caps source documents at 8,388,608 encoded ASCII characters and
+The quota-free version-1/2 resource envelope caps source documents at 8,388,608 encoded ASCII characters and
 69,643 lines, with 4,096 samples, 65,536 total source tokens, and dimensions
 of 1–65,536. A token field is at most 65,536 characters in canonical encoded
 form; metadata, sample names, and every token occurrence together may contain
 at most 4,194,304 encoded characters. Pattern footprints contain at most
 64 cells and sequence order is at most 64.
+
+Version 3 retains those byte/sample budgets and shares encoded-token capacity
+with quota labels and values. Its separately checked 139,277-line envelope
+permits 4,096 quota descriptors and 65,536 aggregate quota values, with at most
+1,024 values per descriptor. These are authoring limits, not inferred quotas.
 
 A separate 16,777,216 extraction/history-visit bound checks expansion from
 footprints, symmetry, and sequence order. It is not a wall-clock timeout or a

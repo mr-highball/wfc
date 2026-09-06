@@ -33,6 +33,7 @@ uses
 
 const
   WFC_TRAINING_WORKSPACE_VERSION = 1;
+  WFC_TRAINING_WORKSPACE_VALUE_QUOTA_VERSION = 1;
 
 type
   EWfcTrainingWorkspace = class(Exception);
@@ -87,6 +88,7 @@ type
     function GetSampleCount: Integer;
     function GetSourceTokenCount: Integer;
     function GetModelItemCount: Integer;
+    function GetValueQuotaCount: Integer;
   public
     constructor Create; overload;
     constructor Create(const ALimits: TWfcTrainingWorkspaceLimits); overload;
@@ -94,6 +96,11 @@ type
 
     procedure SetSourceText(const AText: String);
     procedure Train;
+    { Replaces explicit source-owned output quotas, updates canonical source,
+      and retrains. Invalid records retain the old editable source; a valid
+      new draft is retained even if its learning fails. Every failed attempt
+      discards all derived artifacts so correction/retraining is explicit. }
+    procedure ReplaceValueQuotas(const AValues: TWfcTrainingValueQuotas);
     procedure ClearRun;
     procedure ConfigureRun(const AOptions: TWfcTrainingSolveOptions;
       const ALocks: TWfcPipelineCellLocks;
@@ -107,6 +114,7 @@ type
     function SourceOptions: TWfcTrainingOptions;
     function CopyMetadata: TWfcTrainingMetadata;
     function CopyPasses: TWfcPipelinePasses;
+    function CopyValueQuotas: TWfcTrainingValueQuotas;
     function PublicVocabulary: TWfcModelTokens;
     function OutputTokens: TWfcModelTokens;
     function CopyFailure: TWfcPipelineFailure;
@@ -130,6 +138,7 @@ type
     property SampleCount: Integer read GetSampleCount;
     property SourceTokenCount: Integer read GetSourceTokenCount;
     property ModelItemCount: Integer read GetModelItemCount;
+    property ValueQuotaCount: Integer read GetValueQuotaCount;
   end;
 
 function DefaultWfcTrainingWorkspaceLimits: TWfcTrainingWorkspaceLimits;
@@ -290,6 +299,40 @@ begin
     raise EWfcTrainingWorkspace.Create('train the current source first');
 end;
 
+procedure TWfcTrainingWorkspace.ReplaceValueQuotas(
+  const AValues: TWfcTrainingValueQuotas);
+var
+  LMetadata: TWfcTrainingMetadata;
+  LOptions: TWfcTrainingOptions;
+  LSamples: TWfcTrainingSamples;
+  LDocument: TWfcTrainingDocument;
+  LText: String;
+begin
+  LDocument := nil;
+  try
+    try
+      RequireRecipe;
+      LMetadata := FDocument.CopyMetadata;
+      LOptions := FDocument.CopyOptions;
+      LSamples := FDocument.CopySamples;
+      ClearTraining;
+      LDocument := TWfcTrainingDocument.Create(LMetadata, LOptions,
+        LSamples, AValues);
+      LText := EncodeWfcTrainingText(LDocument);
+      CheckLimit(Length(LText), FLimits.MaxSourceTextLength, False, 'source text');
+      { Publish an editable canonical draft before training. If learning fails,
+        this valid source retains the requested policy for user correction. }
+      SetSourceText(LText);
+      Train;
+    except
+      ClearTraining;
+      raise;
+    end;
+  finally
+    LDocument.Free;
+  end;
+end;
+
 procedure TWfcTrainingWorkspace.RequireRun;
 begin
   RequireRecipe;
@@ -437,6 +480,18 @@ begin
   Result := FRecipe.CopyPasses;
 end;
 
+function TWfcTrainingWorkspace.CopyValueQuotas: TWfcTrainingValueQuotas;
+begin
+  RequireRecipe;
+  Result := FDocument.CopyValueQuotas;
+end;
+
+function TWfcTrainingWorkspace.GetValueQuotaCount: Integer;
+begin
+  RequireRecipe;
+  Result := FDocument.ValueQuotaCount;
+end;
+
 function TWfcTrainingWorkspace.PublicVocabulary: TWfcModelTokens;
 begin
   RequireRecipe;
@@ -502,6 +557,9 @@ var
   LResource: TWfcPipelineResource;
 begin
   RequireRecipe;
+  if FDocument.ValueQuotaCount > 0 then
+    raise EWfcTrainingWorkspace.Create(
+      'standalone model export cannot preserve output quotas; export the recipe');
   LResource := FRecipe.ResourceAt(0);
   Result := LResource.Document;
 end;

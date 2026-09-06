@@ -31,16 +31,23 @@ uses
   wfc_training;
 
 const
-  WFC_TRAINING_TEXT_VERSION = 2;
+  WFC_TRAINING_TEXT_VERSION = 3;
+  WFC_TRAINING_VALUE_QUOTA_TEXT_VERSION = 3;
   WFC_TRAINING_MAX_ENCODED_TEXT_LENGTH = 8388608;
   WFC_TRAINING_MAX_TEXT_LINE_COUNT = 11 +
     WFC_TRAINING_MAX_SAMPLE_COUNT + WFC_TRAINING_MAX_TOTAL_TOKEN_COUNT;
+  WFC_TRAINING_VALUE_QUOTA_MAX_TEXT_LINE_COUNT =
+    WFC_TRAINING_MAX_TEXT_LINE_COUNT + 2 +
+    WFC_TRAINING_MAX_VALUE_QUOTA_COUNT +
+    WFC_TRAINING_MAX_TOTAL_VALUE_QUOTA_TOKEN_COUNT;
 
 { The editable source has no caller-supplied signature. Its immutable
   fingerprint is computed from validated contents by TWfcTrainingDocument. }
 function EncodeWfcTrainingText(
   const ADocument: TWfcTrainingDocument): String;
 function DecodeWfcTrainingText(const AText: String): TWfcTrainingDocument;
+function WfcTrainingDocumentTextVersion(
+  const ADocument: TWfcTrainingDocument): Integer;
 
 implementation
 
@@ -105,6 +112,8 @@ var
   LOptions: TWfcTrainingOptions;
   LSample: TWfcTrainingSample;
   LVersion: Integer;
+  LQuota: TWfcTrainingValueQuota;
+  LLineCount: Integer;
 
   procedure Add(const ALine: String);
   begin
@@ -124,16 +133,19 @@ var
 begin
   if ADocument = nil then
     Fail('document is nil');
-  SetLength(LLines, 11 + ADocument.SampleCount +
-    ADocument.TotalTokenCount);
+  LLineCount := 11 + ADocument.SampleCount + ADocument.TotalTokenCount;
+  if ADocument.ValueQuotaCount > 0 then
+  begin
+    Inc(LLineCount, 2 + ADocument.ValueQuotaCount);
+    for I := 0 to ADocument.ValueQuotaCount - 1 do
+      Inc(LLineCount, Length(ADocument.ValueQuotaAt(I).Values));
+  end;
+  SetLength(LLines, LLineCount);
   LLine := 0;
   LLength := 0;
   LMetadata := ADocument.CopyMetadata;
   LOptions := ADocument.CopyOptions;
-  if LOptions.Kind = wtkAdjacency3D then
-    LVersion := 2
-  else
-    LVersion := 1;
+  LVersion := WfcTrainingDocumentTextVersion(ADocument);
   Add('wfclearn=' + IntToStr(LVersion));
   Add('name=' + Token(LMetadata.Name));
   Add('license=' + Token(LMetadata.LicenseIdentifier));
@@ -148,7 +160,7 @@ begin
   for I := 0 to ADocument.SampleCount - 1 do
   begin
     LSample := ADocument.SampleAt(I);
-    if LVersion = 2 then
+    if LVersion >= 2 then
       Add('sample=' + IntToStr(I) + ',' + IntToStr(LSample.Width) +
         ',' + IntToStr(LSample.Height) + ',' + IntToStr(LSample.Depth) +
         ',' + Token(LSample.Name))
@@ -159,17 +171,50 @@ begin
       Add('token=' + IntToStr(I) + ',' + IntToStr(J) + ',' +
         Token(LSample.Tokens[J]));
   end;
+  if ADocument.ValueQuotaCount > 0 then
+  begin
+    Add('value-quota-version=' + IntToStr(WFC_TRAINING_VALUE_QUOTA_VERSION));
+    Add('value-quotas=' + IntToStr(ADocument.ValueQuotaCount));
+    for I := 0 to ADocument.ValueQuotaCount - 1 do
+    begin
+      LQuota := ADocument.ValueQuotaAt(I);
+      Add('value-quota=' + IntToStr(I) + ',' + Token(LQuota.LabelText) +
+        ',' + IntToStr(LQuota.MinimumCount) + ',' +
+        IntToStr(LQuota.MaximumCount) + ',' + IntToStr(Length(LQuota.Values)));
+      for J := 0 to Length(LQuota.Values) - 1 do
+        Add('quota-token=' + IntToStr(I) + ',' + IntToStr(J) + ',' +
+          Token(LQuota.Values[J]));
+    end;
+  end;
   Add('end');
   Result := WfcTextJoinCanonicalLines(LLines, ARTIFACT_NAME);
+end;
+
+function WfcTrainingDocumentTextVersion(
+  const ADocument: TWfcTrainingDocument): Integer;
+begin
+  if ADocument = nil then Fail('document is nil');
+  if ADocument.ValueQuotaCount > 0 then Exit(WFC_TRAINING_VALUE_QUOTA_TEXT_VERSION);
+  if ADocument.CopyOptions.Kind = wtkAdjacency3D then Exit(2);
+  Result := 1;
 end;
 
 procedure PreflightText(const AText: String);
 var
   I: Integer;
   LLines: Integer;
+  LLineLimit: Integer;
+  LHeader: String;
 begin
   if Length(AText) > WFC_TRAINING_MAX_ENCODED_TEXT_LENGTH then
     Fail('document exceeds the version-1 encoded length limit');
+  LHeader := Copy(AText, 1, 11);
+  if (LHeader = 'wfclearn=1'#10) or (LHeader = 'wfclearn=2'#10) then
+    LLineLimit := WFC_TRAINING_MAX_TEXT_LINE_COUNT
+  else if LHeader = 'wfclearn=3'#10 then
+    LLineLimit := WFC_TRAINING_VALUE_QUOTA_MAX_TEXT_LINE_COUNT
+  else
+    Fail('expected supported wfclearn header');
   LLines := 0;
   for I := 1 to Length(AText) do
   begin
@@ -177,8 +222,8 @@ begin
       Fail('document must be ASCII with percent-encoded UTF-8 tokens');
     if AText[I] = #10 then
     begin
-      if LLines = WFC_TRAINING_MAX_TEXT_LINE_COUNT then
-        Fail('document exceeds the version-1 line count limit');
+      if LLines = LLineLimit then
+        Fail('document exceeds its versioned line count limit');
       Inc(LLines);
     end;
   end;
@@ -200,6 +245,8 @@ var
   LText: String;
   LTotal: Integer;
   LVersion: Integer;
+  LQuotaCount, LQuotaTokens, LTotalQuotaTokens: Integer;
+  LQuotas: TWfcTrainingValueQuotas;
 
   function ReadLine: String;
   begin
@@ -265,6 +312,8 @@ begin
     LVersion := 1
   else if LText = 'wfclearn=2' then
     LVersion := 2
+  else if LText = 'wfclearn=3' then
+    LVersion := 3
   else
     Fail('expected supported wfclearn header');
   LMetadata.Name := Token(ReadValue('name='));
@@ -308,7 +357,7 @@ begin
   LTotal := 0;
   for I := 0 to LCount - 1 do
   begin
-    if LVersion = 2 then
+    if LVersion >= 2 then
       Fields(ReadValue('sample='), 5)
     else
       Fields(ReadValue('sample='), 4);
@@ -316,7 +365,7 @@ begin
       Fail('sample indices must be contiguous and ordered');
     LSamples[I].Width := Number(LFields[1]);
     LSamples[I].Height := Number(LFields[2]);
-    if LVersion = 2 then
+    if LVersion >= 2 then
     begin
       LSamples[I].Depth := Number(LFields[3]);
       LSamples[I].Name := Token(LFields[4]);
@@ -330,18 +379,20 @@ begin
         (LSamples[I].Width > WFC_TRAINING_MAX_DIMENSION) or
         (LSamples[I].Height > WFC_TRAINING_MAX_DIMENSION) then
       Fail('sample dimensions are outside the version-1 limit');
-    if (LVersion = 2) and ((LSamples[I].Depth < 1) or
+    if (LVersion >= 2) and ((LSamples[I].Depth < 1) or
         (LSamples[I].Depth > WFC_TRAINING_MAX_DIMENSION)) then
       Fail('sample depth is outside the version-1 limit');
+    if (LOptions.Kind <> wtkAdjacency3D) and (LSamples[I].Depth <> 1) then
+      Fail('non-volume samples require depth one');
     if LSamples[I].Width > WFC_TRAINING_MAX_TOTAL_TOKEN_COUNT div
         LSamples[I].Height then
       Fail('sample area exceeds the version-1 token limit');
     LArea := LSamples[I].Width * LSamples[I].Height;
-    if (LVersion = 2) and
+    if (LVersion >= 2) and
         (LArea > WFC_TRAINING_MAX_TOTAL_TOKEN_COUNT div
         LSamples[I].Depth) then
       Fail('sample volume exceeds the version-1 token limit');
-    if LVersion = 2 then
+    if LVersion >= 2 then
       LArea := LArea * LSamples[I].Depth;
     if LArea > WFC_TRAINING_MAX_TOTAL_TOKEN_COUNT - LTotal then
       Fail('aggregate sample area exceeds the version-1 token limit');
@@ -357,12 +408,53 @@ begin
       LSamples[I].Tokens[J] := Token(LFields[2]);
     end;
   end;
+  if LVersion = WFC_TRAINING_VALUE_QUOTA_TEXT_VERSION then
+  begin
+    if Number(ReadValue('value-quota-version=')) <> WFC_TRAINING_VALUE_QUOTA_VERSION then
+      Fail('unsupported training value-quota version');
+    LQuotaCount := Number(ReadValue('value-quotas='));
+    if (LQuotaCount < 1) or (LQuotaCount > WFC_TRAINING_MAX_VALUE_QUOTA_COUNT) then
+      Fail('version 3 requires a nonempty bounded quota registry');
+    if LQuotaCount > (Length(LLines) - LLine - 1) div 2 then
+      Fail('quota count exceeds the available records');
+    SetLength(LQuotas, LQuotaCount);
+    LTotalQuotaTokens := 0;
+    for I := 0 to LQuotaCount - 1 do
+    begin
+      Fields(ReadValue('value-quota='), 5);
+      if Number(LFields[0]) <> I then
+        Fail('quota indices must be contiguous and ordered');
+      LQuotas[I].LabelText := Token(LFields[1]);
+      if LQuotas[I].LabelText = '' then Fail('quota label cannot be empty');
+      LQuotas[I].MinimumCount := Number(LFields[2]);
+      LQuotas[I].MaximumCount := Number(LFields[3]);
+      if LQuotas[I].MinimumCount > LQuotas[I].MaximumCount then
+        Fail('quota minimum exceeds maximum');
+      LQuotaTokens := Number(LFields[4]);
+      if (LQuotaTokens < 1) or (LQuotaTokens > WFC_TRAINING_MAX_VALUE_QUOTA_TOKEN_COUNT) then
+        Fail('quota token count is outside the allowed range');
+      if LQuotaTokens > WFC_TRAINING_MAX_TOTAL_VALUE_QUOTA_TOKEN_COUNT - LTotalQuotaTokens then
+        Fail('aggregate quota tokens exceed the limit');
+      Inc(LTotalQuotaTokens, LQuotaTokens);
+      if LQuotaTokens > Length(LLines) - LLine - 1 - 2 * (LQuotaCount - I - 1) then
+        Fail('quota token count exceeds the available records');
+      SetLength(LQuotas[I].Values, LQuotaTokens);
+      for J := 0 to LQuotaTokens - 1 do
+      begin
+        Fields(ReadValue('quota-token='), 3);
+        if (Number(LFields[0]) <> I) or (Number(LFields[1]) <> J) then
+          Fail('quota token indices must be contiguous and ordered');
+        LQuotas[I].Values[J] := Token(LFields[2]);
+        if LQuotas[I].Values[J] = '' then Fail('quota token cannot be empty');
+      end;
+    end;
+  end;
   if ReadLine <> 'end' then
     Fail('expected end marker');
   if LLine <> Length(LLines) then
     Fail('records follow the end marker');
   try
-    Result := TWfcTrainingDocument.Create(LMetadata, LOptions, LSamples);
+    Result := TWfcTrainingDocument.Create(LMetadata, LOptions, LSamples, LQuotas);
   except
     on E: EWfcTraining do
       Fail(E.Message);

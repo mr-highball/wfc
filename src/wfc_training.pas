@@ -34,6 +34,7 @@ uses
 
 const
   WFC_TRAINING_VERSION = 1;
+  WFC_TRAINING_VALUE_QUOTA_VERSION = 1;
 
   WFC_TRAINING_MAX_SAMPLE_COUNT = 4096;
   WFC_TRAINING_MAX_TOTAL_TOKEN_COUNT = 65536;
@@ -43,6 +44,9 @@ const
   WFC_TRAINING_MAX_FOOTPRINT_CELL_COUNT = 64;
   WFC_TRAINING_MAX_VISIT_COUNT = 16777216;
   WFC_TRAINING_MAX_ORDER = 64;
+  WFC_TRAINING_MAX_VALUE_QUOTA_COUNT = 4096;
+  WFC_TRAINING_MAX_VALUE_QUOTA_TOKEN_COUNT = 1024;
+  WFC_TRAINING_MAX_TOTAL_VALUE_QUOTA_TOKEN_COUNT = 65536;
 
 type
   EWfcTraining = class(Exception);
@@ -81,6 +85,17 @@ type
     Order: Integer;
   end;
 
+  { Explicit author policy on the learned public output, not an inference
+    from observed frequencies. Values retains authored, unique token order;
+    recipe compilation resolves exact strings into learned vocabulary order. }
+  TWfcTrainingValueQuota = record
+    LabelText: TWfcModelToken;
+    Values: TWfcModelTokens;
+    MinimumCount: Integer;
+    MaximumCount: Integer;
+  end;
+  TWfcTrainingValueQuotas = array of TWfcTrainingValueQuota;
+
   { Immutable, pretokenized training request. Every dynamic input is detached
     at construction, and every dynamic accessor returns another detached copy. }
   TWfcTrainingDocument = class
@@ -88,23 +103,38 @@ type
     FMetadata: TWfcTrainingMetadata;
     FOptions: TWfcTrainingOptions;
     FSamples: TWfcTrainingSamples;
+    FValueQuotas: TWfcTrainingValueQuotas;
     FTotalTokenCount: Integer;
     FSignature: Cardinal;
     function GetSampleCount: Integer;
+    function GetValueQuotaCount: Integer;
+    function GetValueQuotaVersion: Integer;
+    procedure Initialize(const AMetadata: TWfcTrainingMetadata;
+      const AOptions: TWfcTrainingOptions;
+      const ASamples: TWfcTrainingSamples;
+      const AValueQuotas: TWfcTrainingValueQuotas);
     procedure ValidateSampleIndex(const AIndex: Integer);
   public
     constructor Create(const AMetadata: TWfcTrainingMetadata;
       const AOptions: TWfcTrainingOptions;
-      const ASamples: TWfcTrainingSamples);
+      const ASamples: TWfcTrainingSamples); overload;
+    constructor Create(const AMetadata: TWfcTrainingMetadata;
+      const AOptions: TWfcTrainingOptions;
+      const ASamples: TWfcTrainingSamples;
+      const AValueQuotas: TWfcTrainingValueQuotas); overload;
 
     function CopyMetadata: TWfcTrainingMetadata;
     function CopyOptions: TWfcTrainingOptions;
     function SampleAt(const AIndex: Integer): TWfcTrainingSample;
     function CopySamples: TWfcTrainingSamples;
+    function ValueQuotaAt(const AIndex: Integer): TWfcTrainingValueQuota;
+    function CopyValueQuotas: TWfcTrainingValueQuotas;
 
     property SampleCount: Integer read GetSampleCount;
     property TotalTokenCount: Integer read FTotalTokenCount;
     property Signature: Cardinal read FSignature;
+    property ValueQuotaCount: Integer read GetValueQuotaCount;
+    property ValueQuotaVersion: Integer read GetValueQuotaVersion;
   end;
 
 function MakeWfcTrainingMetadata(const AName, ALicenseIdentifier,
@@ -123,6 +153,10 @@ function MakeWfcTrainingOptions(const AKind: TWfcTrainingKind;
   const ASymmetry: TWfcModelSymmetry;
   const APatternWidth, APatternHeight,
   AOrder: Integer): TWfcTrainingOptions;
+
+function MakeWfcTrainingValueQuota(const ALabelText: TWfcModelToken;
+  const AValues: TWfcModelTokens;
+  const AMinimumCount, AMaximumCount: Integer): TWfcTrainingValueQuota;
 
 function WfcTrainingSignatureHex(const ASignature: Cardinal): String;
 
@@ -145,6 +179,7 @@ uses
   wfc_sequence,
   wfc_sequence_learn,
   wfc_sequence_text,
+  wfc_token_lookup,
   wfc_text_codec;
 
 const
@@ -194,6 +229,26 @@ begin
   SetLength(Result, Length(ASource));
   for I := 0 to Length(ASource) - 1 do
     Result[I] := CloneSample(ASource[I], AIncludeDepth);
+end;
+
+function CloneValueQuota(const ASource: TWfcTrainingValueQuota):
+  TWfcTrainingValueQuota;
+begin
+  Result.LabelText := ASource.LabelText;
+  Result.Values := CloneTokens(ASource.Values);
+  Result.MinimumCount := ASource.MinimumCount;
+  Result.MaximumCount := ASource.MaximumCount;
+end;
+
+function CloneValueQuotas(const ASource: TWfcTrainingValueQuotas):
+  TWfcTrainingValueQuotas;
+var
+  I: Integer;
+begin
+  Result := nil;
+  SetLength(Result, Length(ASource));
+  for I := 0 to Length(ASource) - 1 do
+    Result[I] := CloneValueQuota(ASource[I]);
 end;
 
 procedure HashByte(var AHash: Cardinal; const AValue: Byte);
@@ -280,13 +335,19 @@ end;
 
 function CalculateTrainingSignature(const AMetadata: TWfcTrainingMetadata;
   const AOptions: TWfcTrainingOptions;
-  const ASamples: TWfcTrainingSamples): Cardinal;
+  const ASamples: TWfcTrainingSamples;
+  const AValueQuotas: TWfcTrainingValueQuotas): Cardinal;
 var
   I: Integer;
   J: Integer;
 begin
   Result := FNV_OFFSET_BASIS;
-  if AOptions.Kind = wtkAdjacency3D then
+  if Length(AValueQuotas) <> 0 then
+  begin
+    HashAscii(Result, 'wfclearn-v3');
+    HashAscii(Result, '3');
+  end
+  else if AOptions.Kind = wtkAdjacency3D then
   begin
     HashAscii(Result, 'wfclearn-v2');
     HashAscii(Result, '2');
@@ -316,6 +377,21 @@ begin
     HashAscii(Result, IntToStr(Length(ASamples[I].Tokens)));
     for J := 0 to Length(ASamples[I].Tokens) - 1 do
       HashAscii(Result, CanonicalToken(ASamples[I].Tokens[J]));
+  end;
+  if Length(AValueQuotas) <> 0 then
+  begin
+    HashAscii(Result, 'value-quotas');
+    HashAscii(Result, IntToStr(WFC_TRAINING_VALUE_QUOTA_VERSION));
+    HashAscii(Result, IntToStr(Length(AValueQuotas)));
+    for I := 0 to Length(AValueQuotas) - 1 do
+    begin
+      HashAscii(Result, CanonicalToken(AValueQuotas[I].LabelText));
+      HashAscii(Result, IntToStr(AValueQuotas[I].MinimumCount));
+      HashAscii(Result, IntToStr(AValueQuotas[I].MaximumCount));
+      HashAscii(Result, IntToStr(Length(AValueQuotas[I].Values)));
+      for J := 0 to Length(AValueQuotas[I].Values) - 1 do
+        HashAscii(Result, CanonicalToken(AValueQuotas[I].Values[J]));
+    end;
   end;
 end;
 
@@ -447,6 +523,99 @@ begin
   raise EWfcTraining.Create(ALabel + ' lookup is unexpectedly full');
 end;
 
+function FindString(const ASet: TTrainingStringSet;
+  const AValue: String): Integer;
+var
+  LHash: Cardinal;
+  LProbe: Integer;
+  LSlot: Integer;
+  LValueIndex: Integer;
+begin
+  Result := -1;
+  LHash := LookupHash(AValue);
+  LSlot := Integer(LHash mod Cardinal(Length(ASet.Slots)));
+  for LProbe := 0 to Length(ASet.Slots) - 1 do
+  begin
+    if ASet.Slots[LSlot] = 0 then
+      Exit;
+    LValueIndex := ASet.Slots[LSlot] - 1;
+    if (ASet.Hashes[LSlot] = LHash) and
+        (ASet.Values[LValueIndex] = AValue) then
+      Exit(LValueIndex);
+    Inc(LSlot);
+    if LSlot = Length(ASet.Slots) then
+      LSlot := 0;
+  end;
+end;
+
+procedure RequireQuotaInteger(const AValue: Integer; const ALabel: String);
+begin
+  if not ((AValue >= 0) and (AValue <= High(Integer))) then
+    raise EWfcTraining.Create(ALabel +
+      ' must be an exact integer in 0..High(Integer)');
+  {$IFDEF PAS2JS}
+  if AValue <> Trunc(AValue) then
+    raise EWfcTraining.Create(ALabel + ' must be an exact integer');
+  {$ENDIF}
+end;
+
+procedure ValidateValueQuotas(const AValueQuotas: TWfcTrainingValueQuotas;
+  var AEncodedTotal: Integer);
+var
+  I: Integer;
+  J: Integer;
+  LAdded: Boolean;
+  LLabels: TTrainingStringSet;
+  LValues: TTrainingStringSet;
+  LTotal: Integer;
+begin
+  if Length(AValueQuotas) > WFC_TRAINING_MAX_VALUE_QUOTA_COUNT then
+    raise EWfcTraining.Create('training value quota count exceeds the limit');
+  if Length(AValueQuotas) = 0 then
+    Exit;
+  { Check the complete externally supplied shape before allocating lookups. }
+  LTotal := 0;
+  for I := 0 to Length(AValueQuotas) - 1 do
+  begin
+    RequireQuotaInteger(AValueQuotas[I].MinimumCount,
+      'training value quota minimum');
+    RequireQuotaInteger(AValueQuotas[I].MaximumCount,
+      'training value quota maximum');
+    if AValueQuotas[I].MinimumCount > AValueQuotas[I].MaximumCount then
+      raise EWfcTraining.Create('training value quota minimum exceeds maximum');
+    if (Length(AValueQuotas[I].Values) = 0) or
+        (Length(AValueQuotas[I].Values) >
+        WFC_TRAINING_MAX_VALUE_QUOTA_TOKEN_COUNT) then
+      raise EWfcTraining.Create('training value quota token count is outside the limit');
+    LTotal := CheckedAdd(LTotal, Length(AValueQuotas[I].Values),
+      WFC_TRAINING_MAX_TOTAL_VALUE_QUOTA_TOKEN_COUNT,
+      'aggregate training value quota token count');
+    AccumulateEncodedToken(AValueQuotas[I].LabelText,
+      'training value quota label', AEncodedTotal);
+    for J := 0 to Length(AValueQuotas[I].Values) - 1 do
+      AccumulateEncodedToken(AValueQuotas[I].Values[J],
+        'training value quota token', AEncodedTotal);
+  end;
+  InitializeStringSet(LLabels, Length(AValueQuotas));
+  for I := 0 to Length(AValueQuotas) - 1 do
+  begin
+    FindOrAddString(LLabels, CanonicalToken(AValueQuotas[I].LabelText),
+      'training value quota label count', LAdded);
+    if not LAdded then
+      raise EWfcTraining.CreateFmt(
+        'training value quota labels must be unique [%d]', [I]);
+    InitializeStringSet(LValues, Length(AValueQuotas[I].Values));
+    for J := 0 to Length(AValueQuotas[I].Values) - 1 do
+    begin
+      FindOrAddString(LValues, CanonicalToken(AValueQuotas[I].Values[J]),
+        'training value quota token count', LAdded);
+      if not LAdded then
+        raise EWfcTraining.CreateFmt(
+          'training value quota tokens must be unique [%d,%d]', [I, J]);
+    end;
+  end;
+end;
+
 procedure ValidateOptions(const AOptions: TWfcTrainingOptions);
 begin
   KindCode(AOptions.Kind);
@@ -530,7 +699,8 @@ begin
 end;
 
 procedure ValidateModelCapacities(const AOptions: TWfcTrainingOptions;
-  const ASamples: TWfcTrainingSamples);
+  const ASamples: TWfcTrainingSamples;
+  const AValueQuotas: TWfcTrainingValueQuotas);
 var
   LAdded: Boolean;
   LHistory: String;
@@ -544,6 +714,7 @@ var
   LTokenIndices: array of array of Integer;
   LTokenLimit: Integer;
   I: Integer;
+  J: Integer;
   H: Integer;
 begin
   case AOptions.Kind of
@@ -573,6 +744,14 @@ begin
       LTokenIndices[LSampleIndex][I] := LTokenIndex;
     end;
   end;
+
+  for I := 0 to Length(AValueQuotas) - 1 do
+    for J := 0 to Length(AValueQuotas[I].Values) - 1 do
+      if FindString(LPublicTokens,
+          CanonicalToken(AValueQuotas[I].Values[J])) < 0 then
+        raise EWfcTraining.CreateFmt(
+          'training value quota token is absent from the source [%d,%d]',
+          [I, J]);
 
   if AOptions.Kind <> wtkSequence then
     Exit;
@@ -608,7 +787,9 @@ end;
 
 procedure ValidateTrainingInput(const AMetadata: TWfcTrainingMetadata;
   const AOptions: TWfcTrainingOptions;
-  const ASamples: TWfcTrainingSamples; out ATotalTokenCount: Integer);
+  const ASamples: TWfcTrainingSamples;
+  const AValueQuotas: TWfcTrainingValueQuotas;
+  out ATotalTokenCount: Integer);
 var
   I: Integer;
   J: Integer;
@@ -633,6 +814,7 @@ begin
     'training license identifier', LEncodedTotal);
   AccumulateEncodedToken(AMetadata.SourceDescription,
     'training source description', LEncodedTotal);
+  ValidateValueQuotas(AValueQuotas, LEncodedTotal);
 
   ATotalTokenCount := 0;
   LVisits := 0;
@@ -748,7 +930,7 @@ begin
       WFC_TRAINING_MAX_VISIT_COUNT, 'aggregate training visit count');
   end;
 
-  ValidateModelCapacities(AOptions, ASamples);
+  ValidateModelCapacities(AOptions, ASamples, AValueQuotas);
 end;
 
 function MakeWfcTrainingMetadata(const AName, ALicenseIdentifier,
@@ -796,22 +978,56 @@ begin
   Result := IntToHex(ASignature, 8);
 end;
 
+function MakeWfcTrainingValueQuota(const ALabelText: TWfcModelToken;
+  const AValues: TWfcModelTokens;
+  const AMinimumCount, AMaximumCount: Integer): TWfcTrainingValueQuota;
+begin
+  if Length(AValues) > WFC_TRAINING_MAX_VALUE_QUOTA_TOKEN_COUNT then
+    raise EWfcTraining.Create('training value quota token count exceeds the limit');
+  Result.LabelText := ALabelText;
+  Result.Values := CloneTokens(AValues);
+  Result.MinimumCount := AMinimumCount;
+  Result.MaximumCount := AMaximumCount;
+end;
+
 { TWfcTrainingDocument }
 
 constructor TWfcTrainingDocument.Create(
   const AMetadata: TWfcTrainingMetadata;
   const AOptions: TWfcTrainingOptions;
   const ASamples: TWfcTrainingSamples);
+begin
+  inherited Create;
+  Initialize(AMetadata, AOptions, ASamples, nil);
+end;
+
+constructor TWfcTrainingDocument.Create(
+  const AMetadata: TWfcTrainingMetadata;
+  const AOptions: TWfcTrainingOptions;
+  const ASamples: TWfcTrainingSamples;
+  const AValueQuotas: TWfcTrainingValueQuotas);
+begin
+  inherited Create;
+  Initialize(AMetadata, AOptions, ASamples, AValueQuotas);
+end;
+
+procedure TWfcTrainingDocument.Initialize(
+  const AMetadata: TWfcTrainingMetadata;
+  const AOptions: TWfcTrainingOptions;
+  const ASamples: TWfcTrainingSamples;
+  const AValueQuotas: TWfcTrainingValueQuotas);
 var
   LTotalTokenCount: Integer;
 begin
-  inherited Create;
-  ValidateTrainingInput(AMetadata, AOptions, ASamples, LTotalTokenCount);
+  ValidateTrainingInput(AMetadata, AOptions, ASamples, AValueQuotas,
+    LTotalTokenCount);
   FMetadata := AMetadata;
   FOptions := AOptions;
   FSamples := CloneSamples(ASamples, AOptions.Kind = wtkAdjacency3D);
+  FValueQuotas := CloneValueQuotas(AValueQuotas);
   FTotalTokenCount := LTotalTokenCount;
-  FSignature := CalculateTrainingSignature(FMetadata, FOptions, FSamples);
+  FSignature := CalculateTrainingSignature(FMetadata, FOptions, FSamples,
+    FValueQuotas);
 end;
 
 function TWfcTrainingDocument.GetSampleCount: Integer;
@@ -846,6 +1062,36 @@ end;
 function TWfcTrainingDocument.CopySamples: TWfcTrainingSamples;
 begin
   Result := CloneSamples(FSamples, True);
+end;
+
+function TWfcTrainingDocument.GetValueQuotaCount: Integer;
+begin
+  Result := Length(FValueQuotas);
+end;
+
+function TWfcTrainingDocument.GetValueQuotaVersion: Integer;
+begin
+  if ValueQuotaCount = 0 then
+    Result := 0
+  else
+    Result := WFC_TRAINING_VALUE_QUOTA_VERSION;
+end;
+
+function TWfcTrainingDocument.ValueQuotaAt(
+  const AIndex: Integer): TWfcTrainingValueQuota;
+begin
+  if not ((AIndex >= 0) and (AIndex < ValueQuotaCount)) then
+    raise ERangeError.Create('training value quota index is out of bounds');
+  {$IFDEF PAS2JS}
+  if AIndex <> Trunc(AIndex) then
+    raise ERangeError.Create('training value quota index must be an exact integer');
+  {$ENDIF}
+  Result := CloneValueQuota(FValueQuotas[AIndex]);
+end;
+
+function TWfcTrainingDocument.CopyValueQuotas: TWfcTrainingValueQuotas;
+begin
+  Result := CloneValueQuotas(FValueQuotas);
 end;
 
 function BuildLearnVolumeSamples(
@@ -898,8 +1144,8 @@ begin
   end;
 end;
 
-function LearnWfcTrainingModelText(
-  const ADocument: TWfcTrainingDocument): String;
+function LearnTrainingPayload(const ADocument: TWfcTrainingDocument;
+  out APublicVocabulary: TWfcModelTokens): String;
 var
   LModel: TWfcModel;
   LOptions: TWfcTrainingOptions;
@@ -909,6 +1155,7 @@ var
   LSequenceSamples: TWfcSequenceSamples;
   LVolumeSamples: TWfcLearnVolumeSamples;
 begin
+  APublicVocabulary := nil;
   if ADocument = nil then
     raise EWfcTraining.Create('training document cannot be nil');
   LOptions := ADocument.CopyOptions;
@@ -919,6 +1166,8 @@ begin
         LModel := LearnModel1DCorpus(LSamples, LOptions.Boundary);
         try
           Result := EncodeWfcModelText(LModel);
+          if ADocument.ValueQuotaCount <> 0 then
+            APublicVocabulary := LModel.CopyTokens;
         finally
           LModel.Free;
         end;
@@ -930,6 +1179,8 @@ begin
           LOptions.Symmetry);
         try
           Result := EncodeWfcModelText(LModel);
+          if ADocument.ValueQuotaCount <> 0 then
+            APublicVocabulary := LModel.CopyTokens;
         finally
           LModel.Free;
         end;
@@ -942,6 +1193,8 @@ begin
           LOptions.Boundary, LOptions.Symmetry);
         try
           Result := EncodeWfcPattern2DText(LPattern);
+          if ADocument.ValueQuotaCount <> 0 then
+            APublicVocabulary := LPattern.CopyPalette;
         finally
           LPattern.Free;
         end;
@@ -953,6 +1206,8 @@ begin
           LOptions.Order);
         try
           Result := EncodeWfcSequenceText(LSequence);
+          if ADocument.ValueQuotaCount <> 0 then
+            APublicVocabulary := LSequence.CopyPublicTokens;
         finally
           LSequence.Free;
         end;
@@ -964,12 +1219,80 @@ begin
           LOptions.Symmetry);
         try
           Result := EncodeWfcModelText(LModel);
+          if ADocument.ValueQuotaCount <> 0 then
+            APublicVocabulary := LModel.CopyTokens;
         finally
           LModel.Free;
         end;
       end;
   else
     raise EWfcTraining.Create('unknown training kind');
+  end;
+end;
+
+function LearnWfcTrainingModelText(
+  const ADocument: TWfcTrainingDocument): String;
+var
+  LUnusedVocabulary: TWfcModelTokens;
+begin
+  if ADocument = nil then
+    raise EWfcTraining.Create('training document cannot be nil');
+  if ADocument.ValueQuotaCount <> 0 then
+    raise EWfcTraining.Create(
+      'standalone model export cannot represent authored value quotas; ' +
+      'export a pipeline recipe instead');
+  Result := LearnTrainingPayload(ADocument, LUnusedVocabulary);
+end;
+
+function BuildRecipeValueQuotas(const ADocument: TWfcTrainingDocument;
+  const APublicPassIndex: Integer;
+  const APublicVocabulary: TWfcModelTokens): TWfcPipelineValueQuotas;
+var
+  I: Integer;
+  J: Integer;
+  LIndex: Integer;
+  LCount: Integer;
+  LLookup: TWfcTokenLookup;
+  LSelected: array of Boolean;
+  LQuota: TWfcTrainingValueQuota;
+  LValues: TWfcModelTokens;
+begin
+  Result := nil;
+  if ADocument.ValueQuotaCount = 0 then
+    Exit;
+  LLookup := TWfcTokenLookup.Create(APublicVocabulary);
+  try
+    SetLength(Result, ADocument.ValueQuotaCount);
+    SetLength(LSelected, Length(APublicVocabulary));
+    for I := 0 to ADocument.ValueQuotaCount - 1 do
+    begin
+      LQuota := ADocument.ValueQuotaAt(I);
+      for J := 0 to Length(LSelected) - 1 do
+        LSelected[J] := False;
+      for J := 0 to Length(LQuota.Values) - 1 do
+      begin
+        LIndex := LLookup.Find(LQuota.Values[J]);
+        if LIndex < 0 then
+          raise EWfcTraining.CreateFmt(
+            'training value quota token is absent from learned public output [%d,%d]',
+            [I, J]);
+        LSelected[LIndex] := True;
+      end;
+      SetLength(LValues, Length(LQuota.Values));
+      LCount := 0;
+      for J := 0 to Length(APublicVocabulary) - 1 do
+        if LSelected[J] then
+        begin
+          LValues[LCount] := APublicVocabulary[J];
+          Inc(LCount);
+        end;
+      if LCount <> Length(LQuota.Values) then
+        raise EWfcTraining.Create('training value quota lost a public token');
+      Result[I] := MakeWfcPipelineValueQuota(APublicPassIndex,
+        LQuota.LabelText, LValues, LQuota.MinimumCount, LQuota.MaximumCount);
+    end;
+  finally
+    LLookup.Free;
   end;
 end;
 
@@ -1009,6 +1332,7 @@ end;
 function LearnWfcTrainingRecipe(
   const ADocument: TWfcTrainingDocument): TWfcPipelineModel;
 var
+  I: Integer;
   LBridges: TWfcPipelineBridges;
   LDependencies: TWfcPipelineDependencies;
   LDocumentText: String;
@@ -1017,11 +1341,14 @@ var
   LOptions: TWfcTrainingOptions;
   LPasses: TWfcPipelinePasses;
   LPipelineMetadata: TWfcPipelineMetadata;
+  LPublicPassIndex: Integer;
+  LPublicVocabulary: TWfcModelTokens;
   LRank: Integer;
   LResourceKind: TWfcPipelineResourceKind;
   LResources: TWfcPipelineResources;
   LSourceDescription: TWfcModelToken;
   LWrap: Boolean;
+  LValueQuotas: TWfcPipelineValueQuotas;
 begin
   if ADocument = nil then
     raise EWfcTraining.Create('training document cannot be nil');
@@ -1032,7 +1359,10 @@ begin
       'pattern2d recipe export currently requires wrapped training input');
 
   LMetadata := ADocument.CopyMetadata;
-  if LOptions.Kind = wtkAdjacency3D then
+  if ADocument.ValueQuotaCount <> 0 then
+    LFingerprint := TWfcModelToken('wfclearn-v3/' +
+      WfcTrainingSignatureHex(ADocument.Signature))
+  else if LOptions.Kind = wtkAdjacency3D then
     LFingerprint := TWfcModelToken('wfclearn-v2/' +
       WfcTrainingSignatureHex(ADocument.Signature))
   else
@@ -1041,7 +1371,7 @@ begin
   LSourceDescription := BuildSourceDescription(ADocument);
   { Recipe-specific provenance capacity is known from the immutable input.
     Reject it before dispatching the potentially expensive learner. }
-  LDocumentText := LearnWfcTrainingModelText(ADocument);
+  LDocumentText := LearnTrainingPayload(ADocument, LPublicVocabulary);
   LPipelineMetadata := MakeWfcPipelineMetadata(LMetadata.Name,
     LMetadata.LicenseIdentifier, LSourceDescription, LFingerprint);
 
@@ -1126,8 +1456,17 @@ begin
   end;
 
   LWrap := LOptions.Boundary = wmbWrap;
+  LPublicPassIndex := WFC_PIPELINE_NO_INDEX;
+  for I := 0 to Length(LPasses) - 1 do
+    if LPasses[I].LabelName = 'output' then
+      LPublicPassIndex := I;
+  if LPublicPassIndex = WFC_PIPELINE_NO_INDEX then
+    raise EWfcTraining.Create('training recipe has no public output pass');
+  LValueQuotas := BuildRecipeValueQuotas(ADocument, LPublicPassIndex,
+    LPublicVocabulary);
   Result := TWfcPipelineModel.Create(LPipelineMetadata, LRank, LWrap,
-    rmBottomUp, LResources, LPasses, LDependencies, LBridges, nil);
+    rmBottomUp, LResources, LPasses, LDependencies, LBridges, nil,
+    LValueQuotas);
 end;
 
 end.

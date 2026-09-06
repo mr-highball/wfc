@@ -45,6 +45,7 @@ textarea:focus-visible, .button-link:focus-visible {
 
 .button-link { display: inline-flex; align-items: center; text-decoration: none; }
 .button-link.disabled { pointer-events: none; cursor: default; opacity: .42; }
+button:disabled, input:disabled, select:disabled { cursor: default; opacity: .45; }
 
 .masthead, main, footer { width: min(1450px, calc(100% - 2.25rem)); margin-inline: auto; }
 .masthead { display: flex; justify-content: space-between; align-items: end; gap: 2rem; padding: 2.5rem 0 1.5rem; border-bottom: 1px solid var(--line); }
@@ -113,6 +114,14 @@ dd { margin: .22rem 0 0; overflow-wrap: anywhere; color: var(--amber); font: 700
 .lock-editor p { margin: .35rem 0 0; color: var(--muted); font-size: .76rem; }
 .lock-fields { display: grid; grid-template-columns: 5rem 5rem 5rem minmax(9rem, 1fr) auto; align-items: end; gap: .5rem; }
 .lock-list { grid-column: 1 / -1; width: 100%; min-height: 6.5rem; padding: .45rem; font: .76rem/1.5 ui-monospace, monospace; }
+.quota-editor { min-width: 0; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--line); }
+.quota-editor h3 { margin: 0; font-size: .84rem; text-transform: uppercase; letter-spacing: .08em; }
+.quota-editor .section-heading p { max-width: 50rem; margin: .35rem 0 0; color: var(--muted); font-size: .76rem; }
+.quota-fields { display: grid; grid-template-columns: minmax(10rem, 1fr) minmax(12rem, 1.5fr) repeat(2, minmax(8rem, .6fr)); gap: .65rem; align-items: start; }
+.quota-fields > label { min-width: 0; }
+#quota-list { width: 100%; margin: .75rem 0; font: .76rem/1.5 ui-monospace, monospace; }
+#quota-tokens-select { width: 100%; font-family: ui-monospace, monospace; }
+body[data-quota-draft="true"] .quota-editor { border-color: var(--amber); }
 
 .result-chip { border: 1px solid var(--line); border-radius: 99px; padding: .4rem .65rem; color: var(--amber); font: 720 .72rem ui-monospace, monospace; }
 body[data-state="solved"] .result-chip { color: var(--green); }
@@ -138,6 +147,7 @@ footer { display: flex; justify-content: space-between; gap: 1rem; padding: .7re
   .status-panel { position: static; }
   .raw-fields { grid-template-columns: repeat(3, 1fr); }
   .run-fields { grid-template-columns: repeat(4, 1fr); }
+  .quota-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 720px) {
@@ -156,5 +166,6 @@ footer { display: flex; justify-content: space-between; gap: 1rem; padding: .7re
   .lock-fields .token-field { grid-column: 1 / -1; }
   .lock-fields button { grid-column: 1 / -1; width: 100%; white-space: normal; }
   .lock-list { grid-column: 1; }
+  .quota-fields { grid-template-columns: minmax(0, 1fr); }
   footer { flex-direction: column; }
 }

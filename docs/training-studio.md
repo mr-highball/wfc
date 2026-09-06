@@ -195,6 +195,16 @@ Accepting a file import clears the old source lineage immediately; cancelled
 or obsolete asynchronous reads cannot overwrite a newer edit. Raw-text
 conversion initializes rank-1 output width to the imported scalar count.
 
+The whole-output quota editor authors exact or bounded quantities over selected
+public tokens. Apply replaces the quota registry in canonical `wfclearn=3`
+source and retrains, so source download/import and later retraining preserve
+the policy. Unapplied drafts disable solving and derived downloads; discard
+does not restore an older result. Source and model identities stay separate:
+quota-bearing sources cannot export a standalone model because that format
+would lose the constraints. Export the recipe instead. See
+[persistent quota authoring](training-value-quotas.md) for the API, failure
+invalidation, bounds, and format contracts.
+
 The UI currently exposes token locks, not an editor for arbitrary allowed-token
 domain sets; those remain available through ConfigureRun and run artifacts.
 It does not turn raw images, voxel sets, or MIDI into corpora. Unicode

@@ -102,17 +102,19 @@ begin
     '  wfc-learn --help'#10 +
     '  wfc-learn --version'#10 +
     #10 +
-    'INPUT is one canonical wfclearn=1 or wfclearn=2 file path, or - to read standard ' +
+    'INPUT is one canonical wfclearn=1, wfclearn=2, or wfclearn=3 file path, or - to read standard ' +
       'input.'#10 +
-    'By default, training emits a canonical wfcpipeline=1 recipe.'#10 +
-    '--model emits the learned standalone wfcm, wfcp, or wfcs model.'#10 +
+    'By default, training emits a canonical wfcpipeline=1 recipe, or ' +
+      'wfcpipeline=2 when the source authors value quotas.'#10 +
+    '--model emits the learned standalone wfcm, wfcp, or wfcs model; ' +
+      'it rejects quota-bearing sources because standalone models cannot retain quotas.'#10 +
     '--quiet validates and compiles the recipe without emitting output.'#10;
 end;
 
 function WfcLearnVersionText: String;
 begin
   Result := 'wfc-learn ' + IntToStr(WFC_LEARN_CLI_VERSION) +
-    ' (wfclearn=1,2)'#10;
+    ' (wfclearn=1,2,3)'#10;
 end;
 
 function WfcLearnFailureExitCode(

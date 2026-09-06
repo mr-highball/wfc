@@ -124,6 +124,7 @@ for quota lowering before allocating the graph. These format/compilation
 limits do not promise a bound on solver elapsed time. Finite graph memory,
 search allowances, and the existing run/result envelopes still apply.
 
-Training documents currently learn resources and build quota-free recipes.
-Hard quotas are authored explicitly on those recipes; observed corpus
-frequencies remain weights, not mandatory output proportions.
+Training documents can declare explicit source-owned quotas through opt-in
+`wfclearn=3`, including native/browser editing and save/load/retrain. See
+[training quota authoring](training-value-quotas.md). Observed corpus frequencies
+remain weights, not mandatory output proportions.
