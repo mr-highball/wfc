@@ -18,6 +18,19 @@ while their foundations are still demonstrations or stubs.
 
 ## Current reality
 
+### Expansion stopping checkpoint
+
+The current expansion milestone includes the native/browser Pipeline Workspace
+and [project-owned asset inventory tooling](docs/assets.md). The checker,
+canonical manifest and streaming SHA-256 implementation complete this tooling
+task; they do not declare the complete roadmap or a 1.0 release finished.
+Nine retained historical assets still have unresolved provenance records.
+
+The next development cycle should begin with contributor/release documentation
+and newcomer usability, then prioritize measured solver/repair improvements
+and deeper domain examples. The remaining items and 1.0 exit gates below stay
+open; the current milestone is a deliberate stopping point.
+
 The repository already contains the beginnings of the ecosystem:
 
 - a fluent `TGraph` API with 2D and 3D neighbors, custom string values,
@@ -1016,7 +1029,9 @@ The project remains under the MIT license. To make that promise meaningful:
 - add SPDX identifiers or an equivalent clear license reference to maintained
   project source;
 - maintain a third-party notice and asset manifest containing origin, author,
-  version, license, modifications, and hashes;
+  version, license, modifications, and hashes: the version-1 asset manifest
+  and native byte-inventory CI check now exist, while the nine historical
+  asset records remain unresolved and a complete release notice set is open;
 - keep the project-owned MIT FPC/pas2js media and presentation stack as the
   standard path; the original music studies have been ported, and the old
   playback submodule and engine shell are removed, not retained as exceptions;

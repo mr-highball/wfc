@@ -37,6 +37,7 @@ and explicit exit gates.
 | Save edit history and restore a live workspace | [Workspace journals, exact replay, atomic authoring and CLI](docs/pipeline-workspaces.md) |
 | Edit arbitrary supported pipelines interactively | [Pipeline Workspace](examples/passes/08_PipelineWorkspace/README.md), [native artifact-generating host](examples/passes/08_PipelineWorkspace/NATIVE.md) |
 | Check or inspect saved work | [Artifact-family validation, inspection, and exact replay](docs/artifact-tools.md) |
+| Check source-distribution assets and review status | [Asset inventory and native checker](docs/assets.md) |
 | Extend or evaluate the system | [Roadmap](ROADMAP.md), [research records](docs/research/README.md) |
 
 ## A small pass-based program
@@ -139,8 +140,10 @@ optimum, minimal edit, or a proof that every budget-limited model is impossible.
 
 ## Demos
 
-Every standard demo uses repository code and licensed source material.
-The native and browser hosts share Pascal generation and validation code.
+Standard demos use project-owned implementations and the applicable compiler
+RTL. The native and browser hosts share Pascal generation and validation code.
+The nine retained [historical assets](docs/assets.md) are not inputs to standard
+demo execution; their origin and redistribution documentation remains unresolved.
 
 | Domain | Native presentation | Interactive pas2js demo |
 | --- | --- | --- |
@@ -246,3 +249,6 @@ runtime and demos use project-owned implementations and the applicable
 compiler RTL. The former external-engine and media-library demo integrations
 have been removed; see the
 [dependency policy](docs/dependencies.md) and [examples index](examples/README.md).
+The separate [asset manifest and review guide](docs/assets.md) records nine
+retained historical files without assigning them invented provenance or terms.
+Its byte check is not a legal-permission or release-readiness verdict.

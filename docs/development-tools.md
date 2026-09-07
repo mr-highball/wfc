@@ -36,6 +36,30 @@ and canonical filenames. Add `.exe` on Windows. See
 [package checking](package-checking.md) for the static-checking boundary,
 standalone build, limits, and installed-unit consumer tests.
 
+## Check asset inventory and bytes
+
+The native gate builds `wfc_asset_check` and runs its portable SHA-256,
+manifest, and command suites plus a real native process fixture. Given an
+explicit canonical inventory, run:
+
+```text
+build/native/bin/wfc_asset_check --root . --manifest ASSETS.wfcassets --files build/tracked.wfcfiles
+```
+
+Add `.exe` on Windows. The [asset guide](assets.md) covers standalone FPC
+compilation, exact-byte inventory capture on Windows and Bash, adjustable
+limits, command exits, and the native fixture. The checker never calls Git:
+CI supplies the complete tracked list, while source-distribution producers
+can supply their own complete list. It does not scan for omitted files.
+
+Package-unit completeness, asset byte identity, and provenance review are
+different checks. The current nine historical declarations have unresolved
+provenance; an ordinary matching byte check reports that status and succeeds,
+whereas `--require-reviewed` refuses it. Neither proves legal permission.
+These historical files are not consumed by standard demo execution. The
+project-owned [streaming SHA-256 API](asset-sha256.md) remains a tool unit,
+not a new core/runtime package dependency.
+
 ## Save and restore an editable workspace
 
 The same native gate builds `build/native/bin/wfc_workspace[.exe]` from

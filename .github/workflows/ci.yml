@@ -104,6 +104,96 @@ jobs:
         shell: pwsh
         run: ./build.ps1
 
+      - name: Check tracked asset inventory and bytes
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$(mktemp -d "$PWD/build/asset-check.XXXXXXXX")"
+          checker="$PWD/build/native/bin/wfc_asset_check"
+          git -c core.quotepath=false ls-files --full-name > "$evidence/tracked-paths.txt"
+          "$checker" --inventory-from "$evidence/tracked-paths.txt" \
+            > "$evidence/inventory.stdout" 2> "$evidence/inventory.stderr"
+          test ! -s "$evidence/inventory.stderr"
+          mv "$evidence/inventory.stdout" "$evidence/tracked.wfcfiles"
+          # A matching byte inventory is not a legal-provenance verdict.
+          # Keep unresolved records visible; reviewed releases use the separate
+          # --require-reviewed gate documented in docs/assets.md.
+          "$checker" --root "$PWD" --manifest "$PWD/ASSETS.wfcassets" \
+            --files "$evidence/tracked.wfcfiles"
+
+      - name: Check tracked asset inventory and bytes
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $evidence = Join-Path $PWD ('build/asset-check-' + [guid]::NewGuid().ToString('N'))
+          New-Item -ItemType Directory -Path $evidence | Out-Null
+          $checker = Join-Path $PWD 'build/native/bin/wfc_asset_check.exe'
+          function Invoke-AssetCapture {
+            param([string] $Executable, [string[]] $Arguments, [string] $Name)
+            $info = [System.Diagnostics.ProcessStartInfo]::new()
+            $info.FileName = $Executable
+            $info.WorkingDirectory = "$PWD"
+            $info.UseShellExecute = $false
+            $info.CreateNoWindow = $true
+            $info.RedirectStandardOutput = $true
+            $info.RedirectStandardError = $true
+            foreach ($argument in $Arguments) { $info.ArgumentList.Add($argument) }
+            $process = [System.Diagnostics.Process]::new()
+            $output = [System.IO.MemoryStream]::new()
+            $errorOutput = [System.IO.MemoryStream]::new()
+            try {
+              $process.StartInfo = $info
+              if (-not $process.Start()) { throw "Could not start $Name" }
+              $outTask = $process.StandardOutput.BaseStream.CopyToAsync($output)
+              $errTask = $process.StandardError.BaseStream.CopyToAsync($errorOutput)
+              if (-not $process.WaitForExit(60000)) { throw "$Name timed out" }
+              if (-not [System.Threading.Tasks.Task]::WaitAll(
+                  [System.Threading.Tasks.Task[]] @($outTask, $errTask), 5000)) {
+                throw "$Name output draining timed out"
+              }
+              # These trusted-child capture allowances are checked after
+              # capture, not claimed as a hostile-process memory sandbox.
+              if ($output.Length -gt 64MB -or $errorOutput.Length -gt 1MB) {
+                throw "$Name exceeded the capture allowance"
+              }
+              [System.IO.File]::WriteAllBytes((Join-Path $evidence "$Name.stdout"), $output.ToArray())
+              [System.IO.File]::WriteAllBytes((Join-Path $evidence "$Name.stderr"), $errorOutput.ToArray())
+              if ($process.ExitCode -ne 0 -or $errorOutput.Length -ne 0) {
+                throw "$Name failed: exit $($process.ExitCode); see $evidence"
+              }
+              return ,$output.ToArray()
+            } finally {
+              try {
+                if ($process.Id -and -not $process.HasExited) {
+                  $process.Kill()
+                  if (-not $process.WaitForExit(5000)) { throw "$Name did not exit after termination" }
+                }
+                if ($outTask -and $errTask) {
+                  if (-not [System.Threading.Tasks.Task]::WaitAll(
+                      [System.Threading.Tasks.Task[]] @($outTask, $errTask), 5000)) {
+                    throw "$Name output draining did not finish during cleanup"
+                  }
+                }
+              } finally {
+                $process.Dispose()
+                $output.Dispose()
+                $errorOutput.Dispose()
+              }
+            }
+          }
+          $raw = Invoke-AssetCapture (Get-Command git).Source @(
+            '-c', 'core.quotepath=false', 'ls-files', '--full-name') 'tracked'
+          $rawPath = Join-Path $evidence 'tracked-paths.txt'
+          [System.IO.File]::WriteAllBytes($rawPath, $raw)
+          $canonical = Invoke-AssetCapture $checker @('--inventory-from', $rawPath) 'inventory'
+          $inventory = Join-Path $evidence 'tracked.wfcfiles'
+          [System.IO.File]::WriteAllBytes($inventory, $canonical)
+          $report = Invoke-AssetCapture $checker @('--root', "$PWD", '--manifest',
+            (Join-Path $PWD 'ASSETS.wfcassets'), '--files', $inventory) 'check'
+          [System.Text.Encoding]::UTF8.GetString($report)
+
       - name: Validate FPM and Lazarus packages
         if: runner.os == 'Linux'
         shell: bash

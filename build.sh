@@ -887,6 +887,9 @@ do
 done
 
 for compiler_artifact_suite in \
+  "$compiler_tools_directory/../test/wfc_sha256_test.lpr" \
+  "$compiler_tools_directory/../test/wfc_asset_manifest_test.lpr" \
+  "$compiler_tools_directory/../test/wfc_asset_check_app_test.lpr" \
   "$compiler_tools_directory/../test/wfc_voxel3d_model_passes_test.lpr" \
   "$compiler_tools_directory/../test/wfc_terraces3d_test.lpr" \
   "$compiler_tools_directory/../test/wfc_terraces3d_view_test.lpr" \
@@ -1010,6 +1013,7 @@ do
 done
 
 for compiler_tool_source in \
+  "$compiler_tools_directory/wfc_asset_check.lpr" \
   "$compiler_validate_tool_source" \
   "$compiler_tools_directory/wfc_inspect.lpr" \
   "$compiler_tools_directory/wfc_workspace_cli.lpr" \
@@ -1059,6 +1063,26 @@ do
   printf "Smoke testing '%s %s'.\n" "$tool_executable" "$tool_smoke_argument"
   "$tool_executable" "$tool_smoke_argument" || exit $?
 done
+
+printf 'Building and running FPC asset-check process conformance.\n'
+"$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
+  "-Fu$compiler_source_directory" "-Fu$compiler_tools_directory" \
+  "-Fu$compiler_source_directory/../test" \
+  "-FU$compiler_unit_output_directory" "-FE$compiler_binary_output_directory" \
+  "$compiler_source_directory/../test/wfc_asset_check_process_test.lpr" || exit $?
+# Only the parent exists here; the fixture creates and retains the fresh leaf.
+asset_process_parent=$(mktemp -d "$binary_output_directory/asset-process.XXXXXXXX") || exit $?
+asset_process_directory="$asset_process_parent/fixtures"
+asset_tool_suffix=''
+case "$host_system" in
+  CYGWIN*|MINGW*|MSYS*)
+    asset_tool_suffix='.exe'
+    asset_process_directory=$(cygpath -m "$asset_process_directory") || exit $?
+    ;;
+esac
+"$binary_output_directory/wfc_asset_check_process_test$asset_tool_suffix" \
+  "$compiler_binary_output_directory/wfc_asset_check$asset_tool_suffix" \
+  "$asset_process_directory" || exit $?
 
 validator_tool_executable="$binary_output_directory/wfc_validate"
 solver_benchmark_executable="$binary_output_directory/wfc_solver_benchmark"

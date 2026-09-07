@@ -131,6 +131,7 @@ Both scripts rebuild with assertions and range, overflow, and I/O checks, run
 `wfc_browser_websocket_test`, `wfc_browser_cdp_test`, `wfc_browser_capture_test`,
 `wfc_serve_test`,
 `wfc_text_codec_test`, `wfc_rule_model_test`,
+`wfc_sha256_test`, `wfc_asset_manifest_test`, `wfc_asset_check_app_test`,
 `wfc_rule_text_test`, `wfc_pipeline_model_test`, `wfc_pipeline_text_test`,
 `wfc_pipeline_run_test`, `wfc_pipeline_run_text_test`,
 `wfc_pipeline_compile_test`, `wfc_pipeline_result_test`,
@@ -213,6 +214,15 @@ groups. The native `wfc_workspace_cli_process_test` instead invokes the real
 checking ordered histories, exact replay, scope refusal, normal-unsolved
 exit10 and new-file preservation. All browser build/execution scripts exclude
 that native-only process test; they discover the four portable groups normally.
+The native gate also builds `wfc_asset_check` and runs
+`wfc_asset_check_process_test` against fresh synthetic files. The three shared
+SHA-256/manifest/application programs above are also part of portable browser
+discovery; the filesystem process fixture is native-only. The
+[asset guide](assets.md) explains its exact-byte inventory format, standalone
+FPC build, fixture invocation, review status and resource limits. Ordinary
+native builds and the checker do not require Git. CI separately supplies its
+complete tracked inventory for a real repository byte check; this is distinct
+from package-unit completeness and from provenance review.
 A compiler error, failed check,
 or example failure produces a nonzero exit code. Compiler units and binaries
 are written beneath `build/native/`; running the gate does not modify tracked
@@ -739,6 +749,14 @@ Ensemble Studio and Voice Studio controllers) in headless Chrome using the inclu
 development tools. A canary runs
 against the current official FPC development image and records the image digest
 and compiler revision in the job log. The checkout contains no submodules.
+
+After the stable native builds, the workflow uses Git only as a producer of
+the complete tracked file list. The included FPC asset command converts that
+list into canonical bytes and checks it against `ASSETS.wfcassets`. Windows
+captures native stdout as bytes rather than through shell text encoding. The
+ordinary check reports unresolved declarations without inventing provenance;
+`--require-reviewed` is a separate stricter release requirement. See
+[asset checking and capture recipes](assets.md#capture-a-complete-source-inventory).
 
 On 2026-09-06 UTC, [CI run 34005958438](https://github.com/mr-highball/wfc/actions/runs/34005958438)
 passed all five jobs for `b3bd1aea028ce908075b30d1dbe4731359f4c285`:

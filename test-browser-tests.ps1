@@ -24,6 +24,7 @@ $results = Join-Path $repositoryRoot 'build/browser/tests/results'
 $nativeOnly = @('wfc_browser_dom_test','wfc_browser_socket_test','wfc_browser_websocket_test','wfc_browser_cdp_test','wfc_browser_capture_test','wfc_browser_args_test','wfc_serve_test','wfc_music_render_process_test','wfc_music_ensemble_render_process_test','wfc_music_ensemble_midi_render_process_test','wfc_music_voices_render_process_test','wfc_connectivity_process_test','wfc_music_studies_process_test')
 $standalone = $WebRoot -ne '' -or $Page -ne '' -or $Expect.Count -gt 0
 $nativeOnly += 'wfc_package_check_process_test'
+$nativeOnly += 'wfc_asset_check_process_test'
 $nativeOnly += 'wfc_artifact_cli_process_test'
 $nativeOnly += 'wfc_ensemble_http_process_test'
 $nativeOnly += 'wfc_mapped_world_process_test'

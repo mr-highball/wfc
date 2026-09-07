@@ -1,4 +1,5 @@
 /build.sh text eol=lf
+/ASSETS.wfcassets text eol=lf
 /build-workspace.sh text eol=lf
 /build-browser*.sh text eol=lf
 /test-browser-tests.sh text eol=lf

@@ -65,6 +65,9 @@ $musicTestSources = @(
   (Join-Path $repositoryRoot 'test/wfc_music_studio_test.lpr')
 )
 $artifactTestSources = @(
+  (Join-Path $repositoryRoot 'test/wfc_sha256_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_asset_manifest_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_asset_check_app_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_pipeline_layout_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_pipeline_mapping_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_pipeline_mapped_model_test.lpr')
@@ -155,6 +158,7 @@ $artifactTestSources = @(
     'test/wfc_learned_pattern_world_bundle_test.lpr')
 )
 $toolSources = @(
+  (Join-Path $repositoryRoot 'tools/wfc_asset_check.lpr')
   (Join-Path $repositoryRoot 'tools/wfc_solver_benchmark.lpr')
   (Join-Path $repositoryRoot 'tools/wfc_validate.lpr')
   (Join-Path $repositoryRoot 'tools/wfc_inspect.lpr')
@@ -1209,6 +1213,20 @@ foreach ($toolSource in $toolSources) {
 }
 
 $toolExecutableSuffix = if ($env:OS -eq 'Windows_NT') { '.exe' } else { '' }
+Write-Host 'Building and running FPC asset-check process conformance.'
+& $Compiler @CompilerOptions -B -Mdelphi -Sa -Cr -Co -Ci `
+  "-Fu$sourceDirectory" "-Fu$toolsDirectory" "-Fu$repositoryRoot/test" `
+  "-FU$unitOutputDirectory" "-FE$binaryOutputDirectory" `
+  (Join-Path $repositoryRoot 'test/wfc_asset_check_process_test.lpr')
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+# The fixture creates its own fresh leaf and retains evidence from this run.
+$assetProcessDirectory = Join-Path $binaryOutputDirectory `
+  ('asset-process-' + [Guid]::NewGuid().ToString('N'))
+& (Join-Path $binaryOutputDirectory "wfc_asset_check_process_test$toolExecutableSuffix") `
+  (Join-Path $binaryOutputDirectory "wfc_asset_check$toolExecutableSuffix") `
+  $assetProcessDirectory
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
 Write-Host 'Smoke testing the deterministic solver benchmark (no timing threshold).'
 & (Join-Path $binaryOutputDirectory "wfc_solver_benchmark$toolExecutableSuffix") `
   --cells 32 --values 4 --weights skewed --topology line `

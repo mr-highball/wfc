@@ -31,7 +31,7 @@ foreach ($source in Get-ChildItem -LiteralPath (Join-Path $repositoryRoot 'test'
   if ($source.BaseName -eq 'wfc_pipeline_prepare_threads_test') { continue }
   if ($source.BaseName -in @('pipeline_workspace_native_fixture','pipeline_workspace_native_process_test')) { continue }
   if ($source.BaseName -in @('wfc_workspace_cli_process_test','wfc_workspace_cli_fixture')) { continue }
-  if ($source.BaseName -in @('wfc_package_check_process_test','wfc_artifact_cli_process_test','wfc_ensemble_http_process_test','wfc_pipeline_mapped_process_test')) { continue }
+  if ($source.BaseName -in @('wfc_package_check_process_test','wfc_asset_check_process_test','wfc_artifact_cli_process_test','wfc_ensemble_http_process_test','wfc_pipeline_mapped_process_test')) { continue }
   if ($source.BaseName -in @('wfc_browser_dom_test','wfc_browser_args_test','wfc_browser_socket_test','wfc_browser_websocket_test','wfc_browser_cdp_test','wfc_browser_capture_test','wfc_serve_test','wfc_music_render_process_test','wfc_music_ensemble_render_process_test','wfc_music_ensemble_midi_render_process_test','wfc_music_voices_render_process_test','wfc_connectivity_process_test','wfc_mapped_world_process_test','wfc_music_studies_process_test')) { continue }
   & $Compiler -B -Tbrowser -Mdelphi -Jc '-Jirtl.js' @unitPaths "-FU$units" "-FE$web" $source.FullName
   if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
