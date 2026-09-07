@@ -25,11 +25,19 @@ unit wfc_browser_dom;
 {$mode delphi}{$H+}
 interface
 uses Classes, SysUtils;
-const WFC_BROWSER_MAX_DOM_BYTES = 16 * 1024 * 1024;
+const
+  WFC_BROWSER_MAX_DOM_BYTES = 16 * 1024 * 1024;
+  WFC_BROWSER_MAX_DIAGNOSTIC_BYTES = 4096;
 type EWfcBrowserDom = class(Exception);
 { First real body tag from browser-serialized DOM. Caller owns the list.
   This assertion reader is not an HTML sanitizer. }
 function WfcBrowserBodyAttributes(const AHtml: String): TStringList;
+{ Bounded, ASCII-escaped data-* state for failure logs. Does not change the
+  attributes or decide whether a browser operation has completed. }
+function WfcBrowserBodyDiagnostic(const AAttributes: TStrings): String;
+{ Assert every expected body attribute and reject a nonempty self-test message.
+  Failure includes the bounded state snapshot, never a successful fallback. }
+procedure WfcBrowserAssertBody(const AActual, AExpected: TStrings);
 { Synchronous Pascal programs only: completion means rtl.run returned or
   the test host raised its explicit successful exit. Async callbacks need
   an application-owned completion signal instead of this harness. }
@@ -39,6 +47,67 @@ procedure Fail(const M:String);
 begin raise EWfcBrowserDom.Create(M);end;
 function NameChar(const C:Char):Boolean;
 begin Result:=C in ['a'..'z','A'..'Z','0'..'9','-','_',':'];end;
+function DiagnosticQuote(const S:String;const ALimit:Integer):String;
+var I:Integer;Piece:String;
+begin
+  Result:='"';
+  for I:=1 to Length(S) do
+  begin
+    case S[I] of
+      '"':Piece:='\"';
+      '\':Piece:='\\';
+      #32..#33,#35..#91,#93..#126:Piece:=S[I];
+      else Piece:='\x'+IntToHex(Ord(S[I]),2);
+    end;
+    if Length(Result)+Length(Piece)+4>ALimit then
+    begin Result:=Result+'...';Break;end;
+    Result:=Result+Piece;
+  end;
+  Result:=Result+'"';
+end;
+function WfcBrowserBodyDiagnostic(const AAttributes:TStrings):String;
+var I,P:Integer;Key:String;Full:Boolean;
+  procedure AddAttribute(const AIndex:Integer);
+  var Item:String;
+  begin
+    if(AIndex<0) or Full then Exit;
+    Item:=' '+DiagnosticQuote(AAttributes.Names[AIndex],80)+'='+
+      DiagnosticQuote(AAttributes.ValueFromIndex[AIndex],192);
+    if Length(Result)+Length(Item)+Length(' [truncated]')>WFC_BROWSER_MAX_DIAGNOSTIC_BYTES then
+    begin Result:=Result+' [truncated]';Full:=True;end
+    else Result:=Result+Item;
+  end;
+begin
+  Result:='body data state:';Full:=False;
+  if AAttributes=nil then begin Result:=Result+' unavailable';Exit;end;
+  { A long payload or many application markers must not hide the main state. }
+  P:=AAttributes.IndexOfName('data-self-test');AddAttribute(P);
+  P:=AAttributes.IndexOfName('data-self-test-message');AddAttribute(P);
+  for I:=0 to AAttributes.Count-1 do
+  begin
+    if Full then Break;
+    Key:=AAttributes.Names[I];
+    if(Copy(Key,1,5)='data-') and(Key<>'data-self-test') and
+      (Key<>'data-self-test-message') then AddAttribute(I);
+  end;
+end;
+procedure WfcBrowserAssertBody(const AActual,AExpected:TStrings);
+var I,P:Integer;Key:String;
+begin
+  if AActual=nil then Fail('body attributes are required');
+  if(AExpected=nil) or(AExpected.Count=0) then Fail('at least one body expectation is required');
+  for I:=0 to AExpected.Count-1 do
+  begin
+    Key:=AExpected.Names[I];P:=AActual.IndexOfName(Key);
+    if(P<0) or(AActual.ValueFromIndex[P]<>AExpected.ValueFromIndex[I]) then
+      Fail('body '+DiagnosticQuote(Key,80)+' mismatch: expected '+
+        DiagnosticQuote(AExpected.ValueFromIndex[I],192)+', found '+
+        DiagnosticQuote(AActual.Values[Key],192)+'; '+WfcBrowserBodyDiagnostic(AActual));
+  end;
+  if AActual.Values['data-self-test-message']<>'' then
+    Fail('browser self-test reported: '+DiagnosticQuote(AActual.Values['data-self-test-message'],192)+
+      '; '+WfcBrowserBodyDiagnostic(AActual));
+end;
 function DecodeValue(const S:String):String;
 var I,J,K,D,Base,Code:Integer;E:String;
   procedure Scalar(const C:Integer);

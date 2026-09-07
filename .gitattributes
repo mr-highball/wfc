@@ -1,6 +1,9 @@
 /build.sh text eol=lf
+/ASSETS.wfcassets text eol=lf
+/build-workspace.sh text eol=lf
 /build-browser*.sh text eol=lf
 /test-browser-tests.sh text eol=lf
+/test/browser_capture/run.sh text eol=lf
 /test/fixtures/pipeline-cli/*.wfcpipeline text eol=lf
 /test/fixtures/pipeline-cli/*.wfcrun text eol=lf
 /test/fixtures/pipeline-cli/*.wfcresult text eol=lf
@@ -14,3 +17,5 @@
 /examples/learning/04_TrainingDocuments/*.wfcrun text eol=lf
 /examples/learning/04_TrainingDocuments/*.wfcresult text eol=lf
 /examples/learning/04_TrainingDocuments/*.model text eol=lf
+/test/fixtures/training-cli/*.wfclearn text eol=lf
+/test/fixtures/training-cli/*.wfcpipeline text eol=lf

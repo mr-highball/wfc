@@ -371,8 +371,8 @@ begin
   LStatus := WfcRunExecuteTexts(LCommand, 'ignored', 'ignored',
     LOutput, LError);
   Check((LStatus = WFC_RUN_EXIT_SOLVED) and (LError = '') and
-    (LOutput = 'wfc-run 1 (wfcpipeline=1, wfcpipeline-run=1, ' +
-      'wfcpipeline-result=1, runtime=2)'#10),
+    (LOutput = 'wfc-run 1 (wfcpipeline=1,2,3,4,5, wfcpipeline-run=1,2, ' +
+      'wfcpipeline-result=1,2, runtime=2)'#10),
     'version identifies every portable artifact and runtime contract');
 end;
 

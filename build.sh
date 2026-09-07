@@ -291,6 +291,26 @@ case "$host_system" in
 esac
 
 printf "Building the native conformance suite with '%s'.\n" "$compiler"
+package_check_suffix=''
+case "$host_system" in
+  CYGWIN*|MINGW*|MSYS*) package_check_suffix='.exe' ;;
+esac
+for package_check_source in \
+  "$compiler_tools_directory/wfc_package_check.lpr" \
+  "$compiler_source_directory/../test/wfc_package_check_test.lpr" \
+  "$compiler_source_directory/../test/wfc_package_check_process_test.lpr"
+do
+  "$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
+    "-Fu$compiler_tools_directory" "-FU$compiler_unit_output_directory" \
+    "-FE$compiler_binary_output_directory" "$package_check_source" || exit $?
+done
+"$binary_output_directory/wfc_package_check_test$package_check_suffix" || exit $?
+"$binary_output_directory/wfc_package_check$package_check_suffix" \
+  --root "$compiler_source_directory/.." || exit $?
+"$binary_output_directory/wfc_package_check$package_check_suffix" --version || exit $?
+"$binary_output_directory/wfc_package_check_process_test$package_check_suffix" \
+  "$compiler_binary_output_directory/wfc_package_check$package_check_suffix" || exit $?
+
 "$compiler" "$@" \
   -B \
   -Mdelphi \
@@ -361,7 +381,7 @@ esac
 "$count_demo_executable" --selftest || exit $?
 
 compiler_connectivity_demo_directory="$compiler_source_directory/../examples/passes/06_ConnectedRoutes"
-for connectivity_test_name in wfc_connectivity_reference_test wfc_connectivity_test wfc_connectivity_trace_test wfc_connectivity_demo_test; do
+for connectivity_test_name in wfc_connectivity_reference_test wfc_connectivity_test wfc_connectivity_trace_test wfc_connectivity_demo_test wfc_value_quota_reference_test wfc_value_quota_test wfc_value_quota_trace_test; do
   printf "Building and running '%s'.\n" "$connectivity_test_name"
   "$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
     "-Fu$compiler_source_directory" "-Fu$compiler_tools_directory" \
@@ -397,8 +417,66 @@ case "$host_system" in
     ;;
 esac
 "$connectivity_demo_executable" --selftest || exit $?
+"$connectivity_demo_executable" --portable-selftest || exit $?
 "$connectivity_process_test_executable" "$connectivity_runtime_executable" \
   "$compiler_binary_output_directory" || exit $?
+
+compiler_mapped_world_demo_directory="$compiler_source_directory/../examples/passes/07_MappedWorld"
+for mapped_world_test_name in wfc_mapped_world_test wfc_mapped_world_geometry_test; do
+  printf "Building and running '%s'.\n" "$mapped_world_test_name"
+  "$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
+    "-Fu$compiler_source_directory" "-Fu$compiler_tools_directory" \
+    "-Fu$compiler_mapped_world_demo_directory" \
+    "-FU$compiler_unit_output_directory" "-FE$compiler_binary_output_directory" \
+    "$compiler_source_directory/../test/$mapped_world_test_name.lpr" || exit $?
+  mapped_world_test_executable="$binary_output_directory/$mapped_world_test_name"
+  case "$host_system" in
+    CYGWIN*|MINGW*|MSYS*) mapped_world_test_executable="${mapped_world_test_executable}.exe" ;;
+  esac
+  "$mapped_world_test_executable" || exit $?
+done
+
+printf 'Building and checking Mapped World and native export transactions.\n'
+for mapped_world_source in \
+  "$compiler_mapped_world_demo_directory/MappedWorld.lpr" \
+  "$compiler_source_directory/../test/wfc_mapped_world_process_test.lpr"
+do
+  "$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
+    "-Fu$compiler_source_directory" "-Fu$compiler_tools_directory" \
+    "-Fu$compiler_mapped_world_demo_directory" \
+    "-FU$compiler_unit_output_directory" "-FE$compiler_binary_output_directory" \
+    "$mapped_world_source" || exit $?
+done
+mapped_world_demo_executable="$binary_output_directory/MappedWorld"
+mapped_world_runtime_executable="$compiler_binary_output_directory/MappedWorld"
+mapped_world_process_test_executable="$binary_output_directory/wfc_mapped_world_process_test"
+case "$host_system" in
+  CYGWIN*|MINGW*|MSYS*)
+    mapped_world_demo_executable="${mapped_world_demo_executable}.exe"
+    mapped_world_runtime_executable="${mapped_world_runtime_executable}.exe"
+    mapped_world_process_test_executable="${mapped_world_process_test_executable}.exe"
+    ;;
+esac
+"$mapped_world_demo_executable" --selftest || exit $?
+"$mapped_world_process_test_executable" "$mapped_world_runtime_executable" \
+  "$compiler_binary_output_directory" || exit $?
+
+# The shared suites exercise the actual portable owner, presets, and view.
+# pipeline_workspace_ui_test is browser-only, not part of this native list.
+compiler_pipeline_workspace_demo_directory="$compiler_source_directory/../examples/passes/08_PipelineWorkspace"
+for pipeline_workspace_test_name in pipeline_workspace_workbench_test pipeline_workspace_view_test pipeline_workspace_presets_test; do
+  printf "Building and running '%s'.\n" "$pipeline_workspace_test_name"
+  "$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
+    "-Fu$compiler_source_directory" "-Fu$compiler_tools_directory" \
+    "-Fu$compiler_source_directory/../test" "-Fu$compiler_pipeline_workspace_demo_directory" \
+    "-FU$compiler_unit_output_directory" "-FE$compiler_binary_output_directory" \
+    "$compiler_source_directory/../test/$pipeline_workspace_test_name.lpr" || exit $?
+  pipeline_workspace_test_executable="$binary_output_directory/$pipeline_workspace_test_name"
+  case "$host_system" in
+    CYGWIN*|MINGW*|MSYS*) pipeline_workspace_test_executable="${pipeline_workspace_test_executable}.exe" ;;
+  esac
+  "$pipeline_workspace_test_executable" || exit $?
+done
 
 compiler_restart_demo_directory="$compiler_source_directory/../examples/passes/05_DeterministicRestarts"
 for restart_test_name in wfc_restart_test wfc_timing_test wfc_restart_demo_test; do
@@ -426,7 +504,7 @@ esac
 "$restart_demo_executable" --selftest || exit $?
 
 compiler_ensemble_demo_directory="$compiler_source_directory/../examples/music/06_EnsembleStudio"
-for ensemble_test_name in wfc_music_ensemble_test wfc_music_ensemble_graph_test wfc_music_ensemble_passes_test wfc_music_ensemble_training_test wfc_music_ensemble_demo_test wfc_sequence_segment_test wfc_music_ensemble_stream_test wfc_music_ensemble_audio_test wfc_music_ensemble_stream_demo_test wfc_midi_stream_test wfc_music_ensemble_midi_test wfc_music_ensemble_midi_stream_demo_test; do
+for ensemble_test_name in wfc_music_ensemble_test wfc_music_ensemble_graph_test wfc_music_ensemble_passes_test wfc_music_ensemble_training_test wfc_music_ensemble_demo_test wfc_sequence_segment_test wfc_music_ensemble_stream_test wfc_music_ensemble_audio_test wfc_music_ensemble_stream_demo_test wfc_midi_stream_test wfc_music_ensemble_midi_test wfc_music_ensemble_midi_stream_demo_test wfc_music_form_test wfc_ensemble_profiles_test wfc_music_ensemble_plan_hooks_test wfc_ensemble_development_test wfc_ensemble_developed_midi_test wfc_ensemble_http_test; do
   printf "Building and running '%s'.\n" "$ensemble_test_name"
   "$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
     "-Fu$compiler_source_directory" "-Fu$compiler_ensemble_demo_directory" "-Fu$compiler_source_directory/../tools" \
@@ -708,6 +786,7 @@ printf "Running '%s'.\n" "$building_test_executable"
 "$building_test_executable" || exit $?
 
 for compiler_trace_suite in \
+  "$compiler_source_directory/../test/wfc_decision_index_test.lpr" \
   "$compiler_trace_reference_test_source" \
   "$compiler_trace_reference_stream_test_source" \
   "$compiler_trace_stream_test_source" \
@@ -808,6 +887,9 @@ do
 done
 
 for compiler_artifact_suite in \
+  "$compiler_tools_directory/../test/wfc_sha256_test.lpr" \
+  "$compiler_tools_directory/../test/wfc_asset_manifest_test.lpr" \
+  "$compiler_tools_directory/../test/wfc_asset_check_app_test.lpr" \
   "$compiler_tools_directory/../test/wfc_voxel3d_model_passes_test.lpr" \
   "$compiler_tools_directory/../test/wfc_terraces3d_test.lpr" \
   "$compiler_tools_directory/../test/wfc_terraces3d_view_test.lpr" \
@@ -822,19 +904,76 @@ for compiler_artifact_suite in \
   "$compiler_pipeline_text_test_source" \
   "$compiler_token_lookup_test_source" \
   "$compiler_pipeline_compile_test_source" \
+  "$compiler_tools_directory/../test/wfc_pipeline_value_quota_model_test.lpr" \
+  "$compiler_tools_directory/../test/wfc_pipeline_value_quota_text_test.lpr" \
+  "$compiler_tools_directory/../test/wfc_pipeline_value_quota_test.lpr" \
+  "$compiler_tools_directory/../test/wfc_pipeline_connectivity_model_test.lpr" \
+  "$compiler_tools_directory/../test/wfc_pipeline_connectivity_text_test.lpr" \
+  "$compiler_tools_directory/../test/wfc_pipeline_connectivity_test.lpr" \
   "$compiler_pipeline_run_test_source" \
   "$compiler_pipeline_run_text_test_source" \
   "$compiler_pipeline_result_test_source" \
   "$compiler_pipeline_result_text_test_source" \
   "$compiler_pipeline_runtime_test_source" \
   "$compiler_validate_app_test_source" \
+  "$compiler_tools_directory/../test/wfc_artifact_document_test.lpr" \
+  "$compiler_tools_directory/../test/wfc_artifact_inspect_test.lpr" \
+  "$compiler_tools_directory/../test/wfc_artifact_cli_app_test.lpr" \
   "$compiler_tools_directory/../test/wfc_browser_dom_test.lpr" \
+  "$compiler_tools_directory/../test/wfc_browser_args_test.lpr" \
+  "$compiler_tools_directory/../test/wfc_browser_socket_test.lpr" \
+  "$compiler_tools_directory/../test/wfc_browser_websocket_test.lpr" \
+  "$compiler_tools_directory/../test/wfc_browser_cdp_test.lpr" \
+  "$compiler_tools_directory/../test/wfc_browser_capture_test.lpr" \
   "$compiler_tools_directory/../test/wfc_serve_test.lpr" \
   "$compiler_run_app_test_source" \
+  "$compiler_source_directory/../test/wfc_sequence_wrap_test.lpr" \
+  "$compiler_source_directory/../test/wfc_pipeline_layout_test.lpr" \
+  "$compiler_source_directory/../test/wfc_pipeline_mapping_test.lpr" \
+  "$compiler_source_directory/../test/wfc_pipeline_mapped_model_test.lpr" \
+  "$compiler_source_directory/../test/wfc_pipeline_model_topology_boundary_test.lpr" \
+  "$compiler_source_directory/../test/wfc_pipeline_mapped_text_test.lpr" \
+  "$compiler_source_directory/../test/wfc_pipeline_mapped_run_test.lpr" \
+  "$compiler_source_directory/../test/wfc_pipeline_mapped_result_test.lpr" \
+  "$compiler_source_directory/../test/wfc_pipeline_mapped_runtime_test.lpr" \
+  "$compiler_source_directory/../test/wfc_pipeline_mapped_artifact_test.lpr" \
+  "$compiler_source_directory/../test/wfc_pipeline_compose_test.lpr" \
+  "$compiler_source_directory/../test/wfc_pipeline_compose_resources_test.lpr" \
+  "$compiler_source_directory/../test/wfc_pipeline_prepare_test.lpr" \
+  "$compiler_source_directory/../test/wfc_pipeline_prepare_threads_test.lpr" \
+  "$compiler_source_directory/../test/wfc_pipeline_replace_test.lpr" \
+  "$compiler_source_directory/../test/wfc_pipeline_replace_inverse_test.lpr" \
+  "$compiler_source_directory/../test/wfc_pipeline_session_test.lpr" \
+  "$compiler_source_directory/../test/wfc_pipeline_session_oracle_test.lpr" \
+  "$compiler_source_directory/../test/wfc_pipeline_session_evidence_test.lpr" \
+  "$compiler_source_directory/../test/wfc_workspace_context_test.lpr" \
+  "$compiler_source_directory/../test/wfc_workspace_journal_test.lpr" \
+  "$compiler_source_directory/../test/wfc_workspace_replay_test.lpr" \
+  "$compiler_source_directory/../test/wfc_regeneration_scope_test.lpr" \
+  "$compiler_source_directory/../test/wfc_lattice_test.lpr" \
+  "$compiler_source_directory/../test/wfc_mapped_passes_test.lpr" \
+  "$compiler_source_directory/../test/wfc_pass_bridge_layout_test.lpr" \
+  "$compiler_source_directory/../test/wfc_pattern3d_test.lpr" \
+  "$compiler_source_directory/../test/wfc_pattern3d_text_test.lpr" \
+  "$compiler_source_directory/../test/wfc_pattern3d_passes_test.lpr" \
+  "$compiler_source_directory/../test/wfc_pipeline_pattern3d_model_test.lpr" \
+  "$compiler_source_directory/../test/wfc_pipeline_pattern3d_text_test.lpr" \
+  "$compiler_source_directory/../test/wfc_pipeline_pattern3d_runtime_test.lpr" \
+  "$compiler_source_directory/../test/wfc_training_pattern3d_test.lpr" \
+  "$compiler_source_directory/../test/wfc_training_pattern3d_workspace_test.lpr" \
+  "$compiler_source_directory/../test/wfc_token_volume_view_test.lpr" \
+  "$compiler_source_directory/../test/wfc_training_sequence_wrap_test.lpr" \
+  "$compiler_source_directory/../test/wfc_training_circular_studio_test.lpr" \
   "$compiler_training_test_source" \
   "$compiler_text_training_test_source" \
   "$compiler_training_workspace_test_source" \
   "$compiler_training_text_test_source" \
+  "$compiler_tools_directory/../test/wfc_training_value_quota_model_test.lpr" \
+  "$compiler_tools_directory/../test/wfc_training_value_quota_text_test.lpr" \
+  "$compiler_tools_directory/../test/wfc_training_value_quota_test.lpr" \
+  "$compiler_tools_directory/../test/wfc_training_connectivity_test.lpr" \
+  "$compiler_tools_directory/../test/wfc_training_connectivity_text_test.lpr" \
+  "$compiler_tools_directory/../test/wfc_training_connectivity_demo_test.lpr" \
   "$compiler_learn_app_test_source" \
   "$compiler_tools_directory/../test/wfc_music_import_app_test.lpr" \
   "$compiler_learned_pattern_world_bundle_test_source"
@@ -853,6 +992,7 @@ do
     "-Fu$compiler_tools_directory" \
     "-Fu$compiler_learned_pattern_world_example_directory" \
     "-Fu$compiler_training_studio_directory" \
+    "-Fu$compiler_connectivity_demo_directory" \
     "-FU$compiler_unit_output_directory" \
     "-FE$compiler_binary_output_directory" \
     "$compiler_artifact_suite" || exit $?
@@ -873,14 +1013,22 @@ do
 done
 
 for compiler_tool_source in \
+  "$compiler_tools_directory/wfc_asset_check.lpr" \
   "$compiler_validate_tool_source" \
+  "$compiler_tools_directory/wfc_inspect.lpr" \
+  "$compiler_tools_directory/wfc_workspace_cli.lpr" \
+  "$compiler_tools_directory/wfc_solver_benchmark.lpr" \
   "$compiler_learn_tool_source" \
   "$compiler_tools_directory/wfc_music_import_cli.lpr" \
   "$compiler_tools_directory/wfc_serve.lpr" \
   "$compiler_tools_directory/wfc_browser_check.lpr" \
+  "$compiler_tools_directory/wfc_browser_capture.lpr" \
   "$compiler_run_tool_source"
 do
   tool_name=$(basename -- "$compiler_tool_source" .lpr)
+  if [[ "$tool_name" == wfc_workspace_cli ]]; then
+    tool_name=wfc_workspace
+  fi
   if [[ "$tool_name" == wfc_music_import_cli ]]; then
     tool_name=wfc_music_import
   fi
@@ -910,19 +1058,46 @@ do
   case "$host_system" in
     CYGWIN*|MINGW*|MSYS*) tool_executable="${tool_executable}.exe" ;;
   esac
-  printf "Smoke testing '%s --version'.\n" "$tool_executable"
-  "$tool_executable" --version || exit $?
+  tool_smoke_argument=--version
+  if [[ "$tool_name" == wfc_workspace ]]; then tool_smoke_argument=--help; fi
+  printf "Smoke testing '%s %s'.\n" "$tool_executable" "$tool_smoke_argument"
+  "$tool_executable" "$tool_smoke_argument" || exit $?
 done
 
+printf 'Building and running FPC asset-check process conformance.\n'
+"$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
+  "-Fu$compiler_source_directory" "-Fu$compiler_tools_directory" \
+  "-Fu$compiler_source_directory/../test" \
+  "-FU$compiler_unit_output_directory" "-FE$compiler_binary_output_directory" \
+  "$compiler_source_directory/../test/wfc_asset_check_process_test.lpr" || exit $?
+# Only the parent exists here; the fixture creates and retains the fresh leaf.
+asset_process_parent=$(mktemp -d "$binary_output_directory/asset-process.XXXXXXXX") || exit $?
+asset_process_directory="$asset_process_parent/fixtures"
+asset_tool_suffix=''
+case "$host_system" in
+  CYGWIN*|MINGW*|MSYS*)
+    asset_tool_suffix='.exe'
+    asset_process_directory=$(cygpath -m "$asset_process_directory") || exit $?
+    ;;
+esac
+"$binary_output_directory/wfc_asset_check_process_test$asset_tool_suffix" \
+  "$compiler_binary_output_directory/wfc_asset_check$asset_tool_suffix" \
+  "$asset_process_directory" || exit $?
+
 validator_tool_executable="$binary_output_directory/wfc_validate"
+solver_benchmark_executable="$binary_output_directory/wfc_solver_benchmark"
 server_test_executable="$binary_output_directory/wfc_serve_test"
 server_tool_executable="$compiler_binary_output_directory/wfc_serve"
 case "$host_system" in
   CYGWIN*|MINGW*|MSYS*)
+    solver_benchmark_executable="${solver_benchmark_executable}.exe"
     server_test_executable="${server_test_executable}.exe"
     server_tool_executable="${server_tool_executable}.exe"
     ;;
 esac
+printf 'Smoke testing the deterministic solver benchmark (no timing threshold).\n'
+"$solver_benchmark_executable" --cells 32 --values 4 --weights skewed \
+  --topology line --compatibility dense --trace 1 --repeat 1 || exit $?
 printf 'Running live FPC server conformance.\n'
 "$server_test_executable" --integration "$server_tool_executable" \
   "$compiler_binary_output_directory" || exit $?
@@ -943,6 +1118,81 @@ printf 'Running the portable training CLI process conformance suite.\n'
 bash "$repository_root/test/wfc_learn_cli_process_test.sh" \
   "$learner_tool_executable" -- "$validator_tool_executable" -- \
   "$runner_tool_executable" || exit $?
+
+printf 'Building and running FPC artifact-family process conformance.\n'
+"$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
+  "-Fu$compiler_source_directory" "-Fu$compiler_tools_directory" \
+  "-FU$compiler_unit_output_directory" "-FE$compiler_binary_output_directory" \
+  "$compiler_source_directory/../test/wfc_artifact_cli_process_test.lpr" || exit $?
+artifact_tool_suffix=''
+case "$host_system" in
+  CYGWIN*|MINGW*|MSYS*) artifact_tool_suffix='.exe' ;;
+esac
+"$binary_output_directory/wfc_artifact_cli_process_test$artifact_tool_suffix" \
+  "$compiler_binary_output_directory/wfc_validate$artifact_tool_suffix" \
+  "$compiler_binary_output_directory/wfc_inspect$artifact_tool_suffix" \
+  "$compiler_source_directory/.." || exit $?
+
+printf 'Building and running FPC mapped-pipeline process conformance.\n'
+"$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
+  "-Fu$compiler_source_directory" "-Fu$compiler_tools_directory" \
+  "-Fu$compiler_source_directory/../test" \
+  "-FU$compiler_unit_output_directory" "-FE$compiler_binary_output_directory" \
+  "$compiler_source_directory/../test/wfc_pipeline_mapped_process_test.lpr" || exit $?
+mapped_pipeline_process_parent=$(mktemp -d "$binary_output_directory/mapped-pipeline-process.XXXXXX") || exit $?
+mapped_pipeline_process_directory="$mapped_pipeline_process_parent/fixtures"
+case "$host_system" in
+  CYGWIN*|MINGW*|MSYS*) mapped_pipeline_process_directory=$(cygpath -m "$mapped_pipeline_process_directory") || exit $? ;;
+esac
+"$binary_output_directory/wfc_pipeline_mapped_process_test$artifact_tool_suffix" \
+  "$compiler_binary_output_directory/wfc_run$artifact_tool_suffix" \
+  "$compiler_binary_output_directory/wfc_validate$artifact_tool_suffix" \
+  "$compiler_binary_output_directory/wfc_inspect$artifact_tool_suffix" \
+  "$mapped_pipeline_process_directory" || exit $?
+
+printf 'Building and running FPC workspace CLI process conformance.\n'
+for workspace_process_source in wfc_workspace_cli_fixture.lpr wfc_workspace_cli_process_test.lpr; do
+  "$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
+    "-Fu$compiler_source_directory" "-Fu$compiler_tools_directory" \
+    "-Fu$compiler_source_directory/../test" \
+    "-FU$compiler_unit_output_directory" "-FE$compiler_binary_output_directory" \
+    "$compiler_source_directory/../test/$workspace_process_source" || exit $?
+done
+workspace_process_parent=$(mktemp -d "$binary_output_directory/workspace-process.XXXXXX") || exit $?
+workspace_process_directory="$workspace_process_parent/fixtures"
+case "$host_system" in
+  CYGWIN*|MINGW*|MSYS*) workspace_process_directory=$(cygpath -m "$workspace_process_directory") || exit $? ;;
+esac
+"$binary_output_directory/wfc_workspace_cli_process_test$artifact_tool_suffix" \
+  "$compiler_binary_output_directory/wfc_workspace$artifact_tool_suffix" \
+  "$compiler_binary_output_directory/wfc_workspace_cli_fixture$artifact_tool_suffix" \
+  "$workspace_process_directory" || exit $?
+
+# The real workspace CLI is now built. The harness checks expected child
+# exit10 itself and must still return success to this maintained gate.
+printf 'Building and running Pipeline Workspace native demo conformance.\n'
+for pipeline_workspace_source in \
+  "$compiler_pipeline_workspace_demo_directory/PipelineWorkspace.lpr" \
+  "$compiler_source_directory/../test/pipeline_workspace_native_fixture.lpr" \
+  "$compiler_source_directory/../test/pipeline_workspace_native_process_test.lpr"
+do
+  "$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
+    "-Fu$compiler_source_directory" "-Fu$compiler_tools_directory" \
+    "-Fu$compiler_source_directory/../test" "-Fu$compiler_pipeline_workspace_demo_directory" \
+    "-FU$compiler_unit_output_directory" "-FE$compiler_binary_output_directory" \
+    "$pipeline_workspace_source" || exit $?
+done
+"$binary_output_directory/PipelineWorkspace$artifact_tool_suffix" --help || exit $?
+pipeline_workspace_process_parent=$(mktemp -d "$binary_output_directory/pipeline-workspace-process.XXXXXXXX") || exit $?
+pipeline_workspace_process_directory="$pipeline_workspace_process_parent/fixtures"
+case "$host_system" in
+  CYGWIN*|MINGW*|MSYS*) pipeline_workspace_process_directory=$(cygpath -m "$pipeline_workspace_process_directory") || exit $? ;;
+esac
+"$binary_output_directory/pipeline_workspace_native_process_test$artifact_tool_suffix" \
+  "$compiler_binary_output_directory/PipelineWorkspace$artifact_tool_suffix" \
+  "$compiler_binary_output_directory/wfc_workspace$artifact_tool_suffix" \
+  "$compiler_binary_output_directory/pipeline_workspace_native_fixture$artifact_tool_suffix" \
+  "$pipeline_workspace_process_directory" || exit $?
 
 printf "Building the dependency-free tiled-world example.\n"
 "$compiler" "$@" \
@@ -1346,7 +1596,7 @@ esac
 printf "Smoke testing '%s' with seed 0.\n" "$building_svg_executable"
 "$building_svg_executable" 0 "$building_svg_runtime_output" >/dev/null || exit $?
 
-printf 'Building and checking all five Training Studio presets.\n'
+printf 'Building and checking Training Studio presets and authored constraints.\n'
 "$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
   "-Fu$compiler_source_directory" "-Fu$compiler_training_studio_directory" \
   "-FU$compiler_unit_output_directory" "-FE$compiler_binary_output_directory" \
@@ -1356,6 +1606,20 @@ case "$host_system" in
   CYGWIN*|MINGW*|MSYS*) training_studio_executable="${training_studio_executable}.exe" ;;
 esac
 "$training_studio_executable" --selftest || exit $?
+"$training_studio_executable" --quota-selftest || exit $?
+"$training_studio_executable" --connectivity-selftest || exit $?
+
+printf 'Building and checking the native overlapping-volume SVG export.\n'
+"$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
+  "-Fu$compiler_source_directory" "-Fu$compiler_tools_directory" \
+  "-Fu$compiler_training_studio_directory" \
+  "-FU$compiler_unit_output_directory" "-FE$compiler_binary_output_directory" \
+  "$compiler_training_studio_directory/TrainingStudioVolume.lpr" || exit $?
+training_volume_executable="$binary_output_directory/TrainingStudioVolume"
+case "$host_system" in
+  CYGWIN*|MINGW*|MSYS*) training_volume_executable="${training_volume_executable}.exe" ;;
+esac
+"$training_volume_executable" --seed 0 >/dev/null || exit $?
 
 printf 'Building and checking Music Studio.\n'
 "$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
@@ -1429,6 +1693,28 @@ case "$host_system" in
 esac
 "$ensemble_render_test_executable" "$ensemble_render_executable" \
   "$compiler_binary_output_directory" || exit $?
+
+printf 'Building and checking the native Ensemble Studio download server.\n'
+for serve_source in \
+  "$compiler_ensemble_demo_directory/EnsembleStudioServe.lpr" \
+  "$compiler_source_directory/../test/wfc_ensemble_http_process_test.lpr"
+do
+  "$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
+    "-Fu$compiler_source_directory" "-Fu$compiler_ensemble_demo_directory" \
+    "-Fu$compiler_tools_directory" \
+    "-FU$compiler_unit_output_directory" "-FE$compiler_binary_output_directory" \
+    "$serve_source" || exit $?
+done
+ensemble_http_executable="$compiler_binary_output_directory/EnsembleStudioServe"
+ensemble_http_test_executable="$binary_output_directory/wfc_ensemble_http_process_test"
+case "$host_system" in
+  CYGWIN*|MINGW*|MSYS*)
+    ensemble_http_executable="${ensemble_http_executable}.exe"
+    ensemble_http_test_executable="${ensemble_http_test_executable}.exe"
+    ;;
+esac
+"$ensemble_http_test_executable" "$ensemble_http_executable" \
+  "$compiler_source_directory/.." || exit $?
 
 printf 'Building and checking the streaming Ensemble Studio MIDI renderer.\n'
 for render_source in \

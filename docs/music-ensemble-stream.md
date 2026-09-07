@@ -19,6 +19,47 @@ For frame representation, learning, and the finite-score owner, read
 [Ensemble Studio](../examples/music/06_EnsembleStudio/README.md) for host-specific
 usage. This document specifies the reusable APIs, not host command-line flags.
 
+## Musical form is an explicit additional plan
+
+Increasing duration does not by itself teach musical development. The
+Ensemble Studio example's original `structural-v1` order-eight corpus remains
+available with its old fingerprints; its samples can continue one identical
+bar for the full duration. It remains the library/native-command default;
+the browser starts with developed phrases. The `developed-period-v1` profile adds a separate
+[`wfc_music_form`](../src/wfc_music_form.pas) phrase cursor and an original
+[acoustic catalog](../examples/music/06_EnsembleStudio/ensemble_studio_profiles.pas).
+
+That planner solves bar-level form, harmonic intent and gesture passes before
+the acoustic layers. It chooses among caller-provided chord slots, motif
+families and exact realizations, retains one phrase and a previous boundary,
+and reports explicit search failure. It is not unrestricted whole-song
+optimization or a promise that every arbitrary catalog has a solution.
+The example uses question/answer/contrast/return roles, related theme and
+contrast gestures, and dominant half or tonic authentic closing intent.
+
+The selected realization expands into exact per-cell acoustic tokens and
+must be checked again against captured output before publication. Harmonic
+intent is separate from the exact sounding pitch-class set: `wmehmExact`
+still includes only notes that actually sound. Immutable singleton plan masks
+mean a repair cannot choose a different realization within that plan. A new
+seed/extent/profile is a new planning transaction; future caller constraints
+are additional intersections, not permission to widen the plan.
+
+The example's 24 eight-cell realizations all release on their final
+eighth-note cell, an intentional bar-ending breath rather than an invented
+cross-bar hold. The planner carries actual first/last upper attacks across
+that rest to constrain melodic movement. Forty-eight standalone/release-
+prefixed training fragments provide observed order-two pairs, without an
+all-Cartesian transition table. Holds within bars can still cross arbitrarily
+placed working-segment seams. A partial final bar is an exact prefix: it adds
+no padding and may end before the closing gesture has audibly resolved.
+
+The reusable segment API below does not automatically install this profile.
+Other callers can supply different models and planning policies. Refer to
+the [profile host contract](../examples/music/06_EnsembleStudio/README.md#versioned-musical-profiles)
+for profile selection and its musical limitations; no instrument-realism or
+subjective-quality guarantee is made.
+
 ## A segment is a continuation, not a new song
 
 Every segment has the same three ordered passes: `harmony`, `rhythm`, and
@@ -167,6 +208,15 @@ recursively. Constraint edits during `Next` are rejected. The hook cannot
 erase separately stored caller constraints by clearing a graph domain: the
 owner independently checks those clauses, captured model identity and state
 paths, voice continuity, rhythm, and harmony before publishing a candidate.
+
+`ValidateSegment(Candidate, out Failure)` is a second, observational hook
+after those built-in checks. Return false to reject the borrowed candidate
+before publication; an empty diagnostic receives a default failure message.
+Do not retain/free the candidate, reenter the stream, or advance external
+planning state from this hook: later allocation/preparation may still fail.
+Exceptions propagate after marking the stream failed. Cancellation from the
+hook is checked before any frontier or progress is published. The default
+implementation returns true and imposes no additional musical policy.
 
 All result preparation and validation precede frontier/progress mutation.
 Failed search, validation, or an application exception publishes no segment
@@ -375,7 +425,7 @@ The established MIDI encoder remains a finite-score adapter with its own
 limits. The separate [streamed MIDI contract](music-midi-stream.md) now counts
 and replays the same continued frame source without retaining a score or
 timeline. These APIs do not provide serialized resumable frontiers, whole-song
-constraint solving,
-independent marginal-voice recombination, expressive performance synthesis,
-or automatic musical-form planning. The streamed generation and audio APIs
-are reusable foundations for those separate capabilities.
+constraint solving, independent marginal-voice recombination or expressive
+performance synthesis. Musical-form planning is a separate, explicitly
+configured layer, not an automatic property of the streamed audio or
+generation APIs.

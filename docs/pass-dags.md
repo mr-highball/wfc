@@ -213,7 +213,8 @@ same coordinate they denote; the declared offsets themselves remain replay
 inputs.
 
 Every spatial requirement declares a protected dependency edge immediately.
-The provider must already exist, have the same shape, and precede the consumer
+The provider must already exist, have an identical layout (shape, origin,
+pitch, and wrapping), and precede the consumer
 in the acyclic dependency plan. Both `Run` and `TrySolve` execute providers
 before consumers. `TrySolve` reads the provider's staged output from the
 current atomic transaction; legacy `Run` reads output produced earlier in its
@@ -390,7 +391,7 @@ interactive stepping, cap the event count, or stream events. Those additions
 need explicit deterministic and versioned contracts rather than silently
 changing the meaning of a complete trace.
 
-Cross-pass requirements read `TGraphValue` layers with the same shape at
+Legacy cross-pass requirements read `TGraphValue` layers with identical layouts at
 exactly declared finite offsets. Count-range clauses can bound matching
 offsets or distinct provider cells in that stencil. These requirements do not
 perform radius expansion, distance calculation, global quotas, arbitrary
@@ -400,4 +401,6 @@ checked projection. The [wrapped pattern-pass adapter](patterns.md#pass-composed
 materializes and validates that public layer inside the transaction for its
 same-shape, depth-one contract. Other projections still need an explicit
 adapter; the dependency API does not treat latent keys and public tokens as
-interchangeable.
+interchangeable. The separate opt-in [mapped-pass contract](mapped-passes.md)
+adds explicit world-space point and footprint queries between unlike layouts;
+it does not reinterpret these legacy stencils or latent projection adapters.

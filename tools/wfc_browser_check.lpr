@@ -23,7 +23,7 @@ SOFTWARE.
 *)
 program wfc_browser_check;
 {$mode delphi}{$H+}
-uses Classes,SysUtils,wfc_browser_dom;
+uses Classes,SysUtils,wfc_browser_dom,wfc_browser_args;
 function ReadDom(const P:String):String;
 var S:TFileStream;
 begin
@@ -34,12 +34,12 @@ begin
     if Length(Result)>0 then S.ReadBuffer(Result[1],Length(Result));
   finally S.Free;end;
 end;
-procedure Run;
+procedure Run(const Arguments:TWfcBrowserArguments);
 var I,J,P:Integer;Path,Harness,Value,Key,Text:String;Expected,Actual:TStringList;S:TFileStream;
 begin
-  if(ParamCount=1) and(ParamStr(1)='--version') then
+  if(Arguments.Count=1) and(Arguments.NativeValue(1)='--version') then
   begin WriteLn('wfc_browser_check 1');Exit;end;
-  if(ParamCount=1) and(ParamStr(1)='--help') then
+  if(Arguments.Count=1) and(Arguments.NativeValue(1)='--help') then
   begin
     WriteLn('wfc_browser_check --dom FILE --expect NAME=VALUE [--expect ...]');
     WriteLn('wfc_browser_check --harness SCRIPT.js --dom NEW-HTML-FILE');Exit;
@@ -47,10 +47,11 @@ begin
   Expected:=TStringList.Create;Expected.CaseSensitive:=True;Actual:=nil;
   try
     Path:='';Harness:='';I:=1;
-    while I<=ParamCount do
+    while I<=Arguments.Count do
     begin
-      Key:=ParamStr(I);Inc(I);if I>ParamCount then raise Exception.Create('missing value for '+Key);
-      Value:=ParamStr(I);
+      Key:=Arguments.NativeValue(I);Inc(I);if I>Arguments.Count then raise Exception.Create('missing value for '+Key);
+      if Key='--expect' then Value:=Arguments.Utf8Value(I)
+      else Value:=Arguments.NativeValue(I);
       if Key='--dom' then begin if Path<>'' then raise Exception.Create('duplicate --dom');Path:=Value;end
       else if Key='--harness' then begin if Harness<>'' then raise Exception.Create('duplicate --harness');Harness:=Value;end
       else if Key='--expect' then
@@ -74,18 +75,16 @@ begin
     end;
     if Expected.Count=0 then raise Exception.Create('at least one --expect is required');
     Actual:=WfcBrowserBodyAttributes(ReadDom(Path));
-    for I:=0 to Expected.Count-1 do
-    begin
-      Key:=Expected.Names[I];P:=Actual.IndexOfName(Key);
-      if(P<0) or(Actual.ValueFromIndex[P]<>Expected.ValueFromIndex[I]) then
-        raise Exception.Create('body '+Key+' mismatch: expected "'+Expected.ValueFromIndex[I]+
-          '", found "'+Actual.Values[Key]+'"');
-    end;
-    if Actual.Values['data-self-test-message']<>'' then
-      raise Exception.Create('browser self-test reported: '+Actual.Values['data-self-test-message']);
+    WfcBrowserAssertBody(Actual,Expected);
     WriteLn('Browser assertions passed: ',Expected.Count);
   finally Actual.Free;Expected.Free;end;
 end;
+procedure Main;
+var Arguments:TWfcBrowserArguments;
 begin
-  try Run;except on E:Exception do begin WriteLn(StdErr,'wfc_browser_check: ',E.Message);Halt(1);end;end;
+  Arguments:=TWfcBrowserArguments.Create;
+  try Run(Arguments);finally Arguments.Free;end;
+end;
+begin
+  try Main;except on E:Exception do begin WriteLn(StdErr,'wfc_browser_check: ',E.Message);Halt(1);end;end;
 end.

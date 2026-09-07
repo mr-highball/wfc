@@ -33,7 +33,8 @@ interface
 uses
   Classes,
   SysUtils,
-  Generics.Collections;
+  Generics.Collections,
+  wfc_lattice;
 
 type
 
@@ -76,9 +77,15 @@ const
   //Identifies opt-in finite cross-pass counting with an explicit alias mode.
   //Existing graph, solver, pipeline, and trace replay remain unchanged.
   WFC_PASS_COUNT_VERSION = 1;
+  //Opt-in integer world layouts and exact point/footprint pass sampling.
+  //Legacy index-space rules and seeded solver replay remain unchanged.
+  WFC_PASS_MAPPING_VERSION = 1;
   //Opt-in rooted, reciprocal-port connectivity. Unconstrained models retain
   //their existing solver, random-stream, and trace replay.
   WFC_GRAPH_CONNECTIVITY_VERSION = 1;
+  //Opt-in whole-pass value-set cardinality. Models without quotas retain
+  //their existing solver, random-stream, and trace replay.
+  WFC_GRAPH_VALUE_QUOTA_VERSION = 1;
   //Identifies the public causal-trace event schema. Trace capture is opt-in,
   //so adding this observability surface does not change solver replay.
   WFC_TRACE_VERSION = 1;
@@ -130,6 +137,19 @@ type
   //of its aliased terms matches. The caller must choose the interpretation.
   TGraphPassCountMode = (gpcmMatchingTerms, gpcmDistinctCells);
 
+  TGraphPassMapKind = (gpmkPoint, gpmkCellCoverage, gpmkRegionCoverage);
+  TGraphPassMapMatch = (gpmmAll, gpmmCount);
+  //World-tick offsets are relative to a consumer cell's lower corner. Regions
+  //are half-open; cell coverage uses its complete pitch-sized footprint.
+  //Coverage counts distinct provider cells, including across wrapping seams.
+  TGraphPassMapQuery = record
+    Kind: TGraphPassMapKind;
+    Match: TGraphPassMapMatch;
+    MinimumOffset, MaximumOffset: TGraphOffset;
+    Values: TGraphValues;
+    MinimumMatches, MaximumMatches: Integer;
+  end;
+
   //all posible "directions" to move from a single point on the graph
   TGraphDirection = (gdNorth, gdEast, gdSouth, gdWest, gdUp, gdDown);
   TGraphDirections = set of TGraphDirection;
@@ -148,6 +168,17 @@ type
     RequireAllParticipants: Boolean;
   end;
   TGraphConnectivityConstraints = array of TGraphConnectivityConstraint;
+
+  //Count each cell in this pass once when its value belongs to Values.
+  //Bounds are independent of the current shape: a minimum larger than the
+  //cell count is an unsatisfiable constraint, not a malformed descriptor.
+  TGraphValueQuotaConstraint = record
+    LabelText: String;
+    Values: TGraphValues;
+    MinimumCount: Integer;
+    MaximumCount: Integer;
+  end;
+  TGraphValueQuotaConstraints = array of TGraphValueQuotaConstraint;
 
   //gpmLegacy preserves the original hybrid contract: a defined pass solves a
   //fresh layer, while a later definitionless pass copies its predecessor.
@@ -252,7 +283,7 @@ type
     type
       TPassRequirementOrigin = (proPrevious, proNamed);
       TPassRequirementOrigins = set of TPassRequirementOrigin;
-      TPassRequirementKind = (prkMergedOffset, prkAny, prkCount);
+      TPassRequirementKind = (prkMergedOffset, prkAny, prkCount, prkMapped);
       TPassRequirement = record
         PassIndex: Integer;
         Terms: TGraphPassMatchTerms;
@@ -261,6 +292,8 @@ type
         MinimumMatches: Integer;
         MaximumMatches: Integer;
         CountMode: TGraphPassCountMode;
+        //Only prkMapped reads this additive descriptor.
+        MappedQuery: TGraphPassMapQuery;
       end;
       TPassRequirements = array of TPassRequirement;
   private
@@ -277,6 +310,8 @@ type
       const ATerms: TGraphPassMatchTerms;
       const AMinimum, AMaximum: Integer; const AMode: TGraphPassCountMode;
       const AOrigin: TPassRequirementOrigin): TPassRequirements;
+    function BuildMappedPassRequirements(const APassIndex: Integer;
+      const AQuery: TGraphPassMapQuery): TPassRequirements;
   strict private
     FRules: TGraphRules;
     FDeniedDirections: TGraphDirections;
@@ -311,6 +346,8 @@ type
       const ATerms: TGraphPassMatchTerms;
       const AMinimum, AMaximum: Integer;
       const AMode: TGraphPassCountMode); virtual;
+    procedure DoRequireMappedFromPass(const APass: String;
+      const AQuery: TGraphPassMapQuery); virtual;
     procedure UpsertRule(const ADirections : TGraphDirections;
       const AValue : TGraphValue; const ARequireRule : Boolean);
   public
@@ -381,6 +418,12 @@ type
       const AMinimum, AMaximum: Integer;
       const AMode: TGraphPassCountMode): TGraphRuleGroup;
 
+    //Explicit world-space sampling; never silently rescales index-space rules.
+    //A bounded provider must cover the complete query. Identical clauses are
+    //idempotent; separate calls are ANDed and infer the named dependency.
+    function RequireMappedFromPass(const APass: String;
+      const AQuery: TGraphPassMapQuery): TGraphRuleGroup;
+
     constructor Create; virtual; overload;
     constructor Create(const AValue : TGraphValue); virtual; overload;
   end;
@@ -422,7 +465,8 @@ type
     gckPassDependency,
     gckEntryDomain,
     gckExcludedAssignment,
-    gckConnectivity
+    gckConnectivity,
+    gckValueQuota
   );
 
   TGraphSolveOptions = record
@@ -442,7 +486,8 @@ type
     HasDirection: Boolean;
     Direction: TGraphDirection;
     DependencyPassIndex: Integer;
-    //Pass-local copied connectivity descriptor ordinal, or -1 otherwise.
+    //Pass-local copied descriptor ordinal for connectivity/value-quota kinds,
+    //or -1 otherwise. The kind selects the corresponding registry.
     ConstraintIndex: Integer;
   end;
 
@@ -475,7 +520,8 @@ type
     gtckFinalValidation,
     gtckTransaction,
     gtckExactAssignmentExclusion,
-    gtckConnectivity
+    gtckConnectivity,
+    gtckValueQuota
   );
 
   TGraphTraceSignature = Cardinal;
@@ -746,6 +792,8 @@ type
           const ATerms: TGraphPassMatchTerms;
           const AMinimum, AMaximum: Integer;
           const AMode: TGraphPassCountMode); override;
+        procedure DoRequireMappedFromPass(const APass: String;
+          const AQuery: TGraphPassMapQuery); override;
         procedure SynchronizeInverseRules;
       public
         property Parent : TGraph read FParent write FParent;
@@ -783,6 +831,7 @@ type
       TPassAssignmentExclusions = array of TAssignmentExclusionSet;
   strict private
     FDimension: TDimension;
+    FLayout: TWfcLatticeLayout;
     FInv: TInvalidStateCallback;
     FMode: TGraphRunMode;
     FRuleGroups: TGraphRuleGroups;
@@ -807,6 +856,7 @@ type
     FPassDependencies: TPassDependencies;
     FTransformSourceIndex: Integer;
     FConnectivity: TGraphConnectivityConstraints;
+    FValueQuotas: TGraphValueQuotaConstraints;
     FTraceSink: TGraphTraceSink;
 
     function GetTraceSink: TGraphTraceSink;
@@ -830,6 +880,14 @@ type
     procedure EnsureInitialPass;
     function NewPlanes: TPlanes;
     function GetActivePassGraph: TGraph;
+    function GetPassLayout: TWfcLatticeLayout;
+    function CopyPassLayouts: TWfcLatticeLayouts;
+    procedure ValidatePassLayoutReads(const ALayouts: TWfcLatticeLayouts);
+    procedure RequireIdenticalPassLayout(const AProviderIndex: Integer;
+      const AOperation: String);
+    function MappedRequirementMatches(const AEntryIndex: Integer;
+      const AProvider: TGraph; const AQuery: TGraphPassMapQuery;
+      const AStagedValues: TGraphValues; const AUseStaged: Boolean): Boolean;
     function GetDependencyCount: Integer;
     function GetDependencyIndex(const AOrdinal: Integer): Integer;
     function GetPassMode: TGraphPassMode;
@@ -880,7 +938,7 @@ type
       out AAssignments: TValueIndexMatrix;
       out AReport: TGraphSolveReport): Boolean;
     procedure BuildStorage(const AWidth, AHeight, ADepth: TGraphCoordinate;
-      out AEntries: TGraphEntries; out APlanes: TPlanes);
+      const AWrap: Boolean; out AEntries: TGraphEntries; out APlanes: TPlanes);
     procedure ClearGeneratedValues;
     function GetEntry(const X, Y, Z : TGraphCoordinate): TGraphEntry;
     function CoordToIndex(const X, Y, Z : TGraphCoordinate) : Integer;
@@ -1016,6 +1074,9 @@ type
         - Depth is amount of planes in Z
     *)
     property Dimension : TDimension read FDimension;
+    //Unlike Dimension's historical root/default view, this follows the active
+    //pass (or a directly addressed PassGraph). Returned records are detached.
+    property PassLayout: TWfcLatticeLayout read GetPassLayout;
 
     (*
       a user defined "label" to identify the pass this graph instance is on
@@ -1054,6 +1115,11 @@ type
     *)
     function Reshape(const AWidth, AHeight,
       ADepth : TGraphCoordinate) : TGraph;
+    //Configure every existing pass atomically. Rules remain; all entry values
+    //and caller domains are cleared, as with Reshape. Each layout controls its
+    //own neighbors and provider wrapping. Reshape restores one uniform unit
+    //layout; the global WrapNeighbors setter still updates every pass.
+    function ConfigurePassLayouts(const ALayouts: TWfcLatticeLayouts): TGraph;
 
     (*
       adds a value to be used and returns the new rule group
@@ -1083,6 +1149,16 @@ type
     function RemoveConnectivity(const ALabel: String): TGraph;
     function ClearConnectivity: TGraph;
     function CopyConnectivityConstraints: TGraphConnectivityConstraints;
+
+    //Opt-in whole-pass AND quotas for the TrySolve family (not Run).
+    //Values are a nonempty set of registered values, copied and deduplicated
+    //in AddValue order. Bounds satisfy 0 <= minimum <= maximum; they need not
+    //fit the current cell count. Identical labeled registration is idempotent.
+    function RequireValueQuota(
+      const AConstraint: TGraphValueQuotaConstraint): TGraph;
+    function RemoveValueQuota(const ALabel: String): TGraph;
+    function ClearValueQuotas: TGraph;
+    function CopyValueQuotaConstraints: TGraphValueQuotaConstraints;
 
     //Caller-owned pass-local initial domains.  SetAllowedValues canonicalizes
     //the supplied set to AddValue order; an assigned empty set is an explicit
@@ -1172,6 +1248,16 @@ type
       const ARestarts: TGraphRestartOptions;
       out AReport: TGraphRestartReport): Boolean;
 
+    (*
+      resolves the exact selective-regeneration scope without solving or
+      changing entry values, domains, current-pass selection or random streams.
+      Roots are unique in pass-index order; active passes are in execution
+      order. Derived previous-value dependency roles may be synchronized.
+      No ancestor is added implicitly. Returned arrays are detached.
+    *)
+    procedure ResolveRegenerationScope(const ARequestedRoots: TGraphPassLabels;
+      out ACanonicalRoots, AActivePasses: TGraphPassIndices);
+
     function TryRegenerateFrom(const APass: String;
       const AOptions: TGraphSolveOptions;
       out AReport: TGraphSolveReport): Boolean; overload;
@@ -1227,6 +1313,24 @@ var
 
   function MakeGraphOffset(const ADeltaX, ADeltaY,
     ADeltaZ: Integer): TGraphOffset;
+  function MakeGraphPassPointQuery(const AOffset: TGraphOffset;
+    const AValues: TGraphValues): TGraphPassMapQuery;
+  function MakeGraphPassCellQuery(const AValues: TGraphValues):
+    TGraphPassMapQuery; overload;
+  function MakeGraphPassCellQuery(const AOffset: TGraphOffset;
+    const AValues: TGraphValues): TGraphPassMapQuery; overload;
+  function MakeGraphPassRegionQuery(const AMinimumOffset,
+    AMaximumOffset: TGraphOffset; const AValues: TGraphValues):
+    TGraphPassMapQuery;
+  function MakeGraphPassCountQuery(const AQuery: TGraphPassMapQuery;
+    const AMinimum, AMaximum: Integer): TGraphPassMapQuery;
+  { Pure preflight for tools and portable recipe compilers. Neither routine
+    allocates a graph or installs a clause. Normalization owns its values;
+    range validation checks all consumer anchors, not provider coverage. }
+  function NormalizeGraphPassMapQuery(const AQuery: TGraphPassMapQuery):
+    TGraphPassMapQuery;
+  procedure ValidateGraphPassMappedQuery(const AConsumerLayout: TWfcLatticeLayout;
+    const AQuery: TGraphPassMapQuery);
   function MakeGraphConnectivityValue(const AValue: TGraphValue;
     const AOpenings: TGraphDirections;
     const ARequiredByValue: Boolean = False): TGraphConnectivityValue;
@@ -1235,6 +1339,9 @@ var
     const AValues: TGraphConnectivityValues;
     const ARequireAllParticipants: Boolean = False):
     TGraphConnectivityConstraint;
+  function MakeGraphValueQuotaConstraint(const ALabel: String;
+    const AValues: TGraphValues; const AMinimumCount,
+    AMaximumCount: Integer): TGraphValueQuotaConstraint;
   function MakeGraphPassMatchTerm(const AOffset: TGraphOffset;
     const AValue: TGraphValue): TGraphPassMatchTerm; overload;
   function MakeGraphPassMatchTerm(const AOffset: TGraphOffset;
@@ -1427,6 +1534,49 @@ begin
   Result.RequireAllParticipants := ARequireAllParticipants;
 end;
 
+function MakeGraphValueQuotaConstraint(const ALabel: String;
+  const AValues: TGraphValues; const AMinimumCount,
+  AMaximumCount: Integer): TGraphValueQuotaConstraint;
+begin
+  Result.LabelText := ALabel;
+  Result.Values := CloneGraphValues(AValues);
+  Result.MinimumCount := AMinimumCount;
+  Result.MaximumCount := AMaximumCount;
+end;
+
+procedure CheckGraphValueQuotaBounds(const AMinimumCount,
+  AMaximumCount: Integer);
+begin
+  //Positive comparisons also reject nonfinite/undefined browser numbers.
+  if not ((AMinimumCount >= 0) and (AMinimumCount <= High(Integer))
+    and (AMaximumCount >= AMinimumCount)
+    and (AMaximumCount <= High(Integer))) then
+    raise ERangeError.Create(
+      'RequireValueQuota::bounds must satisfy 0 <= minimum <= maximum <= High(Integer)');
+  {$IFDEF PAS2JS}
+  //Strict inequality rejects numeric strings as well as fractional numbers.
+  if (AMinimumCount <> Trunc(AMinimumCount))
+    or (AMaximumCount <> Trunc(AMaximumCount)) then
+    raise ERangeError.Create('RequireValueQuota::bounds must be exact integers');
+  {$ENDIF}
+end;
+
+function GraphValueQuotaEqual(const ALeft,
+  ARight: TGraphValueQuotaConstraint): Boolean;
+var
+  I: Integer;
+begin
+  Result := False;
+  if (ALeft.LabelText <> ARight.LabelText)
+    or (ALeft.MinimumCount <> ARight.MinimumCount)
+    or (ALeft.MaximumCount <> ARight.MaximumCount)
+    or (Length(ALeft.Values) <> Length(ARight.Values)) then
+    Exit;
+  for I := 0 to High(ALeft.Values) do
+    if ALeft.Values[I] <> ARight.Values[I] then Exit;
+  Result := True;
+end;
+
 procedure CheckConnectivityPosition(const APosition: TGraphPosition;
   const AWidth, AHeight, ADepth: TGraphCoordinate);
 
@@ -1576,6 +1726,203 @@ begin
     end;
     Result[J] := LSwap;
   end;
+end;
+
+function LegacyGraphLayout(const AWidth, AHeight,
+  ADepth: TGraphCoordinate; const AWrap: Boolean): TWfcLatticeLayout;
+begin
+  Result := Default(TWfcLatticeLayout);
+  Result.Pitch := MakeWfcLatticeVector(1, 1, 1);
+  Result.Wrap := AWrap;
+  //The historical unshaped/zero-size graph remains legal. Its layout is an
+  //empty sentinel and cannot participate in mapped queries until configured.
+  if (AWidth > 0) and (AHeight > 0) and (ADepth > 0) then
+    Result.Cells := MakeWfcLatticeVector(Integer(AWidth),
+      Integer(AHeight), Integer(ADepth));
+end;
+
+function GraphLayoutsEqual(const A, B: TWfcLatticeLayout): Boolean;
+begin
+  //Unlike the public validated lattice helper this also compares the legacy
+  //empty sentinel, permitting rule registration before the first Reshape.
+  Result := (A.Cells.X = B.Cells.X) and (A.Cells.Y = B.Cells.Y)
+    and (A.Cells.Z = B.Cells.Z) and (A.Origin.X = B.Origin.X)
+    and (A.Origin.Y = B.Origin.Y) and (A.Origin.Z = B.Origin.Z)
+    and (A.Pitch.X = B.Pitch.X) and (A.Pitch.Y = B.Pitch.Y)
+    and (A.Pitch.Z = B.Pitch.Z) and (A.Wrap = B.Wrap);
+end;
+
+function CanonicalGraphPassMapQuery(const AQuery: TGraphPassMapQuery):
+  TGraphPassMapQuery;
+var
+  I: Integer;
+  {$IFDEF PAS2JS}LValid: Boolean;{$ENDIF}
+begin
+  {$IFDEF PAS2JS}
+  asm
+    var record = function(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); };
+    LValid = record(AQuery) && record(AQuery.MinimumOffset) && record(AQuery.MaximumOffset)
+      && Array.isArray(AQuery.Values);
+    if (LValid) {
+      for (var i = 0; i < AQuery.Values.length; i++)
+        if (typeof AQuery.Values[i] !== 'string') { LValid = false; break; }
+    }
+  end;
+  if not LValid then
+    raise EArgumentException.Create('RequireMappedFromPass::query must contain offsets and a string values array');
+  {$ENDIF}
+  //Validate raw records too: pas2js callers can otherwise supply fractional,
+  //nonfinite or string-valued numbers through a typed JavaScript boundary.
+  MakeWfcLatticeVector(Ord(AQuery.Kind), Ord(AQuery.Match), 0);
+  if (Ord(AQuery.Kind) < Ord(Low(TGraphPassMapKind)))
+    or (Ord(AQuery.Kind) > Ord(High(TGraphPassMapKind)))
+    or (Ord(AQuery.Match) < Ord(Low(TGraphPassMapMatch)))
+    or (Ord(AQuery.Match) > Ord(High(TGraphPassMapMatch))) then
+    raise ERangeError.Create('RequireMappedFromPass::invalid query kind or match');
+  MakeWfcLatticeVector(AQuery.MinimumOffset.DeltaX,
+    AQuery.MinimumOffset.DeltaY, AQuery.MinimumOffset.DeltaZ);
+  MakeWfcLatticeVector(AQuery.MaximumOffset.DeltaX,
+    AQuery.MaximumOffset.DeltaY, AQuery.MaximumOffset.DeltaZ);
+  CheckGraphValueQuotaBounds(AQuery.MinimumMatches, AQuery.MaximumMatches);
+  if AQuery.Kind = gpmkRegionCoverage then
+  begin
+    if (AQuery.MaximumOffset.DeltaX <= AQuery.MinimumOffset.DeltaX)
+      or (AQuery.MaximumOffset.DeltaY <= AQuery.MinimumOffset.DeltaY)
+      or (AQuery.MaximumOffset.DeltaZ <= AQuery.MinimumOffset.DeltaZ) then
+      raise ERangeError.Create('RequireMappedFromPass::region must have positive extent');
+  end
+  else if not IsZeroGraphOffset(AQuery.MaximumOffset) then
+    raise EArgumentException.Create('RequireMappedFromPass::unused maximum offset must be zero');
+  if AQuery.Match = gpmmAll then
+  begin
+    if (AQuery.MinimumMatches <> 0) or (AQuery.MaximumMatches <> 0) then
+      raise EArgumentException.Create('RequireMappedFromPass::all-match count fields must be zero');
+  end
+  else if (AQuery.Kind = gpmkPoint) and (AQuery.MaximumMatches > 1) then
+    raise ERangeError.Create('RequireMappedFromPass::point count cannot exceed one');
+  if Length(AQuery.Values) = 0 then
+    raise EArgumentException.Create('RequireMappedFromPass::values cannot be empty');
+  Result := AQuery;
+  Result.Values := nil;
+  for I := 0 to High(AQuery.Values) do
+  begin
+    if AQuery.Values[I] = TGraphValue.Empty then
+      raise EArgumentException.Create('RequireMappedFromPass::value cannot be empty');
+    if not ContainsGraphValue(Result.Values, AQuery.Values[I]) then
+      Insert(AQuery.Values[I], Result.Values, Length(Result.Values));
+  end;
+end;
+
+function GraphPassMapQueriesEqual(const ALeft,
+  ARight: TGraphPassMapQuery): Boolean;
+var
+  I: Integer;
+begin
+  Result := False;
+  if (ALeft.Kind <> ARight.Kind) or (ALeft.Match <> ARight.Match)
+    or not GraphOffsetsEqual(ALeft.MinimumOffset, ARight.MinimumOffset)
+    or not GraphOffsetsEqual(ALeft.MaximumOffset, ARight.MaximumOffset)
+    or (ALeft.MinimumMatches <> ARight.MinimumMatches)
+    or (ALeft.MaximumMatches <> ARight.MaximumMatches)
+    or (Length(ALeft.Values) <> Length(ARight.Values)) then Exit;
+  for I := 0 to High(ALeft.Values) do
+    if not ContainsGraphValue(ARight.Values, ALeft.Values[I]) then Exit;
+  Result := True;
+end;
+
+procedure ValidateGraphPassMapRange(const ALayout: TWfcLatticeLayout;
+  const AQuery: TGraphPassMapQuery);
+
+  procedure CheckAxis(const AOrigin, ACells, APitch,
+    AMinimum, AMaximum: Integer);
+  var
+    LFirst, LLast, LMaximum: Double;
+  begin
+    //Layout validation has bounded this product to at most 2^32-1.
+    //Widen before every operation; never form a signed-32 intermediate.
+    LFirst := AOrigin;
+    LFirst := LFirst + AMinimum;
+    LLast := ACells - 1;
+    LLast := AOrigin + LLast * APitch;
+    if AQuery.Kind = gpmkCellCoverage then
+      LMaximum := LLast + AMinimum + APitch
+    else if AQuery.Kind = gpmkRegionCoverage then
+      LMaximum := LLast + AMaximum
+    else
+      LMaximum := LLast + AMinimum;
+    if (LFirst < Low(Integer)) or (LMaximum > High(Integer)) then
+      raise ERangeError.Create('RequireMappedFromPass::query exceeds signed world coordinates');
+  end;
+begin
+  ValidateWfcLatticeLayout(ALayout);
+  CheckAxis(ALayout.Origin.X, ALayout.Cells.X, ALayout.Pitch.X,
+    AQuery.MinimumOffset.DeltaX, AQuery.MaximumOffset.DeltaX);
+  CheckAxis(ALayout.Origin.Y, ALayout.Cells.Y, ALayout.Pitch.Y,
+    AQuery.MinimumOffset.DeltaY, AQuery.MaximumOffset.DeltaY);
+  CheckAxis(ALayout.Origin.Z, ALayout.Cells.Z, ALayout.Pitch.Z,
+    AQuery.MinimumOffset.DeltaZ, AQuery.MaximumOffset.DeltaZ);
+end;
+
+function MakeGraphPassPointQuery(const AOffset: TGraphOffset;
+  const AValues: TGraphValues): TGraphPassMapQuery;
+begin
+  Result := Default(TGraphPassMapQuery);
+  Result.Kind := gpmkPoint;
+  Result.Match := gpmmAll;
+  Result.MinimumOffset := AOffset;
+  Result.Values := AValues;
+  Result := CanonicalGraphPassMapQuery(Result);
+end;
+
+function NormalizeGraphPassMapQuery(const AQuery: TGraphPassMapQuery):
+  TGraphPassMapQuery;
+begin
+  Result := CanonicalGraphPassMapQuery(AQuery);
+end;
+
+procedure ValidateGraphPassMappedQuery(const AConsumerLayout: TWfcLatticeLayout;
+  const AQuery: TGraphPassMapQuery);
+var
+  LCanonical: TGraphPassMapQuery;
+begin
+  LCanonical := CanonicalGraphPassMapQuery(AQuery);
+  ValidateGraphPassMapRange(AConsumerLayout, LCanonical);
+end;
+
+function MakeGraphPassCellQuery(const AOffset: TGraphOffset;
+  const AValues: TGraphValues): TGraphPassMapQuery;
+begin
+  Result := MakeGraphPassPointQuery(AOffset, AValues);
+  Result.Kind := gpmkCellCoverage;
+end;
+
+function MakeGraphPassCellQuery(const AValues: TGraphValues):
+  TGraphPassMapQuery;
+begin
+  Result := MakeGraphPassCellQuery(MakeGraphOffset(0, 0, 0), AValues);
+end;
+
+function MakeGraphPassRegionQuery(const AMinimumOffset,
+  AMaximumOffset: TGraphOffset; const AValues: TGraphValues):
+  TGraphPassMapQuery;
+begin
+  Result := Default(TGraphPassMapQuery);
+  Result.Kind := gpmkRegionCoverage;
+  Result.Match := gpmmAll;
+  Result.MinimumOffset := AMinimumOffset;
+  Result.MaximumOffset := AMaximumOffset;
+  Result.Values := AValues;
+  Result := CanonicalGraphPassMapQuery(Result);
+end;
+
+function MakeGraphPassCountQuery(const AQuery: TGraphPassMapQuery;
+  const AMinimum, AMaximum: Integer): TGraphPassMapQuery;
+begin
+  Result := CanonicalGraphPassMapQuery(AQuery);
+  Result.Match := gpmmCount;
+  Result.MinimumMatches := AMinimum;
+  Result.MaximumMatches := AMaximum;
+  Result := CanonicalGraphPassMapQuery(Result);
 end;
 
 function GraphPassMatchTermsEqual(const ALeft,
@@ -1866,6 +2213,11 @@ begin
     GraphTraceHashCardinal(AHash, WFC_GRAPH_CONNECTIVITY_VERSION);
     GraphTraceHashInteger(AHash, AEvent.ConstraintIndex);
   end;
+  if AEvent.CauseKind = gtckValueQuota then
+  begin
+    GraphTraceHashCardinal(AHash, WFC_GRAPH_VALUE_QUOTA_VERSION);
+    GraphTraceHashInteger(AHash, AEvent.ConstraintIndex);
+  end;
 end;
 
 function CalculateGraphTraceHash(
@@ -2093,6 +2445,7 @@ begin
     rtckFinalValidation: LEvent.CauseKind := gtckFinalValidation;
     rtckExcludedAssignment: LEvent.CauseKind := gtckExactAssignmentExclusion;
     rtckConnectivity: LEvent.CauseKind := gtckConnectivity;
+    rtckValueQuota: LEvent.CauseKind := gtckValueQuota;
   else
     raise ERangeError.Create('TrySolve::invalid reference trace cause');
   end;
@@ -2243,6 +2596,11 @@ var
     if ASolve.Contradiction.Kind = gckConnectivity then
     begin
       GraphTraceHashCardinal(Result, WFC_GRAPH_CONNECTIVITY_VERSION);
+      GraphTraceHashInteger(Result, ASolve.Contradiction.ConstraintIndex);
+    end;
+    if ASolve.Contradiction.Kind = gckValueQuota then
+    begin
+      GraphTraceHashCardinal(Result, WFC_GRAPH_VALUE_QUOTA_VERSION);
       GraphTraceHashInteger(Result, ASolve.Contradiction.ConstraintIndex);
     end;
     GraphTraceHashCardinal(Result, Cardinal(Length(ASolve.Passes)));
@@ -2612,6 +2970,7 @@ begin
   begin
     Parent.SynchronizePreviousValueDependencies;
     LPreviousIndex := Pred(Parent.CurrentPassIndex);
+    Parent.RequireIdenticalPassLayout(LPreviousIndex, 'RequirePrevious');
     Parent.AddDependencyRole(LPreviousIndex, pdrRequirement);
     AddPassRequirement(LPreviousIndex, AValue, proPrevious);
   end;
@@ -2627,6 +2986,7 @@ begin
     raise EInvalidOperation.Create(
       'RequireFromPass::rule group is not owned by a graph');
   LPassIndex := Parent.PassIndexForLabel(APass, 'RequireFromPass');
+  Parent.RequireIdenticalPassLayout(LPassIndex, 'RequireFromPass');
   Parent.SynchronizePreviousValueDependencies;
   Parent.AddDependencyRole(LPassIndex, pdrRequirement);
   AddPassRequirement(LPassIndex, AValue, proNamed);
@@ -2652,6 +3012,7 @@ begin
       'RequireFromPassAt::rule group is not owned by a graph');
   LPassIndex := Parent.PassIndexForLabel(APass,
     'RequireFromPassAt');
+  Parent.RequireIdenticalPassLayout(LPassIndex, 'RequireFromPassAt');
   Parent.SynchronizePreviousValueDependencies;
   Parent.AddDependencyRole(LPassIndex, pdrRequirement);
   AddPassOffsetRequirement(LPassIndex, LTerms[0].Offset,
@@ -2672,6 +3033,7 @@ begin
       'RequireAnyFromPass::rule group is not owned by a graph');
   LPassIndex := Parent.PassIndexForLabel(APass,
     'RequireAnyFromPass');
+  Parent.RequireIdenticalPassLayout(LPassIndex, 'RequireAnyFromPass');
   Parent.SynchronizePreviousValueDependencies;
   Parent.AddDependencyRole(LPassIndex, pdrRequirement);
   AddPassAnyRequirement(LPassIndex, LCanonical, proNamed);
@@ -2691,11 +3053,33 @@ begin
     raise EInvalidOperation.Create(
       'RequireCountFromPass::rule group is not owned by a graph');
   LPassIndex := Parent.PassIndexForLabel(APass, 'RequireCountFromPass');
+  Parent.RequireIdenticalPassLayout(LPassIndex, 'RequireCountFromPass');
   //Allocate and copy the complete replacement before touching dependency
   //state. A rejected edge cannot leave a partially installed count clause,
   //and publishing the prepared array requires no further allocation.
   LPending := BuildPassCountRequirements(LPassIndex, LCanonical,
     AMinimum, AMaximum, AMode, proNamed);
+  Parent.SynchronizePreviousValueDependencies;
+  Parent.AddDependencyRole(LPassIndex, pdrRequirement);
+  FPassRequirements := LPending;
+end;
+
+procedure TGraph.TParentedGraphRuleGroup.DoRequireMappedFromPass(
+  const APass: String; const AQuery: TGraphPassMapQuery);
+var
+  LCanonical: TGraphPassMapQuery;
+  LPending: TPassRequirements;
+  LPassIndex: Integer;
+begin
+  LCanonical := CanonicalGraphPassMapQuery(AQuery);
+  if not Assigned(Parent) then
+    raise EInvalidOperation.Create('RequireMappedFromPass::rule group is not owned by a graph');
+  if Parent.Running then
+    raise EInvalidOperation.Create('RequireMappedFromPass::cannot change requirements while running');
+  LPassIndex := Parent.PassIndexForLabel(APass, 'RequireMappedFromPass');
+  ValidateGraphPassMapRange(Parent.GetPassLayout, LCanonical);
+  ValidateWfcLatticeLayout(Parent.GetPassGraph(LPassIndex).FLayout);
+  LPending := BuildMappedPassRequirements(LPassIndex, LCanonical);
   Parent.SynchronizePreviousValueDependencies;
   Parent.AddDependencyRole(LPassIndex, pdrRequirement);
   FPassRequirements := LPending;
@@ -2712,6 +3096,7 @@ begin
   //Legacy RequirePrevious/RequireFromPass retain their historical value
   //acceptance. New spatial constructors perform stricter empty-value
   //validation before they reach AddPassOffsetRequirement.
+  LRequirement := Default(TPassRequirement);
   LInsertIndex := Length(FPassRequirements);
   for I := 0 to High(FPassRequirements) do
   begin
@@ -2763,6 +3148,7 @@ begin
   LTerms[0] := MakeGraphPassMatchTerm(AOffset, AValues);
   LTerms := CanonicalGraphPassMatchTerms(LTerms,
     'PassRequirement');
+  LRequirement := Default(TPassRequirement);
   LInsertIndex := Length(FPassRequirements);
   for I := 0 to High(FPassRequirements) do
   begin
@@ -2811,6 +3197,7 @@ var
 begin
   LCanonical := CanonicalGraphPassMatchTerms(ATerms,
     'PassRequirement');
+  LRequirement := Default(TPassRequirement);
   LInsertIndex := Length(FPassRequirements);
   for I := 0 to High(FPassRequirements) do
   begin
@@ -2852,6 +3239,7 @@ var
 begin
   LCanonical := CanonicalGraphPassCountTerms(ATerms, AMinimum,
     AMaximum, AMode);
+  LRequirement := Default(TPassRequirement);
   Result := Copy(FPassRequirements, 0, Length(FPassRequirements));
   LInsertIndex := Length(Result);
   for I := 0 to High(Result) do
@@ -2878,6 +3266,36 @@ begin
   LRequirement.MinimumMatches := AMinimum;
   LRequirement.MaximumMatches := AMaximum;
   LRequirement.CountMode := AMode;
+  SetLength(Result, Succ(Length(Result)));
+  for I := High(Result) downto Succ(LInsertIndex) do
+    Result[I] := Result[Pred(I)];
+  Result[LInsertIndex] := LRequirement;
+end;
+
+function TGraphRuleGroup.BuildMappedPassRequirements(
+  const APassIndex: Integer; const AQuery: TGraphPassMapQuery):
+  TPassRequirements;
+var
+  I, LInsertIndex: Integer;
+  LCanonical: TGraphPassMapQuery;
+  LRequirement: TPassRequirement;
+begin
+  LCanonical := CanonicalGraphPassMapQuery(AQuery);
+  Result := Copy(FPassRequirements, 0, Length(FPassRequirements));
+  LInsertIndex := Length(Result);
+  for I := 0 to High(Result) do
+  begin
+    if (Result[I].PassIndex = APassIndex)
+      and (Result[I].Kind = prkMapped)
+      and GraphPassMapQueriesEqual(Result[I].MappedQuery, LCanonical) then Exit;
+    if (LInsertIndex = Length(Result))
+      and (Result[I].PassIndex > APassIndex) then LInsertIndex := I;
+  end;
+  LRequirement := Default(TPassRequirement);
+  LRequirement.PassIndex := APassIndex;
+  LRequirement.Origins := [proNamed];
+  LRequirement.Kind := prkMapped;
+  LRequirement.MappedQuery := LCanonical;
   SetLength(Result, Succ(Length(Result)));
   for I := High(Result) downto Succ(LInsertIndex) do
     Result[I] := Result[Pred(I)];
@@ -3106,6 +3524,14 @@ begin
   DoNewRule(ADirections, AValue, ARequireRule);
 end;
 
+procedure TGraphRuleGroup.DoRequireMappedFromPass(const APass: String;
+  const AQuery: TGraphPassMapQuery);
+begin
+  CanonicalGraphPassMapQuery(AQuery);
+  raise EInvalidOperation.CreateFmt(
+    'RequireMappedFromPass::rule group is not owned by a graph [%s]', [APass]);
+end;
+
 function TGraphRuleGroup.NewRule(const ADirections: TGraphDirections;
   const AValues: TGraphValues; const ARequireRule: Boolean): TGraphRuleGroup;
 var
@@ -3206,6 +3632,16 @@ begin
   LCanonical := CanonicalGraphPassCountTerms(ATerms, AMinimum,
     AMaximum, AMode);
   DoRequireCountFromPass(APass, LCanonical, AMinimum, AMaximum, AMode);
+end;
+
+function TGraphRuleGroup.RequireMappedFromPass(const APass: String;
+  const AQuery: TGraphPassMapQuery): TGraphRuleGroup;
+var
+  LCanonical: TGraphPassMapQuery;
+begin
+  Result := Self;
+  LCanonical := CanonicalGraphPassMapQuery(AQuery);
+  DoRequireMappedFromPass(APass, LCanonical);
 end;
 
 constructor TGraphRuleGroup.Create;
@@ -3585,6 +4021,160 @@ begin
 
   EnsureInitialPass;
   Result := FPasses[FCurPassIndex];
+end;
+
+function TGraph.GetPassLayout: TWfcLatticeLayout;
+begin
+  Result := GetActivePassGraph.FLayout;
+end;
+
+function TGraph.CopyPassLayouts: TWfcLatticeLayouts;
+var
+  I: Integer;
+begin
+  if Assigned(FPassRoot) then Exit(FPassRoot.CopyPassLayouts);
+  EnsureInitialPass;
+  SetLength(Result, FPasses.Count);
+  for I := 0 to Pred(FPasses.Count) do Result[I] := FPasses[I].FLayout;
+end;
+
+procedure TGraph.RequireIdenticalPassLayout(const AProviderIndex: Integer;
+  const AOperation: String);
+var
+  LGraph, LRoot: TGraph;
+begin
+  LGraph := GetActivePassGraph;
+  LRoot := LGraph.FPassRoot;
+  if (AProviderIndex < 0) or (AProviderIndex >= LRoot.FPasses.Count) then
+    raise EInvalidOperation.CreateFmt('%s::invalid provider', [AOperation]);
+  if not GraphLayoutsEqual(LGraph.FLayout,
+    LRoot.FPasses[AProviderIndex].FLayout) then
+    raise EInvalidOperation.CreateFmt(
+      '%s::index-space reads require identical pass layouts; use RequireMappedFromPass',
+      [AOperation]);
+end;
+
+procedure TGraph.ValidatePassLayoutReads(const ALayouts: TWfcLatticeLayouts);
+var
+  I, J, LSource: Integer;
+  LGraph: TGraph;
+  LGroup: TGraphRuleGroup;
+  LRequirement: TGraphRuleGroup.TPassRequirement;
+
+  procedure CheckSource(const ASource: Integer; const AIdentical: Boolean);
+  begin
+    if (ASource < 0) or (ASource >= Length(ALayouts)) then
+      raise EInvalidOperation.Create('PassLayouts::invalid provider index');
+    if AIdentical and not GraphLayoutsEqual(ALayouts[I], ALayouts[ASource]) then
+      raise EInvalidOperation.CreateFmt(
+        'PassLayouts::pass %d index-space read of %d requires identical layouts', [I, ASource]);
+  end;
+begin
+  if Assigned(FPassRoot) then
+  begin
+    FPassRoot.ValidatePassLayoutReads(ALayouts);
+    Exit;
+  end;
+  if Length(ALayouts) <> FPasses.Count then
+    raise EArgumentException.Create('PassLayouts::one layout is required for every pass');
+  for I := 0 to Pred(FPasses.Count) do
+  begin
+    LGraph := FPasses[I];
+    for LGroup in LGraph.FRuleGroups.Values do
+    begin
+      //Malformed public registries are diagnosed by the existing model
+      //validator; layout preflight must not dereference a caller's nil slot.
+      if not Assigned(LGroup) then Continue;
+      if (I > 0) and (Length(LGroup.PreviousValues) > 0) then
+        CheckSource(Pred(I), True);
+      for J := 0 to High(LGroup.FPassRequirements) do
+      begin
+        LRequirement := LGroup.FPassRequirements[J];
+        CheckSource(LRequirement.PassIndex, LRequirement.Kind <> prkMapped);
+        if LRequirement.Kind = prkMapped then
+        begin
+          ValidateGraphPassMapRange(ALayouts[I], LRequirement.MappedQuery);
+          ValidateWfcLatticeLayout(ALayouts[LRequirement.PassIndex]);
+        end;
+      end;
+    end;
+    //Sequential edges alone impose ordering, not an index-space relationship.
+    //A definitionless legacy/transform pass, however, actually copies values.
+    LSource := -1;
+    if LGraph.FPassMode = gpmTransform then
+      LSource := LGraph.FTransformSourceIndex
+    else if (not LGraph.HasDefinition) and (LGraph.FPassMode = gpmLegacy)
+      and (I > 0) then LSource := Pred(I);
+    if LSource >= 0 then CheckSource(LSource, True);
+  end;
+end;
+
+function TGraph.MappedRequirementMatches(const AEntryIndex: Integer;
+  const AProvider: TGraph; const AQuery: TGraphPassMapQuery;
+  const AStagedValues: TGraphValues; const AUseStaged: Boolean): Boolean;
+var
+  LBox, LCellBox: TWfcLatticeBox;
+  LCell: TWfcLatticeVector;
+  LCoverage: TWfcLatticeCoverage;
+  LPosition: TGraphPosition;
+  I, LCellCount, LCount, LIndex: Integer;
+  LValue: TGraphValue;
+  LMatches: Boolean;
+
+  function OffsetPoint(const APoint: TWfcLatticeVector;
+    const AOffset: TGraphOffset): TWfcLatticeVector;
+  var
+    LX, LY, LZ: Double;
+  begin
+    //Registration/configuration preflight proved each endpoint representable.
+    LX := APoint.X;
+    LY := APoint.Y;
+    LZ := APoint.Z;
+    Result.X := Integer(Trunc(LX + AOffset.DeltaX));
+    Result.Y := Integer(Trunc(LY + AOffset.DeltaY));
+    Result.Z := Integer(Trunc(LZ + AOffset.DeltaZ));
+  end;
+begin
+  Result := False;
+  LPosition := FEntries[AEntryIndex].Position;
+  LCellBox := WfcLatticeCellBox(FLayout, MakeWfcLatticeVector(
+    Integer(LPosition.X), Integer(LPosition.Y), Integer(LPosition.Z)));
+  LBox.Minimum := OffsetPoint(LCellBox.Minimum, AQuery.MinimumOffset);
+  if AQuery.Kind = gpmkPoint then
+  begin
+    if not TryWfcLatticePoint(AProvider.FLayout, LBox.Minimum, LCell) then Exit;
+    LCellCount := 1;
+  end
+  else
+  begin
+    if AQuery.Kind = gpmkCellCoverage then
+      LBox.Maximum := OffsetPoint(LCellBox.Maximum, AQuery.MinimumOffset)
+    else
+      LBox.Maximum := OffsetPoint(LCellBox.Minimum, AQuery.MaximumOffset);
+    if not TryWfcLatticeCoverage(AProvider.FLayout, LBox, LCoverage) then Exit;
+    LCellCount := WfcLatticeCoverageCellCount(LCoverage);
+  end;
+  LCount := 0;
+  for I := 0 to Pred(LCellCount) do
+  begin
+    if AQuery.Kind <> gpmkPoint then
+      LCell := WfcLatticeCoverageCell(LCoverage, I);
+    LIndex := AProvider.CoordToIndex(LCell.X, LCell.Y, LCell.Z);
+    if AUseStaged then LValue := AStagedValues[LIndex]
+    else LValue := AProvider.FEntries[LIndex].Value;
+    LMatches := (LValue <> TGraphValue.Empty)
+      and ContainsGraphValue(AQuery.Values, LValue);
+    if AQuery.Match = gpmmAll then
+    begin
+      if not LMatches then Exit;
+    end
+    else if LMatches then
+    begin
+      Inc(LCount);
+      if LCount > AQuery.MaximumMatches then Exit;
+    end;
+  end;
+  Result := (AQuery.Match = gpmmAll) or (LCount >= AQuery.MinimumMatches);
 end;
 
 function TGraph.HasPassRequirement(const APassIndex: Integer): Boolean;
@@ -4033,10 +4623,13 @@ begin
     if LSourceIndex = LGraph.FPassIndex then
       raise EInvalidOperation.Create(
         'SetPassMode::a transform pass cannot source itself');
+    LGraph.RequireIdenticalPassLayout(LSourceIndex, 'SetPassMode');
   end;
   if (AValue = gpmLegacy) and (LGraph.FPassIndex > 0) then
   begin
     LPreviousIndex := Pred(LGraph.FPassIndex);
+    if not LGraph.HasDefinition then
+      LGraph.RequireIdenticalPassLayout(LPreviousIndex, 'SetPassMode');
     if (LGraph.DependencySlot(LPreviousIndex) < 0)
       and LRoot.WouldCreateDependencyCycle(LGraph.FPassIndex,
         LPreviousIndex) then
@@ -4096,6 +4689,7 @@ begin
     LRoot := Self;
   LRoot.EnsureInitialPass;
   LRoot.SynchronizePreviousValueDependencies;
+  LRoot.ValidatePassLayoutReads(LRoot.CopyPassLayouts);
   LPassCount := LRoot.FPasses.Count;
   SetLength(AOrder, LPassCount);
   SetLength(LEmitted, LPassCount);
@@ -4583,9 +5177,11 @@ begin
 
   EnsureInitialPass;
   FWrap := AValue;
+  FLayout.Wrap := AValue;
   for I := 0 to Pred(FPasses.Count) do
   begin
     FPasses[I].FWrap := AValue;
+    FPasses[I].FLayout.Wrap := AValue;
     FPasses[I].LinkNeighbors;
   end;
 end;
@@ -4594,7 +5190,8 @@ procedure TGraph.CopyValuesFrom(const ASource: TGraph);
 var
   I: Integer;
 begin
-  if FEntries.Count <> ASource.FEntries.Count then
+  if not GraphLayoutsEqual(ASource.FLayout, FLayout)
+    or (FEntries.Count <> ASource.FEntries.Count) then
     raise EInvalidOperation.Create(
       'CopyValuesFrom::source and destination dimensions do not match');
 
@@ -4784,6 +5381,95 @@ begin
     with LGraph.FConnectivity[I] do
       Result[I] := MakeGraphConnectivityConstraint(LabelText, Root,
         RequiredPositions, Values, RequireAllParticipants);
+end;
+
+function TGraph.RequireValueQuota(
+  const AConstraint: TGraphValueQuotaConstraint): TGraph;
+var
+  LGraph: TGraph;
+  LCanonical: TGraphValueQuotaConstraint;
+  I, LCount: Integer;
+begin
+  Result := Self;
+  if Running then
+    raise EInvalidOperation.Create(
+      'RequireValueQuota::cannot change constraints while running');
+  LGraph := GetActivePassGraph;
+  if AConstraint.LabelText = '' then
+    raise EArgumentException.Create('RequireValueQuota::label cannot be empty');
+  CheckGraphValueQuotaBounds(AConstraint.MinimumCount, AConstraint.MaximumCount);
+  if Length(AConstraint.Values) = 0 then
+    raise EArgumentException.Create('RequireValueQuota::accepted values are required');
+  for I := 0 to High(AConstraint.Values) do
+    if (AConstraint.Values[I] = TGraphValue.Empty)
+      or not ContainsGraphValue(LGraph.FValues, AConstraint.Values[I]) then
+      raise EArgumentException.CreateFmt(
+        'RequireValueQuota::unknown accepted value "%s"', [AConstraint.Values[I]]);
+
+  LCanonical := MakeGraphValueQuotaConstraint(AConstraint.LabelText, nil,
+    AConstraint.MinimumCount, AConstraint.MaximumCount);
+  SetLength(LCanonical.Values, Length(LGraph.FValues));
+  LCount := 0;
+  for I := 0 to High(LGraph.FValues) do
+    if ContainsGraphValue(AConstraint.Values, LGraph.FValues[I]) then
+    begin
+      LCanonical.Values[LCount] := LGraph.FValues[I];
+      Inc(LCount);
+    end;
+  SetLength(LCanonical.Values, LCount);
+  for I := 0 to High(LGraph.FValueQuotas) do
+    if LGraph.FValueQuotas[I].LabelText = LCanonical.LabelText then
+    begin
+      if not GraphValueQuotaEqual(LGraph.FValueQuotas[I], LCanonical) then
+        raise EInvalidOperation.Create(
+          'RequireValueQuota::label already has a different definition; remove it first');
+      Exit;
+    end;
+  SetLength(LGraph.FValueQuotas, Length(LGraph.FValueQuotas) + 1);
+  LGraph.FValueQuotas[High(LGraph.FValueQuotas)] := LCanonical;
+end;
+
+function TGraph.RemoveValueQuota(const ALabel: String): TGraph;
+var
+  LGraph: TGraph;
+  I, J: Integer;
+begin
+  Result := Self;
+  if Running then
+    raise EInvalidOperation.Create(
+      'RemoveValueQuota::cannot change constraints while running');
+  LGraph := GetActivePassGraph;
+  for I := 0 to High(LGraph.FValueQuotas) do
+    if LGraph.FValueQuotas[I].LabelText = ALabel then
+    begin
+      for J := I to High(LGraph.FValueQuotas) - 1 do
+        LGraph.FValueQuotas[J] := LGraph.FValueQuotas[J + 1];
+      SetLength(LGraph.FValueQuotas, Length(LGraph.FValueQuotas) - 1);
+      Exit;
+    end;
+end;
+
+function TGraph.ClearValueQuotas: TGraph;
+begin
+  Result := Self;
+  if Running then
+    raise EInvalidOperation.Create(
+      'ClearValueQuotas::cannot change constraints while running');
+  GetActivePassGraph.FValueQuotas := nil;
+end;
+
+function TGraph.CopyValueQuotaConstraints: TGraphValueQuotaConstraints;
+var
+  LGraph: TGraph;
+  I: Integer;
+begin
+  LGraph := GetActivePassGraph;
+  Result := nil;
+  SetLength(Result, Length(LGraph.FValueQuotas));
+  for I := 0 to High(Result) do
+    with LGraph.FValueQuotas[I] do
+      Result[I] := MakeGraphValueQuotaConstraint(LabelText, Values,
+        MinimumCount, MaximumCount);
 end;
 
 procedure TGraph.ValidateConnectivityShape(const AWidth, AHeight,
@@ -5208,9 +5894,6 @@ var
           'TrimValuesForPassRequirements::pass %d reads undeclared dependency %d',
           [FPassIndex, ASourcePassIndex]);
       Result := FPassRoot.GetPassGraph(ASourcePassIndex);
-      if Result.FEntries.Count <> FEntries.Count then
-        raise EInvalidOperation.Create(
-          'TrimValuesForPassRequirements::pass dimensions do not match');
     end;
 
     function RequirementMatches(
@@ -5224,6 +5907,9 @@ var
       Result := False;
       LRequirement := LGroup.FPassRequirements[ARequirementIndex];
       LSourceGraph := SourceGraph(LRequirement.PassIndex);
+      if LRequirement.Kind = prkMapped then
+        Exit(MappedRequirementMatches(AEntry.Index, LSourceGraph,
+          LRequirement.MappedQuery, nil, False));
       LIsCount := LRequirement.Kind = prkCount;
       LCount := 0;
       if LIsCount and (LRequirement.CountMode = gpcmDistinctCells) then
@@ -5370,7 +6056,7 @@ begin
 end;
 
 procedure TGraph.BuildStorage(const AWidth, AHeight,
-  ADepth: TGraphCoordinate; out AEntries: TGraphEntries;
+  ADepth: TGraphCoordinate; const AWrap: Boolean; out AEntries: TGraphEntries;
   out APlanes: TPlanes);
 var
   LEntry: TGraphEntry;
@@ -5426,7 +6112,9 @@ begin
         end;
       end;
 
-      LinkNeighborsFor(LEntries, LDimension, FWrap);
+      //Prepare only the requested topology. Neighbor hooks must see each
+      //direction once, never the old wrap mode followed by a corrective link.
+      LinkNeighborsFor(LEntries, LDimension, AWrap);
     end;
 
     AEntries := LEntries;
@@ -5448,7 +6136,7 @@ begin
   Result := Self;
   LEntries := nil;
   LPlanes := nil;
-  BuildStorage(AWidth, AHeight, ADepth, LEntries, LPlanes);
+  BuildStorage(AWidth, AHeight, ADepth, FWrap, LEntries, LPlanes);
   try
     LOldEntries := FEntries;
     LOldPlanes := FPlanes;
@@ -5459,6 +6147,7 @@ begin
     FDimension.Width := AWidth;
     FDimension.Height := AHeight;
     FDimension.Depth := ADepth;
+    FLayout := LegacyGraphLayout(AWidth, AHeight, ADepth, FWrap);
 
     LOldPlanes.Free;
     LOldEntries.Free;
@@ -5475,6 +6164,7 @@ var
   I: Integer;
   LEntries, LOldEntries: TEntryStorageArray;
   LPlanes, LOldPlanes: TPlaneStorageArray;
+  LLayouts: TWfcLatticeLayouts;
 begin
   if Assigned(FPassRoot) then
     Exit(FPassRoot.Reshape(AWidth, AHeight, ADepth));
@@ -5488,6 +6178,10 @@ begin
       'Reshape::cannot reshape the pass pipeline while it is running');
   EnsureInitialPass;
   ValidateDimensions(AWidth, AHeight, ADepth);
+  SetLength(LLayouts, FPasses.Count);
+  for I := 0 to High(LLayouts) do
+    LLayouts[I] := LegacyGraphLayout(AWidth, AHeight, ADepth, FWrap);
+  ValidatePassLayoutReads(LLayouts);
 
   for I := 0 to Pred(FPasses.Count) do
     FPasses[I].ValidateConnectivityShape(AWidth, AHeight, ADepth);
@@ -5499,9 +6193,14 @@ begin
 
   try
     //prepare every pass before committing any of them
-    for I := 0 to Pred(FPasses.Count) do
-      FPasses[I].BuildStorage(AWidth, AHeight, ADepth,
-        LEntries[I], LPlanes[I]);
+    FInitializingPass := True;
+    try
+      for I := 0 to Pred(FPasses.Count) do
+        FPasses[I].BuildStorage(AWidth, AHeight, ADepth,
+          FWrap, LEntries[I], LPlanes[I]);
+    finally
+      FInitializingPass := False;
+    end;
 
     for I := 0 to Pred(FPasses.Count) do
     begin
@@ -5514,12 +6213,92 @@ begin
       FPasses[I].FDimension.Width := AWidth;
       FPasses[I].FDimension.Height := AHeight;
       FPasses[I].FDimension.Depth := ADepth;
+      FPasses[I].FLayout := LLayouts[I];
+      FPasses[I].FWrap := FWrap;
     end;
 
     FDimension.Width := AWidth;
     FDimension.Height := AHeight;
     FDimension.Depth := ADepth;
+    FLayout := LLayouts[0];
 
+    for I := 0 to Pred(FPasses.Count) do
+    begin
+      LOldPlanes[I].Free;
+      LOldEntries[I].Free;
+    end;
+  finally
+    for I := 0 to High(LPlanes) do
+    begin
+      LPlanes[I].Free;
+      LEntries[I].Free;
+    end;
+  end;
+end;
+
+function TGraph.ConfigurePassLayouts(const ALayouts: TWfcLatticeLayouts): TGraph;
+var
+  I: Integer;
+  LLayouts: TWfcLatticeLayouts;
+  LEntries, LOldEntries: TEntryStorageArray;
+  LPlanes, LOldPlanes: TPlaneStorageArray;
+  {$IFDEF PAS2JS}LValid: Boolean;{$ENDIF}
+begin
+  if Assigned(FPassRoot) then Exit(FPassRoot.ConfigurePassLayouts(ALayouts));
+  Result := Self;
+  if FInitializingPass or FRunning then
+    raise EInvalidOperation.Create('ConfigurePassLayouts::cannot configure during initialization or execution');
+  {$IFDEF PAS2JS}
+  asm LValid = Array.isArray(ALayouts); end;
+  if not LValid then
+    raise EArgumentException.Create('ConfigurePassLayouts::layouts must be an array');
+  {$ENDIF}
+  EnsureInitialPass;
+  if Length(ALayouts) <> FPasses.Count then
+    raise EArgumentException.Create('ConfigurePassLayouts::one layout is required for every pass');
+  SetLength(LLayouts, Length(ALayouts));
+  for I := 0 to High(ALayouts) do
+  begin
+    ValidateWfcLatticeLayout(ALayouts[I]);
+    LLayouts[I] := ALayouts[I];
+    FPasses[I].ValidateConnectivityShape(LLayouts[I].Cells.X,
+      LLayouts[I].Cells.Y, LLayouts[I].Cells.Z);
+  end;
+  ValidatePassLayoutReads(LLayouts);
+  SetLength(LEntries, FPasses.Count);
+  SetLength(LPlanes, FPasses.Count);
+  SetLength(LOldEntries, FPasses.Count);
+  SetLength(LOldPlanes, FPasses.Count);
+  try
+    //Factories may inspect existing storage, but cannot recursively reshape,
+    //reset, change global settings, or extend the pass registry underneath
+    //the arrays being prepared. Reuse the pass-initialization lifecycle guard.
+    FInitializingPass := True;
+    try
+      for I := 0 to Pred(FPasses.Count) do
+        FPasses[I].BuildStorage(LLayouts[I].Cells.X, LLayouts[I].Cells.Y,
+          LLayouts[I].Cells.Z, LLayouts[I].Wrap, LEntries[I], LPlanes[I]);
+    finally
+      FInitializingPass := False;
+    end;
+    //Publishing performs no allocations and invokes no user callbacks.
+    for I := 0 to Pred(FPasses.Count) do
+    begin
+      LOldEntries[I] := FPasses[I].FEntries;
+      LOldPlanes[I] := FPasses[I].FPlanes;
+      FPasses[I].FEntries := LEntries[I];
+      LEntries[I] := nil;
+      FPasses[I].FPlanes := LPlanes[I];
+      LPlanes[I] := nil;
+      FPasses[I].FDimension.Width := LLayouts[I].Cells.X;
+      FPasses[I].FDimension.Height := LLayouts[I].Cells.Y;
+      FPasses[I].FDimension.Depth := LLayouts[I].Cells.Z;
+      FPasses[I].FLayout := LLayouts[I];
+      FPasses[I].FWrap := LLayouts[I].Wrap;
+    end;
+    FDimension := FPasses[0].FDimension;
+    FLayout := LLayouts[0];
+    FWrap := FLayout.Wrap;
     for I := 0 to Pred(FPasses.Count) do
     begin
       LOldPlanes[I].Free;
@@ -5764,6 +6543,7 @@ begin
       LGraph := DoCreatePass(PassIndex);
       LGraph.ReshapeOne(FDimension.Width, FDimension.Height,
         FDimension.Depth);
+      LGraph.FLayout := FLayout;
       FPassLookup.Add(APass, PassIndex);
       try
         FPasses.Add(LGraph);
@@ -5890,6 +6670,7 @@ begin
     raise EInvalidOperation.Create(
       'TransformFrom::cannot change pass mode while the pipeline is running');
   LPassIndex := LGraph.PassIndexForLabel(APass, 'TransformFrom');
+  LGraph.RequireIdenticalPassLayout(LPassIndex, 'TransformFrom');
   LRoot.SynchronizePreviousValueDependencies;
   if LPassIndex = LGraph.FPassIndex then
     raise EInvalidOperation.CreateFmt(
@@ -6284,6 +7065,40 @@ begin
   Result := AReport.Status = gnsSolved;
 end;
 
+procedure TGraph.ResolveRegenerationScope(const ARequestedRoots: TGraphPassLabels;
+  out ACanonicalRoots, AActivePasses: TGraphPassIndices);
+var
+  LDirty: TPassSelection;
+  {$IFDEF PAS2JS}LValid: Boolean;{$ENDIF}
+begin
+  {$IFDEF PAS2JS}
+  asm
+    LValid=Array.isArray(ARequestedRoots) && ARequestedRoots.length>0 &&
+      ARequestedRoots.length<=2147483647;
+    if(LValid) for(let i=0;i<ARequestedRoots.length;i++) {
+      const d=Object.getOwnPropertyDescriptor(ARequestedRoots,String(i));
+      if(!d || !Object.prototype.hasOwnProperty.call(d,'value') ||
+        typeof d.value!=='string') { LValid=false; break; }
+    }
+  end;
+  if not LValid then
+    raise EArgumentException.Create(
+      'ResolveRegenerationScope::roots require a dense passive string array');
+  {$ENDIF}
+  if Length(ARequestedRoots) = 0 then
+    raise EArgumentException.Create(
+      'ResolveRegenerationScope::at least one pass is required');
+  if Assigned(FPassRoot) then
+  begin
+    FPassRoot.ResolveRegenerationScope(ARequestedRoots,
+      ACanonicalRoots, AActivePasses);
+    Exit;
+  end;
+  EnsureInitialPass;
+  BuildDescendantPassSelection(ARequestedRoots, 'ResolveRegenerationScope',
+    ACanonicalRoots, AActivePasses, LDirty);
+end;
+
 function TGraph.TryRegenerateFrom(const APass: String;
   const AOptions: TGraphSolveOptions;
   out AReport: TGraphSolveReport): Boolean;
@@ -6620,6 +7435,49 @@ var
       * AValueCount) + ANeighborValue;
   end;
 
+  function ValidateStagedValueQuotas(const AGraph: TGraph;
+    const AValues: TGraphValues; out AConstraintIndex,
+    AEntryIndex: Integer): Boolean;
+  var
+    C, I, LCount: Integer;
+    LConstraint: TGraphValueQuotaConstraint;
+  begin
+    //Independent public-value recount: do not reuse the numeric propagator
+    //or its final checker to guard the compiler/solver publication boundary.
+    AConstraintIndex := -1;
+    AEntryIndex := -1;
+    Result := True;
+    if Length(AGraph.FValueQuotas) = 0 then Exit;
+    ValidateDefinedModel(AGraph);
+    if Length(AValues) <> AGraph.FEntries.Count then
+      raise EInvalidOperation.Create('TrySolve::value quota assignment shape mismatch');
+    for I := 0 to High(AValues) do
+      if (AValues[I] = TGraphValue.Empty)
+        or not ContainsGraphValue(AGraph.FValues, AValues[I]) then
+      begin
+        AConstraintIndex := 0;
+        AEntryIndex := I;
+        Exit(False);
+      end;
+    for C := 0 to High(AGraph.FValueQuotas) do
+    begin
+      LConstraint := AGraph.FValueQuotas[C];
+      CheckGraphValueQuotaBounds(LConstraint.MinimumCount,
+        LConstraint.MaximumCount);
+      LCount := 0;
+      for I := 0 to High(AValues) do
+        if ContainsGraphValue(LConstraint.Values, AValues[I]) then
+          Inc(LCount);
+      if (LCount < LConstraint.MinimumCount)
+        or (LCount > LConstraint.MaximumCount) then
+      begin
+        AConstraintIndex := C;
+        //The violated bound describes this whole pass, not an arbitrary cell.
+        Exit(False);
+      end;
+    end;
+  end;
+
   function ValidateStagedConnectivity(const AGraph: TGraph;
     const AValues: TGraphValues; out AConstraintIndex,
     AEntryIndex: Integer): Boolean;
@@ -6804,6 +7662,8 @@ var
     LValueFailurePass: Integer;
     LConnectivityIndex, LProfileIndex, LPositionIndex: Integer;
     LConnectivity: TGraphConnectivityConstraint;
+    LQuotaIndex, LQuotaValueIndex: Integer;
+    LQuota: TGraphValueQuotaConstraint;
 
     function RequirementMatches(
       const ARequirementIndex: Integer): Boolean;
@@ -6818,6 +7678,10 @@ var
       Result := False;
       LRequirement := LGroup.FPassRequirements[ARequirementIndex];
       LTermSourcePass := LRequirement.PassIndex;
+      if LRequirement.Kind = prkMapped then
+        Exit(AGraph.MappedRequirementMatches(LCell,
+          FPasses[LTermSourcePass], LRequirement.MappedQuery,
+          AStaged[LTermSourcePass], True));
       LIsCount := LRequirement.Kind = prkCount;
       LCount := 0;
       if LIsCount and (LRequirement.CountMode = gpcmDistinctCells) then
@@ -6946,6 +7810,21 @@ var
       end;
     end;
 
+    SetLength(AModel.ValueQuotas, Length(AGraph.FValueQuotas));
+    for LQuotaIndex := 0 to High(AGraph.FValueQuotas) do
+    begin
+      LQuota := AGraph.FValueQuotas[LQuotaIndex];
+      with AModel.ValueQuotas[LQuotaIndex] do
+      begin
+        MinimumCount := LQuota.MinimumCount;
+        MaximumCount := LQuota.MaximumCount;
+        SetLength(Values, Length(LQuota.Values));
+        for LQuotaValueIndex := 0 to High(Values) do
+          Values[LQuotaValueIndex] := FindValueIndex(AGraph,
+            LQuota.Values[LQuotaValueIndex]);
+      end;
+    end;
+
     for LCell := 0 to Pred(AModel.CellCount) do
     begin
       AModel.LockedValues[LCell] := -1;
@@ -7007,7 +7886,8 @@ var
             'TrySolve::pass %d value "%s" reads undeclared dependency %d',
             [AGraph.FPassIndex, AGraph.FValues[LValue],
               LSourcePassIndex]);
-        if Length(AStaged[LSourcePassIndex]) <> AModel.CellCount then
+        if Length(AStaged[LSourcePassIndex]) <>
+          FPasses[LSourcePassIndex].FEntries.Count then
           raise EInvalidOperation.CreateFmt(
             'TrySolve::dependency %d for pass %d has a different shape',
             [LSourcePassIndex, AGraph.FPassIndex]);
@@ -7174,6 +8054,8 @@ var
         Result := gckExcludedAssignment;
       rckConnectivity:
         Result := gckConnectivity;
+      rckValueQuota:
+        Result := gckValueQuota;
     else
       Result := gckNone;
     end;
@@ -7250,6 +8132,11 @@ var
       LConstraint, LFailedEntry) then
       raise EInvalidOperation.CreateFmt(
         'TrySolve::reused pass %d violates connectivity %d at entry %d; include it in regeneration',
+        [APassIndex, LConstraint, LFailedEntry]);
+    if not ValidateStagedValueQuotas(AGraph, LStaged[APassIndex],
+      LConstraint, LFailedEntry) then
+      raise EInvalidOperation.CreateFmt(
+        'TrySolve::reused pass %d violates value quota %d at entry %d; include it in regeneration',
         [APassIndex, LConstraint, LFailedEntry]);
   end;
 
@@ -7448,6 +8335,12 @@ var
           AFinalValidationPass := I;
           Exit(False);
         end;
+        if not ValidateStagedValueQuotas(FPasses[I], LStaged[I],
+          LConstraint, AFinalValidationEntry) then
+        begin
+          AFinalValidationPass := I;
+          Exit(False);
+        end;
       end;
 
       Result := DoValidateCommit(AFinalValidationPass,
@@ -7477,11 +8370,18 @@ var
       //edits are caller side effects, but must not publish a disconnected
       //candidate merely because its values and neighbor links stayed equal.
       for I := 0 to Pred(FPasses.Count) do
+      begin
         if not ValidateStagedConnectivity(FPasses[I], LStaged[I],
           LConstraint, AFinalValidationEntry) then
           raise EInvalidOperation.CreateFmt(
             'TrySolve::commit hook invalidated connectivity %d in pass %d entry %d',
             [LConstraint, I, AFinalValidationEntry]);
+        if not ValidateStagedValueQuotas(FPasses[I], LStaged[I],
+          LConstraint, AFinalValidationEntry) then
+          raise EInvalidOperation.CreateFmt(
+            'TrySolve::commit hook invalidated value quota %d in pass %d entry %d',
+            [LConstraint, I, AFinalValidationEntry]);
+      end;
       Result := True;
     except
       RestoreEntries;
@@ -8008,9 +8908,14 @@ begin
   BuildPassExecutionOrder(LExecutionOrder);
 
   for I := 0 to Pred(FPasses.Count) do
+  begin
     if Length(FPasses[I].FConnectivity) <> 0 then
       raise EInvalidOperation.Create(
         'Run::connectivity requires the TrySolve family');
+    if Length(FPasses[I].FValueQuotas) <> 0 then
+      raise EInvalidOperation.Create(
+        'Run::value quotas require the TrySolve family');
+  end;
 
   LSavedPassIndex := FCurPassIndex;
   FRunning := True;
@@ -8072,6 +8977,7 @@ var
   LNewPasses, LOldPasses: TPassList;
   LNewLookup, LOldLookup: TPassLookup;
   LOldDimension: TDimension;
+  LOldLayout: TWfcLatticeLayout;
   LOldMode: TGraphRunMode;
   LOldPass: String;
   LOldPassIndex: Integer;
@@ -8114,6 +9020,7 @@ begin
     LOldPasses := FPasses;
     LOldLookup := FPassLookup;
     LOldDimension := FDimension;
+    LOldLayout := FLayout;
     LOldMode := FMode;
     LOldPass := FCurPass;
     LOldPassIndex := FCurPassIndex;
@@ -8128,6 +9035,7 @@ begin
     FDimension.Width := 0;
     FDimension.Height := 0;
     FDimension.Depth := 0;
+    FLayout := LegacyGraphLayout(0, 0, 0, FWrap);
     try
       FPasses[0].DoInitializePass;
     except
@@ -8138,6 +9046,7 @@ begin
       FPasses := LOldPasses;
       FPassLookup := LOldLookup;
       FDimension := LOldDimension;
+      FLayout := LOldLayout;
       FMode := LOldMode;
       FCurPass := LOldPass;
       FCurPassIndex := LOldPassIndex;
@@ -8152,6 +9061,7 @@ begin
     FPlanes.Clear;
     SetLength(FValues, 0);
     FConnectivity := nil;
+    FValueQuotas := nil;
   finally
     LNewPass.Free;
     LNewPasses.Free;
@@ -8170,6 +9080,7 @@ begin
   FPassLookup := TPassLookup.Create;
   FMode := rmBottomUp;
   FWrap := True;
+  FLayout := LegacyGraphLayout(0, 0, 0, FWrap);
   FCurPassIndex := 0;
   FCurPass := '';
   FPassIndex := 0;
@@ -8184,6 +9095,7 @@ begin
   SetLength(FPassDependencies, 0);
   FTransformSourceIndex := -1;
   FConnectivity := nil;
+  FValueQuotas := nil;
 end;
 
 constructor TGraph.CreatePass(const ARoot: TGraph;
@@ -8205,6 +9117,7 @@ begin
   FSeedInitialized := True;
   FMode := ARoot.FMode;
   FWrap := ARoot.FWrap;
+  FLayout.Wrap := FWrap;
 
   if APassIndex > 0 then
   begin

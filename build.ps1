@@ -34,6 +34,7 @@ $selectiveNegotiationTestSource = Join-Path $repositoryRoot `
 $voxelTestSource = Join-Path $repositoryRoot 'test/wfc_voxel3d_test.lpr'
 $buildingTestSource = Join-Path $repositoryRoot 'test/wfc_building3d_test.lpr'
 $traceTestSources = @(
+  (Join-Path $repositoryRoot 'test/wfc_decision_index_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_trace_reference_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_trace_reference_stream_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_trace_test.lpr')
@@ -64,6 +65,46 @@ $musicTestSources = @(
   (Join-Path $repositoryRoot 'test/wfc_music_studio_test.lpr')
 )
 $artifactTestSources = @(
+  (Join-Path $repositoryRoot 'test/wfc_sha256_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_asset_manifest_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_asset_check_app_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_pipeline_layout_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_pipeline_mapping_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_pipeline_mapped_model_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_pipeline_model_topology_boundary_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_pipeline_mapped_text_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_pipeline_mapped_run_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_pipeline_mapped_result_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_pipeline_mapped_runtime_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_pipeline_mapped_artifact_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_pipeline_compose_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_pipeline_compose_resources_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_pipeline_prepare_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_pipeline_prepare_threads_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_pipeline_replace_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_pipeline_replace_inverse_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_pipeline_session_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_pipeline_session_oracle_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_pipeline_session_evidence_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_workspace_context_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_workspace_journal_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_workspace_replay_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_regeneration_scope_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_lattice_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_mapped_passes_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_pass_bridge_layout_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_pattern3d_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_pattern3d_text_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_pattern3d_passes_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_pipeline_pattern3d_model_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_pipeline_pattern3d_text_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_pipeline_pattern3d_runtime_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_training_pattern3d_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_training_pattern3d_workspace_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_token_volume_view_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_sequence_wrap_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_training_sequence_wrap_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_training_circular_studio_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_voxel3d_model_passes_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_terraces3d_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_terraces3d_view_test.lpr')
@@ -78,31 +119,56 @@ $artifactTestSources = @(
   (Join-Path $repositoryRoot 'test/wfc_pipeline_text_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_token_lookup_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_pipeline_compile_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_pipeline_value_quota_model_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_pipeline_value_quota_text_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_pipeline_value_quota_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_pipeline_connectivity_model_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_pipeline_connectivity_text_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_pipeline_connectivity_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_pipeline_run_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_pipeline_run_text_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_pipeline_result_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_pipeline_result_text_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_pipeline_runtime_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_validate_app_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_artifact_document_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_artifact_inspect_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_artifact_cli_app_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_browser_dom_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_browser_args_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_browser_socket_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_browser_websocket_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_browser_cdp_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_browser_capture_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_serve_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_run_app_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_training_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_text_training_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_training_workspace_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_training_text_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_training_value_quota_model_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_training_value_quota_text_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_training_value_quota_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_training_connectivity_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_training_connectivity_text_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_training_connectivity_demo_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_learn_app_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_music_import_app_test.lpr')
   (Join-Path $repositoryRoot `
     'test/wfc_learned_pattern_world_bundle_test.lpr')
 )
 $toolSources = @(
+  (Join-Path $repositoryRoot 'tools/wfc_asset_check.lpr')
+  (Join-Path $repositoryRoot 'tools/wfc_solver_benchmark.lpr')
   (Join-Path $repositoryRoot 'tools/wfc_validate.lpr')
+  (Join-Path $repositoryRoot 'tools/wfc_inspect.lpr')
   (Join-Path $repositoryRoot 'tools/wfc_run.lpr')
+  (Join-Path $repositoryRoot 'tools/wfc_workspace_cli.lpr')
   (Join-Path $repositoryRoot 'tools/wfc_learn_cli.lpr')
   (Join-Path $repositoryRoot 'tools/wfc_music_import_cli.lpr')
   (Join-Path $repositoryRoot 'tools/wfc_serve.lpr')
   (Join-Path $repositoryRoot 'tools/wfc_browser_check.lpr')
+  (Join-Path $repositoryRoot 'tools/wfc_browser_capture.lpr')
 )
 $pipelineCliProcessTestSource = Join-Path $repositoryRoot `
   'test/wfc_pipeline_cli_process_test.ps1'
@@ -171,6 +237,28 @@ $binaryOutputDirectory = Join-Path $repositoryRoot 'build/native/bin'
 
 New-Item -ItemType Directory -Force -Path $unitOutputDirectory | Out-Null
 New-Item -ItemType Directory -Force -Path $binaryOutputDirectory | Out-Null
+
+Write-Host 'Checking complete FPM and Lazarus runtime package inventories.'
+$packageCheckSuffix = if ($env:OS -eq 'Windows_NT') { '.exe' } else { '' }
+foreach ($packageCheckSource in @(
+    (Join-Path $toolsDirectory 'wfc_package_check.lpr'),
+    (Join-Path $repositoryRoot 'test/wfc_package_check_test.lpr'),
+    (Join-Path $repositoryRoot 'test/wfc_package_check_process_test.lpr'))) {
+  & $Compiler @CompilerOptions -B -Mdelphi -Sa -Cr -Co -Ci `
+    "-Fu$toolsDirectory" "-FU$unitOutputDirectory" "-FE$binaryOutputDirectory" `
+    $packageCheckSource
+  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+}
+$packageChecker = Join-Path $binaryOutputDirectory "wfc_package_check$packageCheckSuffix"
+& (Join-Path $binaryOutputDirectory "wfc_package_check_test$packageCheckSuffix")
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+& $packageChecker --root $repositoryRoot
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+& $packageChecker --version
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+& (Join-Path $binaryOutputDirectory "wfc_package_check_process_test$packageCheckSuffix") `
+  $packageChecker
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 $compilerArguments = @(
   $CompilerOptions
@@ -281,7 +369,9 @@ $connectivityDemoDirectory = Join-Path $repositoryRoot `
   'examples/passes/06_ConnectedRoutes'
 foreach ($connectivityTestName in @(
     'wfc_connectivity_reference_test', 'wfc_connectivity_test',
-    'wfc_connectivity_trace_test', 'wfc_connectivity_demo_test')) {
+    'wfc_connectivity_trace_test', 'wfc_connectivity_demo_test',
+    'wfc_value_quota_reference_test', 'wfc_value_quota_test',
+    'wfc_value_quota_trace_test')) {
   Write-Host "Building and running '$connectivityTestName'."
   & $Compiler @CompilerOptions -B -Mdelphi -Sa -Cr -Co -Ci `
     "-Fu$sourceDirectory" "-Fu$toolsDirectory" "-Fu$connectivityDemoDirectory" `
@@ -313,9 +403,71 @@ $connectivityProcessTestName = if ($env:OS -eq 'Windows_NT') {
 $connectivityDemoExecutable = Join-Path $binaryOutputDirectory $connectivityDemoName
 & $connectivityDemoExecutable --selftest
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+& $connectivityDemoExecutable --portable-selftest
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 & (Join-Path $binaryOutputDirectory $connectivityProcessTestName) `
   $connectivityDemoExecutable $binaryOutputDirectory
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+$mappedWorldDemoDirectory = Join-Path $repositoryRoot `
+  'examples/passes/07_MappedWorld'
+foreach ($mappedWorldTestName in @(
+    'wfc_mapped_world_test', 'wfc_mapped_world_geometry_test')) {
+  Write-Host "Building and running '$mappedWorldTestName'."
+  & $Compiler @CompilerOptions -B -Mdelphi -Sa -Cr -Co -Ci `
+    "-Fu$sourceDirectory" "-Fu$toolsDirectory" "-Fu$mappedWorldDemoDirectory" `
+    "-FU$unitOutputDirectory" "-FE$binaryOutputDirectory" `
+    (Join-Path $repositoryRoot "test/$mappedWorldTestName.lpr")
+  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+  $mappedWorldTestExecutable = if ($env:OS -eq 'Windows_NT') {
+    "$mappedWorldTestName.exe"
+  } else { $mappedWorldTestName }
+  & (Join-Path $binaryOutputDirectory $mappedWorldTestExecutable)
+  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+}
+
+Write-Host 'Building and checking Mapped World and native export transactions.'
+foreach ($mappedWorldSource in @(
+    (Join-Path $mappedWorldDemoDirectory 'MappedWorld.lpr'),
+    (Join-Path $repositoryRoot 'test/wfc_mapped_world_process_test.lpr'))) {
+  & $Compiler @CompilerOptions -B -Mdelphi -Sa -Cr -Co -Ci `
+    "-Fu$sourceDirectory" "-Fu$toolsDirectory" "-Fu$mappedWorldDemoDirectory" `
+    "-FU$unitOutputDirectory" "-FE$binaryOutputDirectory" $mappedWorldSource
+  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+}
+$mappedWorldDemoName = if ($env:OS -eq 'Windows_NT') {
+  'MappedWorld.exe'
+} else { 'MappedWorld' }
+$mappedWorldProcessTestName = if ($env:OS -eq 'Windows_NT') {
+  'wfc_mapped_world_process_test.exe'
+} else { 'wfc_mapped_world_process_test' }
+$mappedWorldDemoExecutable = Join-Path $binaryOutputDirectory $mappedWorldDemoName
+& $mappedWorldDemoExecutable --selftest
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+& (Join-Path $binaryOutputDirectory $mappedWorldProcessTestName) `
+  $mappedWorldDemoExecutable $binaryOutputDirectory
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+# These suites share the actual portable owner, not a second controller.
+# pipeline_workspace_ui_test is browser-only and is not in this native list.
+$pipelineWorkspaceDemoDirectory = Join-Path $repositoryRoot `
+  'examples/passes/08_PipelineWorkspace'
+foreach ($pipelineWorkspaceTestName in @(
+    'pipeline_workspace_workbench_test', 'pipeline_workspace_view_test',
+    'pipeline_workspace_presets_test')) {
+  Write-Host "Building and running '$pipelineWorkspaceTestName'."
+  & $Compiler @CompilerOptions -B -Mdelphi -Sa -Cr -Co -Ci `
+    "-Fu$sourceDirectory" "-Fu$toolsDirectory" "-Fu$repositoryRoot/test" `
+    "-Fu$pipelineWorkspaceDemoDirectory" `
+    "-FU$unitOutputDirectory" "-FE$binaryOutputDirectory" `
+    (Join-Path $repositoryRoot "test/$pipelineWorkspaceTestName.lpr")
+  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+  $pipelineWorkspaceTestExecutable = if ($env:OS -eq 'Windows_NT') {
+    "$pipelineWorkspaceTestName.exe"
+  } else { $pipelineWorkspaceTestName }
+  & (Join-Path $binaryOutputDirectory $pipelineWorkspaceTestExecutable)
+  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+}
 
 $restartDemoDirectory = Join-Path $repositoryRoot `
   'examples/passes/05_DeterministicRestarts'
@@ -383,7 +535,10 @@ foreach ($ensembleTestName in @(
     'wfc_music_ensemble_demo_test', 'wfc_sequence_segment_test',
     'wfc_music_ensemble_stream_test', 'wfc_music_ensemble_audio_test',
     'wfc_music_ensemble_stream_demo_test', 'wfc_midi_stream_test',
-    'wfc_music_ensemble_midi_test', 'wfc_music_ensemble_midi_stream_demo_test')) {
+    'wfc_music_ensemble_midi_test', 'wfc_music_ensemble_midi_stream_demo_test',
+    'wfc_music_form_test', 'wfc_ensemble_profiles_test',
+    'wfc_music_ensemble_plan_hooks_test', 'wfc_ensemble_development_test',
+    'wfc_ensemble_developed_midi_test', 'wfc_ensemble_http_test')) {
   Write-Host "Building and running '$ensembleTestName'."
   & $Compiler @CompilerOptions -B -Mdelphi -Sa -Cr -Co -Ci `
     "-Fu$sourceDirectory" "-Fu$ensembleDemoDirectory" "-Fu$repositoryRoot/tools" `
@@ -977,6 +1132,7 @@ foreach ($artifactTestSource in $artifactTestSources) {
     "-Fu$toolsDirectory"
     "-Fu$learnedPatternWorldExampleDirectory"
     "-Fu$trainingStudioExampleDirectory"
+    "-Fu$connectivityDemoDirectory"
     "-FU$unitOutputDirectory"
     "-FE$binaryOutputDirectory"
     $artifactTestSource
@@ -1013,6 +1169,7 @@ foreach ($artifactTestSource in $artifactTestSources) {
 
 foreach ($toolSource in $toolSources) {
   $toolName = [System.IO.Path]::GetFileNameWithoutExtension($toolSource)
+  if ($toolName -eq 'wfc_workspace_cli') { $toolName = 'wfc_workspace' }
   if ($toolName -eq 'wfc_music_import_cli') { $toolName = 'wfc_music_import' }
   if ($toolName -eq 'wfc_learn_cli') {
     $toolName = 'wfc_learn'
@@ -1046,8 +1203,9 @@ foreach ($toolSource in $toolSources) {
   }
 
   $toolExecutable = Join-Path $binaryOutputDirectory $toolExecutableName
-  Write-Host "Smoke testing '$toolExecutable --version'."
-  & $toolExecutable '--version'
+  $toolSmokeArgument = if ($toolName -eq 'wfc_workspace') { '--help' } else { '--version' }
+  Write-Host "Smoke testing '$toolExecutable $toolSmokeArgument'."
+  & $toolExecutable $toolSmokeArgument
   $toolExitCode = $LASTEXITCODE
   if ($toolExitCode -ne 0) {
     exit $toolExitCode
@@ -1055,6 +1213,25 @@ foreach ($toolSource in $toolSources) {
 }
 
 $toolExecutableSuffix = if ($env:OS -eq 'Windows_NT') { '.exe' } else { '' }
+Write-Host 'Building and running FPC asset-check process conformance.'
+& $Compiler @CompilerOptions -B -Mdelphi -Sa -Cr -Co -Ci `
+  "-Fu$sourceDirectory" "-Fu$toolsDirectory" "-Fu$repositoryRoot/test" `
+  "-FU$unitOutputDirectory" "-FE$binaryOutputDirectory" `
+  (Join-Path $repositoryRoot 'test/wfc_asset_check_process_test.lpr')
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+# The fixture creates its own fresh leaf and retains evidence from this run.
+$assetProcessDirectory = Join-Path $binaryOutputDirectory `
+  ('asset-process-' + [Guid]::NewGuid().ToString('N'))
+& (Join-Path $binaryOutputDirectory "wfc_asset_check_process_test$toolExecutableSuffix") `
+  (Join-Path $binaryOutputDirectory "wfc_asset_check$toolExecutableSuffix") `
+  $assetProcessDirectory
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+Write-Host 'Smoke testing the deterministic solver benchmark (no timing threshold).'
+& (Join-Path $binaryOutputDirectory "wfc_solver_benchmark$toolExecutableSuffix") `
+  --cells 32 --values 4 --weights skewed --topology line `
+  --compatibility dense --trace 1 --repeat 1
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 Write-Host 'Running live FPC server conformance.'
 & (Join-Path $binaryOutputDirectory "wfc_serve_test$toolExecutableSuffix") `
   --integration (Join-Path $binaryOutputDirectory "wfc_serve$toolExecutableSuffix") `
@@ -1069,6 +1246,74 @@ Write-Host 'Running the portable pipeline CLI process conformance suite.'
 & $pipelineCliProcessTestSource `
   -Validator $validatorToolExecutable `
   -Runner $runnerToolExecutable
+
+Write-Host 'Building and running FPC artifact-family process conformance.'
+& $Compiler @CompilerOptions -B -Mdelphi -Sa -Cr -Co -Ci `
+  "-Fu$sourceDirectory" "-Fu$toolsDirectory" `
+  "-FU$unitOutputDirectory" "-FE$binaryOutputDirectory" `
+  (Join-Path $repositoryRoot 'test/wfc_artifact_cli_process_test.lpr')
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+& (Join-Path $binaryOutputDirectory "wfc_artifact_cli_process_test$toolExecutableSuffix") `
+  $validatorToolExecutable `
+  (Join-Path $binaryOutputDirectory "wfc_inspect$toolExecutableSuffix") `
+  $repositoryRoot
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+Write-Host 'Building and running FPC mapped-pipeline process conformance.'
+& $Compiler @CompilerOptions -B -Mdelphi -Sa -Cr -Co -Ci `
+  "-Fu$sourceDirectory" "-Fu$toolsDirectory" "-Fu$repositoryRoot/test" `
+  "-FU$unitOutputDirectory" "-FE$binaryOutputDirectory" `
+  (Join-Path $repositoryRoot 'test/wfc_pipeline_mapped_process_test.lpr')
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+$mappedPipelineProcessDirectory = Join-Path $binaryOutputDirectory `
+  ('mapped-pipeline-process-' + [Guid]::NewGuid().ToString('N'))
+& (Join-Path $binaryOutputDirectory "wfc_pipeline_mapped_process_test$toolExecutableSuffix") `
+  $runnerToolExecutable $validatorToolExecutable `
+  (Join-Path $binaryOutputDirectory "wfc_inspect$toolExecutableSuffix") `
+  $mappedPipelineProcessDirectory
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+Write-Host 'Building and running FPC workspace CLI process conformance.'
+foreach ($workspaceProcessSource in @('wfc_workspace_cli_fixture.lpr','wfc_workspace_cli_process_test.lpr')) {
+  & $Compiler @CompilerOptions -B -Mdelphi -Sa -Cr -Co -Ci `
+    "-Fu$sourceDirectory" "-Fu$toolsDirectory" "-Fu$repositoryRoot/test" `
+    "-FU$unitOutputDirectory" "-FE$binaryOutputDirectory" `
+    (Join-Path $repositoryRoot ('test/' + $workspaceProcessSource))
+  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+}
+$workspaceProcessDirectory = Join-Path $binaryOutputDirectory `
+  ('workspace-process-' + [Guid]::NewGuid().ToString('N'))
+& (Join-Path $binaryOutputDirectory "wfc_workspace_cli_process_test$toolExecutableSuffix") `
+  (Join-Path $binaryOutputDirectory "wfc_workspace$toolExecutableSuffix") `
+  (Join-Path $binaryOutputDirectory "wfc_workspace_cli_fixture$toolExecutableSuffix") `
+  $workspaceProcessDirectory
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+# The fixture continues exported histories through the real workspace CLI.
+# Expected unsolved child exit10 is checked inside the successful harness.
+Write-Host 'Building and running Pipeline Workspace native demo conformance.'
+foreach ($pipelineWorkspaceSource in @(
+    (Join-Path $pipelineWorkspaceDemoDirectory 'PipelineWorkspace.lpr'),
+    (Join-Path $repositoryRoot 'test/pipeline_workspace_native_fixture.lpr'),
+    (Join-Path $repositoryRoot 'test/pipeline_workspace_native_process_test.lpr'))) {
+  & $Compiler @CompilerOptions -B -Mdelphi -Sa -Cr -Co -Ci `
+    "-Fu$sourceDirectory" "-Fu$toolsDirectory" "-Fu$repositoryRoot/test" `
+    "-Fu$pipelineWorkspaceDemoDirectory" `
+    "-FU$unitOutputDirectory" "-FE$binaryOutputDirectory" $pipelineWorkspaceSource
+  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+}
+$pipelineWorkspaceExecutable = Join-Path $binaryOutputDirectory `
+  "PipelineWorkspace$toolExecutableSuffix"
+& $pipelineWorkspaceExecutable --help
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+$pipelineWorkspaceProcessDirectory = Join-Path $binaryOutputDirectory `
+  ('pipeline-workspace-process-' + [Guid]::NewGuid().ToString('N'))
+& (Join-Path $binaryOutputDirectory "pipeline_workspace_native_process_test$toolExecutableSuffix") `
+  $pipelineWorkspaceExecutable `
+  (Join-Path $binaryOutputDirectory "wfc_workspace$toolExecutableSuffix") `
+  (Join-Path $binaryOutputDirectory "pipeline_workspace_native_fixture$toolExecutableSuffix") `
+  $pipelineWorkspaceProcessDirectory
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 $learnerToolExecutable = Join-Path $binaryOutputDirectory `
   "wfc_learn$toolExecutableSuffix"
@@ -1749,7 +1994,7 @@ Write-Host "Smoke testing '$buildingSvgExecutable' with seed 0."
 & $buildingSvgExecutable 0 $buildingSvgOutput | Out-Null
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-Write-Host 'Building and checking all five Training Studio presets.'
+Write-Host 'Building and checking Training Studio presets and authored constraints.'
 & $Compiler @CompilerOptions -B -Mdelphi -Sa -Cr -Co -Ci `
   "-Fu$sourceDirectory" "-Fu$trainingStudioExampleDirectory" `
   "-FU$unitOutputDirectory" "-FE$binaryOutputDirectory" `
@@ -1759,6 +2004,22 @@ $trainingStudioExecutableName = if ($env:OS -eq 'Windows_NT') {
   'TrainingStudio.exe'
 } else { 'TrainingStudio' }
 & (Join-Path $binaryOutputDirectory $trainingStudioExecutableName) --selftest
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+& (Join-Path $binaryOutputDirectory $trainingStudioExecutableName) --quota-selftest
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+& (Join-Path $binaryOutputDirectory $trainingStudioExecutableName) --connectivity-selftest
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+Write-Host 'Building and checking the native overlapping-volume SVG export.'
+& $Compiler @CompilerOptions -B -Mdelphi -Sa -Cr -Co -Ci `
+  "-Fu$sourceDirectory" "-Fu$toolsDirectory" "-Fu$trainingStudioExampleDirectory" `
+  "-FU$unitOutputDirectory" "-FE$binaryOutputDirectory" `
+  (Join-Path $trainingStudioExampleDirectory 'TrainingStudioVolume.lpr')
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+$trainingVolumeExecutableName = if ($env:OS -eq 'Windows_NT') {
+  'TrainingStudioVolume.exe'
+} else { 'TrainingStudioVolume' }
+& (Join-Path $binaryOutputDirectory $trainingVolumeExecutableName) --seed 0 | Out-Null
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 Write-Host 'Building and checking Music Studio.'
@@ -1821,6 +2082,20 @@ foreach ($renderSource in @(
 & (Join-Path $binaryOutputDirectory "wfc_music_ensemble_render_process_test$toolExecutableSuffix") `
   (Join-Path $binaryOutputDirectory "EnsembleStudioRender$toolExecutableSuffix") `
   $binaryOutputDirectory
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+Write-Host 'Building and checking the native Ensemble Studio download server.'
+foreach ($serveSource in @(
+  (Join-Path $ensembleDemoDirectory 'EnsembleStudioServe.lpr'),
+  (Join-Path $repositoryRoot 'test/wfc_ensemble_http_process_test.lpr')
+)) {
+  & $Compiler @CompilerOptions -B -Mdelphi -Sa -Cr -Co -Ci `
+    "-Fu$sourceDirectory" "-Fu$ensembleDemoDirectory" "-Fu$toolsDirectory" `
+    "-FU$unitOutputDirectory" "-FE$binaryOutputDirectory" $serveSource
+  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+}
+& (Join-Path $binaryOutputDirectory "wfc_ensemble_http_process_test$toolExecutableSuffix") `
+  (Join-Path $binaryOutputDirectory "EnsembleStudioServe$toolExecutableSuffix") `
+  $repositoryRoot
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 Write-Host 'Building and checking the streaming Ensemble Studio MIDI renderer.'
 foreach ($renderSource in @(

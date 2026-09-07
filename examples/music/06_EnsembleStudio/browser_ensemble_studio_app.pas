@@ -40,6 +40,7 @@ uses
   wfc_music_ensemble_passes,
   wfc_midi_smf,
   wfc_music_midi,
+  ensemble_studio_profiles,
   ensemble_studio_workbench,
   browser_ensemble_stream;
 
@@ -60,7 +61,8 @@ type
     FSeedInput, FBarsInput: TJSHTMLInputElement;
     FNewSessionButton, FGenerateButton, FRenderPreviewButton:
       TJSHTMLButtonElement;
-    FStrategySelect, FScopeSelect: TJSHTMLSelectElement;
+    FStrategySelect, FScopeSelect, FProfileSelect: TJSHTMLSelectElement;
+    FFormReport: TJSElement;
     FBacktracksInput, FPassBacktracksInput, FTraceInput:
       TJSHTMLInputElement;
     FStatusElement, FStatusDetailElement, FSessionSummary,
@@ -214,6 +216,8 @@ procedure TBrowserEnsembleStudioApplication.BindDocument;
 begin
   FSeedInput := TJSHTMLInputElement(RequireElement('seed-input'));
   FBarsInput := TJSHTMLInputElement(RequireElement('bars-input'));
+  FProfileSelect := TJSHTMLSelectElement(RequireElement('profile-select'));
+  FFormReport := RequireElement('form-report');
   FNewSessionButton := TJSHTMLButtonElement(
     RequireElement('new-session-button'));
   FGenerateButton := TJSHTMLButtonElement(RequireElement('generate-button'));
@@ -275,6 +279,7 @@ procedure TBrowserEnsembleStudioApplication.BindEvents;
 begin
   FSeedInput.oninput := @HandleSessionInput;
   FBarsInput.oninput := @HandleSessionInput;
+  FProfileSelect.onchange := @HandleSessionInput;
   FNewSessionButton.onclick := @HandleNewSession;
   FGenerateButton.onclick := @HandleGenerate;
   FStrategySelect.onchange := @HandleStrategyChange;
@@ -1041,6 +1046,9 @@ end;
 
 procedure TBrowserEnsembleStudioApplication.RefreshAll;
 begin
+  FFormReport.textContent := FStudio.FormReportText;
+  document.body.setAttribute('data-profile',
+    EnsembleStudioProfileName(FStudio.Profile));
   RefreshVocabulary;
   RefreshLocks;
   RefreshMetrics;
@@ -1054,7 +1062,11 @@ procedure TBrowserEnsembleStudioApplication.InvalidateForPendingEdit(
   const AReason: String; const ASessionConfig: Boolean);
 begin
   FStudio.InvalidateCurrent;
-  if ASessionConfig then FSessionConfigDirty := True;
+  if ASessionConfig then
+  begin
+    FSessionConfigDirty := True;
+    FFormReport.textContent := 'Start a new session to plan the edited inputs.';
+  end;
   ClearCurrentPresentation;
   ClearReports;
   RefreshVocabulary;
@@ -1076,7 +1088,8 @@ begin
     raise EConvertError.Create('seed must be decimal, $hex, or 0xhex');
   LBars := ReadBoundedInteger(FBarsInput, 'bars', 1,
     ENSEMBLE_STUDIO_MAX_BARS);
-  FStudio.Reset(LSeed, LBars);
+  FStudio.Reset(LSeed, LBars,
+    ParseEnsembleStudioProfile(FProfileSelect.value));
   FSessionConfigDirty := False;
   FAction := esaGenerate;
   FScopeSelect.value := 'full';
@@ -1098,14 +1111,15 @@ begin
   ClearReports;
   if FSessionConfigDirty then
     raise EConvertError.Create(
-      'seed or bars changed; start a new session before generating');
+      'seed, bars, or profile changed; start a new session before generating');
   if not TryParseSeed(FSeedInput.value, LSeed) then
     raise EConvertError.Create('seed must be decimal, $hex, or 0xhex');
   LBars := ReadBoundedInteger(FBarsInput, 'bars', 1,
     ENSEMBLE_STUDIO_MAX_BARS);
-  if (LSeed <> FStudio.Seed) or (LBars <> FStudio.Bars) then
+  if (LSeed <> FStudio.Seed) or (LBars <> FStudio.Bars) or
+      (ParseEnsembleStudioProfile(FProfileSelect.value) <> FStudio.Profile) then
     raise EConvertError.Create(
-      'seed or bars differ from this session; start a new session');
+      'seed, bars, or profile differ from this session; start a new session');
   LOptions := ReadOptions;
   LAction := SelectedAction;
   if not FStudio.HasBaseline then
@@ -1172,8 +1186,10 @@ var
   LFrame: TWfcMusicEnsembleFrame;
   LLocks: TEnsembleStudioLocks;
   LReport: TEnsembleStudioReport;
+  LVaried: Boolean;
 begin
   document.body.setAttribute('data-self-test', 'pending');
+  document.body.setAttribute('data-developed-profile', 'pending');
   document.body.setAttribute('data-new-session-invalidation', 'pending');
   document.body.setAttribute('data-run-invalidation', 'pending');
   document.body.setAttribute('data-failure-clears-output', 'pending');
@@ -1375,6 +1391,42 @@ begin
       (not FPreviewAudio.autoplay) and (FAudioPlayEvents = 0),
       'explicit baseline preview metadata or no-autoplay state changed');
     document.body.setAttribute('data-recovery', 'passed');
+
+    FProfileSelect.value := 'developed-period-v1';
+    DispatchDomEvent(FProfileSelect, 'change');
+    AssertTest(not FStudio.HasCurrent and not FWaveLink.hasAttribute('href'),
+      'profile edit retained a stale WAV');
+    FSeedInput.value := '4';
+    FBarsInput.value := '16';
+    DispatchDomEvent(FSeedInput, 'input');
+    DispatchDomEvent(FBarsInput, 'input');
+    DispatchDomEvent(FNewSessionButton, 'click');
+    DispatchDomEvent(FGenerateButton, 'click');
+    AssertTest(FStudio.HasCurrent and (FStudio.Profile = espDevelopedPeriodV1) and
+      (FStudio.CellCount = 128), 'developed sixteen-bar DOM generation failed');
+    LPublic := FStudio.CellTokens(wmelEnsemble);
+    LVaried := False;
+    for I := 0 to 31 do
+      if LPublic[I] <> LPublic[I+32] then LVaried := True;
+    AssertTest(LVaried and (Pos('contrast', FFormReport.textContent) > 0),
+      'developed DOM result lacks actual phrase variation or visible form');
+    DispatchDomEvent(FRenderPreviewButton, 'click');
+    AssertTest((document.body.getAttribute('data-audio-ready') = 'true') and
+      (document.body.getAttribute('data-wave-bytes') = '2822444'),
+      'developed DOM WAV does not contain the full32second score');
+    document.body.setAttribute('data-developed-profile', 'passed');
+
+    { Preserve the original terminal fixture identities for existing clients. }
+    FProfileSelect.value := 'structural-v1';
+    FSeedInput.value := '0';
+    FBarsInput.value := '2';
+    DispatchDomEvent(FProfileSelect, 'change');
+    DispatchDomEvent(FNewSessionButton, 'click');
+    DispatchDomEvent(FGenerateButton, 'click');
+    DispatchDomEvent(FRenderPreviewButton, 'click');
+    AssertTest(FStudio.HasCurrent and
+      (FStudio.SignatureText = ENSEMBLE_STUDIO_BASELINE_COMPOSITION_SIGNATURE),
+      'switching back to original profile lost its stable identity');
     document.body.setAttribute('data-self-test', 'passed');
   except
     on E: Exception do
@@ -1392,7 +1444,7 @@ begin
   Result := False;
   try
     InvalidateForPendingEdit(
-      'Start a new session to apply the edited seed and bar count.', True);
+      'Start a new session to apply the edited seed, bar count, and profile.', True);
   except on E: Exception do ShowError(E.Message); end;
 end;
 
@@ -1598,6 +1650,11 @@ begin
     BindDocument;
     BindEvents;
     WriteDefaultOptions;
+    if Pos('selftest=1', window.location.search) > 0 then
+    begin
+      FProfileSelect.value := 'structural-v1';
+      FBarsInput.value := '2';
+    end;
     document.body.setAttribute('data-audio-play-events', '0');
     StartNewSession;
     Generate;
@@ -1617,6 +1674,9 @@ begin
   TJSHTMLElement(document.body).innerHTML :=
     '<input id="seed-input" inputmode="text" value="0">' +
     '<input id="bars-input" type="number" min="1" step="1" value="2">' +
+    '<select id="profile-select"><option value="structural-v1">original</option>' +
+      '<option value="developed-period-v1">developed</option></select>' +
+    '<pre id="form-report"></pre>' +
     '<button id="new-session-button" type="button"></button>' +
     '<button id="generate-button" type="button"></button>' +
     '<select id="strategy-select"><option value="negotiated">n</option>' +

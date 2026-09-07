@@ -9,8 +9,12 @@ if [[ -f "$checker.exe" ]]; then checker="$checker.exe"; fi
 mkdir -p build/browser/tests/units build/browser/tests/www
 for source in test/*_test.lpr; do
   name="$(basename -- "$source" .lpr)"
-  case "$name" in wfc_browser_dom_test|wfc_serve_test|wfc_music_render_process_test|wfc_music_ensemble_render_process_test|wfc_music_ensemble_midi_render_process_test|wfc_music_voices_render_process_test|wfc_connectivity_process_test|wfc_music_studies_process_test) continue ;; esac
-  "$compiler" -B -Tbrowser -Mdelphi -Jc -Jirtl.js -Fusrc -Futools \
+  case "$name" in wfc_pipeline_prepare_threads_test) continue ;; esac
+  case "$name" in pipeline_workspace_native_fixture|pipeline_workspace_native_process_test) continue ;; esac
+  case "$name" in wfc_workspace_cli_process_test|wfc_workspace_cli_fixture) continue ;; esac
+  case "$name" in wfc_package_check_process_test|wfc_asset_check_process_test|wfc_artifact_cli_process_test|wfc_ensemble_http_process_test|wfc_pipeline_mapped_process_test) continue ;; esac
+  case "$name" in wfc_browser_dom_test|wfc_browser_args_test|wfc_browser_socket_test|wfc_browser_websocket_test|wfc_browser_cdp_test|wfc_browser_capture_test|wfc_serve_test|wfc_music_render_process_test|wfc_music_ensemble_render_process_test|wfc_music_ensemble_midi_render_process_test|wfc_music_voices_render_process_test|wfc_connectivity_process_test|wfc_mapped_world_process_test|wfc_music_studies_process_test) continue ;; esac
+  "$compiler" -B -Tbrowser -Mdelphi -Jc -Jirtl.js -Fusrc -Futools -Futest \
     -Fuexamples/2D/common -Fuexamples/3D/common \
     -Fuexamples/music/01_simple_A_major -Fuexamples/music/02_simple_song_riffs \
     -Fuexamples/2D/05_LearnedPatternWorld \
@@ -20,6 +24,8 @@ for source in test/*_test.lpr; do
     -Fuexamples/passes/02_TraceInspector \
     -Fuexamples/text/03_PassComposition \
     -Fuexamples/passes/06_ConnectedRoutes \
+    -Fuexamples/passes/07_MappedWorld \
+    -Fuexamples/passes/08_PipelineWorkspace \
     -Fuexamples/music/06_EnsembleStudio \
     -Fuexamples/music/07_VoiceStudio \
     -FUbuild/browser/tests/units -FEbuild/browser/tests/www "$source"
@@ -39,7 +45,9 @@ for specification in \
   'ensemble|build-browser-ensemble|BrowserEnsembleStudio.js|ensemblestudio.css' \
   'voices|build-browser-voices|BrowserVoiceStudio.js|voicestudio.css' \
   'connectivity|build-browser-connectivity|BrowserConnectedRoutes.js|connectedroutes.css' \
-  'terraces|build-browser-terraces|BrowserTerraces.js|terraces.css'
+  'terraces|build-browser-terraces|BrowserTerraces.js|terraces.css' \
+  'mapped|build-browser-mapped|BrowserMappedWorld.js|mappedworld.css' \
+  'workspace|build-browser-workspace|BrowserPipelineWorkspace.js|workspace.css'
 do
   IFS='|' read -r demo script javascript stylesheet <<< "$specification"
   PAS2JS="$compiler" bash "$repository_root/$script.sh"
@@ -49,4 +57,10 @@ do
   cp -- "$entry_source/index.html" "$entry_source/$javascript" \
     "$entry_source/$stylesheet" "$entry_target/"
 done
-echo 'Pascal browser conformance and ten actual demo entries staged under build/browser/tests/www.'
+# Separately named asynchronous capture fixture; not a conformance program.
+mkdir -p build/browser/tests/www/capture-fixture
+"$compiler" -B -Tbrowser -Mdelphi -Jc -Jirtl.js \
+  -FUbuild/browser/tests/units -FEbuild/browser/tests/www/capture-fixture \
+  test/browser_capture/fixture.lpr
+cp -- test/browser_capture/index.html build/browser/tests/www/capture-fixture/
+echo 'Pascal browser conformance, capture fixture, and twelve actual demo entries staged under build/browser/tests/www.'

@@ -12,6 +12,8 @@ scores and explicitly selected training excerpts.
 
 | Example | Status | Targets | Dependencies |
 | --- | --- | --- | --- |
+| [`07_VoiceStudio`](07_VoiceStudio/README.md) | Independently learned roles, exact harmony coverage, and user-defined WAVE/MIDI streaming | Native FPC, pas2js/browser | Repository units, standard RTL and host APIs only |
+| [`06_EnsembleStudio`](06_EnsembleStudio/README.md) | Synchronized polyphony, locks, repair, bounded preview, and user-defined WAVE/MIDI streaming | Native FPC, pas2js/browser | Repository units, standard RTL and host APIs only |
 | [`05_MusicStudio`](05_MusicStudio/README.md) | Interactive locks, repair, piano roll, playback and export | Native FPC, pas2js/browser | Repository units, standard RTL and host APIs only |
 | [`04_NegotiatedVariation`](04_NegotiatedVariation/README.md) | Current reusable repair and replay proof | Native FPC | Repository units and standard RTL only |
 | [`03_PassComposition`](03_PassComposition/README.md) | Current tested vertical slice | Native FPC | Repository units and standard RTL only |

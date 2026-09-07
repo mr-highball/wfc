@@ -32,7 +32,7 @@ uses
   wfc_training_text;
 
 const
-  WFC_LEARN_CLI_VERSION = 2;
+  WFC_LEARN_CLI_VERSION = 3;
 
   WFC_LEARN_EXIT_SUCCESS = 0;
   WFC_LEARN_EXIT_INVALID_TRAINING = 1;
@@ -102,17 +102,19 @@ begin
     '  wfc-learn --help'#10 +
     '  wfc-learn --version'#10 +
     #10 +
-    'INPUT is one canonical wfclearn=1 or wfclearn=2 file path, or - to read standard ' +
+    'INPUT is one canonical wfclearn=1, wfclearn=2, wfclearn=3, wfclearn=4, wfclearn=5, or wfclearn=6 file path, or - to read standard ' +
       'input.'#10 +
-    'By default, training emits a canonical wfcpipeline=1 recipe.'#10 +
-    '--model emits the learned standalone wfcm, wfcp, or wfcs model.'#10 +
+    'By default, training emits a canonical wfcpipeline=1 recipe, or ' +
+      'wfcpipeline=2 for value quotas, wfcpipeline=3 for authored connectivity, or wfcpipeline=4 for overlapping volumes.'#10 +
+    '--model emits the learned standalone wfcm, wfcp, or wfcs model; ' +
+      'it rejects sources with value quotas or connectivity because standalone models cannot retain either policy.'#10 +
     '--quiet validates and compiles the recipe without emitting output.'#10;
 end;
 
 function WfcLearnVersionText: String;
 begin
   Result := 'wfc-learn ' + IntToStr(WFC_LEARN_CLI_VERSION) +
-    ' (wfclearn=1,2)'#10;
+    ' (wfclearn=1,2,3,4,5,6)'#10;
 end;
 
 function WfcLearnFailureExitCode(

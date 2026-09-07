@@ -116,7 +116,9 @@ These are **finite per-candidate cross-pass counts**, not a global cardinality
 solver. They do not assert "exactly ten houses anywhere in this output", count
 partially solved peer domains, guarantee connectivity, optimize density, or
 infer a neighborhood. Callers explicitly supply the stencil; other domain
-validators remain necessary for global properties.
+validators remain necessary for global properties. For same-pass counts over
+unresolved domains, use the separate [whole-pass value quotas](value-quotas.md)
+primitive; it counts distinct output cells and propagates during search.
 
 ## Portable pipeline recipes
 

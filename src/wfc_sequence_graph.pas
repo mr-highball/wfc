@@ -284,7 +284,7 @@ function DescribeSequenceGraphIssue(
 implementation
 
 uses
-  wfc_text_codec;
+  wfc_text_codec, wfc_lattice;
 
 type
   TSequenceBooleanArray = array of Boolean;
@@ -402,6 +402,10 @@ var
   LTokenIndex: Integer;
 begin
   Result := 'o' + IntToStr(AModel.Order);
+  { Retain every original open-model key, but bind circular provenance to the
+    applied model as well as its states and counts. The key codec is unchanged. }
+  if AModel.Boundary = wmbWrap then
+    Result := Result + ':boundary-wrap-v2';
   if AStateIndex = 0 then
   begin
     Result := Result + ':n' + IntToStr(AModel.SampleCount);
@@ -508,6 +512,33 @@ begin
     raise EArgumentNilException.Create('sequence model cannot be nil');
   if not Assigned(AGraph) then
     raise EArgumentNilException.Create('sequence graph cannot be nil');
+end;
+
+function ActiveSequencePass(const AGraph: TGraph): TGraph;
+begin
+  Result := AGraph;
+  if Assigned(AGraph) then
+    Result := AGraph.PassGraph[AGraph.CurrentPassIndex];
+end;
+
+procedure RequireIdenticalBridgeLayout(const ATargetGraph,
+  ASourceGraph: TGraph; const AOperation: String);
+var Target, Source: TWfcLatticeLayout;
+begin
+  Target := ATargetGraph.PassLayout; Source := ASourceGraph.PassLayout;
+  { Compare identity directly: legacy adapters can be prepared before Reshape,
+    when both layouts are empty. Do not validate or normalize either record. }
+  if (Target.Cells.X <> Source.Cells.X) or
+    (Target.Cells.Y <> Source.Cells.Y) or
+    (Target.Cells.Z <> Source.Cells.Z) or
+    (Target.Origin.X <> Source.Origin.X) or
+    (Target.Origin.Y <> Source.Origin.Y) or
+    (Target.Origin.Z <> Source.Origin.Z) or
+    (Target.Pitch.X <> Source.Pitch.X) or
+    (Target.Pitch.Y <> Source.Pitch.Y) or
+    (Target.Pitch.Z <> Source.Pitch.Z) or
+    (Target.Wrap <> Source.Wrap) then
+    raise EWfcSequenceGraph.Create(AOperation + ' requires identical pass layouts');
 end;
 
 procedure ValidateGraphShape(const AGraph: TGraph;
@@ -832,7 +863,7 @@ procedure ApplySequenceModelToGraph(const AModel: TWfcSequenceModel;
 var
   LExtent: TWfcSequenceExtent;
 begin
-  if Assigned(AGraph) and AGraph.WrapNeighbors then
+  if Assigned(AGraph) and ActiveSequencePass(AGraph).WrapNeighbors then
     LExtent := wseWrap
   else
     LExtent := wseWhole;
@@ -846,6 +877,13 @@ var
   LKeys: TWfcModelTokens;
 begin
   RequireAssigned(AModel, AGraph);
+  { Root dimensions describe the pipeline default, but these APIs operate on
+    the selected pass. Resolve once before model, domain or topology work. }
+  if ActiveSequencePass(AGraph) <> AGraph then
+  begin
+    ApplySequenceModelToGraph(AModel, ActiveSequencePass(AGraph), AExtent);
+    Exit;
+  end;
   if AGraph.Running then
     raise EWfcSequenceGraph.Create(
       'sequence model cannot be applied while the pipeline is running');
@@ -875,6 +913,11 @@ var
   LGraphModel: TWfcModel;
 begin
   RequireAssigned(AModel, AGraph);
+  if ActiveSequencePass(AGraph) <> AGraph then
+  begin
+    ApplySequenceModelSegmentToGraph(AModel, ActiveSequencePass(AGraph), ABoundary);
+    Exit;
+  end;
   if AGraph.Running then
     raise EWfcSequenceGraph.Create(
       'sequence segment cannot be applied while the pipeline is running');
@@ -929,6 +972,12 @@ var
   LTokenIndices: array of Integer;
 begin
   RequireAssigned(AModel, AGraph);
+  if ActiveSequencePass(AGraph) <> AGraph then
+  begin
+    IntersectSequenceAllowedTokens(AModel, ActiveSequencePass(AGraph),
+      APosition, ATokens);
+    Exit;
+  end;
   if AGraph.Running then
     raise EWfcSequenceGraph.Create(
       'sequence token domains cannot change while the pipeline is running');
@@ -987,6 +1036,12 @@ var
   LWidth: Integer;
 begin
   RequireAssigned(AModel, AGraph);
+  if ActiveSequencePass(AGraph) <> AGraph then
+  begin
+    IntersectSequenceTokenConstraints(AModel, ActiveSequencePass(AGraph),
+      AConstraints);
+    Exit;
+  end;
   if AGraph.Running then
     raise EWfcSequenceGraph.Create(
       'sequence token constraints cannot change while the pipeline is running');
@@ -1035,6 +1090,11 @@ var
   LWidth: Integer;
 begin
   RequireAssigned(AModel, AGraph);
+  if ActiveSequencePass(AGraph) <> AGraph then
+  begin
+    IntersectSequenceLockedSpan(AModel, ActiveSequencePass(AGraph), AStart, ATokens);
+    Exit;
+  end;
   ValidateGraphShape(AGraph, 'sequence locked span');
   LWidth := Integer(AGraph.Dimension.Width);
   LTokenCount := CheckedGraphManagedLength(Length(ATokens),
@@ -1072,6 +1132,11 @@ var
   LTokenCount: Integer;
 begin
   RequireAssigned(AModel, AGraph);
+  if ActiveSequencePass(AGraph) <> AGraph then
+  begin
+    IntersectSequenceSuffix(AModel, ActiveSequencePass(AGraph), ATokens);
+    Exit;
+  end;
   ValidateGraphShape(AGraph, 'sequence suffix');
   LTokenCount := CheckedGraphManagedLength(Length(ATokens),
     'sequence suffix token count');
@@ -1113,6 +1178,9 @@ var
   LSalt: Integer;
 begin
   RequireAssigned(AModel, AGraph);
+  if ActiveSequencePass(AGraph) <> AGraph then
+    Exit(SequenceStateSatisfiesEntryConstraints(AModel,
+      ActiveSequencePass(AGraph), APosition, AStateIndex));
   ValidateGraphShape(AGraph, 'sequence entry constraint validation');
   ValidateAppliedModel(AModel, AGraph,
     'sequence entry constraint validation');
@@ -1142,6 +1210,9 @@ var
 begin
   AFalsePosition := -1;
   RequireAssigned(AModel, AGraph);
+  if ActiveSequencePass(AGraph) <> AGraph then
+    Exit(SequenceStatesSatisfyEntryConstraints(AModel,
+      ActiveSequencePass(AGraph), AStateIndices, AFalsePosition));
   ValidateGraphShape(AGraph, 'sequence path constraint validation');
   ValidateAppliedModel(AModel, AGraph,
     'sequence path constraint validation');
@@ -1185,14 +1256,16 @@ begin
   if AGraph.Running then
     raise EWfcSequenceGraph.Create(
       'sequence pass projection cannot change while the pipeline is running');
-  ValidateGraphShape(AGraph, 'sequence pass projection');
-  ValidateAppliedModel(AModel, AGraph, 'sequence pass projection');
+  LActivePass := ActiveSequencePass(AGraph);
+  ValidateGraphShape(LActivePass, 'sequence pass projection');
+  ValidateAppliedModel(AModel, LActivePass, 'sequence pass projection');
   LSourceGraph := FindPassGraph(AGraph, ASourcePass,
     'sequence pass projection');
-  LActivePass := AGraph.PassGraph[AGraph.CurrentPassIndex];
   if LSourceGraph = LActivePass then
     raise EWfcSequenceGraph.Create(
       'sequence pass projection cannot depend on its own pass');
+  RequireIdenticalBridgeLayout(LActivePass, LSourceGraph,
+    'sequence pass projection');
   LPublicValues := CopyProjectedGraphValues(AModel,
     'sequence pass projection');
   LSalt := SequenceKeySalt(AModel);
@@ -1233,6 +1306,8 @@ begin
     'projected sequence requirements');
   LTargetPass := ATargetGraph.PassGraph[
     ATargetGraph.CurrentPassIndex];
+  RequireIdenticalBridgeLayout(LTargetPass, LSourceGraph,
+    'projected sequence requirements');
   if (not ATargetGraph.RuleGroups.TryGetValue(ATargetValue, LGroup)) or
       (not Assigned(LGroup)) or (LGroup.Value <> ATargetValue) or
       (not (LGroup is TGraph.TParentedGraphRuleGroup)) then
@@ -1382,6 +1457,7 @@ var
   LSourceGraph: TGraph;
   LSourceSalt: Integer;
   LSourceTokenIndex: Integer;
+  LTargetGraph: TGraph;
   LTargetTokenIndex: Integer;
 begin
   ATargetSalt := 0;
@@ -1392,8 +1468,9 @@ begin
     raise EWfcSequenceGraph.Create(
       'sequence projection maps cannot change while the pipeline is running');
 
-  ValidateGraphShape(ATargetGraph, 'sequence projection map');
-  ValidateAppliedModel(ATargetModel, ATargetGraph,
+  LTargetGraph := ActiveSequencePass(ATargetGraph);
+  ValidateGraphShape(LTargetGraph, 'sequence projection map');
+  ValidateAppliedModel(ATargetModel, LTargetGraph,
     'sequence projection map target');
   LSourceGraph := FindPassGraph(ATargetGraph, ASourcePass,
     'sequence projection map');
@@ -1402,6 +1479,9 @@ begin
     'sequence projection map source');
   ValidateProjectionDependencyEdge(ATargetGraph,
     LSourceGraph, ASourcePass);
+
+  RequireIdenticalBridgeLayout(LTargetGraph, LSourceGraph,
+    'sequence projection map');
 
   if Length(ARules) <> ATargetModel.PublicTokenCount then
     raise EArgumentException.CreateFmt(
@@ -1864,7 +1944,7 @@ function CaptureSolvedSequence(const AModel: TWfcSequenceModel;
 var
   LExtent: TWfcSequenceExtent;
 begin
-  if Assigned(AGraph) and AGraph.WrapNeighbors then
+  if Assigned(AGraph) and ActiveSequencePass(AGraph).WrapNeighbors then
     LExtent := wseWrap
   else
     LExtent := wseWhole;
@@ -1884,6 +1964,9 @@ var
   LWidth: Integer;
 begin
   RequireAssigned(AModel, AGraph);
+  if ActiveSequencePass(AGraph) <> AGraph then
+    Exit(CaptureSolvedSequence(AModel, ActiveSequencePass(AGraph),
+      AExtent, ASequence, AReport));
   ASequence := Default(TWfcGeneratedSequence);
   LSequence := Default(TWfcGeneratedSequence);
   InitializeReport(AReport);
@@ -1939,6 +2022,9 @@ var
   LSequence: TWfcGeneratedSequenceSegment;
 begin
   RequireAssigned(AModel, AGraph);
+  if ActiveSequencePass(AGraph) <> AGraph then
+    Exit(CaptureSolvedSequenceSegment(AModel, ActiveSequencePass(AGraph),
+      ABoundary, ASequence, AReport));
   ASequence := Default(TWfcGeneratedSequenceSegment);
   LSequence := Default(TWfcGeneratedSequenceSegment);
   InitializeReport(AReport);

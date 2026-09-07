@@ -29,10 +29,12 @@ interface
 
 uses
   wfc,
+  ensemble_studio_profiles,
   ensemble_studio_workbench;
 
 function CreateSolvedEnsembleStudio(const ASeed: TGraphSeed;
-  const ABars: Integer): TEnsembleStudio;
+  const ABars: Integer;
+  const AProfile: TEnsembleStudioProfile = espStructuralV1): TEnsembleStudio;
 procedure PrintEnsembleStudioShowcase(const ASeed: TGraphSeed;
   const ABars: Integer);
 function EnsembleStudioSelfTest: Integer;
@@ -80,9 +82,9 @@ begin
 end;
 
 function CreateSolvedEnsembleStudio(const ASeed: TGraphSeed;
-  const ABars: Integer): TEnsembleStudio;
+  const ABars: Integer; const AProfile: TEnsembleStudioProfile): TEnsembleStudio;
 begin
-  Result := TEnsembleStudio.Create(ASeed, ABars);
+  Result := TEnsembleStudio.Create(ASeed, ABars, AProfile);
   try
     if not Result.Run(esaGenerate, DefaultEnsembleStudioOptions) then
       raise EEnsembleStudio.Create(Result.RunReportText);

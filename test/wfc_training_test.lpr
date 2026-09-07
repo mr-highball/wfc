@@ -604,8 +604,21 @@ begin
 
   LOptions := MakeWfcTrainingOptions(wtkSequence,
     wmbWrap, wmsNone, 0, 0, 2);
-  CheckDocumentRejected(LMetadata, LOptions, LSamples,
-    'boundary must be open', 'sequence training rejects wrapped source seams');
+  LDocument := TWfcTrainingDocument.Create(LMetadata, LOptions, LSamples);
+  try
+    Check(Pos('wfcs=2'#10, LearnWfcTrainingModelText(LDocument)) = 1,
+      'sequence training explicitly learns independent circular samples');
+    LRecipe := LearnWfcTrainingRecipe(LDocument);
+    try
+      Check(LRecipe.WrapNeighbors and
+        (LRecipe.PassAt(0).SequenceExtent = wseWrap),
+        'circular source exports the matching wrapped sequence extent');
+    finally
+      LRecipe.Free;
+    end;
+  finally
+    LDocument.Free;
+  end;
 
   LOptions := MakeWfcTrainingOptions(wtkPattern2D,
     wmbWrap, wmsD4, 2, 1, 0);

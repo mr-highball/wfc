@@ -1,0 +1,98 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: MIT; Copyright (c) 2021 mr-highball -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="An editable FPC and pas2js WFC workbench for exact terrain, foliage and housing constraints across different grids.">
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="mappedworld.css">
+  <title>WFC · Mapped World</title>
+</head>
+<body data-state="loading" data-self-test="not-requested" data-signature="" data-model-valid="false" data-physical-safe="false">
+  <a class="skip" href="#workbench">Skip to workbench</a>
+  <header class="shell hero">
+    <p class="eyebrow">WFC / PASS LAB 07</p>
+    <h1>One world.<br><span>Three grids.</span></h1>
+    <p class="lede">A house needs more than a clear corner. Explore the exact footprint that connects coarse terrain, fine foliage, and six building sites.</p>
+    <ol class="pipeline" aria-label="Pass layouts">
+      <li><strong>01 / Terrain</strong><span>8 × 6 cells · pitch 4 · origin 0,0</span></li>
+      <li><strong>02 / Foliage</strong><span>32 × 24 cells · pitch 1 · origin 0,0</span></li>
+      <li><strong>03 / Housing</strong><span>3 × 2 cells · pitch 8 · origin 4,4</span></li>
+    </ol>
+  </header>
+  <main class="shell workbench" id="workbench">
+    <aside class="controls">
+      <section class="panel" aria-labelledby="model-heading">
+        <p class="eyebrow">01 / DEFINITION</p>
+        <h2 id="model-heading">Choose the experiment</h2>
+        <label>Preset<select id="preset-select"><option value="interior">Interior-blocker study</option><option value="sandbox">Editable landscape sandbox</option></select></label>
+        <div class="pair">
+          <label>Seed<input id="seed-input" value="3" inputmode="numeric" autocomplete="off"></label>
+          <label>Foliage sampling<select id="sampling-select"><option value="cell">Whole footprint</option><option value="point">Point study · weak</option><option value="region">Explicit region</option></select></label>
+        </div>
+        <fieldset id="region-fields"><legend>Relative world region · half-open XYZ</legend>
+          <label>Minimum<input id="region-min-input" value="0,0,0" spellcheck="false"></label>
+          <label>Maximum<input id="region-max-input" value="8,8,1" spellcheck="false"></label>
+          <p class="small">For a one-cell setback, use −1,−1,0 to 9,9,1. The entire region must fit the provider.</p>
+        </fieldset>
+        <details id="weight-fields"><summary>Sandbox token weights</summary><div class="pair">
+          <label>Land<input id="land-weight-input" value="12" inputmode="numeric"></label>
+          <label>Water<input id="water-weight-input" value="1" inputmode="numeric"></label>
+          <label>Clear<input id="clear-weight-input" value="12" inputmode="numeric"></label>
+          <label>Tree<input id="tree-weight-input" value="1" inputmode="numeric"></label>
+        </div></details>
+        <p id="preset-disclosure" class="notice">Study zoning: 48 terrain cells land; 767 foliage cells clear; one genuinely free site at (7,7). All housing starts vacant. No caller locks.</p>
+        <p class="small">Definition edits require a new session. These grids are this showcase's geometry, not a size limit in the library.</p>
+        <button id="new-button" type="button" class="secondary">New session</button>
+      </section>
+      <section class="panel" aria-labelledby="search-heading">
+        <p class="eyebrow">02 / SEARCH</p><h2 id="search-heading">Choose what may change</h2>
+        <div class="pair">
+          <label>Local backtracks<input id="backtracks-input" value="64" inputmode="numeric"></label>
+          <label>Pass backtracks<input id="pass-backtracks-input" value="16" inputmode="numeric"></label>
+        </div>
+        <div class="checks"><label><input id="negotiated-input" type="checkbox" checked> Negotiate within the selected scope</label><label><input id="trace-input" type="checkbox"> Capture trace</label></div>
+        <button id="generate-button" type="button">Generate baseline</button>
+        <label>Repair scope<select id="scope-select"><option value="housing">Housing only</option><option value="foliage">Foliage + housing</option><option value="all">All three passes</option></select></label>
+        <button id="repair-button" type="button" class="secondary" disabled>Repair selected scope</button>
+        <p class="small">Limits count search alternatives, not seconds. A limit reached is not proof that a solution is impossible. Negotiation never grants permission to change a pass outside the selected scope.</p>
+      </section>
+    </aside>
+    <div class="output">
+      <section class="panel scene" aria-labelledby="scene-heading">
+        <div class="section-title"><div><p class="eyebrow">03 / WORLD SPACE</p><h2 id="scene-heading">Look inside the footprint</h2></div><span class="chip">32 × 24 world units</span></div>
+        <div class="status-band"><p id="status" role="status" aria-live="polite">Loading the Pascal application…</p><p id="detail" class="small">Generate a baseline, inspect a site, then require a house.</p></div>
+        <div id="map-output" class="map" role="region" aria-label="World map and selected housing footprint"><p>No current output.</p></div>
+        <div class="legend"><span><i class="land"></i>Land</span><span><i class="water"></i>Water</span><span><i class="tree"></i>Tree</span><span><i class="house"></i>House / site</span><span><i class="blocker"></i>Physical blocker</span></div>
+        <div class="validation"><p>Selected model <strong id="model-output">—</strong></p><p>Full house clearance <strong id="physical-output">—</strong></p><p>Revision / signature <strong id="signature-output">—</strong></p></div>
+        <p id="safety-note" class="notice">Point sampling is an intentionally weak model. Passing its chosen rules does not establish that a house's complete footprint is clear.</p>
+        <div class="actions"><a id="svg-download" class="button-link" aria-disabled="true">Download safe SVG</a><a id="diagnostic-download" class="button-link secondary" aria-disabled="true">Download labeled diagnostic</a></div>
+      </section>
+      <section class="panel" aria-labelledby="inspect-heading">
+        <p class="eyebrow">04 / INSPECT & EDIT</p><h2 id="inspect-heading">A site is a region, not an index</h2>
+        <div id="site-buttons" class="sites" role="group" aria-label="Select a housing site">
+          <button type="button" data-site="0" aria-pressed="true">Site 0,0</button><button type="button" data-site="1" aria-pressed="false">Site 1,0</button><button type="button" data-site="2" aria-pressed="false">Site 2,0</button><button type="button" data-site="3" aria-pressed="false">Site 0,1</button><button type="button" data-site="4" aria-pressed="false">Site 1,1</button><button type="button" data-site="5" aria-pressed="false">Site 2,1</button>
+        </div>
+        <div class="pair demand"><label>Demand for selected site<select id="demand-select"><option value="vacant">Vacant</option><option value="optional">Optional house</option><option value="required">House required</option></select></label><button id="demand-button" type="button" class="secondary">Apply demand</button></div>
+        <p class="small">Selecting a site only inspects it. Apply demand changes its domain and invalidates the current output; it does not generate a house.</p>
+        <pre id="inspection-output" class="inspection">Generate a baseline to inspect actual provider cells.</pre>
+        <details><summary>Paint a cell domain or caller lock</summary>
+          <div class="editor-grid"><label>Layer<select id="edit-layer-select"><option value="terrain">Terrain</option><option value="foliage" selected>Foliage</option></select></label><label>Local X<input id="edit-x-input" value="7" inputmode="numeric"></label><label>Local Y<input id="edit-y-input" value="7" inputmode="numeric"></label><label>Token<select id="edit-token-select"><option value="clear">Clear</option><option value="tree">Tree</option></select></label></div>
+          <div class="actions"><button id="domain-button" type="button" class="secondary">Restrict domain</button><button id="allow-both-button" type="button" class="secondary">Allow both tokens</button><button id="clear-domain-button" type="button" class="secondary">Restore preset domain</button><button id="lock-button" type="button" class="secondary">Set caller lock</button><button id="clear-lock-button" type="button" class="secondary">Clear lock</button></div>
+          <p class="small">Domains limit what may be generated. Allow both relaxes a study cell's zoning; restore returns it to the preset (free in the sandbox). Locks are explicit caller-owned values. A terrain edit needs the all-pass scope; a foliage edit needs foliage + housing.</p>
+        </details>
+      </section>
+      <details class="panel"><summary>Search report · exact roots, closure and counters</summary><pre id="report-output">No search has run.</pre></details>
+      <section class="panel lesson" aria-labelledby="lesson-heading"><p class="eyebrow">TRY IT</p><h2 id="lesson-heading">The tree that the corner misses</h2>
+        <ol><li>Use the interior study, seed 3, and whole-footprint sampling. Generate a baseline: WFC produces the tree at (7,7).</li><li>Select site 0,0 and require a house. Its 8 × 8 footprint includes the tree, although its lower corner at (4,4) is clear.</li><li>Try housing-only repair. It must respect the unchanged foliage, so it fails.</li><li>Authorize foliage + housing repair. Negotiation can now choose another foliage assignment. The terrain stays unchanged.</li><li>Start a separate point-sampling study to see the counterexample: the selected rules may pass while physical clearance fails.</li></ol>
+        <p class="small">The coordinator excludes complete provider assignments; it does not infer the smallest conflicting region. Freer sandbox worlds can need many attempts or exhaust the chosen budget. No seed search, hidden retry, or automatic clearing is performed.</p>
+      </section>
+    </div>
+  </main>
+  <footer class="shell">Project-owned Pascal throughout · native FPC + pas2js · MIT · No external assets or runtime libraries.<p>Mapped recipe persistence is separate ongoing work; this lab exports an inspected image, not a reloadable pipeline recipe.</p></footer>
+  <noscript><p class="shell notice">This browser application requires JavaScript compiled from Pascal. The native MappedWorld CLI does not.</p></noscript>
+  <script src="BrowserMappedWorld.js"></script>
+  <script>rtl.run();</script>
+</body>
+</html>

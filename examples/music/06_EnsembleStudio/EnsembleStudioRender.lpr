@@ -27,7 +27,7 @@ program EnsembleStudioRender;
 
 uses
   SysUtils, wfc, wfc_music_audio, wfc_music_audio_stream,
-  wfc_music_arrangement, ensemble_studio_stream, wfc_atomic_new_file
+  wfc_music_arrangement, ensemble_studio_profiles, ensemble_studio_stream, wfc_atomic_new_file
   {$IFDEF MSWINDOWS}, Windows{$ELSE}, BaseUnix{$ENDIF};
 
 type
@@ -184,10 +184,12 @@ procedure Usage;
 begin
   WriteLn('EnsembleStudioRender --seconds DURATION --output NEW-WAVE-PATH [options]');
   WriteLn('  --seed UINT32          unsigned decimal replay seed (default 0)');
+  WriteLn('  --profile NAME         structural-v1 or developed-period-v1');
   WriteLn('  --segment-cells N      positive local generation horizon (default 5)');
   WriteLn('  --backtracks N         local search allowance (default 256)');
   WriteLn('  --pass-backtracks N    negotiated pass allowance (default 16)');
   WriteLn('  --trace               capture and print final segment trace metadata');
+  WriteLn('Search/trace options apply to acoustic segments; developed form uses 256/64 backtracks per phrase, trace off.');
   WriteLn('Duration is positive decimal seconds; supplied fractional precision is retained.');
   WriteLn('It rounds upward to quarter-second cells at 120 BPM, not whole bars.');
   WriteLn('PCM is mono 44100 Hz; sustained voices remain continuous between segments.');
@@ -200,7 +202,7 @@ var
   LOptions: TEnsembleStudioStreamOptions;
   LSeconds, LOutput, LOption, LValue: String;
   I: Integer;
-  LSeen: array[0..6] of Boolean;
+  LSeen: array[0..7] of Boolean;
   LKind: Integer;
 begin
   if (ParamCount = 1) and (ParamStr(1) = '--version') then
@@ -220,6 +222,7 @@ begin
     else if LOption = '--backtracks' then LKind := 4
     else if LOption = '--pass-backtracks' then LKind := 5
     else if LOption = '--trace' then LKind := 6
+    else if LOption = '--profile' then LKind := 7
     else raise Exception.Create('unknown option: ' + LOption);
     if LSeen[LKind] then raise Exception.Create('duplicate ' + LOption);
     LSeen[LKind] := True;
@@ -235,6 +238,7 @@ begin
         High(Integer) div ENSEMBLE_STUDIO_STREAM_QUANTUM));
       4: LOptions.MaxBacktracks := Integer(ParseUnsigned(LValue, LOption, High(Integer)));
       5: LOptions.MaxPassBacktracks := Integer(ParseUnsigned(LValue, LOption, High(Integer)));
+      7: LOptions.Profile := ParseEnsembleStudioProfile(LValue);
     end;
   end;
   if not LSeen[0] or not LSeen[1] then

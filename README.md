@@ -15,8 +15,8 @@ supports deterministic propagation, weighted observation, backtracking,
 transactional pass DAGs, selective regeneration, and bounded pass negotiation.
 Count-range clauses, rooted port connectivity, and opt-in deterministic restarts extend those contracts
 without changing existing replay behavior. Domain libraries, learners,
-portable artifacts, native tools, and ten interactive browser demos are
-implemented and tested. The [roadmap](ROADMAP.md) records the remaining work
+portable artifacts, native tools, and interactive browser demos have
+executable conformance fixtures. The [roadmap](ROADMAP.md) records the remaining work
 and explicit exit gates.
 
 ## Start here
@@ -24,12 +24,21 @@ and explicit exit gates.
 | What you want | Where to start |
 | --- | --- |
 | Understand and author passes | [Pass basics](docs/passes.md), [dependency DAGs](docs/pass-dags.md) |
-| Require connected roads or circulation | [Rooted port connectivity](docs/connectivity.md) |
+| Compose coarse and fine spatial layers | [Mapped passes](docs/mapped-passes.md), [Mapped World workbench](examples/passes/07_MappedWorld/README.md) |
+| Require connected roads or circulation | [Rooted port connectivity](docs/connectivity.md), [training-source authoring](docs/training-connectivity.md) |
+| Require exact or bounded output quantities | [Whole-pass value quotas](docs/value-quotas.md), [portable quota recipes](docs/pipeline-value-quotas.md) |
 | Build and run locally | [Build guide](docs/building.md), [FPC development tools](docs/development-tools.md) |
 | Try an interactive demo | [Demo table below](#demos), [complete examples index](examples/README.md) |
 | Learn models from examples | [Learning](docs/learning.md), [training documents and CLI](docs/training.md) |
+| Learn cyclic text, rhythms or event patterns | [Circular sequence training](docs/sequences.md#circular-source-training), [Training Studio](docs/training-studio.md) |
 | Save and replay a pipeline | [Portable recipes, runs, and results](docs/pipeline-artifacts.md) |
-| Extend or evaluate the system | [Roadmap](ROADMAP.md), [research records](docs/research/pass-negotiation-v1.md) |
+| Assemble independently authored or learned pipelines | [Immutable fragment composition](docs/pipeline-composition.md) |
+| Edit a bound pipeline and authorize repair | [Preparation and input replacement](docs/pipeline-preparation.md), [prepared sessions](docs/pipeline-sessions.md) |
+| Save edit history and restore a live workspace | [Workspace journals, exact replay, atomic authoring and CLI](docs/pipeline-workspaces.md) |
+| Edit arbitrary supported pipelines interactively | [Pipeline Workspace](examples/passes/08_PipelineWorkspace/README.md), [native artifact-generating host](examples/passes/08_PipelineWorkspace/NATIVE.md) |
+| Check or inspect saved work | [Artifact-family validation, inspection, and exact replay](docs/artifact-tools.md) |
+| Check source-distribution assets and review status | [Asset inventory and native checker](docs/assets.md) |
+| Extend or evaluate the system | [Roadmap](ROADMAP.md), [research records](docs/research/README.md) |
 
 ## A small pass-based program
 
@@ -88,6 +97,38 @@ Directional rules express same-layer adjacency. Named requirements can read
 the same coordinate, a signed offset, any matching declared neighbor, or an
 inclusive [count range](docs/pass-counts.md). Explicit modes distinguish
 matching offsets from distinct provider cells when wrapped offsets alias.
+Opt-in [mapped passes](docs/mapped-passes.md) give each layer its own integer
+world layout: coarse terrain, fine foliage, and larger building footprints can
+read exact points or every intersecting provider cell, including unique-cell
+count ranges. The [Mapped World workbench](examples/passes/07_MappedWorld/README.md)
+lets you edit domains, locks, housing demands, and sampling on three fixed
+showcase grids. Its [reproducible footprint study](docs/research/mapped-world-footprints-v1.md)
+contrasts a clear corner with an interior blocker and demonstrates explicitly
+authorized upstream repair. The additive [portable mapped pipeline extension](docs/portable-mapped-passes.md)
+keeps these concerns separate: recipes own per-pass topology and mapped policies, runs
+own independent extents, and results retain each layer's actual layout. The
+workbench's general layout editing and portable import/export UI remain open.
+
+[Pipeline composition](docs/pipeline-composition.md) combines complete authored
+or learned recipes with explicit names, preserving projection bridges, aliases,
+policies, topology, and resource provenance. It produces an immutable recipe;
+the caller supplies run extents and executes it through the existing runtime.
+The [prepared-session API](docs/pipeline-sessions.md) now adds immediate input
+edits, revision-bound explicit repair plans, cumulative pending requirements and
+complete detached solver/state evidence for one bound recipe. It keeps caller
+ownership and scoped reuse distinct from fresh invocation results. The
+[workspace layer](docs/pipeline-workspaces.md) adds complete ordered journals,
+explicit epochs, exact replay and atomic edit/repair publication through shared
+Pascal APIs and an included FPC CLI. Imported journals remain unverified claims
+until their complete actual evidence replays. The separate
+[Pipeline Workspace editor](examples/passes/08_PipelineWorkspace/README.md)
+uses those APIs for complete recipe/run import, cell inputs, explicit scoped
+repair, journal restore/save and caller-defined mapped epochs. Its shared
+native host starts from real mixed-resolution or learned-sequence presets and
+exports canonical artifacts plus an exact selected-pass SVG. View windows do
+not limit composition size; format capacities, resources and solver feasibility
+still apply. The fixed Mapped World study and Ensemble Studio interfaces have
+not been migrated or replaced.
 
 Ordinary solving follows `prepare → solve → validate → commit`. A failed
 reference transaction restores its previous entries and random streams.
@@ -99,12 +140,16 @@ optimum, minimal edit, or a proof that every budget-limited model is impossible.
 
 ## Demos
 
-Every standard demo uses repository code and licensed source material.
-The native and browser hosts share Pascal generation and validation code.
+Standard demos use project-owned implementations and the applicable compiler
+RTL. The native and browser hosts share Pascal generation and validation code.
+The nine retained [historical assets](docs/assets.md) are not inputs to standard
+demo execution; their origin and redistribution documentation remains unresolved.
 
 | Domain | Native presentation | Interactive pas2js demo |
 | --- | --- | --- |
 | 2D worlds | Typed terrain, biome, foliage; settlement and repair examples | [2D Pass Workbench](examples/2D/02_BrowserWorld/README.md) |
+| Mixed-resolution worlds | Coarse terrain, fine foliage, inset housing; footprint inspection, scoped repair, shared SVG | [Mapped World](examples/passes/07_MappedWorld/README.md) |
+| Generic pipeline editing | [Native preset/import host](examples/passes/08_PipelineWorkspace/NATIVE.md): user layouts, canonical recipe/run/journal, exact slice SVG; existing CLI continues history | [Pipeline Workspace](examples/passes/08_PipelineWorkspace/README.md): drafts, cell inputs, scoped repair, epochs and verified restore |
 | Learned 3D terrain | Learned volume → socket/support structure → spatial foliage; exact SVG | [Learned Terraces](examples/3D/04_LearnedTerraces/README.md) |
 | 3D buildings | Validated multi-floor geometry and deterministic SVG | [Building 3D](examples/3D/03_BrowserBuilding/README.md) |
 | Text | Structure → lexical → punctuation composition | [Text Pass Workbench](examples/text/03_PassComposition/README.md) |
@@ -112,6 +157,7 @@ The native and browser hosts share Pascal generation and validation code.
 | Polyphonic music | Synchronized chord-capable voices, training, repair, streamed audio and MIDI | [Ensemble Studio](examples/music/06_EnsembleStudio/README.md) |
 | Independent musical roles | Learned role vocabularies, novel vertical combinations, collective harmony, streamed WAV/MIDI | [Voice Studio](examples/music/07_VoiceStudio/README.md) |
 | Training | Editable 1D/2D/3D corpora → models → recipes → validated results | [Training Studio](examples/learning/05_TrainingStudio/README.md) |
+| Overlapping volumes | Joint XYZ learning, saved public constraints/replay, native cutaway SVG | [Training Studio lattice preset](examples/learning/05_TrainingStudio/README.md#native-volume-svg) |
 | Pass counts | Lower/upper bounds, wrapped aliases, scoped repair | [Neighborhood Counts](examples/passes/04_NeighborhoodCounts/README.md) |
 | Connected routes | Solver-propagated roads and multi-floor circulation, independent BFS, SVG, scoped repair | [Connected Routes](examples/passes/06_ConnectedRoutes/README.md) |
 
@@ -124,6 +170,13 @@ scores and [stream continued polyphonic segments and audio](docs/music-ensemble-
 with [two-pass streamed MIDI](docs/music-midi-stream.md),
 without retaining the whole composition. Finite preview and score adapters
 still have their own resource bounds.
+The [musical-form planner](docs/music-form.md) adds bar-level form,
+harmonic-intent, and gesture passes. Ensemble Studio's developed profile uses
+them for question/answer/contrast/return phrases, with exact acoustic masks
+and an independently checked realization instead of extending one repeated bar.
+The optional [native Ensemble download host](docs/ensemble-http-downloads.md)
+streams user-selected-duration WAVE to ordinary browser downloads, including
+trusted-LAN clients without the direct browser file-system picker.
 The separate [independent-voice libraries](docs/music-voices.md) learn one
 chord-capable vocabulary per role and generate new vertical combinations
 under collective harmony, shared rhythm, ranges, and optional pair gaps.
@@ -164,10 +217,10 @@ The shell equivalents are `bash ./build-browser-music.sh` and
 Set `PAS2JS` to your compiler path when it is not on `PATH`.
 Open `http://127.0.0.1:4177/`; stop the foreground server with Ctrl+C.
 
-The [build guide](docs/building.md) covers all ten browser staging scripts,
+The [build guide](docs/building.md) covers the browser staging scripts,
 compiler versions and overrides, package builds, and CI.
 The [development-tool guide](docs/development-tools.md) covers the FPC server,
-browser evidence checker, and browser conformance runner. Generated browser
+browser completion capture, evidence checker, and browser conformance runner. Generated browser
 code is build output, not a second hand-maintained implementation.
 
 ## Framework guides
@@ -176,10 +229,10 @@ code is build output, not a second hand-maintained implementation.
 | --- | --- |
 | Solver and replay | [Reference solver](docs/solver.md), [determinism](docs/determinism.md), [restarts and timing](docs/restarts.md) |
 | Pass composition and diagnosis | [DAGs](docs/pass-dags.md), [counts](docs/pass-counts.md), [negotiation](docs/pass-negotiation.md), [selective negotiation](docs/selective-negotiation.md), [causal traces](docs/traces.md), [streaming and bounded inspection](docs/trace-streaming.md) |
-| Learned representations | [Cardinal models](docs/learning.md), [overlapping patterns](docs/patterns.md), [sequences](docs/sequences.md), [training](docs/training.md) |
-| Spatial domains | [2D worlds](docs/world2d.md), [voxels](docs/voxel3d.md), [learned terraces](docs/learned-terraces3d.md), [Building 3D](docs/building3d.md) |
+| Learned representations | [Cardinal models](docs/learning.md), [2D overlapping patterns](docs/patterns.md), [3D overlapping volumes](docs/overlapping-3d.md), [sequences](docs/sequences.md), [training](docs/training.md) |
+| Spatial domains | [2D worlds](docs/world2d.md), [mapped passes](docs/mapped-passes.md), [voxels](docs/voxel3d.md), [learned terraces](docs/learned-terraces3d.md), [Building 3D](docs/building3d.md) |
 | Music and text | [Exact music model](docs/music.md), [polyphonic ensembles](docs/music-ensemble.md), [independent voices](docs/music-voices.md), [audio](docs/music-audio.md), [arrangements](docs/music-arrangement.md), [import](docs/music-import.md), [text completion](docs/text.md) |
-| Portable workflow | [Pipeline artifacts and tools](docs/pipeline-artifacts.md), [dependency policy](docs/dependencies.md) |
+| Portable workflow | [Pipeline artifacts](docs/pipeline-artifacts.md), [editable workspaces and exact history replay](docs/pipeline-workspaces.md), [validation and inspection tools](docs/artifact-tools.md), [dependency policy](docs/dependencies.md) |
 
 The remaining work includes richer harmonic models, general voice-leading
 constraints, independently learned rhythm roles, larger
@@ -193,6 +246,9 @@ equivalent flattened model.
 
 Project-authored source is under the [MIT license](LICENSE). The standard
 runtime and demos use project-owned implementations and the applicable
-compiler RTL. External engines and legacy media adapters remain optional,
-isolated, and subject to their own licenses; see the
+compiler RTL. The former external-engine and media-library demo integrations
+have been removed; see the
 [dependency policy](docs/dependencies.md) and [examples index](examples/README.md).
+The separate [asset manifest and review guide](docs/assets.md) records nine
+retained historical files without assigning them invented provenance or terms.
+Its byte check is not a legal-permission or release-readiness verdict.

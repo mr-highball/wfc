@@ -33,6 +33,7 @@ uses
   wfc_music_audio,
   wfc_music_midi,
   wfc_midi_smf,
+  ensemble_studio_profiles,
   ensemble_studio_workbench,
   ensemble_studio_demo;
 
@@ -41,14 +42,16 @@ type
     SelfTest: Boolean;
     Seed: TGraphSeed;
     Bars: Integer;
+    Profile: TEnsembleStudioProfile;
     OutputDirectory: String;
   end;
 
 procedure Usage;
 begin
-  WriteLn('EnsembleStudio [--seed UINT32] [--bars POSITIVE] [--output NEW-DIRECTORY]');
+  WriteLn('EnsembleStudio [--seed UINT32] [--bars POSITIVE] [--profile NAME] [--output NEW-DIRECTORY]');
   WriteLn('EnsembleStudio --selftest');
   WriteLn('The default is seed 0 and two 4/4 bars (16 eighth-note cells).');
+  WriteLn('Profiles: structural-v1 (original model), developed-period-v1 (phrase development).');
   WriteLn('Score and MIDI exports follow the requested grid. Short supported scores');
   WriteLn('also receive a deterministic mono PCM16 WAV preview. Existing paths are refused.');
 end;
@@ -63,7 +66,8 @@ end;
 
 function ParseArguments: TEnsembleArguments;
 var
-  I: Integer;
+  I, LKind: Integer;
+  LSeen: array[0..3] of Boolean;
   LOption: String;
 begin
   Result := Default(TEnsembleArguments);
@@ -85,9 +89,17 @@ begin
     Halt(0);
   end;
   I := 1;
+  for LKind := 0 to High(LSeen) do LSeen[LKind] := False;
   while I <= ParamCount do
   begin
     LOption := ParamStr(I);
+    if LOption = '--seed' then LKind := 0
+    else if LOption = '--bars' then LKind := 1
+    else if LOption = '--profile' then LKind := 2
+    else if LOption = '--output' then LKind := 3
+    else raise EEnsembleStudio.Create('unknown option: ' + LOption);
+    if LSeen[LKind] then raise EEnsembleStudio.Create('duplicate ' + LOption);
+    LSeen[LKind] := True;
     Inc(I);
     if I > ParamCount then
       raise EEnsembleStudio.Create('missing value for ' + LOption);
@@ -96,10 +108,10 @@ begin
         ParamStr(I), 'seed', 'EnsembleStudio')
     else if LOption = '--bars' then
       Result.Bars := ParsePositiveInteger(ParamStr(I), 'bars')
+    else if LOption = '--profile' then
+      Result.Profile := ParseEnsembleStudioProfile(ParamStr(I))
     else if LOption = '--output' then
-      Result.OutputDirectory := ParamStr(I)
-    else
-      raise EEnsembleStudio.Create('unknown option: ' + LOption);
+      Result.OutputDirectory := ParamStr(I);
     Inc(I);
   end;
   EnsembleStudioBarsToCellCount(Result.Bars);
@@ -209,7 +221,7 @@ begin
     Exit;
   end;
   LStudio := CreateSolvedEnsembleStudio(
-    LArguments.Seed, LArguments.Bars);
+    LArguments.Seed, LArguments.Bars, LArguments.Profile);
   try
     WriteLn(LStudio.RunReportText);
     WriteLn('composition=', LStudio.SignatureText,

@@ -37,9 +37,16 @@ uses
   wfc_pipeline_run,
   wfc_pipeline_result,
   wfc_training,
-  wfc_training_workspace;
+  wfc_training_workspace,
+  wfc_voxel3d_isometric;
 
 type
+  TTrainingConnectivityRow = record
+    Value: TWfcModelToken;
+    Participant, Required: TJSHTMLInputElement;
+    Ports: array[TGraphDirection] of TJSHTMLInputElement;
+  end;
+
   TBrowserTrainingStudioApplication = class
   strict private
     FWorkspace: TWfcTrainingWorkspace;
@@ -52,6 +59,29 @@ type
     FFileReader: TJSFileReader;
     FSourceDownloadUrl: String;
     FArtifactDownloadUrl: String;
+    FVolumeDownloadUrl, FVolumeSvgText, FVolumeSourceSignature: String;
+    FVolumeScene: TVoxel3DProjectedScene;
+    FVolumeRenderedDepth: Integer;
+    FVolumePanel, FVolumeViewport, FVolumeStatus: TJSElement;
+    FVolumeYaw, FVolumeHiddenToken: TJSHTMLSelectElement;
+    FVolumeDepth: TJSHTMLInputElement;
+    FVolumeDownload: TJSHTMLAnchorElement;
+    FQuotaDraftDirty: Boolean;
+    FEditingQuotaIndex: Integer;
+    FConnectivityDraftDirty: Boolean;
+    FEditingConnectivityIndex: Integer;
+    FConnectivityProfileOrder: TWfcModelTokens;
+    FConnectivityRows: array of TTrainingConnectivityRow;
+    FConnectivityLabelInput: TJSHTMLInputElement;
+    FConnectivityRoot: array[0..2] of TJSHTMLInputElement;
+    FConnectivityTerminals: TJSHTMLTextAreaElement;
+    FConnectivityAll: TJSHTMLInputElement;
+    FConnectivityProfiles: TJSElement;
+    FConnectivityList: TJSHTMLSelectElement;
+    FConnectivityApplyButton, FConnectivityNewButton,
+      FConnectivityRemoveButton, FConnectivityClearButton,
+      FConnectivityDiscardButton, FConnectivityDemoButton: TJSHTMLButtonElement;
+    FConnectivityStatus: TJSElement;
 
     FPresetSelect: TJSHTMLSelectElement;
     FLoadPresetButton: TJSHTMLButtonElement;
@@ -65,11 +95,14 @@ type
     FRawLicenseInput: TJSHTMLInputElement;
     FRawSourceInput: TJSHTMLInputElement;
     FRawOrderInput: TJSHTMLInputElement;
+    FRawBoundarySelect: TJSHTMLSelectElement;
     FRawTextInput: TJSHTMLTextAreaElement;
     FConvertRawButton: TJSHTMLButtonElement;
 
     FStatusElement: TJSElement;
     FProfileElement: TJSElement;
+    FBoundaryElement: TJSElement;
+    FPresetLocksPending: Integer;
     FSampleCountElement: TJSElement;
     FSourceTokenCountElement: TJSElement;
     FLockCountElement: TJSElement;
@@ -96,6 +129,18 @@ type
     FLockList: TJSHTMLSelectElement;
     FRemoveLockButton: TJSHTMLButtonElement;
     FClearLocksButton: TJSHTMLButtonElement;
+
+    FQuotaLabelInput: TJSHTMLInputElement;
+    FQuotaTokensSelect: TJSHTMLSelectElement;
+    FQuotaMinimumInput: TJSHTMLInputElement;
+    FQuotaMaximumInput: TJSHTMLInputElement;
+    FQuotaList: TJSHTMLSelectElement;
+    FQuotaApplyButton: TJSHTMLButtonElement;
+    FQuotaNewButton: TJSHTMLButtonElement;
+    FQuotaRemoveButton: TJSHTMLButtonElement;
+    FQuotaClearButton: TJSHTMLButtonElement;
+    FQuotaDiscardButton: TJSHTMLButtonElement;
+    FQuotaStatusElement: TJSElement;
 
     FResultStatusElement: TJSElement;
     FOutputGrid: TJSElement;
@@ -131,6 +176,26 @@ type
     procedure AddOrReplaceLock(const AX, AY, AZ: Integer;
       const AToken: TWfcModelToken);
     procedure SortLocks;
+    procedure ReloadQuotaEditor;
+    procedure LoadQuotaFields(const AIndex: Integer);
+    procedure BeginQuotaDraft;
+    procedure CommitValueQuotas(const AQuotas: TWfcTrainingValueQuotas);
+    procedure ApplyQuotaDraft;
+    procedure RefreshQuotaState;
+    procedure RunQuotaSelfTest;
+    function PolicyDraftDirty: Boolean;
+    procedure RequireNoPolicyDraft;
+    procedure ReloadConnectivityEditor;
+    procedure LoadConnectivityFields(const AIndex: Integer);
+    procedure BeginConnectivityDraft;
+    procedure ApplyConnectivityDraft;
+    procedure CommitConnectivities(const AValues: TWfcTrainingConnectivities);
+    procedure RefreshConnectivityState;
+    procedure RunConnectivitySelfTest;
+    procedure RunCircularSelfTest;
+    procedure RunPattern3DSelfTest;
+    procedure ClearVolumeView;
+    procedure RefreshVolumeView;
 
     procedure SetState(const AState, AStatus, ADetail: String);
     procedure ShowError(const AMessage: String);
@@ -180,6 +245,23 @@ type
     function HandleClearLocks(AEvent: TJSMouseEvent): Boolean;
     function HandleOutputClick(AEvent: TJSMouseEvent): Boolean;
     function HandleArtifactChange(AEvent: TJSEvent): Boolean;
+    function HandleVolumeOptions(AEvent: TJSEvent): Boolean;
+    function HandleVolumeClick(AEvent: TJSMouseEvent): Boolean;
+    function HandleQuotaInput(AEvent: TJSEvent): Boolean;
+    function HandleQuotaSelect(AEvent: TJSEvent): Boolean;
+    function HandleQuotaApply(AEvent: TJSMouseEvent): Boolean;
+    function HandleQuotaNew(AEvent: TJSMouseEvent): Boolean;
+    function HandleQuotaRemove(AEvent: TJSMouseEvent): Boolean;
+    function HandleQuotaClear(AEvent: TJSMouseEvent): Boolean;
+    function HandleQuotaDiscard(AEvent: TJSMouseEvent): Boolean;
+    function HandleConnectivityInput(AEvent: TJSEvent): Boolean;
+    function HandleConnectivitySelect(AEvent: TJSEvent): Boolean;
+    function HandleConnectivityApply(AEvent: TJSMouseEvent): Boolean;
+    function HandleConnectivityNew(AEvent: TJSMouseEvent): Boolean;
+    function HandleConnectivityRemove(AEvent: TJSMouseEvent): Boolean;
+    function HandleConnectivityClear(AEvent: TJSMouseEvent): Boolean;
+    function HandleConnectivityDiscard(AEvent: TJSMouseEvent): Boolean;
+    function HandleConnectivityDemo(AEvent: TJSMouseEvent): Boolean;
   public
     constructor Create;
     destructor Destroy; override;
@@ -192,7 +274,10 @@ uses
   wfc_text_codec,
   wfc_training_text,
   wfc_text_training,
-  training_studio_presets;
+  training_studio_presets,
+  training_studio_demo,
+  training_studio_connectivity,
+  wfc_voxel3d, wfc_voxel3d_svg, wfc_token_volume_view;
 
 const
   MAX_SEED = Cardinal($FFFFFFFF);
@@ -220,6 +305,12 @@ begin
   FFileReader := nil;
   FSourceDownloadUrl := '';
   FArtifactDownloadUrl := '';
+  FQuotaDraftDirty := False;
+  FEditingQuotaIndex := -1;
+  FEditingConnectivityIndex := -1;
+  FConnectivityDraftDirty := False;
+  FPresetLocksPending := -1;
+  FVolumeScene := nil;
 end;
 
 destructor TBrowserTrainingStudioApplication.Destroy;
@@ -228,6 +319,8 @@ begin
     TJSURL.revokeObjectURL(FSourceDownloadUrl);
   if FArtifactDownloadUrl <> '' then
     TJSURL.revokeObjectURL(FArtifactDownloadUrl);
+  if FVolumeDownloadUrl<>'' then TJSURL.revokeObjectURL(FVolumeDownloadUrl);
+  FVolumeScene.Free;
   FWorkspace.Free;
   inherited Destroy;
 end;
@@ -256,11 +349,13 @@ begin
   FRawLicenseInput := TJSHTMLInputElement(RequireElement('raw-license-input'));
   FRawSourceInput := TJSHTMLInputElement(RequireElement('raw-source-input'));
   FRawOrderInput := TJSHTMLInputElement(RequireElement('raw-order-input'));
+  FRawBoundarySelect := TJSHTMLSelectElement(RequireElement('raw-boundary-select'));
   FRawTextInput := TJSHTMLTextAreaElement(RequireElement('raw-text-input'));
   FConvertRawButton := TJSHTMLButtonElement(RequireElement('convert-raw-button'));
 
   FStatusElement := RequireElement('status');
   FProfileElement := RequireElement('profile-output');
+  FBoundaryElement := RequireElement('boundary-output');
   FSampleCountElement := RequireElement('sample-count');
   FSourceTokenCountElement := RequireElement('source-token-count');
   FLockCountElement := RequireElement('lock-count');
@@ -292,9 +387,43 @@ begin
   FClearLocksButton := TJSHTMLButtonElement(
     RequireElement('clear-locks-button'));
 
+  FQuotaLabelInput := TJSHTMLInputElement(RequireElement('quota-label-input'));
+  FQuotaTokensSelect := TJSHTMLSelectElement(RequireElement('quota-tokens-select'));
+  FQuotaMinimumInput := TJSHTMLInputElement(RequireElement('quota-minimum-input'));
+  FQuotaMaximumInput := TJSHTMLInputElement(RequireElement('quota-maximum-input'));
+  FQuotaList := TJSHTMLSelectElement(RequireElement('quota-list'));
+  FQuotaApplyButton := TJSHTMLButtonElement(RequireElement('quota-apply-button'));
+  FQuotaNewButton := TJSHTMLButtonElement(RequireElement('quota-new-button'));
+  FQuotaRemoveButton := TJSHTMLButtonElement(RequireElement('quota-remove-button'));
+  FQuotaClearButton := TJSHTMLButtonElement(RequireElement('quota-clear-button'));
+  FQuotaDiscardButton := TJSHTMLButtonElement(RequireElement('quota-discard-button'));
+  FQuotaStatusElement := RequireElement('quota-status');
+  FConnectivityLabelInput := TJSHTMLInputElement(RequireElement('connectivity-label'));
+  FConnectivityRoot[0] := TJSHTMLInputElement(RequireElement('connectivity-root-x'));
+  FConnectivityRoot[1] := TJSHTMLInputElement(RequireElement('connectivity-root-y'));
+  FConnectivityRoot[2] := TJSHTMLInputElement(RequireElement('connectivity-root-z'));
+  FConnectivityTerminals := TJSHTMLTextAreaElement(RequireElement('connectivity-terminals'));
+  FConnectivityAll := TJSHTMLInputElement(RequireElement('connectivity-all'));
+  FConnectivityProfiles := RequireElement('connectivity-profiles');
+  FConnectivityList := TJSHTMLSelectElement(RequireElement('connectivity-list'));
+  FConnectivityApplyButton := TJSHTMLButtonElement(RequireElement('connectivity-apply'));
+  FConnectivityNewButton := TJSHTMLButtonElement(RequireElement('connectivity-new'));
+  FConnectivityRemoveButton := TJSHTMLButtonElement(RequireElement('connectivity-remove'));
+  FConnectivityClearButton := TJSHTMLButtonElement(RequireElement('connectivity-clear'));
+  FConnectivityDiscardButton := TJSHTMLButtonElement(RequireElement('connectivity-discard'));
+  FConnectivityDemoButton := TJSHTMLButtonElement(RequireElement('connectivity-demo'));
+  FConnectivityStatus := RequireElement('connectivity-status');
+
   FResultStatusElement := RequireElement('result-status');
   FOutputGrid := RequireElement('output-grid');
   FOutputPlaceholder := RequireElement('output-placeholder');
+  FVolumePanel:=RequireElement('volume-panel');
+  FVolumeViewport:=RequireElement('volume-viewport');
+  FVolumeStatus:=RequireElement('volume-status');
+  FVolumeYaw:=TJSHTMLSelectElement(RequireElement('volume-yaw'));
+  FVolumeHiddenToken:=TJSHTMLSelectElement(RequireElement('volume-hidden-token'));
+  FVolumeDepth:=TJSHTMLInputElement(RequireElement('volume-visible-depth'));
+  FVolumeDownload:=TJSHTMLAnchorElement(RequireElement('volume-download'));
   FPassReportElement := RequireElement('pass-report');
   FFailureReportElement := RequireElement('failure-report');
 
@@ -327,6 +456,33 @@ begin
   FRemoveLockButton.onclick := @HandleRemoveLock;
   FClearLocksButton.onclick := @HandleClearLocks;
   FArtifactSelect.onchange := @HandleArtifactChange;
+  FVolumeYaw.onchange:=@HandleVolumeOptions;
+  FVolumeHiddenToken.onchange:=@HandleVolumeOptions;
+  FVolumeDepth.onchange:=@HandleVolumeOptions;
+  TJSHTMLElement(FVolumeViewport).onclick:=@HandleVolumeClick;
+  FQuotaLabelInput.oninput := @HandleQuotaInput;
+  FQuotaMinimumInput.oninput := @HandleQuotaInput;
+  FQuotaMaximumInput.oninput := @HandleQuotaInput;
+  FQuotaTokensSelect.onchange := @HandleQuotaInput;
+  FQuotaList.onchange := @HandleQuotaSelect;
+  FQuotaApplyButton.onclick := @HandleQuotaApply;
+  FQuotaNewButton.onclick := @HandleQuotaNew;
+  FQuotaRemoveButton.onclick := @HandleQuotaRemove;
+  FQuotaClearButton.onclick := @HandleQuotaClear;
+  FQuotaDiscardButton.onclick := @HandleQuotaDiscard;
+  FConnectivityLabelInput.oninput := @HandleConnectivityInput;
+  FConnectivityRoot[0].oninput := @HandleConnectivityInput;
+  FConnectivityRoot[1].oninput := @HandleConnectivityInput;
+  FConnectivityRoot[2].oninput := @HandleConnectivityInput;
+  FConnectivityTerminals.oninput := @HandleConnectivityInput;
+  FConnectivityAll.onchange := @HandleConnectivityInput;
+  FConnectivityList.onchange := @HandleConnectivitySelect;
+  FConnectivityApplyButton.onclick := @HandleConnectivityApply;
+  FConnectivityNewButton.onclick := @HandleConnectivityNew;
+  FConnectivityRemoveButton.onclick := @HandleConnectivityRemove;
+  FConnectivityClearButton.onclick := @HandleConnectivityClear;
+  FConnectivityDiscardButton.onclick := @HandleConnectivityDiscard;
+  FConnectivityDemoButton.onclick := @HandleConnectivityDemo;
 end;
 
 procedure TBrowserTrainingStudioApplication.PopulatePresets;
@@ -351,6 +507,8 @@ begin
   FWidthInput.value := IntToStr(AOptions.Width);
   FHeightInput.value := IntToStr(AOptions.Height);
   FDepthInput.value := IntToStr(ADepth);
+  FVolumeDepth.value:=IntToStr(ADepth);
+  FVolumeDepth.max:=IntToStr(ADepth);
   FLockZInput.value := '0';
   FSeedInput.value := UIntToStr(AOptions.Seed);
   if AOptions.Strategy = wpssNegotiated then
@@ -364,23 +522,37 @@ end;
 
 procedure TBrowserTrainingStudioApplication.LoadPreset(const AIndex: Integer);
 begin
+  RequireNoPolicyDraft;
   FPresetSelect.value := IntToStr(AIndex);
   WriteOptions(TrainingStudioPresetOptions(AIndex),
     TrainingStudioPresetDepth(AIndex));
   ApplySourceText(TrainingStudioPresetText(AIndex));
+  if AIndex in [TRAINING_STUDIO_CIRCULAR_PRESET,TRAINING_STUDIO_PATTERN3D_PRESET] then
+    FPresetLocksPending := AIndex;
   SetState('source-dirty', 'Preset loaded; train to continue.',
     TrainingStudioPresetName(AIndex) + ' is the current editable source.');
+  if AIndex=TRAINING_STUDIO_CIRCULAR_PRESET then
+    SetState('source-dirty', 'Circular text preset loaded; train to continue.',
+      'Training this preset adds three visible public locks: r at 0, f at 5, r at 15. The forty-cell output wraps back to its first cell.');
+  if AIndex=TRAINING_STUDIO_PATTERN3D_PRESET then
+    SetState('source-dirty','Overlapping volume preset loaded; train to continue.',
+      'Training learns joint 2 x 2 x 2 footprints and adds three visible XYZ locks: a stone floor, a planted cell, and an open courtyard.');
 end;
 
 procedure TBrowserTrainingStudioApplication.ApplySourceText(
   const AText: String);
 begin
+  RequireNoPolicyDraft;
   CancelSourceFileRead;
+  FQuotaDraftDirty := False;
+  FPresetLocksPending := -1;
   FLocks := nil;
   FVocabulary := nil;
   FSelectedCell := -1;
   FSourceInput.value := AText;
   FWorkspace.SetSourceText(AText);
+  ReloadQuotaEditor;
+  ReloadConnectivityEditor;
   RefreshAll;
   SetState('source-dirty', 'Source changed; derived artifacts cleared.',
     'Train the current source before configuring another run.');
@@ -388,11 +560,18 @@ end;
 
 procedure TBrowserTrainingStudioApplication.TrainWorkspace;
 begin
+  RequireNoPolicyDraft;
   CancelSourceFileRead;
   FLocks := nil;
   FSelectedCell := -1;
   FWorkspace.SetSourceText(FSourceInput.value);
   FWorkspace.Train;
+  if FPresetLocksPending>=0 then
+    FLocks := TrainingStudioPresetLocks(FPresetLocksPending,
+      FWorkspace.PublicPassIndex);
+  FPresetLocksPending := -1;
+  ReloadQuotaEditor;
+  ReloadConnectivityEditor;
   RefreshAll;
   SetState('trained', 'Recipe trained.',
     'The model and recipe are current; configure and solve a bounded run.');
@@ -404,6 +583,7 @@ var
   LOptions: TWfcTrainingSolveOptions;
   LStatus: TWfcPipelineResultStatus;
 begin
+  RequireNoPolicyDraft;
   { Clearing first is deliberate: malformed edited options cannot leave an
     older run or result looking current. }
   FWorkspace.ClearRun;
@@ -607,12 +787,414 @@ begin
   end;
 end;
 
+procedure TBrowserTrainingStudioApplication.LoadQuotaFields(const AIndex: Integer);
+var I, J: Integer; Q: TWfcTrainingValueQuota;
+begin
+  FEditingQuotaIndex := AIndex;
+  FQuotaList.selectedIndex := AIndex;
+  FQuotaLabelInput.value := '';
+  FQuotaMinimumInput.value := '0';
+  FQuotaMaximumInput.value := '0';
+  for I := 0 to FQuotaTokensSelect.options.length - 1 do
+    TJSHTMLOptionElement(FQuotaTokensSelect.options[I]).selected := False;
+  if AIndex < 0 then Exit;
+  Q := FWorkspace.CopyValueQuotas[AIndex];
+  FQuotaLabelInput.value := String(Q.LabelText);
+  FQuotaMinimumInput.value := IntToStr(Q.MinimumCount);
+  FQuotaMaximumInput.value := IntToStr(Q.MaximumCount);
+  for I := 0 to Length(FVocabulary) - 1 do
+    for J := 0 to Length(Q.Values) - 1 do
+      if FVocabulary[I] = Q.Values[J] then
+        TJSHTMLOptionElement(FQuotaTokensSelect.options[I]).selected := True;
+end;
+
+procedure TBrowserTrainingStudioApplication.ReloadQuotaEditor;
+var I, J: Integer; LOption: TJSHTMLOptionElement;
+  Q: TWfcTrainingValueQuotas; LText: String;
+begin
+  FEditingQuotaIndex := -1;
+  FQuotaList.textContent := '';
+  FQuotaTokensSelect.textContent := '';
+  if FWorkspace.HasRecipe then
+  begin
+    FVocabulary := FWorkspace.PublicVocabulary;
+    for I := 0 to Length(FVocabulary) - 1 do
+    begin
+      LOption := TJSHTMLOptionElement(document.createElement('option'));
+      LOption.value := IntToStr(I);
+      LOption.textContent := DisplayToken(FVocabulary[I]);
+      FQuotaTokensSelect.appendChild(LOption);
+    end;
+    Q := FWorkspace.CopyValueQuotas;
+    for I := 0 to Length(Q) - 1 do
+    begin
+      LText := DisplayToken(Q[I].LabelText) + ' : ' +
+        IntToStr(Q[I].MinimumCount) + '..' + IntToStr(Q[I].MaximumCount) + ' {';
+      for J := 0 to Length(Q[I].Values) - 1 do
+      begin
+        if J > 0 then LText := LText + ', ';
+        LText := LText + DisplayToken(Q[I].Values[J]);
+      end;
+      LOption := TJSHTMLOptionElement(document.createElement('option'));
+      LOption.value := IntToStr(I);
+      LOption.textContent := LText + '}';
+      FQuotaList.appendChild(LOption);
+    end;
+  end;
+  LoadQuotaFields(-1);
+end;
+
+function TBrowserTrainingStudioApplication.PolicyDraftDirty: Boolean;
+begin
+  Result := FQuotaDraftDirty or FConnectivityDraftDirty;
+end;
+
+procedure TBrowserTrainingStudioApplication.RequireNoPolicyDraft;
+begin
+  if PolicyDraftDirty then
+    raise EWfcTrainingWorkspace.Create('apply or discard the policy draft before this action');
+end;
+
+procedure TBrowserTrainingStudioApplication.LoadConnectivityFields(const AIndex: Integer);
+var I, J: Integer; D: TGraphDirection; C: TWfcTrainingConnectivity;
+begin
+  FEditingConnectivityIndex := AIndex;
+  FConnectivityList.selectedIndex := AIndex;
+  FConnectivityLabelInput.value := '';
+  for I := 0 to 2 do FConnectivityRoot[I].value := '0';
+  FConnectivityTerminals.value := '';
+  FConnectivityAll.checked := False;
+  FConnectivityProfileOrder := nil;
+  for I := 0 to High(FConnectivityRows) do
+  begin
+    FConnectivityRows[I].Participant.checked := False;
+    FConnectivityRows[I].Required.checked := False;
+    for D := Low(TGraphDirection) to High(TGraphDirection) do
+      FConnectivityRows[I].Ports[D].checked := False;
+  end;
+  if AIndex < 0 then Exit;
+  C := FWorkspace.CopyConnectivities[AIndex];
+  FConnectivityLabelInput.value := String(C.LabelText);
+  FConnectivityRoot[0].value := IntToStr(C.Root.X);
+  FConnectivityRoot[1].value := IntToStr(C.Root.Y);
+  FConnectivityRoot[2].value := IntToStr(C.Root.Z);
+  FConnectivityAll.checked := C.RequireAllParticipants;
+  for I := 0 to High(C.RequiredPositions) do
+  begin
+    if I > 0 then FConnectivityTerminals.value := FConnectivityTerminals.value + #10;
+    FConnectivityTerminals.value := FConnectivityTerminals.value +
+      IntToStr(C.RequiredPositions[I].X) + ',' + IntToStr(C.RequiredPositions[I].Y) +
+      ',' + IntToStr(C.RequiredPositions[I].Z);
+  end;
+  SetLength(FConnectivityProfileOrder, Length(C.Values));
+  for I := 0 to High(C.Values) do
+  begin
+    FConnectivityProfileOrder[I] := C.Values[I].Value;
+    for J := 0 to High(FConnectivityRows) do
+      if FConnectivityRows[J].Value = C.Values[I].Value then
+      begin
+        FConnectivityRows[J].Participant.checked := True;
+        FConnectivityRows[J].Required.checked := C.Values[I].RequiredByValue;
+        for D := Low(TGraphDirection) to High(TGraphDirection) do
+          FConnectivityRows[J].Ports[D].checked := D in C.Values[I].Openings;
+      end;
+  end;
+end;
+
+procedure TBrowserTrainingStudioApplication.ReloadConnectivityEditor;
+const Names: array[TGraphDirection] of String = ('North', 'East', 'South', 'West', 'Up', 'Down');
+var I: Integer; D: TGraphDirection; Row, Cell: TJSElement;
+  Option: TJSHTMLOptionElement; C: TWfcTrainingConnectivities;
+  function AddCheck(const ADescription: String): TJSHTMLInputElement;
+  begin
+    Cell := document.createElement('td');
+    Result := TJSHTMLInputElement(document.createElement('input'));
+    Result.setAttribute('type', 'checkbox');
+    Result.setAttribute('aria-label', ADescription);
+    Result.onchange := @HandleConnectivityInput;
+    Cell.appendChild(Result); Row.appendChild(Cell);
+  end;
+begin
+  FConnectivityProfiles.textContent := '';
+  FConnectivityList.textContent := '';
+  FConnectivityRows := nil;
+  if FWorkspace.HasRecipe then
+  begin
+    FVocabulary := FWorkspace.PublicVocabulary;
+    SetLength(FConnectivityRows, Length(FVocabulary));
+    for I := 0 to High(FVocabulary) do
+    begin
+      Row := document.createElement('tr');
+      Cell := document.createElement('th');
+      Cell.textContent := DisplayToken(FVocabulary[I]); Row.appendChild(Cell);
+      FConnectivityRows[I].Value := FVocabulary[I];
+      FConnectivityRows[I].Participant := AddCheck(DisplayToken(FVocabulary[I]) + ' participates');
+      for D := Low(TGraphDirection) to High(TGraphDirection) do
+        FConnectivityRows[I].Ports[D] := AddCheck(DisplayToken(FVocabulary[I]) + ' ' + Names[D]);
+      FConnectivityRows[I].Required := AddCheck(DisplayToken(FVocabulary[I]) + ' required by value');
+      FConnectivityProfiles.appendChild(Row);
+    end;
+    C := FWorkspace.CopyConnectivities;
+    for I := 0 to High(C) do
+    begin
+      Option := TJSHTMLOptionElement(document.createElement('option'));
+      Option.value := IntToStr(I);
+      Option.textContent := DisplayToken(C[I].LabelText) + ' : root ' +
+        IntToStr(C[I].Root.X) + ',' + IntToStr(C[I].Root.Y) + ',' +
+        IntToStr(C[I].Root.Z) + ' · ' + IntToStr(Length(C[I].Values)) +
+        ' profiles · ' + IntToStr(Length(C[I].RequiredPositions)) + ' terminals';
+      FConnectivityList.appendChild(Option);
+    end;
+  end;
+  LoadConnectivityFields(-1);
+end;
+
+procedure TBrowserTrainingStudioApplication.BeginConnectivityDraft;
+begin
+  if FQuotaDraftDirty then
+    raise EWfcTrainingWorkspace.Create('apply or discard the quota draft before editing connectivity');
+  CancelSourceFileRead;
+  if not FWorkspace.HasRecipe then
+    raise EWfcTrainingWorkspace.Create('train the current source before editing connectivity');
+  FConnectivityDraftDirty := True;
+  FWorkspace.ClearRun;
+  FSelectedCell := -1;
+  RefreshAll;
+  SetState('connectivity-dirty', 'Connectivity draft changed; apply or discard it.',
+    'No old output or derived download is current. Ports are explicit, never inferred.');
+end;
+
+procedure TBrowserTrainingStudioApplication.CommitConnectivities(
+  const AValues: TWfcTrainingConnectivities);
+begin
+  BeginConnectivityDraft;
+  try
+    FWorkspace.ReplaceConnectivities(AValues);
+    FConnectivityDraftDirty := False;
+    ReloadQuotaEditor;
+    ReloadConnectivityEditor;
+  finally
+    FSourceInput.value := FWorkspace.SourceText;
+    RefreshAll;
+  end;
+  SetState('trained', 'Connectivity saved in the training source; recipe rebuilt.',
+    'Configure and solve again. Saved quotas are retained.');
+end;
+
+procedure TBrowserTrainingStudioApplication.ApplyConnectivityDraft;
+var C: TWfcTrainingConnectivities; V: TWfcTrainingConnectivityValues;
+  P: TGraphPosition; T: TGraphPositions; I, J, N: Integer; Found: Boolean;
+  procedure AppendRow(const Index: Integer);
+  var D: TGraphDirection; Ports: TGraphDirections;
+  begin
+    if not FConnectivityRows[Index].Participant.checked then Exit;
+    Ports := [];
+    for D := Low(TGraphDirection) to High(TGraphDirection) do
+      if FConnectivityRows[Index].Ports[D].checked then Include(Ports, D);
+    N := Length(V); SetLength(V, N + 1);
+    V[N] := MakeWfcTrainingConnectivityValue(FConnectivityRows[Index].Value,
+      Ports, FConnectivityRows[Index].Required.checked);
+  end;
+begin
+  BeginConnectivityDraft;
+  P.X := WfcTextParseCanonicalInteger(FConnectivityRoot[0].value, 'root X', 'studio');
+  P.Y := WfcTextParseCanonicalInteger(FConnectivityRoot[1].value, 'root Y', 'studio');
+  P.Z := WfcTextParseCanonicalInteger(FConnectivityRoot[2].value, 'root Z', 'studio');
+  T := ParseTrainingStudioTerminals(FConnectivityTerminals.value);
+  V := nil;
+  { Keep existing authored order even when the learner's vocabulary changes.
+    New participants append in current public order; displayed escapes never
+    become token values. No participation, port or required flag is inferred. }
+  for I := 0 to High(FConnectivityProfileOrder) do
+    for J := 0 to High(FConnectivityRows) do
+      if FConnectivityRows[J].Value = FConnectivityProfileOrder[I] then AppendRow(J);
+  for I := 0 to High(FConnectivityRows) do
+  begin
+    Found := False;
+    for J := 0 to High(FConnectivityProfileOrder) do
+      if FConnectivityRows[I].Value = FConnectivityProfileOrder[J] then Found := True;
+    if not Found then AppendRow(I);
+  end;
+  C := FWorkspace.CopyConnectivities;
+  I := FEditingConnectivityIndex;
+  if I < 0 then begin I := Length(C); SetLength(C, I + 1); end
+  else if I >= Length(C) then
+    raise EWfcTrainingWorkspace.Create('selected network is stale');
+  C[I] := MakeWfcTrainingConnectivity(FConnectivityLabelInput.value, P, T, V,
+    FConnectivityAll.checked);
+  CommitConnectivities(C);
+end;
+
+procedure TBrowserTrainingStudioApplication.RefreshConnectivityState;
+var Available: Boolean; Count, I: Integer; D: TGraphDirection;
+begin
+  Available := FWorkspace.HasRecipe and not FQuotaDraftDirty;
+  Count := 0;
+  if FWorkspace.HasRecipe then Count := FWorkspace.ConnectivityCount
+  else begin FConnectivityList.textContent := ''; FEditingConnectivityIndex := -1; end;
+  FConnectivityLabelInput.disabled := not Available;
+  for I := 0 to 2 do FConnectivityRoot[I].disabled := not Available;
+  FConnectivityTerminals.disabled := not Available;
+  FConnectivityAll.disabled := not Available;
+  for I := 0 to High(FConnectivityRows) do
+  begin
+    FConnectivityRows[I].Participant.disabled := not Available;
+    FConnectivityRows[I].Required.disabled := not Available;
+    for D := Low(TGraphDirection) to High(TGraphDirection) do
+      FConnectivityRows[I].Ports[D].disabled := not Available;
+  end;
+  FConnectivityApplyButton.disabled := not Available;
+  if FEditingConnectivityIndex < 0 then FConnectivityApplyButton.textContent := 'Apply new network'
+  else FConnectivityApplyButton.textContent := 'Apply selected network';
+  FConnectivityNewButton.disabled := not Available or PolicyDraftDirty;
+  FConnectivityList.disabled := not Available or PolicyDraftDirty;
+  FConnectivityRemoveButton.disabled := not Available or PolicyDraftDirty or
+    (FEditingConnectivityIndex < 0);
+  FConnectivityClearButton.disabled := not Available or PolicyDraftDirty or (Count = 0);
+  FConnectivityDiscardButton.disabled := not FConnectivityDraftDirty;
+  FConnectivityDemoButton.disabled := PolicyDraftDirty;
+  FSourceInput.disabled := PolicyDraftDirty;
+  FLoadPresetButton.disabled := PolicyDraftDirty;
+  FSourceFileInput.disabled := PolicyDraftDirty;
+  FConvertRawButton.disabled := PolicyDraftDirty;
+  document.body.setAttribute('data-connectivity-count', IntToStr(Count));
+  document.body.setAttribute('data-connectivity-draft',
+    LowerCase(BoolToStr(FConnectivityDraftDirty, True)));
+  if FConnectivityDraftDirty then
+    FConnectivityStatus.textContent := 'Unapplied network draft. Apply or discard before training, solving or exporting. If rebuilding failed, discard and train the retained source again.'
+  else
+    FConnectivityStatus.textContent := IntToStr(Count) +
+      ' saved networks. Root and terminals are absolute XYZ positions; resizing never moves them.';
+end;
+
+procedure TBrowserTrainingStudioApplication.BeginQuotaDraft;
+begin
+  if FConnectivityDraftDirty then
+    raise EWfcTrainingWorkspace.Create('apply or discard the connectivity draft before editing quotas');
+  CancelSourceFileRead;
+  if not FWorkspace.HasRecipe then
+    raise EWfcTrainingWorkspace.Create('train the current source before editing quotas');
+  FQuotaDraftDirty := True;
+  FWorkspace.ClearRun;
+  FSelectedCell := -1;
+  RefreshAll;
+  SetState('quota-dirty', 'Quota draft changed; apply or discard it.',
+    'No old output or derived download is current. Source download waits for the draft too.');
+end;
+
+procedure TBrowserTrainingStudioApplication.CommitValueQuotas(
+  const AQuotas: TWfcTrainingValueQuotas);
+begin
+  BeginQuotaDraft;
+  try
+    FWorkspace.ReplaceValueQuotas(AQuotas);
+    FQuotaDraftDirty := False;
+    ReloadQuotaEditor;
+    ReloadConnectivityEditor;
+  finally
+    { Successful edits are canonical source changes. On a failed rebuild the
+      retained source is the only recoverable artifact, never an old run. }
+    FSourceInput.value := FWorkspace.SourceText;
+    RefreshAll;
+  end;
+  SetState('trained', 'Quotas saved in the training source; recipe rebuilt.',
+    'Configure and solve again. Download source to preserve these exact hard bounds.');
+end;
+
+procedure TBrowserTrainingStudioApplication.ApplyQuotaDraft;
+var Q: TWfcTrainingValueQuotas; V: TWfcModelTokens;
+  I, N, LMinimum, LMaximum: Integer; LQuota: TWfcTrainingValueQuota;
+begin
+  BeginQuotaDraft;
+  LMinimum := WfcTextParseCanonicalInteger(FQuotaMinimumInput.value,
+    'quota minimum', 'training studio');
+  LMaximum := WfcTextParseCanonicalInteger(FQuotaMaximumInput.value,
+    'quota maximum', 'training studio');
+  V := nil;
+  { DOM option positions refer only to the current detached public vocabulary.
+    Tokens, not their indices or displayed percent-escaped labels, are saved. }
+  for I := 0 to FQuotaTokensSelect.options.length - 1 do
+    if TJSHTMLOptionElement(FQuotaTokensSelect.options[I]).selected then
+    begin
+      if I >= Length(FVocabulary) then
+        raise EWfcTrainingWorkspace.Create('quota vocabulary selection is stale');
+      N := Length(V); SetLength(V, N + 1); V[N] := FVocabulary[I];
+    end;
+  LQuota := MakeWfcTrainingValueQuota(FQuotaLabelInput.value, V, LMinimum, LMaximum);
+  Q := FWorkspace.CopyValueQuotas;
+  if FEditingQuotaIndex >= 0 then
+  begin
+    if FEditingQuotaIndex >= Length(Q) then
+      raise EWfcTrainingWorkspace.Create('selected quota is stale');
+    Q[FEditingQuotaIndex] := LQuota;
+  end
+  else
+  begin
+    N := Length(Q); SetLength(Q, N + 1); Q[N] := LQuota;
+  end;
+  CommitValueQuotas(Q);
+end;
+
+procedure TBrowserTrainingStudioApplication.RefreshQuotaState;
+var LHasRecipe, Available: Boolean; LCount: Integer;
+begin
+  LHasRecipe := FWorkspace.HasRecipe;
+  Available := LHasRecipe and not FConnectivityDraftDirty;
+  LCount := 0;
+  if LHasRecipe then LCount := FWorkspace.ValueQuotaCount
+  else
+  begin
+    FQuotaList.textContent := '';
+    FEditingQuotaIndex := -1;
+  end;
+  FQuotaLabelInput.disabled := not Available;
+  FQuotaTokensSelect.disabled := not Available;
+  FQuotaMinimumInput.disabled := not Available;
+  FQuotaMaximumInput.disabled := not Available;
+  FQuotaApplyButton.disabled := not Available;
+  if FEditingQuotaIndex < 0 then FQuotaApplyButton.textContent := 'Apply new quota'
+  else FQuotaApplyButton.textContent := 'Apply selected quota';
+  FQuotaNewButton.disabled := (not Available) or PolicyDraftDirty;
+  FQuotaList.disabled := (not Available) or PolicyDraftDirty;
+  FQuotaRemoveButton.disabled := (not Available) or PolicyDraftDirty or
+    (FEditingQuotaIndex < 0);
+  FQuotaClearButton.disabled := (not Available) or PolicyDraftDirty or (LCount = 0);
+  FQuotaDiscardButton.disabled := not FQuotaDraftDirty;
+  FSolveButton.disabled := (not FWorkspace.HasRecipe) or PolicyDraftDirty;
+  FTrainButton.disabled := PolicyDraftDirty;
+  document.body.setAttribute('data-quota-count', IntToStr(LCount));
+  document.body.setAttribute('data-quota-draft', LowerCase(BoolToStr(FQuotaDraftDirty, True)));
+  if FQuotaDraftDirty then
+    FQuotaStatusElement.textContent := 'Unapplied draft. Apply or discard before solving or downloading. ' +
+      'If rebuilding failed, discard the draft and train the retained source again.'
+  else if not LHasRecipe then
+    FQuotaStatusElement.textContent := 'Train the current source to choose public tokens.'
+  else
+    FQuotaStatusElement.textContent := IntToStr(LCount) +
+      ' saved whole-output quotas. Bounds count the complete XYZ output once, not each row or slice.';
+end;
+
 procedure TBrowserTrainingStudioApplication.SetState(
   const AState, AStatus, ADetail: String);
 begin
-  document.body.setAttribute('data-state', AState);
-  FStatusElement.textContent := AStatus;
-  FStatusDetailElement.textContent := ADetail;
+  if FConnectivityDraftDirty and (AState = 'run-dirty') then
+  begin
+    document.body.setAttribute('data-state', 'connectivity-dirty');
+    FStatusElement.textContent := 'Run edited; connectivity draft still needs apply or discard.';
+    FStatusDetailElement.textContent := 'Resolve the network draft before configuring another solve.';
+  end
+  else if FQuotaDraftDirty and (AState = 'run-dirty') then
+  begin
+    document.body.setAttribute('data-state', 'quota-dirty');
+    FStatusElement.textContent := 'Run edited; quota draft still needs apply or discard.';
+    FStatusDetailElement.textContent := 'Both edits are pending. Resolve the quota draft before configuring another solve.';
+  end
+  else
+  begin
+    document.body.setAttribute('data-state', AState);
+    FStatusElement.textContent := AStatus;
+    FStatusDetailElement.textContent := ADetail;
+  end;
 end;
 
 procedure TBrowserTrainingStudioApplication.ShowError(
@@ -630,6 +1212,8 @@ end;
 procedure TBrowserTrainingStudioApplication.RefreshAll;
 begin
   RefreshVocabulary;
+  RefreshQuotaState;
+  RefreshConnectivityState;
   RefreshLocks;
   RefreshMetrics;
   RefreshResult;
@@ -643,6 +1227,7 @@ var
   LOptions: TWfcTrainingOptions;
   LPasses: TWfcPipelinePasses;
   LProfile: String;
+  LSourceBoundary, LOutputBoundary: String;
   LResultStatus: String;
   LSourceSignature: String;
   LRecipeSignature: String;
@@ -652,6 +1237,8 @@ var
   LTokens: TWfcModelTokens;
 begin
   LProfile := '';
+  LSourceBoundary := '';
+  LOutputBoundary := '';
   LResultStatus := 'none';
   LSourceSignature := '';
   LRecipeSignature := '';
@@ -665,8 +1252,16 @@ begin
     LOptions := FWorkspace.SourceOptions;
     LProfile := ProfileName(LOptions.Kind);
     LSourceSignature := FWorkspace.TrainingSignatureText;
-    LRecipeSignature := FWorkspace.RecipeSignatureText;
+    if not PolicyDraftDirty then LRecipeSignature := FWorkspace.RecipeSignatureText;
     FProfileElement.textContent := LProfile;
+    if LOptions.Boundary = wmbWrap then LSourceBoundary := 'wrap'
+    else LSourceBoundary := 'open';
+    if FWorkspace.WrapNeighbors then LOutputBoundary := 'wrap'
+    else LOutputBoundary := 'open';
+    if (LOptions.Kind = wtkSequence) and (LOptions.Boundary = wmbWrap) then
+      FBoundaryElement.textContent := 'Circular samples / wrapped output'
+    else FBoundaryElement.textContent := LSourceBoundary + ' source / ' +
+      LOutputBoundary + ' output';
     FSampleCountElement.textContent := IntToStr(FWorkspace.SampleCount);
     FSourceTokenCountElement.textContent :=
       IntToStr(FWorkspace.SourceTokenCount);
@@ -677,6 +1272,7 @@ begin
   else
   begin
     FProfileElement.textContent := '—';
+    FBoundaryElement.textContent := '—';
     FSampleCountElement.textContent := '0';
     FSourceTokenCountElement.textContent := '0';
     FTrainingSignatureElement.textContent := '—';
@@ -700,6 +1296,8 @@ begin
 
   FLockCountElement.textContent := IntToStr(Length(FLocks));
   document.body.setAttribute('data-profile', LProfile);
+  document.body.setAttribute('data-source-boundary', LSourceBoundary);
+  document.body.setAttribute('data-output-boundary', LOutputBoundary);
   document.body.setAttribute('data-source-signature', LSourceSignature);
   document.body.setAttribute('data-training-signature', LSourceSignature);
   document.body.setAttribute('data-recipe-signature', LRecipeSignature);
@@ -774,6 +1372,7 @@ end;
 
 procedure TBrowserTrainingStudioApplication.ClearOutput;
 begin
+  ClearVolumeView;
   FOutputGrid.textContent := '';
   FOutputPlaceholder.removeAttribute('hidden');
   FSelectedCell := -1;
@@ -858,6 +1457,112 @@ begin
     FOutputGrid.appendChild(LSlice);
   end;
   FOutputPlaceholder.setAttribute('hidden', '');
+  { An optional view failure must not interrupt reports or artifact downloads. }
+  if FConfiguredDepth>1 then HandleVolumeOptions(nil);
+end;
+
+procedure TBrowserTrainingStudioApplication.ClearVolumeView;
+begin
+  FreeAndNil(FVolumeScene);
+  FVolumeSvgText:='';
+  FVolumeViewport.textContent:='';
+  FVolumeViewport.removeAttribute('data-view-signature');
+  FVolumeViewport.removeAttribute('data-view-quads');
+  FVolumePanel.setAttribute('hidden','');
+  FVolumeDownload.removeAttribute('href');
+  FVolumeDownload.setAttribute('aria-disabled','true');
+  FVolumeDownload.className:='button-link disabled';
+  if FVolumeDownloadUrl<>'' then TJSURL.revokeObjectURL(FVolumeDownloadUrl);
+  FVolumeDownloadUrl:='';
+end;
+
+procedure TBrowserTrainingStudioApplication.RefreshVolumeView;
+var Options: TWfcTokenVolumeViewOptions; SvgOptions: TVoxel3DSvgOptions;
+  I,Yaw,Hidden: Integer; Item: TJSHTMLOptionElement; Parts: TJSArray;
+  BlobOptions: TJSBlobInit; SvgBlob: TJSBlob; SourceSignature: String;
+begin
+  ClearVolumeView;
+  if not FWorkspace.HasResult or (FWorkspace.ResultStatus<>wprsSolved) or
+    (FConfiguredDepth<=1) then Exit;
+  FVolumePanel.removeAttribute('hidden');
+  SourceSignature:=FWorkspace.TrainingSignatureText;
+  if FVolumeRenderedDepth<>FConfiguredDepth then
+  begin
+    FVolumeDepth.value:=IntToStr(FConfiguredDepth);
+    FVolumeRenderedDepth:=FConfiguredDepth;
+  end;
+  if FVolumeSourceSignature<>SourceSignature then
+  begin
+    FVolumeSourceSignature:=SourceSignature;
+    FVolumeHiddenToken.textContent:='';
+    Item:=TJSHTMLOptionElement(document.createElement('option'));
+    Item.value:='-1'; Item.textContent:='Show every token'; FVolumeHiddenToken.appendChild(Item);
+    Hidden:=-1;
+    for I:=0 to High(FVocabulary) do
+    begin
+      Item:=TJSHTMLOptionElement(document.createElement('option'));
+      Item.value:=IntToStr(I); Item.textContent:='Hide '+DisplayToken(FVocabulary[I]);
+      FVolumeHiddenToken.appendChild(Item);
+      if FVocabulary[I]='air' then Hidden:=I;
+    end;
+    FVolumeHiddenToken.value:=IntToStr(Hidden);
+    FVolumeDepth.value:=IntToStr(FConfiguredDepth);
+  end;
+  FVolumeDepth.max:=IntToStr(FConfiguredDepth);
+  if not TryStrToInt(FVolumeYaw.value,Yaw) or (Yaw<0) or (Yaw>3) then
+    raise EConvertError.Create('select one of the four volume view rotations');
+  if not TryStrToInt(FVolumeHiddenToken.value,Hidden) or
+    (Hidden< -1) or (Hidden>=Length(FVocabulary)) then
+    raise EConvertError.Create('select a current palette token to hide');
+  Options:=DefaultWfcTokenVolumeViewOptions(FConfiguredDepth);
+  Options.Projection.Yaw:=TVoxel3DViewYaw(Yaw);
+  Options.HiddenTokenIndex:=Hidden;
+  Options.VisibleDepth:=ReadBoundedInteger(FVolumeDepth,'visible Z layers',1,FConfiguredDepth);
+  FVolumeScene:=ProjectWfcTokenVolume3D(FWorkspace.OutputTokens,
+    FConfiguredOptions.Width,FConfiguredOptions.Height,FConfiguredDepth,FVocabulary,Options);
+  SvgOptions:=DefaultVoxel3DSvgOptions;
+  SvgOptions.Title:='WFC public volume - '+FWorkspace.ResultSignatureText;
+  FVolumeSvgText:=EncodeVoxel3DProjectedSceneSvg(FVolumeScene,SvgOptions);
+  //Only the project-owned, escaped SVG encoder supplies this markup.
+  FVolumeViewport.innerHTML:=FVolumeSvgText;
+  FVolumeViewport.setAttribute('data-view-signature',Voxel3DSignatureHex(FVolumeScene.Signature));
+  FVolumeViewport.setAttribute('data-view-quads',IntToStr(FVolumeScene.QuadCount));
+  Parts:=TJSArray.new; Parts.push(FVolumeSvgText);
+  BlobOptions:=TJSBlobInit.new; BlobOptions['type']:='image/svg+xml;charset=utf-8';
+  SvgBlob:=TJSBlob.new(Parts,BlobOptions);
+  FVolumeDownloadUrl:=TJSURL.createObjectURL(SvgBlob);
+  FVolumeDownload.href:=FVolumeDownloadUrl;
+  FVolumeDownload.download:='training-volume-'+FWorkspace.ResultSignatureText+'.svg';
+  FVolumeDownload.setAttribute('aria-disabled','false');
+  FVolumeDownload.className:='button-link';
+  FVolumeStatus.textContent:=IntToStr(FVolumeScene.QuadCount)+' visible faces · Z 0–'+
+    IntToStr(Options.VisibleDepth-1)+' · view '+Voxel3DSignatureHex(FVolumeScene.Signature)+
+    '. Click a face to select its public XYZ cell. Cutaway and hiding affect this view only.';
+end;
+
+function TBrowserTrainingStudioApplication.HandleVolumeOptions(AEvent: TJSEvent): Boolean;
+begin
+  Result:=False;
+  try RefreshVolumeView;
+  except on E: Exception do
+    begin ClearVolumeView; FVolumePanel.removeAttribute('hidden');
+      FVolumeStatus.textContent:='View unavailable: '+E.Message; end;
+  end;
+end;
+
+function TBrowserTrainingStudioApplication.HandleVolumeClick(AEvent: TJSMouseEvent): Boolean;
+var Element,Cell: TJSElement; Index: Integer; Quad: TVoxel3DProjectedQuad;
+begin
+  Result:=False;
+  if not Assigned(FVolumeScene) then Exit;
+  Element:=TJSElement(AEvent.target);
+  if not Assigned(Element) or not Element.hasAttribute('data-index') then Exit;
+  if not TryStrToInt(Element.getAttribute('data-index'),Index) or
+    (Index<0) or (Index>=FVolumeScene.QuadCount) then Exit;
+  Quad:=FVolumeScene.QuadAt(Index);
+  Cell:=document.getElementById('output-cell-'+IntToStr(Quad.CellX)+'-'+
+    IntToStr(Quad.CellY)+'-'+IntToStr(Quad.CellZ));
+  if Assigned(Cell) then DispatchDomEvent(Cell,'click');
 end;
 
 procedure TBrowserTrainingStudioApplication.RefreshReports;
@@ -956,18 +1661,23 @@ end;
 
 procedure TBrowserTrainingStudioApplication.RefreshDownloads;
 begin
-  SetDownloadLink(FSourceDownloadLink, FWorkspace.SourceText,
+  if PolicyDraftDirty then
+    SetDownloadLink(FSourceDownloadLink, '', 'training-source.wfclearn', FSourceDownloadUrl)
+  else SetDownloadLink(FSourceDownloadLink, FWorkspace.SourceText,
     'training-source.wfclearn', FSourceDownloadUrl);
 end;
 
 function TBrowserTrainingStudioApplication.SelectedArtifactText: String;
 begin
   Result := '';
+  if PolicyDraftDirty then Exit;
   if FArtifactSelect.value = 'source' then
     Result := FWorkspace.SourceText
   else if FArtifactSelect.value = 'model' then
   begin
-    if FWorkspace.HasRecipe then Result := FWorkspace.ModelText;
+    if FWorkspace.HasRecipe and (FWorkspace.ValueQuotaCount = 0) and
+        (FWorkspace.ConnectivityCount = 0) then
+      Result := FWorkspace.ModelText;
   end
   else if FArtifactSelect.value = 'recipe' then
   begin
@@ -1009,7 +1719,12 @@ begin
   FArtifactOutput.value := LText;
   SetDownloadLink(FArtifactDownloadLink, LText,
     SelectedArtifactFileName, FArtifactDownloadUrl);
-  if LText = '' then
+  if PolicyDraftDirty then
+    FArtifactStatus.textContent := 'Apply or discard the policy draft before exporting.'
+  else if (FArtifactSelect.value = 'model') and FWorkspace.HasRecipe and
+      ((FWorkspace.ValueQuotaCount > 0) or (FWorkspace.ConnectivityCount > 0)) then
+    FArtifactStatus.textContent := 'Standalone models cannot retain authored quotas or connectivity. Download the source or pipeline recipe instead.'
+  else if LText = '' then
     FArtifactStatus.textContent :=
       'This artifact is unavailable for the current workspace state.'
   else
@@ -1024,6 +1739,7 @@ begin
     wtkAdjacency1D: Result := 'adjacency1d';
     wtkAdjacency2D: Result := 'adjacency2d';
     wtkPattern2D: Result := 'pattern2d';
+    wtkPattern3D: Result := 'pattern3d';
     wtkSequence: Result := 'sequence';
     wtkAdjacency3D: Result := 'adjacency3d';
   else
@@ -1058,6 +1774,7 @@ begin
     wpakModel: Result := 'adjacency';
     wpakRules: Result := 'rules';
     wpakPattern2D: Result := 'pattern2d';
+    wpakPattern3D: Result := 'pattern3d';
     wpakSequence: Result := 'sequence';
   else
     Result := 'unknown';
@@ -1094,6 +1811,7 @@ begin
     gckEntryDomain: Result := 'entry-domain';
     gckExcludedAssignment: Result := 'excluded-assignment';
     gckConnectivity: Result := 'connectivity';
+    gckValueQuota: Result := 'value-quota';
   else
     Result := 'unknown';
   end;
@@ -1114,7 +1832,9 @@ var
   LSamples: TWfcTextTrainingSamples;
   LText: String;
   LOptions: TWfcTrainingSolveOptions;
+  LBoundary: TWfcModelBoundary;
 begin
+  RequireNoPolicyDraft;
   CancelSourceFileRead;
   if Trim(FRawNameInput.value) = '' then
     raise EConvertError.Create('raw document name is required');
@@ -1132,12 +1852,16 @@ begin
       'raw text exceeds the browser storage limit [%d > %d]',
       [Length(LText), RAW_TEXT_STORAGE_LIMIT]);
   LOrder := ReadBoundedInteger(FRawOrderInput, 'sequence order', 1, 64);
+  if FRawBoundarySelect.value = 'open' then LBoundary := wmbOpen
+  else if FRawBoundarySelect.value = 'wrap' then LBoundary := wmbWrap
+  else raise EConvertError.Create('select open or circular raw-text boundary');
   LMetadata := MakeWfcTrainingMetadata(FRawNameInput.value,
     FRawLicenseInput.value, FRawSourceInput.value);
   SetLength(LSamples, 1);
   LSamples[0] := MakeWfcTextTrainingSample(
     FRawSampleNameInput.value, LText);
-  LDocument := BuildWfcTextTrainingDocument(LMetadata, LSamples, LOrder);
+  LDocument := BuildWfcTextTrainingDocument(LMetadata, LSamples, LOrder,
+    LBoundary);
   try
     LSample := LDocument.SampleAt(0);
     if LSample.Width > FLimits.MaxOutputCells then
@@ -1158,11 +1882,15 @@ end;
 
 procedure TBrowserTrainingStudioApplication.DiscardSourceForImportError;
 begin
+  RequireNoPolicyDraft;
+  FQuotaDraftDirty := False;
   FLocks := nil;
   FVocabulary := nil;
   FSelectedCell := -1;
   FSourceInput.value := '';
   FWorkspace.SetSourceText('');
+  ReloadQuotaEditor;
+  ReloadConnectivityEditor;
   RefreshAll;
 end;
 
@@ -1188,6 +1916,7 @@ procedure TBrowserTrainingStudioApplication.BeginSourceFileRead;
 var
   LFile: TJSHTMLFile;
 begin
+  RequireNoPolicyDraft;
   if (not Assigned(FSourceFileInput.files)) or
       (FSourceFileInput.files.length = 0) then Exit;
   CancelSourceFileRead;
@@ -1221,8 +1950,554 @@ end;
 
 procedure TBrowserTrainingStudioApplication.DispatchDomEvent(
   const AElement: TJSElement; const AEventName: String);
+var Init: TJSEventInit;
 begin
-  AElement.dispatchEvent(TJSEvent.new(AEventName));
+  Init := Default(TJSEventInit);
+  Init.bubbles := True;
+  AElement.dispatchEvent(TJSEvent.new(AEventName,Init));
+end;
+
+procedure TBrowserTrainingStudioApplication.RunQuotaSelfTest;
+var LCafe: TWfcModelToken; S, P, R, V: String;
+  LTokens: TWfcModelTokens; I, LCount: Integer; LStaleReader: TJSFileReader;
+
+  procedure SelectPreset(const AIndex: Integer);
+  begin
+    FPresetSelect.value := IntToStr(AIndex);
+    DispatchDomEvent(FLoadPresetButton, 'click');
+    DispatchDomEvent(FTrainButton, 'click');
+    DispatchDomEvent(FSolveButton, 'click');
+    AssertTest(FWorkspace.HasResult and (FWorkspace.ResultStatus = wprsSolved),
+      'quota fixture preset did not solve');
+  end;
+
+  procedure Draft(const ALabel, AToken: TWfcModelToken;
+    const AMinimum, AMaximum: String);
+  var J: Integer;
+  begin
+    FQuotaLabelInput.value := String(ALabel);
+    FQuotaMinimumInput.value := AMinimum;
+    FQuotaMaximumInput.value := AMaximum;
+    for J := 0 to Length(FVocabulary) - 1 do
+      TJSHTMLOptionElement(FQuotaTokensSelect.options[J]).selected := FVocabulary[J] = AToken;
+    DispatchDomEvent(FQuotaLabelInput, 'input');
+  end;
+
+  procedure ApplyAndSolve;
+  begin
+    DispatchDomEvent(FQuotaApplyButton, 'click');
+    AssertTest(not FQuotaDraftDirty and FWorkspace.HasRecipe,
+      'quota edit failed to publish a current recipe');
+    AssertTest(FSourceInput.value = FWorkspace.SourceText,
+      'applied quota source textarea is stale');
+    DispatchDomEvent(FSolveButton, 'click');
+    AssertTest(FWorkspace.HasResult, 'quota solve did not produce a terminal result');
+  end;
+begin
+  document.body.setAttribute('data-quota-edit', 'pending');
+  document.body.setAttribute('data-quota-replay', 'pending');
+  document.body.setAttribute('data-quota-contradiction', 'pending');
+  document.body.setAttribute('data-quota-invalidation', 'pending');
+  document.body.setAttribute('data-quota-volume', 'pending');
+  LCafe := 'caf' + Chr($E9);
+  SelectPreset(3);
+  AssertTest(FWorkspace.OutputTokens[0] = 'red', 'seed-zero phrase baseline changed');
+  FArtifactSelect.value := 'result';
+  DispatchDomEvent(FArtifactSelect, 'change');
+  LStaleReader := TJSFileReader.new;
+  FFileReader := LStaleReader;
+  Draft('prefer ' + LCafe, LCafe, '1', '1');
+  CommitSourceFileText(LStaleReader, 'obsolete quota-era import');
+  AssertTest((FWorkspace.SourceText = TrainingStudioPresetText(3)) and
+    (FFileReader = nil), 'quota editing did not cancel stale source reads');
+  AssertTest(FQuotaDraftDirty and FSolveButton.disabled and FTrainButton.disabled and
+    not FWorkspace.HasRun and not FWorkspace.HasResult and
+    (FArtifactOutput.value = '') and (not FArtifactDownloadLink.hasAttribute('href')) and
+    (not FSourceDownloadLink.hasAttribute('href')) and
+    (document.body.getAttribute('data-recipe-signature') = ''),
+    'quota draft exposed stale solving, signatures or downloads');
+  FArtifactSelect.value := 'recipe'; DispatchDomEvent(FArtifactSelect, 'change');
+  AssertTest(FArtifactOutput.value = '', 'quota draft exposed old recipe export');
+  DispatchDomEvent(FSeedInput, 'input');
+  AssertTest((document.body.getAttribute('data-state') = 'quota-dirty') and
+    FSolveButton.disabled and FQuotaDraftDirty,
+    'editing a run field hid the unresolved quota draft');
+  DispatchDomEvent(FSolveButton, 'click');
+  AssertTest(not FWorkspace.HasResult, 'programmatic solve bypassed draft guard');
+  ApplyAndSolve;
+  LTokens := FWorkspace.OutputTokens;
+  AssertTest((FWorkspace.ResultStatus = wprsSolved) and (Length(LTokens) = 3) and
+    (LTokens[0] = LCafe) and (LTokens[1] = 'fox') and (LTokens[2] = '.'),
+    'public Unicode quota did not guide private sequence state selection');
+  AssertTest((FWorkspace.ValueQuotaCount = 1) and
+    (Pos('wfclearn=3'#10, FWorkspace.SourceText) = 1) and
+    (Pos('caf%C3%A9', FWorkspace.SourceText) > 0) and
+    (Pos('wfcpipeline=2'#10, FWorkspace.RecipeText) = 1),
+    'quota source/recipe did not retain canonical versioned Unicode policy');
+  document.body.setAttribute('data-quota-edit', 'passed');
+  S := FWorkspace.SourceText; P := FWorkspace.RecipeText;
+  R := FWorkspace.RunText; V := FWorkspace.ResultText;
+  FArtifactSelect.value := 'model'; DispatchDomEvent(FArtifactSelect, 'change');
+  AssertTest((FArtifactOutput.value = '') and (not FArtifactDownloadLink.hasAttribute('href')) and
+    (Pos('cannot retain', FArtifactStatus.textContent) > 0), 'model-only export silently lost quotas');
+  FArtifactSelect.value := 'source'; DispatchDomEvent(FArtifactSelect, 'change');
+  AssertTest((FArtifactOutput.value = S) and FArtifactDownloadLink.hasAttribute('href'),
+    'canonical quota source cannot be saved');
+  FSourceInput.value := S; DispatchDomEvent(FSourceInput, 'input');
+  AssertTest(not FWorkspace.HasRecipe, 'reimport did not invalidate its old lineage');
+  DispatchDomEvent(FTrainButton, 'click'); DispatchDomEvent(FSolveButton, 'click');
+  AssertTest((FWorkspace.SourceText = S) and (FWorkspace.RecipeText = P) and
+    (FWorkspace.RunText = R) and (FWorkspace.ResultText = V) and
+    (FQuotaList.options.length = 1), 'saved quota source did not retrain and replay exactly');
+  document.body.setAttribute('data-quota-replay', 'passed');
+
+  { An additional multi-token quota counts set membership once, not one
+    contribution per accepted token. It remains conjunctive with cafe=1. }
+  Draft('opening alternatives', 'red', '1', '1');
+  for I := 0 to Length(FVocabulary) - 1 do
+    if FVocabulary[I] = LCafe then
+      TJSHTMLOptionElement(FQuotaTokensSelect.options[I]).selected := True;
+  DispatchDomEvent(FQuotaTokensSelect, 'change');
+  ApplyAndSolve;
+  AssertTest((FWorkspace.ValueQuotaCount = 2) and (FWorkspace.OutputTokens[0] = LCafe),
+    'multi-token quota did not retain conjunctive public semantics');
+
+  FQuotaList.selectedIndex := 0; DispatchDomEvent(FQuotaList, 'change');
+  FQuotaMinimumInput.value := '1.5'; DispatchDomEvent(FQuotaMinimumInput, 'input');
+  DispatchDomEvent(FQuotaApplyButton, 'click');
+  AssertTest(FQuotaDraftDirty and not FWorkspace.HasResult and FSolveButton.disabled,
+    'invalid numeric draft exposed old result');
+  DispatchDomEvent(FQuotaDiscardButton, 'click');
+  AssertTest(not FQuotaDraftDirty and not FWorkspace.HasRun and not FWorkspace.HasResult,
+    'discarding draft resurrected an old invocation');
+  { Valid numbers but reversed bounds enter the shared destructive editor
+    mutation: only the retained source remains after rejection. }
+  FQuotaList.selectedIndex := 0; DispatchDomEvent(FQuotaList, 'change');
+  Draft('invalid bounds', LCafe, '2', '1');
+  DispatchDomEvent(FQuotaApplyButton, 'click');
+  AssertTest(FQuotaDraftDirty and not FWorkspace.HasRecipe and
+    not FWorkspace.HasRun and not FWorkspace.HasResult and
+    (FQuotaList.options.length = 0) and
+    (FSourceInput.value = FWorkspace.SourceText), 'failed rebuild kept stale derived artifacts');
+  DispatchDomEvent(FQuotaDiscardButton, 'click');
+  DispatchDomEvent(FTrainButton, 'click'); DispatchDomEvent(FSolveButton, 'click');
+  AssertTest(FWorkspace.HasResult and (FWorkspace.OutputTokens[0] = LCafe),
+    'discard/retrain could not recover the retained quota source');
+  document.body.setAttribute('data-quota-invalidation', 'passed');
+
+  SelectPreset(INITIAL_PRESET);
+  Draft('half A', 'A', '8', '8'); ApplyAndSolve;
+  AssertTest(FWorkspace.ResultStatus = wprsSolved, 'legal pattern quota did not solve');
+  LTokens := FWorkspace.OutputTokens; LCount := 0;
+  for I := 0 to Length(LTokens) - 1 do if LTokens[I] = 'A' then Inc(LCount);
+  AssertTest(LCount = 8, 'pattern quota count mismatch');
+  FQuotaList.selectedIndex := 0; DispatchDomEvent(FQuotaList, 'change');
+  Draft('half A', 'A', '7', '7'); ApplyAndSolve;
+  AssertTest((FWorkspace.ResultStatus = wprsContradiction) and
+    (Length(FWorkspace.OutputTokens) = 0) and
+    (document.querySelectorAll('#output-grid .output-cell').length = 0),
+    'impossible pattern quota showed old output');
+  AssertTest(ContradictionName(gckValueQuota) = 'value-quota', 'quota diagnostic label is missing');
+  FQuotaList.selectedIndex := 0; DispatchDomEvent(FQuotaList, 'change');
+  DispatchDomEvent(FQuotaRemoveButton, 'click'); DispatchDomEvent(FSolveButton, 'click');
+  AssertTest((FWorkspace.ValueQuotaCount = 0) and
+    (FWorkspace.ResultSignatureText = BASELINE_RESULT_SIGNATURE),
+    'removing final quota did not restore old version-one replay');
+  document.body.setAttribute('data-quota-contradiction', 'passed');
+
+  SelectPreset(VOLUME_PRESET);
+  Draft('whole volume A', 'A', '32', '32'); ApplyAndSolve;
+  AssertTest((FWorkspace.ResultStatus = wprsSolved) and
+    (Length(FWorkspace.OutputTokens) = 64), 'volume quota counted a slice instead of all XYZ cells');
+  FDepthInput.value := '2'; DispatchDomEvent(FDepthInput, 'input');
+  AssertTest(not FWorkspace.HasResult and
+    (FWorkspace.CopyValueQuotas[0].MinimumCount = 32), 'shape edit changed absolute quota bounds');
+  DispatchDomEvent(FSolveButton, 'click');
+  AssertTest(FWorkspace.HasResult and (FWorkspace.ResultStatus = wprsContradiction) and
+    (Length(FWorkspace.OutputTokens) = 0), 'smaller volume silently clamped its quota');
+  DispatchDomEvent(FQuotaClearButton, 'click');
+  FDepthInput.value := '4'; DispatchDomEvent(FDepthInput, 'input');
+  DispatchDomEvent(FSolveButton, 'click');
+  AssertTest(FWorkspace.ResultSignatureText = VOLUME_RESULT_SIGNATURE,
+    'clear quotas did not restore unchanged volume replay');
+  document.body.setAttribute('data-quota-volume', 'passed');
+  SelectPreset(INITIAL_PRESET);
+  AssertTest((FWorkspace.TrainingSignatureText = BASELINE_SOURCE_SIGNATURE) and
+    (FWorkspace.RecipeSignatureText = BASELINE_RECIPE_SIGNATURE) and
+    (FWorkspace.ResultSignatureText = BASELINE_RESULT_SIGNATURE) and
+    (FWorkspace.ValueQuotaCount = 0) and not FQuotaDraftDirty,
+    'quota self-test did not restore the untouched baseline');
+end;
+
+procedure TBrowserTrainingStudioApplication.RunConnectivitySelfTest;
+var S, R: String; I: Integer; D: TGraphDirection; Reader: TJSFileReader;
+  C: TWfcTrainingConnectivities;
+  procedure SelectNetwork;
+  begin
+    FConnectivityList.selectedIndex := 0;
+    DispatchDomEvent(FConnectivityList, 'change');
+  end;
+  procedure ApplyAndSolve;
+  begin
+    DispatchDomEvent(FConnectivityApplyButton, 'click');
+    AssertTest(not FConnectivityDraftDirty and FWorkspace.HasRecipe,
+      'network editor failed to save: ' + FStatusElement.textContent);
+    DispatchDomEvent(FSolveButton, 'click');
+    AssertTest(FWorkspace.HasResult, 'network solve has no terminal result');
+  end;
+begin
+  document.body.setAttribute('data-connectivity-edit', 'pending');
+  document.body.setAttribute('data-connectivity-replay', 'pending');
+  document.body.setAttribute('data-connectivity-contradiction', 'pending');
+  document.body.setAttribute('data-connectivity-invalidation', 'pending');
+  document.body.setAttribute('data-connectivity-volume', 'pending');
+  DispatchDomEvent(FConnectivityDemoButton, 'click');
+  AssertTest((FWorkspace.ConnectivityCount = 1) and (FWorkspace.ValueQuotaCount = 1) and
+    TrainingStudioRouteIsValid(FWorkspace.OutputTokens), 'route demonstration button');
+  FArtifactSelect.value := 'model'; DispatchDomEvent(FArtifactSelect, 'change');
+  AssertTest((FArtifactOutput.value = '') and
+    (FArtifactDownloadLink.getAttribute('aria-disabled') = 'true'),
+    'model export silently omitted network');
+  FQuotaLabelInput.value := 'unsaved quota';
+  DispatchDomEvent(FQuotaLabelInput, 'input');
+  HandleConnectivityNew(nil); HandleConnectivityApply(nil); HandleConnectivityClear(nil);
+  HandleLoadPreset(nil); HandleTrain(nil); HandleSolve(nil);
+  AssertTest(FQuotaDraftDirty and (FQuotaLabelInput.value = 'unsaved quota') and
+    not FConnectivityDraftDirty and (FWorkspace.ConnectivityCount = 1) and
+    not FWorkspace.HasResult, 'opposite handlers lost a quota draft');
+  DispatchDomEvent(FQuotaDiscardButton, 'click');
+  SelectNetwork;
+  Reader := TJSFileReader.new; FFileReader := Reader;
+  FConnectivityRoot[0].value := '0.5';
+  DispatchDomEvent(FConnectivityRoot[0], 'input');
+  CommitSourceFileText(Reader, 'stale source');
+  HandleQuotaNew(nil); HandleQuotaApply(nil); HandleQuotaClear(nil);
+  HandleLoadPreset(nil); HandleTrain(nil); HandleSolve(nil);
+  AssertTest(FConnectivityDraftDirty and not FQuotaDraftDirty and (FFileReader = nil) and
+    not FWorkspace.HasRun and not FWorkspace.HasResult and FTrainButton.disabled and
+    FSolveButton.disabled and (FArtifactOutput.value = '') and
+    (FSourceDownloadLink.getAttribute('aria-disabled') = 'true') and
+    (FConnectivityRoot[0].value = '0.5'), 'network draft stale action guards');
+  FWidthInput.value := '4'; DispatchDomEvent(FWidthInput, 'input');
+  AssertTest(document.body.getAttribute('data-state') = 'connectivity-dirty',
+    'run edit hid a network draft');
+  DispatchDomEvent(FConnectivityApplyButton, 'click');
+  AssertTest(FConnectivityDraftDirty and not FWorkspace.HasResult,
+    'fractional root silently accepted');
+  FConnectivityRoot[0].value := '0';
+  FConnectivityLabelInput.value := 'roads % / ' + String(WfcTextDecodeToken('caf%C3%A9', 'test'));
+  FConnectivityTerminals.value := '3,2,0'#10'0,1,0';
+  DispatchDomEvent(FConnectivityTerminals, 'input');
+  ApplyAndSolve;
+  AssertTest(TrainingStudioRouteIsValid(FWorkspace.OutputTokens) and
+    (FWorkspace.CopyConnectivities[0].RequiredPositions[0].Y = 1),
+    'network terminal sort or route validation');
+  AssertTest(FWorkspace.CopyConnectivities[0].LabelText =
+    'roads % / ' + WfcTextDecodeToken('caf%C3%A9', 'test'), 'network label escaped identity');
+  document.body.setAttribute('data-connectivity-edit', 'passed');
+  document.body.setAttribute('data-connectivity-invalidation', 'passed');
+  S := FWorkspace.SourceText; R := FWorkspace.ResultText;
+  AssertTest(Pos('wfclearn=4'#10, S) = 1, 'network source v4');
+  ApplySourceText(S); DispatchDomEvent(FTrainButton, 'click');
+  DispatchDomEvent(FSolveButton, 'click');
+  AssertTest((FWorkspace.ResultText = R) and (FWorkspace.ValueQuotaCount = 1),
+    'network source reload exact replay and quota coexistence');
+  SelectNetwork;
+  for I := 0 to High(FConnectivityRows) do
+    FConnectivityRows[I].Participant.checked := False;
+  DispatchDomEvent(FConnectivityAll, 'change');
+  DispatchDomEvent(FConnectivityApplyButton, 'click');
+  AssertTest(FConnectivityDraftDirty and not FWorkspace.HasRecipe and
+    not FWorkspace.HasRun and not FWorkspace.HasResult and
+    (FWorkspace.SourceText = S) and (FSourceInput.value = S) and
+    (FConnectivityList.options.length = 0), 'failed network rebuild kept stale artifacts');
+  DispatchDomEvent(FConnectivityDiscardButton, 'click');
+  DispatchDomEvent(FTrainButton, 'click'); DispatchDomEvent(FSolveButton, 'click');
+  AssertTest(not PolicyDraftDirty and (FWorkspace.ResultText = R),
+    'failed network draft did not recover from retained source');
+  document.body.setAttribute('data-connectivity-replay', 'passed');
+  SelectNetwork;
+  for I := 0 to High(FConnectivityRows) do
+    if FConnectivityRows[I].Value = 'road' then
+      for D := Low(TGraphDirection) to High(TGraphDirection) do
+        FConnectivityRows[I].Ports[D].checked := D in [gdEast, gdWest];
+  DispatchDomEvent(FConnectivityAll, 'change'); ApplyAndSolve;
+  AssertTest((FWorkspace.ResultStatus = wprsContradiction) and
+    (Length(FWorkspace.OutputTokens) = 0), 'missing planar ports did not contradict');
+  SelectNetwork;
+  for I := 0 to High(FConnectivityRows) do
+    if FConnectivityRows[I].Value = 'road' then
+      for D := Low(TGraphDirection) to High(TGraphDirection) do
+        FConnectivityRows[I].Ports[D].checked := D in [gdNorth, gdEast, gdSouth, gdWest];
+  DispatchDomEvent(FConnectivityAll, 'change'); ApplyAndSolve;
+  AssertTest(FWorkspace.ResultText = R, 'port correction exact recovery');
+  SelectNetwork; DispatchDomEvent(FConnectivityRemoveButton, 'click');
+  AssertTest((FWorkspace.ConnectivityCount = 0) and (FWorkspace.ValueQuotaCount = 1) and
+    (Pos('wfclearn=3'#10, FWorkspace.SourceText) = 1), 'network removal lost saved quota');
+  DispatchDomEvent(FQuotaClearButton, 'click');
+  AssertTest(FWorkspace.SourceText = TrainingStudioRouteSource, 'remove policies legacy restoration');
+  document.body.setAttribute('data-connectivity-contradiction', 'passed');
+  LoadPreset(VOLUME_PRESET); DispatchDomEvent(FTrainButton, 'click');
+  FWidthInput.value := '2'; FHeightInput.value := '2'; FDepthInput.value := '2';
+  C := TrainingStudioRouteNetwork;
+  C[0].LabelText := 'XYZ column'; C[0].RequiredPositions[0] := TrainingStudioPosition(0, 0, 1);
+  C[0].RequireAllParticipants := False;
+  SetLength(C[0].Values, 2);
+  C[0].Values[0] := MakeWfcTrainingConnectivityValue('B', [gdUp, gdDown], False);
+  C[0].Values[1] := MakeWfcTrainingConnectivityValue('A', [gdUp, gdDown], False);
+  { Imported authored order is deliberately opposite the learner's order. }
+  CommitConnectivities(C); SelectNetwork;
+  FConnectivityLabelInput.value := 'XYZ column saved';
+  DispatchDomEvent(FConnectivityLabelInput, 'input'); ApplyAndSolve;
+  AssertTest((FWorkspace.ResultStatus = wprsSolved) and (Length(FWorkspace.OutputTokens) = 8) and
+    (FWorkspace.CopyConnectivities[0].Values[0].Value = 'B') and
+    (FWorkspace.CopyConnectivities[0].Values[1].Value = 'A') and
+    (FWorkspace.CopyConnectivities[0].RequiredPositions[0].Z = 1), 'XYZ and profile authored order');
+  SelectNetwork; FConnectivityAll.checked := True;
+  DispatchDomEvent(FConnectivityAll, 'change'); ApplyAndSolve;
+  AssertTest(FWorkspace.ResultStatus = wprsContradiction, 'all-participant islands allowed');
+  SelectNetwork; FConnectivityAll.checked := False;
+  for I := 0 to High(FConnectivityRows) do
+    if FConnectivityRows[I].Value = 'B' then FConnectivityRows[I].Required.checked := True;
+  DispatchDomEvent(FConnectivityAll, 'change'); ApplyAndSolve;
+  AssertTest(FWorkspace.ResultStatus = wprsContradiction, 'required-by-value islands allowed');
+  DispatchDomEvent(FConnectivityClearButton, 'click');
+  AssertTest(FWorkspace.SourceText = TrainingStudioPresetText(VOLUME_PRESET),
+    'XYZ connectivity clear did not restore version two source');
+  document.body.setAttribute('data-connectivity-volume', 'passed');
+  LoadPreset(INITIAL_PRESET); DispatchDomEvent(FTrainButton, 'click');
+  DispatchDomEvent(FSolveButton, 'click');
+  AssertTest((FWorkspace.TrainingSignatureText = BASELINE_SOURCE_SIGNATURE) and
+    (FWorkspace.RecipeSignatureText = BASELINE_RECIPE_SIGNATURE) and
+    (FWorkspace.ResultSignatureText = BASELINE_RESULT_SIGNATURE) and
+    not PolicyDraftDirty and (FWorkspace.ConnectivityCount = 0),
+    'connectivity self-test failed to restore legacy baseline');
+end;
+
+procedure TBrowserTrainingStudioApplication.RunCircularSelfTest;
+var SavedSource, SavedRecipe, SavedResult, OpenSource: String;
+  Tokens: TWfcModelTokens;
+begin
+  document.body.setAttribute('data-circular-sequence', 'pending');
+  AssertTest(FRawBoundarySelect.value = 'open', 'raw text must default to open');
+  LoadPreset(TRAINING_STUDIO_CIRCULAR_PRESET);
+  DispatchDomEvent(FTrainButton, 'click');
+  AssertTest(FWorkspace.HasRecipe and FWorkspace.WrapNeighbors and
+    (FWorkspace.SourceOptions.Boundary = wmbWrap) and
+    (Length(FLocks) = 3) and (FLockList.options.length = 3),
+    'circular preset did not expose wrapped output and three public locks');
+  DispatchDomEvent(FSolveButton, 'click');
+  Tokens := FWorkspace.OutputTokens;
+  AssertTest((FWorkspace.ResultStatus = wprsSolved) and
+    (Length(Tokens) = 40) and TrainingStudioCircularOutputIsValid(Tokens) and
+    (FBoundaryElement.textContent = 'Circular samples / wrapped output'),
+    'circular preset output or visible boundary policy is incorrect');
+  SavedSource := FWorkspace.SourceText;
+  SavedRecipe := FWorkspace.RecipeText;
+  SavedResult := FWorkspace.ResultText;
+  AssertTest(Pos('wfclearn=5'#10, SavedSource) = 1,
+    'circular source did not use the explicit new format');
+
+  FLockXInput.value := '1'; FLockYInput.value := '0'; FLockZInput.value := '0';
+  FLockTokenSelect.value := IntToStr(FindVocabularyToken('r'));
+  DispatchDomEvent(FAddLockButton, 'click');
+  AssertTest(not FWorkspace.HasResult and
+    (document.body.getAttribute('data-output-count') = '0'),
+    'conflicting circular public lock retained stale output');
+  DispatchDomEvent(FSolveButton, 'click');
+  AssertTest((FWorkspace.ResultStatus = wprsContradiction) and
+    (Length(FWorkspace.OutputTokens) = 0),
+    'circular public lock conflict did not produce clean contradiction');
+  FLockList.selectedIndex := 1;
+  DispatchDomEvent(FRemoveLockButton, 'click');
+  DispatchDomEvent(FSolveButton, 'click');
+  AssertTest(FWorkspace.ResultText = SavedResult,
+    'removing circular lock conflict did not restore exact replay');
+
+  { Imported source keeps circular observations, but locks are separate run
+    choices. Reapply the same public choices to demonstrate complete replay. }
+  ApplySourceText(SavedSource);
+  DispatchDomEvent(FTrainButton, 'click');
+  AssertTest((Length(FLocks) = 0) and (FWorkspace.RecipeText = SavedRecipe),
+    'source import invented locks or changed circular learning');
+  FLocks := TrainingStudioPresetLocks(TRAINING_STUDIO_CIRCULAR_PRESET,
+    FWorkspace.PublicPassIndex);
+  RefreshAll;
+  DispatchDomEvent(FSolveButton, 'click');
+  AssertTest(FWorkspace.ResultText = SavedResult,
+    'circular source and public run choices failed exact replay');
+
+  FRawNameInput.value := 'boundary-example';
+  FRawSampleNameInput.value := 'one-circle';
+  FRawLicenseInput.value := 'MIT';
+  FRawSourceInput.value := 'project-authored boundary check';
+  FRawTextInput.value := 'ab'; FRawOrderInput.value := '2';
+  FRawBoundarySelect.value := 'open';
+  DispatchDomEvent(FConvertRawButton, 'click');
+  OpenSource := FWorkspace.SourceText;
+  AssertTest((Pos('wfclearn=1'#10, OpenSource) = 1) and
+    not FWorkspace.HasRecipe and (Length(FLocks) = 0),
+    'default raw conversion changed legacy format or retained derived state');
+  FRawBoundarySelect.value := 'wrap';
+  DispatchDomEvent(FConvertRawButton, 'click');
+  AssertTest((Pos('wfclearn=5'#10, FWorkspace.SourceText) = 1) and
+    not FWorkspace.HasRecipe, 'circular raw conversion did not create a new source draft');
+  DispatchDomEvent(FTrainButton, 'click');
+  DispatchDomEvent(FSolveButton, 'click');
+  AssertTest(FWorkspace.WrapNeighbors and
+    (FWorkspace.ResultStatus = wprsSolved) and
+    (document.body.getAttribute('data-source-boundary') = 'wrap') and
+    (document.body.getAttribute('data-output-boundary') = 'wrap'),
+    'raw circular source did not solve with visible wrapped boundary');
+  FRawBoundarySelect.value := 'open';
+  DispatchDomEvent(FConvertRawButton, 'click');
+  AssertTest((FWorkspace.SourceText = OpenSource) and
+    not FWorkspace.HasRecipe and not FWorkspace.HasResult,
+    'switching raw boundary back to open did not restore exact source bytes');
+
+  LoadPreset(INITIAL_PRESET);
+  DispatchDomEvent(FTrainButton, 'click');
+  DispatchDomEvent(FSolveButton, 'click');
+  AssertTest((FWorkspace.TrainingSignatureText = BASELINE_SOURCE_SIGNATURE) and
+    (FWorkspace.RecipeSignatureText = BASELINE_RECIPE_SIGNATURE) and
+    (FWorkspace.ResultSignatureText = BASELINE_RESULT_SIGNATURE),
+    'circular selftest changed the original terminal fixture');
+  document.body.setAttribute('data-circular-sequence', 'passed');
+end;
+
+procedure TBrowserTrainingStudioApplication.RunPattern3DSelfTest;
+var SavedSource, SavedRecipe, SavedResult, FirstView, LayoutDetails: String;
+  I, ConflictIndex: Integer; Quad: TVoxel3DProjectedQuad; Face: TJSElement;
+  LayoutNodes: TJSNodeList;
+begin
+  document.body.setAttribute('data-overlapping-volume', 'pending');
+  LoadPreset(VOLUME_PRESET); DispatchDomEvent(FTrainButton,'click');
+  DispatchDomEvent(FSolveButton,'click');
+  FDepthInput.value := '2'; DispatchDomEvent(FDepthInput,'input');
+  DispatchDomEvent(FSolveButton,'click');
+  AssertTest((FWorkspace.ResultStatus = wprsSolved) and
+    (Length(FWorkspace.OutputTokens) = 32) and Assigned(FVolumeScene) and
+    (FVolumeDepth.value = '2'), 'shape reduction retained an invalid view depth');
+  FVolumeDepth.value := '0'; DispatchDomEvent(FVolumeDepth,'change');
+  AssertTest(FWorkspace.HasResult and not Assigned(FVolumeScene) and
+    (FVolumeDownload.getAttribute('aria-disabled') = 'true'),
+    'invalid view control retained an old SVG or invalidated the solved result');
+  FSeedInput.value := '1'; DispatchDomEvent(FSeedInput,'input');
+  DispatchDomEvent(FSolveButton,'click');
+  FArtifactSelect.value := 'result'; DispatchDomEvent(FArtifactSelect,'change');
+  AssertTest((FWorkspace.ResultStatus = wprsSolved) and
+    (document.body.getAttribute('data-state') = 'solved') and
+    (FArtifactOutput.value = FWorkspace.ResultText) and
+    (FArtifactDownloadLink.getAttribute('aria-disabled') = 'false') and
+    not Assigned(FVolumeScene), 'bad view controls interrupted successful artifact publication');
+  FVolumeDepth.value := '2'; DispatchDomEvent(FVolumeDepth,'change');
+  AssertTest(Assigned(FVolumeScene), 'correcting view depth failed to restore the preview');
+  document.body.setAttribute('data-volume-view-isolation', 'passed');
+  LoadPreset(TRAINING_STUDIO_PATTERN3D_PRESET);
+  DispatchDomEvent(FTrainButton, 'click');
+  AssertTest(FWorkspace.HasRecipe and (FWorkspace.Rank = 3) and
+    (FWorkspace.PublicPassIndex = 1) and (Length(FLocks) = 3),
+    'overlapping volume training did not expose its public XYZ bridge');
+  DispatchDomEvent(FSolveButton, 'click');
+  AssertTest((FWorkspace.ResultStatus = wprsSolved) and
+    TrainingStudioLatticeOutputIsValid(4,4,4,FWorkspace.OutputTokens),
+    'overlapping volume public domain validation failed');
+  AssertTest(Assigned(FVolumeScene), 'volume projection missing: '+FStatusElement.textContent);
+  AssertTest((FVolumeScene.QuadCount > 0) and
+    not FVolumePanel.hasAttribute('hidden') and
+    (FVolumeDownload.getAttribute('aria-disabled') = 'false'),
+    'volume preview/download missing: '+FStatusElement.textContent);
+  LayoutDetails := '';
+  if document.documentElement.scrollWidth > window.innerWidth then
+  begin
+    LayoutNodes := document.querySelectorAll('body *');
+    for I := 0 to LayoutNodes.length-1 do
+    begin
+      Face := TJSElement(LayoutNodes.item(I));
+      if Face.getBoundingClientRect.right > window.innerWidth then
+        LayoutDetails := LayoutDetails+' '+Face.nodeName+'#'+Face.id+'.'+
+          String(Face.getAttribute('class'));
+      if Length(LayoutDetails) > 800 then Break;
+    end;
+  end;
+  AssertTest(document.documentElement.scrollWidth <= window.innerWidth,
+    'Studio layout horizontally overflows the viewport: '+
+    IntToStr(document.documentElement.scrollWidth)+' > '+IntToStr(window.innerWidth)+LayoutDetails);
+  document.body.setAttribute('data-volume-layout', 'passed');
+  SavedSource := FWorkspace.SourceText;
+  SavedRecipe := FWorkspace.RecipeText;
+  SavedResult := FWorkspace.ResultText;
+  AssertTest((Pos('wfclearn=6'#10,SavedSource) = 1) and
+    (Pos('wfcpipeline=4'#10,SavedRecipe) = 1) and
+    (Pos('wfcp=2'#10,FWorkspace.ModelText) = 1),
+    'overlapping volume artifacts lost their feature versions');
+  FVolumeYaw.value := '0'; DispatchDomEvent(FVolumeYaw,'change');
+  FirstView := FVolumeViewport.getAttribute('data-view-signature');
+  for I := 1 to 3 do
+  begin
+    FVolumeYaw.value := IntToStr(I); DispatchDomEvent(FVolumeYaw,'change');
+    AssertTest(Assigned(FVolumeScene) and (FWorkspace.ResultText = SavedResult) and
+      (FVolumeViewport.getAttribute('data-view-signature') <> FirstView),
+      'rotation changed the composition or failed to update its view');
+  end;
+  FVolumeDepth.value := '2'; DispatchDomEvent(FVolumeDepth,'change');
+  AssertTest(Assigned(FVolumeScene) and (FWorkspace.ResultText = SavedResult) and
+    (Length(FWorkspace.OutputTokens) = 64), 'cutaway changed saved volume extent');
+  for I := 0 to FVolumeScene.QuadCount-1 do
+    AssertTest(FVolumeScene.QuadAt(I).CellZ < 2, 'cutaway retained an upper-layer face');
+  FVolumeHiddenToken.value := '-1'; DispatchDomEvent(FVolumeHiddenToken,'change');
+  AssertTest(Assigned(FVolumeScene) and (FWorkspace.ResultText = SavedResult),
+    'showing every token changed the public result');
+  Quad := FVolumeScene.QuadAt(0);
+  Face := FVolumeViewport.querySelector('polygon[data-index="0"]');
+  AssertTest(Assigned(Face), 'SVG lacks public face selection metadata');
+  DispatchDomEvent(Face,'click');
+  AssertTest((FLockXInput.value = IntToStr(Quad.CellX)) and
+    (FLockYInput.value = IntToStr(Quad.CellY)) and
+    (FLockZInput.value = IntToStr(Quad.CellZ)) and
+    (FWorkspace.ResultText = SavedResult), 'projected face selected the wrong XYZ cell');
+  document.body.setAttribute('data-overlapping-volume-view', 'passed');
+
+  { Leaf above the existing leaf violates a learned joint vertical footprint. }
+  FLockXInput.value := '2'; FLockYInput.value := '2'; FLockZInput.value := '2';
+  FLockTokenSelect.value := IntToStr(FindVocabularyToken('leaf'));
+  DispatchDomEvent(FAddLockButton,'click');
+  AssertTest(not FWorkspace.HasResult and not Assigned(FVolumeScene) and
+    (FVolumeSvgText = '') and not FVolumeViewport.hasAttribute('data-view-signature') and
+    (FVolumeDownload.getAttribute('aria-disabled') = 'true'),
+    'public lock retained stale 3D output or download');
+  DispatchDomEvent(FSolveButton,'click');
+  AssertTest((FWorkspace.ResultStatus = wprsContradiction) and
+    (Length(FWorkspace.OutputTokens) = 0) and not Assigned(FVolumeScene),
+    'joint vertical lock conflict did not clear the public volume');
+  ConflictIndex := -1;
+  for I := 0 to High(FLocks) do
+    if (FLocks[I].X = 2) and (FLocks[I].Y = 2) and (FLocks[I].Z = 2) then
+      ConflictIndex := I;
+  AssertTest(ConflictIndex >= 0, 'conflicting XYZ lock disappeared');
+  FLockList.selectedIndex := ConflictIndex;
+  DispatchDomEvent(FRemoveLockButton,'click'); DispatchDomEvent(FSolveButton,'click');
+  AssertTest((FWorkspace.ResultText = SavedResult) and Assigned(FVolumeScene),
+    'removing the conflicting XYZ lock failed exact recovery');
+  document.body.setAttribute('data-overlapping-volume-recovery', 'passed');
+
+  ApplySourceText(SavedSource); DispatchDomEvent(FTrainButton,'click');
+  AssertTest((Length(FLocks) = 0) and (FWorkspace.RecipeText = SavedRecipe) and
+    not Assigned(FVolumeScene), 'volume source reload retained run-owned locks or stale view');
+  FLocks := TrainingStudioPresetLocks(TRAINING_STUDIO_PATTERN3D_PRESET,
+    FWorkspace.PublicPassIndex);
+  RefreshAll; DispatchDomEvent(FSolveButton,'click');
+  AssertTest(FWorkspace.ResultText = SavedResult, 'saved volume source failed exact replay');
+  FSeedInput.value := '1'; DispatchDomEvent(FSeedInput,'input');
+  AssertTest(FWorkspace.HasRecipe and not FWorkspace.HasResult and
+    not Assigned(FVolumeScene) and (FVolumeSvgText = ''), 'seed edit retained stale SVG');
+  LoadPreset(INITIAL_PRESET); DispatchDomEvent(FTrainButton,'click');
+  DispatchDomEvent(FSolveButton,'click');
+  AssertTest((FWorkspace.TrainingSignatureText = BASELINE_SOURCE_SIGNATURE) and
+    (FWorkspace.RecipeSignatureText = BASELINE_RECIPE_SIGNATURE) and
+    (FWorkspace.ResultSignatureText = BASELINE_RESULT_SIGNATURE) and
+    FVolumePanel.hasAttribute('hidden'), '3D selftest failed to restore the legacy baseline');
+  document.body.setAttribute('data-overlapping-volume', 'passed');
 end;
 
 procedure TBrowserTrainingStudioApplication.RunSelfTest;
@@ -1481,6 +2756,10 @@ begin
       (document.body.getAttribute('data-cell-count') = '16'),
       'final baseline state has stale locks or cells');
     document.body.setAttribute('data-recovery', 'passed');
+    RunQuotaSelfTest;
+    RunConnectivitySelfTest;
+    RunCircularSelfTest;
+    RunPattern3DSelfTest;
     document.body.setAttribute('data-self-test', 'passed');
   except
     on E: Exception do
@@ -1490,6 +2769,180 @@ begin
       ShowError(E.Message);
     end;
   end;
+end;
+
+function TBrowserTrainingStudioApplication.HandleQuotaInput(AEvent: TJSEvent): Boolean;
+begin
+  Result := False;
+  try BeginQuotaDraft; except on E: Exception do ShowError(E.Message); end;
+end;
+
+function TBrowserTrainingStudioApplication.HandleQuotaSelect(AEvent: TJSEvent): Boolean;
+var LIndex: Integer;
+begin
+  Result := False;
+  try
+    if PolicyDraftDirty then
+    begin
+      FQuotaList.selectedIndex := FEditingQuotaIndex;
+      raise EWfcTrainingWorkspace.Create('apply or discard the quota draft before selecting another');
+    end;
+    LIndex := FQuotaList.selectedIndex;
+    if (LIndex < 0) or (LIndex >= FWorkspace.ValueQuotaCount) then Exit;
+    LoadQuotaFields(LIndex);
+    RefreshQuotaState;
+  except on E: Exception do ShowError(E.Message); end;
+end;
+
+function TBrowserTrainingStudioApplication.HandleQuotaApply(AEvent: TJSMouseEvent): Boolean;
+begin
+  Result := False;
+  try ApplyQuotaDraft; except on E: Exception do ShowError(E.Message); end;
+end;
+
+function TBrowserTrainingStudioApplication.HandleQuotaNew(AEvent: TJSMouseEvent): Boolean;
+begin
+  Result := False;
+  try
+    if PolicyDraftDirty then
+      raise EWfcTrainingWorkspace.Create('apply or discard the quota draft before starting another');
+    LoadQuotaFields(-1);
+    RefreshQuotaState;
+  except on E: Exception do ShowError(E.Message); end;
+end;
+
+function TBrowserTrainingStudioApplication.HandleQuotaRemove(AEvent: TJSMouseEvent): Boolean;
+var Q: TWfcTrainingValueQuotas; I: Integer;
+begin
+  Result := False;
+  try
+    if PolicyDraftDirty then
+      raise EWfcTrainingWorkspace.Create('apply or discard the quota draft before removing a saved quota');
+    Q := FWorkspace.CopyValueQuotas;
+    if (FEditingQuotaIndex < 0) or (FEditingQuotaIndex >= Length(Q)) then
+      raise EWfcTrainingWorkspace.Create('select a saved quota to remove');
+    for I := FEditingQuotaIndex to Length(Q) - 2 do Q[I] := Q[I + 1];
+    SetLength(Q, Length(Q) - 1);
+    CommitValueQuotas(Q);
+  except on E: Exception do ShowError(E.Message); end;
+end;
+
+function TBrowserTrainingStudioApplication.HandleQuotaClear(AEvent: TJSMouseEvent): Boolean;
+begin
+  Result := False;
+  try
+    if PolicyDraftDirty then
+      raise EWfcTrainingWorkspace.Create('apply or discard the quota draft before clearing saved quotas');
+    CommitValueQuotas(nil);
+  except on E: Exception do ShowError(E.Message); end;
+end;
+
+function TBrowserTrainingStudioApplication.HandleQuotaDiscard(AEvent: TJSMouseEvent): Boolean;
+begin
+  Result := False;
+  try
+    if FConnectivityDraftDirty then
+      raise EWfcTrainingWorkspace.Create('discard the connectivity draft in its own editor');
+    CancelSourceFileRead;
+    FQuotaDraftDirty := False;
+    ReloadQuotaEditor;
+    RefreshAll;
+    if FWorkspace.HasRecipe then
+      SetState('trained', 'Quota draft discarded; saved source is unchanged.',
+        'The old run and result stay cleared. Configure and solve again.')
+    else
+      SetState('source-dirty', 'Quota draft discarded; train the retained source.',
+        'The failed rebuild left no recipe, run, or result.');
+  except on E: Exception do ShowError(E.Message); end;
+end;
+
+function TBrowserTrainingStudioApplication.HandleConnectivityInput(AEvent: TJSEvent): Boolean;
+begin
+  Result := False;
+  try BeginConnectivityDraft; except on E: Exception do ShowError(E.Message); end;
+end;
+
+function TBrowserTrainingStudioApplication.HandleConnectivitySelect(AEvent: TJSEvent): Boolean;
+begin
+  Result := False;
+  try
+    if PolicyDraftDirty then
+    begin
+      FConnectivityList.selectedIndex := FEditingConnectivityIndex;
+      RequireNoPolicyDraft;
+    end;
+    if (FConnectivityList.selectedIndex < 0) or
+        (FConnectivityList.selectedIndex >= FWorkspace.ConnectivityCount) then Exit;
+    LoadConnectivityFields(FConnectivityList.selectedIndex);
+    RefreshConnectivityState;
+  except on E: Exception do ShowError(E.Message); end;
+end;
+
+function TBrowserTrainingStudioApplication.HandleConnectivityApply(AEvent: TJSMouseEvent): Boolean;
+begin
+  Result := False;
+  try ApplyConnectivityDraft; except on E: Exception do ShowError(E.Message); end;
+end;
+
+function TBrowserTrainingStudioApplication.HandleConnectivityNew(AEvent: TJSMouseEvent): Boolean;
+begin
+  Result := False;
+  try RequireNoPolicyDraft; LoadConnectivityFields(-1); RefreshConnectivityState;
+  except on E: Exception do ShowError(E.Message); end;
+end;
+
+function TBrowserTrainingStudioApplication.HandleConnectivityRemove(AEvent: TJSMouseEvent): Boolean;
+var C: TWfcTrainingConnectivities; I: Integer;
+begin
+  Result := False;
+  try
+    RequireNoPolicyDraft;
+    C := FWorkspace.CopyConnectivities;
+    if (FEditingConnectivityIndex < 0) or (FEditingConnectivityIndex >= Length(C)) then
+      raise EWfcTrainingWorkspace.Create('select a saved network to remove');
+    for I := FEditingConnectivityIndex to Length(C) - 2 do C[I] := C[I + 1];
+    SetLength(C, Length(C) - 1); CommitConnectivities(C);
+  except on E: Exception do ShowError(E.Message); end;
+end;
+
+function TBrowserTrainingStudioApplication.HandleConnectivityClear(AEvent: TJSMouseEvent): Boolean;
+begin
+  Result := False;
+  try RequireNoPolicyDraft; CommitConnectivities(nil);
+  except on E: Exception do ShowError(E.Message); end;
+end;
+
+function TBrowserTrainingStudioApplication.HandleConnectivityDiscard(AEvent: TJSMouseEvent): Boolean;
+begin
+  Result := False;
+  try
+    if FQuotaDraftDirty then
+      raise EWfcTrainingWorkspace.Create('discard the quota draft in its own editor');
+    CancelSourceFileRead;
+    FConnectivityDraftDirty := False;
+    ReloadQuotaEditor; ReloadConnectivityEditor; RefreshAll;
+    if FWorkspace.HasRecipe then
+      SetState('trained', 'Network draft discarded; saved source is unchanged.',
+        'The previous run stays cleared; configure and solve again.')
+    else SetState('source-dirty', 'Network draft discarded; train the retained source.',
+      'The failed rebuild left no recipe, run, or result.');
+  except on E: Exception do ShowError(E.Message); end;
+end;
+
+function TBrowserTrainingStudioApplication.HandleConnectivityDemo(AEvent: TJSMouseEvent): Boolean;
+begin
+  Result := False;
+  try
+    RequireNoPolicyDraft;
+    ApplySourceText(TrainingStudioRouteSource);
+    WriteOptions(TrainingStudioRouteOptions, 1);
+    TrainWorkspace;
+    CommitConnectivities(TrainingStudioRouteNetwork);
+    CommitValueQuotas(TrainingStudioRouteQuota);
+    SolveWorkspace;
+    AssertTest(TrainingStudioRouteIsValid(FWorkspace.OutputTokens),
+      'route demonstration independent path/count validation');
+  except on E: Exception do ShowError(E.Message); end;
 end;
 
 function TBrowserTrainingStudioApplication.HandleLoadPreset(
@@ -1729,15 +3182,24 @@ begin
 end;
 
 procedure TBrowserTrainingStudioApplication.Run;
+var Query: TJSURLSearchParams; PresetIndex: Integer; PresetText: String;
 begin
   try
     BindDocument;
     PopulatePresets;
     BindEvents;
-    LoadPreset(INITIAL_PRESET);
+    Query := TJSURLSearchParams.new(window.location.search);
+    PresetIndex := INITIAL_PRESET;
+    PresetText := '';
+    if Query.has('preset') then PresetText := String(Query.get('preset'));
+    if (String(Query.get('selftest')) <> '1') and (PresetText <> '') then
+      if not TryStrToInt(PresetText,PresetIndex) or (PresetIndex < 0) or
+        (PresetIndex >= TRAINING_STUDIO_PRESET_COUNT) then
+        raise EConvertError.Create('preset must name an available numbered preset');
+    LoadPreset(PresetIndex);
     TrainWorkspace;
     SolveWorkspace;
-    if Pos('selftest=1', window.location.search) > 0 then
+    if String(Query.get('selftest')) = '1' then
       RunSelfTest
     else
       document.body.setAttribute('data-self-test', 'not-requested');

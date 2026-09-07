@@ -45,6 +45,7 @@ textarea:focus-visible, .button-link:focus-visible {
 
 .button-link { display: inline-flex; align-items: center; text-decoration: none; }
 .button-link.disabled { pointer-events: none; cursor: default; opacity: .42; }
+button:disabled, input:disabled, select:disabled, textarea:disabled { cursor: default; opacity: .45; }
 
 .masthead, main, footer { width: min(1450px, calc(100% - 2.25rem)); margin-inline: auto; }
 .masthead { display: flex; justify-content: space-between; align-items: end; gap: 2rem; padding: 2.5rem 0 1.5rem; border-bottom: 1px solid var(--line); }
@@ -106,6 +107,9 @@ dd { margin: .22rem 0 0; overflow-wrap: anywhere; color: var(--amber); font: 700
 #status-detail { margin: 0; color: var(--muted); font-size: .76rem; line-height: 1.5; }
 
 .run-fields { display: grid; grid-template-columns: repeat(8, minmax(7rem, 1fr)); gap: .65rem; }
+.raw-fields > label, .run-fields > label, .lock-fields > label { min-width: 0; }
+.raw-fields input, .raw-fields select, .run-fields input, .run-fields select,
+.lock-fields input, .lock-fields select { width: 100%; min-width: 0; }
 .check-field { display: flex; align-items: center; align-self: end; min-height: 2.5rem; gap: .48rem; }
 .check-field input { min-height: auto; }
 .lock-editor { display: grid; grid-template-columns: minmax(12rem, .65fr) minmax(24rem, 1.35fr); gap: .8rem 1rem; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--line); }
@@ -113,6 +117,27 @@ dd { margin: .22rem 0 0; overflow-wrap: anywhere; color: var(--amber); font: 700
 .lock-editor p { margin: .35rem 0 0; color: var(--muted); font-size: .76rem; }
 .lock-fields { display: grid; grid-template-columns: 5rem 5rem 5rem minmax(9rem, 1fr) auto; align-items: end; gap: .5rem; }
 .lock-list { grid-column: 1 / -1; width: 100%; min-height: 6.5rem; padding: .45rem; font: .76rem/1.5 ui-monospace, monospace; }
+.quota-editor { min-width: 0; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--line); }
+.quota-editor h3 { margin: 0; font-size: .84rem; text-transform: uppercase; letter-spacing: .08em; }
+.quota-editor .section-heading p { max-width: 50rem; margin: .35rem 0 0; color: var(--muted); font-size: .76rem; }
+.quota-fields { display: grid; grid-template-columns: minmax(10rem, 1fr) minmax(12rem, 1.5fr) repeat(2, minmax(8rem, .6fr)); gap: .65rem; align-items: start; }
+.quota-fields > label { min-width: 0; }
+#quota-list { width: 100%; margin: .75rem 0; font: .76rem/1.5 ui-monospace, monospace; }
+#quota-tokens-select { width: 100%; font-family: ui-monospace, monospace; }
+body[data-quota-draft="true"] .quota-editor { border-color: var(--amber); }
+.connectivity-editor { min-width: 0; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--line); }
+.connectivity-editor h3 { margin: 0; font-size: .84rem; text-transform: uppercase; letter-spacing: .08em; }
+.connectivity-editor .section-heading p { color: var(--muted); font-size: .76rem; }
+.connectivity-fields { display: grid; grid-template-columns: minmax(12rem, 2fr) repeat(3, minmax(4rem, 1fr)); gap: .65rem; margin-bottom: .7rem; }
+.connectivity-fields > label { min-width: 0; }
+.connectivity-fields input { width: 100%; min-width: 0; }
+.connectivity-table-scroll { overflow-x: auto; margin: .7rem 0; }
+.connectivity-table { width: 100%; border-collapse: collapse; font: .76rem ui-monospace, monospace; }
+.connectivity-table th, .connectivity-table td { padding: .4rem; border: 1px solid var(--line); text-align: center; }
+.connectivity-table th:first-child { text-align: left; overflow-wrap: anywhere; }
+.connectivity-table input { min-height: auto; width: 1.15rem; height: 1.15rem; }
+#connectivity-list { width: 100%; margin: .75rem 0; font: .76rem/1.5 ui-monospace, monospace; }
+body[data-connectivity-draft="true"] .connectivity-editor { border-color: var(--amber); }
 
 .result-chip { border: 1px solid var(--line); border-radius: 99px; padding: .4rem .65rem; color: var(--amber); font: 720 .72rem ui-monospace, monospace; }
 body[data-state="solved"] .result-chip { color: var(--green); }
@@ -129,6 +154,16 @@ body[data-state="pass-limit"] .result-chip { color: var(--rose); }
 .reports { display: grid; grid-template-columns: 1fr 1fr; gap: .8rem; margin-top: .9rem; }
 .reports pre { min-height: 8rem; margin: .45rem 0 0; padding: .7rem; overflow: auto; white-space: pre-wrap; border: 1px solid var(--line); border-radius: .5rem; background: #08120f; color: #c7d8d0; font: .73rem/1.5 ui-monospace, monospace; }
 .artifact-output { min-height: 16rem; }
+.volume-panel { margin: .2rem 0 1.1rem; padding: 1rem; border: 1px solid var(--line); border-radius: .7rem; background: #071416; }
+.volume-toolbar { display: flex; flex-wrap: wrap; align-items: end; gap: .7rem; margin-bottom: .8rem; }
+.volume-toolbar label { flex: 1 1 8rem; min-width: 0; }
+.volume-toolbar input, .volume-toolbar select { width: 100%; min-width: 0; }
+.volume-toolbar .button-link { flex: 0 1 auto; }
+.volume-viewport { display: grid; place-items: center; min-height: 14rem; overflow: auto; }
+.volume-viewport svg { display: block; width: 100%; max-width: 52rem; height: auto; max-height: 34rem; }
+.volume-viewport polygon { cursor: pointer; }
+.volume-viewport polygon:hover { stroke: #e2f3bc; stroke-width: 2; }
+.volume-panel[hidden] { display: none; }
 
 footer { display: flex; justify-content: space-between; gap: 1rem; padding: .7rem 0 1.8rem; color: rgba(164, 195, 181, .58); font: .69rem ui-monospace, monospace; }
 
@@ -137,7 +172,9 @@ footer { display: flex; justify-content: space-between; gap: 1rem; padding: .7re
   .source-panel, .status-panel, .run-panel, .result-panel, .artifact-panel { grid-column: 1; grid-row: auto; }
   .status-panel { position: static; }
   .raw-fields { grid-template-columns: repeat(3, 1fr); }
-  .run-fields { grid-template-columns: repeat(4, 1fr); }
+  .run-fields { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .lock-editor { grid-template-columns: minmax(0, 1fr); }
+  .quota-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 720px) {
@@ -156,5 +193,8 @@ footer { display: flex; justify-content: space-between; gap: 1rem; padding: .7re
   .lock-fields .token-field { grid-column: 1 / -1; }
   .lock-fields button { grid-column: 1 / -1; width: 100%; white-space: normal; }
   .lock-list { grid-column: 1; }
+  .quota-fields { grid-template-columns: minmax(0, 1fr); }
+  .connectivity-fields { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .connectivity-fields > label:first-child { grid-column: 1 / -1; }
   footer { flex-direction: column; }
 }

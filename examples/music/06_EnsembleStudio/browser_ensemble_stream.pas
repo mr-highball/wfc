@@ -39,7 +39,9 @@ uses
   wfc_midi_smf,
   wfc_midi_stream,
   ensemble_studio_stream,
-  ensemble_studio_midi_stream;
+  ensemble_studio_profiles,
+  ensemble_studio_midi_stream,
+  browser_ensemble_http;
 
 type
   TBrowserEnsembleStreamOperationKind = (
@@ -61,11 +63,13 @@ type
     FSeed, FSeconds, FSegmentCells, FBacktracks, FPassBacktracks:
       TJSHTMLInputElement;
     FTrace: TJSHTMLInputElement;
+    FProfile: TJSHTMLSelectElement;
     FStart, FMidiPlanButton, FMidiSaveButton, FCancel: TJSHTMLButtonElement;
     FProgress: TJSHTMLProgressElement;
     FStatus, FDetail, FPlan, FFallback: TJSElement;
     FActive: TBrowserEnsembleStreamOperation;
     FMidiPlan: TEnsembleStudioMidiPlan;
+    FHttpDownload: TBrowserEnsembleHttpDownload;
     FBusy, FReleased, FBound, FSelfTestRunning: Boolean;
     FAsyncCount: Integer;
     FRefreshTimer: NativeInt;
@@ -437,6 +441,7 @@ function TBrowserEnsembleStreamController.ReadOptions:
 begin
   Result := DefaultEnsembleStudioStreamOptions;
   Result.Seed := ReadSeed;
+  Result.Profile := ParseEnsembleStudioProfile(FProfile.value);
   Result.SegmentCellCount := ReadNonnegative(FSegmentCells,
     'stream segment cells');
   if (Result.SegmentCellCount < 1) or
@@ -483,6 +488,7 @@ var
   LMidiCommand, LTraceOption, LWaveCommand, LWaveFailure: String;
 begin
   if FReleased then Exit;
+  if FHttpDownload <> nil then FHttpDownload.InvalidateSettings;
   try
     LOptions := ReadOptions;
     LFrames := PlanEnsembleStudioFrames(FSeconds.value);
@@ -490,6 +496,7 @@ begin
     else LTraceOption := '';
     LMidiCommand := 'EnsembleStudioMidiRender --seconds ' +
       LFrames.RequestedText + ' --seed ' + IntToStr(LOptions.Seed) +
+      ' --profile ' + EnsembleStudioProfileName(LOptions.Profile) +
       ' --segment-cells ' + IntToStr(LOptions.SegmentCellCount) +
       ' --backtracks ' + IntToStr(LOptions.MaxBacktracks) +
       ' --pass-backtracks ' + IntToStr(LOptions.MaxPassBacktracks) +
@@ -507,7 +514,8 @@ begin
       FPlan.setAttribute('data-valid', 'true');
       LWaveCommand := 'EnsembleStudioRender --seconds ' +
         LPlan.RequestedText + ' --seed ' +
-      IntToStr(LOptions.Seed) + ' --segment-cells ' +
+      IntToStr(LOptions.Seed) + ' --profile ' +
+      EnsembleStudioProfileName(LOptions.Profile) + ' --segment-cells ' +
       IntToStr(LOptions.SegmentCellCount) + ' --backtracks ' +
       IntToStr(LOptions.MaxBacktracks) + ' --pass-backtracks ' +
       IntToStr(LOptions.MaxPassBacktracks) + LTraceOption +
@@ -523,8 +531,11 @@ begin
     end;
     FPlan.setAttribute('data-midi-valid', 'true');
     if LWaveCommand <> '' then
+    begin
       FFallback.textContent := 'Native WAVE (new output): ' + LWaveCommand +
-        #10 + 'Native MIDI (new output): ' + LMidiCommand
+        #10 + 'Native MIDI (new output): ' + LMidiCommand;
+      if FHttpDownload <> nil then FHttpDownload.UpdateSettings(FSeconds.value, LOptions);
+    end
     else
       FFallback.textContent := 'Native WAVE unavailable: ' + LWaveFailure +
         #10 + 'Native MIDI (new output): ' + LMidiCommand;
@@ -599,6 +610,7 @@ begin
   if (AEvent._type = 'click') and (LId <> 'new-session-button') then Exit;
   if (AEvent._type <> 'click') and
       (LId <> 'seed-input') and (LId <> 'stream-seconds-input') and
+      (LId <> 'profile-select') and
       (LId <> 'stream-segment-cells-input') and
       (LId <> 'stream-backtracks-input') and
       (LId <> 'stream-pass-backtracks-input') and
@@ -610,6 +622,7 @@ begin
     Exit(False);
   end;
   ClearMidiPlan;
+  if FHttpDownload <> nil then FHttpDownload.InvalidateSettings;
   Cancel('Stream inputs changed; the captured transaction is stale.');
   if FRefreshTimer <> 0 then window.clearTimeout(FRefreshTimer);
   FRefreshTimer := window.setTimeout(
@@ -626,7 +639,7 @@ begin
           if isFunction(TJSObject(window)['showSaveFilePicker']) then
             SetStatus('ready', 'Plan updated. Save As may replace a file selected by the user.')
           else SetStatus('unavailable',
-            'Plan updated. This browser needs the native host for streaming output.')
+            'Plan updated. Use the FPC server download when offered, or the native command.')
         else SetStatus('invalid', 'Correct the plan before starting a stream.');
       end;
     end, 0);
@@ -1480,10 +1493,14 @@ begin
   Inc(FAsyncCount);
   document.body.setAttribute('data-stream-self-test', 'pending');
   document.body.setAttribute('data-midi-stream-self-test', 'pending');
+  document.body.setAttribute('data-http-stream-self-test', 'pending');
   LMidiReleaseController := nil;
   LReleaseController := nil;
   try
     try
+      await(RunEnsembleHttpBrowserSelfTest);
+      if FReleased then Exit;
+      document.body.setAttribute('data-http-stream-self-test', 'passed');
       BrowserAssert(Pos('--backtracks 256 --pass-backtracks 16',
         FFallback.textContent) > 0,
         'native fallback preserves the captured search allowances');
@@ -1581,6 +1598,8 @@ begin
       begin
         document.body.setAttribute('data-stream-self-test', 'failed');
         document.body.setAttribute('data-midi-stream-self-test', 'failed');
+        if document.body.getAttribute('data-http-stream-self-test') <> 'passed' then
+          document.body.setAttribute('data-http-stream-self-test', 'failed');
         document.body.setAttribute('data-stream-test-message',
           FailureText(JSExceptValue));
         SetStatus('failed', FailureText(JSExceptValue));
@@ -1595,8 +1614,11 @@ end;
 procedure TBrowserEnsembleStreamController.Run;
 var
   LMutationHandler: TJSEventHandler;
+  LHttpLink: TJSHTMLAnchorElement;
+  LHttpStatus: TJSElement;
 begin
   FSeed := TJSHTMLInputElement(RequireElement('seed-input'));
+  FProfile := TJSHTMLSelectElement(RequireElement('profile-select'));
   FSeconds := TJSHTMLInputElement(RequireElement('stream-seconds-input'));
   FSegmentCells := TJSHTMLInputElement(
     RequireElement('stream-segment-cells-input'));
@@ -1616,6 +1638,25 @@ begin
   FDetail := RequireElement('stream-detail');
   FPlan := RequireElement('stream-plan');
   FFallback := RequireElement('stream-fallback');
+  { Older minimal test fixtures omit optional transport controls. Create only
+    those nodes, without rebuilding any finite-editor or stream state. }
+  LHttpLink := TJSHTMLAnchorElement(document.getElementById('stream-http-download'));
+  if LHttpLink = nil then
+  begin
+    LHttpLink := TJSHTMLAnchorElement(document.createElement('a'));
+    LHttpLink.id := 'stream-http-download';
+    LHttpLink.textContent := 'Download WAVE from FPC server';
+    FFallback.parentNode.insertBefore(LHttpLink, FFallback);
+  end;
+  LHttpStatus := document.getElementById('stream-http-status');
+  if LHttpStatus = nil then
+  begin
+    LHttpStatus := document.createElement('p');
+    LHttpStatus.id := 'stream-http-status';
+    LHttpStatus.className := 'bounded-claim';
+    FFallback.parentNode.insertBefore(LHttpStatus, FFallback);
+  end;
+  FHttpDownload := TBrowserEnsembleHttpDownload.Create(LHttpLink, LHttpStatus);
   FStart.onclick := @HandleStart;
   FMidiPlanButton.onclick := @HandleMidiPlan;
   FMidiSaveButton.onclick := @HandleMidiSave;
@@ -1628,16 +1669,22 @@ begin
   ClearMidiPlan;
   SetBusy(False);
   RefreshPlan;
+  FHttpDownload.Discover;
   if isFunction(TJSObject(window)['showSaveFilePicker']) then
     SetStatus('ready', 'Ready to stream. Save As may replace a user-selected file.')
   else SetStatus('unavailable',
-    'Direct streaming save is unavailable here; use the displayed native command.');
+    'Browser Save As is unavailable here; use the FPC server download when offered, or the native command.');
 end;
 
 procedure TBrowserEnsembleStreamController.Release;
 begin
   if FReleased then Exit;
   FReleased := True;
+  if FHttpDownload <> nil then
+  begin
+    FHttpDownload.Release;
+    FHttpDownload := nil;
+  end;
   if FActive <> nil then FActive.Cancelled := True;
   FreeAndNil(FMidiPlan);
   if FRefreshTimer <> 0 then
@@ -1665,6 +1712,8 @@ procedure InstallEnsembleStreamBrowserTestFixture;
 begin
   TJSHTMLElement(document.body).innerHTML :=
     '<main><input id="seed-input" inputmode="text" autocomplete="off" value="0">' +
+    '<select id="profile-select"><option value="structural-v1">original</option>' +
+      '<option value="developed-period-v1">developed</option></select>' +
     '<input id="stream-seconds-input" inputmode="decimal" autocomplete="off" value="1.5">' +
     '<input id="stream-segment-cells-input" type="number" min="1" step="1" value="5">' +
     '<input id="stream-backtracks-input" type="number" min="0" step="1" value="256">' +

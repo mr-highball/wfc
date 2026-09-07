@@ -115,7 +115,9 @@ build/native/bin/wfc_serve --root build/browser/music/www --port 8767
 ```
 
 Build the server with the native gate first; use `wfc_serve.exe` on Windows.
-See [development tools](../../../docs/development-tools.md) for its loopback-only serving boundary.
+The server binds to loopback by default. See
+[development tools](../../../docs/development-tools.md#access-from-a-trusted-local-network)
+for opt-in trusted-LAN serving on one explicit address.
 
 Open `http://127.0.0.1:8767/`. Startup generates seed zero once, but never
 starts playback. No runtime request is made beyond loading the local HTML,

@@ -27,20 +27,25 @@ unit training_studio_presets;
 
 interface
 
-uses wfc_training_workspace;
+uses wfc_model, wfc_pipeline_run, wfc_training_workspace;
 
 const
-  TRAINING_STUDIO_PRESET_COUNT = 6;
+  TRAINING_STUDIO_PRESET_COUNT = 8;
+  TRAINING_STUDIO_CIRCULAR_PRESET = 6;
+  TRAINING_STUDIO_PATTERN3D_PRESET = 7;
 
 function TrainingStudioPresetName(const AIndex: Integer): String;
 function TrainingStudioPresetText(const AIndex: Integer): String;
 function TrainingStudioPresetOptions(
   const AIndex: Integer): TWfcTrainingSolveOptions;
 function TrainingStudioPresetDepth(const AIndex: Integer): Integer;
+function TrainingStudioPresetLocks(const AIndex, APublicPassIndex: Integer):
+  TWfcPipelineCellLocks;
+function TrainingStudioCircularOutputIsValid(const ATokens: TWfcModelTokens): Boolean;
 
 implementation
 
-uses SysUtils, wfc_model, wfc_training, wfc_training_text, wfc_text_training;
+uses SysUtils, wfc_training, wfc_training_text, wfc_text_training;
 
 const
   PRESET_0 =
@@ -154,6 +159,8 @@ begin
     3: Result := 'Whole token phrases';
     4: Result := 'Raw text / Unicode scalars';
     5: Result := 'Volume checkerboard / six neighbors';
+    6: Result := 'Circular text / rise and rest';
+    7: Result := 'Arched lattice / overlapping volumes';
   end;
 end;
 
@@ -172,6 +179,29 @@ begin
     1: Exit(PRESET_1);
     2: Exit(PRESET_2);
     3: Exit(PRESET_3);
+  end;
+  if AIndex = TRAINING_STUDIO_PATTERN3D_PRESET then
+  begin
+    { A project-authored periodic architectural volume: floor, pier, upper
+      cross-beams and a planted courtyard. Z is up. These are semantic token
+      labels, not an assertion of structural engineering or plant physics. }
+    SetLength(LTokens,64);
+    for Z:=0 to 3 do for Y:=0 to 3 do for X:=0 to 3 do
+      if (Z=0) or ((X=0) and (Y=0)) or
+          ((Z=3) and ((X=0) or (Y=0))) then
+        LTokens[(Z*4+Y)*4+X]:='stone'
+      else if (Z=1) and (X=2) and (Y=2) then
+        LTokens[(Z*4+Y)*4+X]:='leaf'
+      else LTokens[(Z*4+Y)*4+X]:='air';
+    LOptions:=MakeWfcTrainingOptions(wtkPattern3D,wmbWrap,wmsD4,2,2,2,0);
+    SetLength(LVolumeSamples,1);
+    LVolumeSamples[0]:=MakeWfcTrainingSample('courtyard-cell',4,4,4,LTokens);
+    LDocument:=TWfcTrainingDocument.Create(
+      MakeWfcTrainingMetadata('arched-lattice-volume','MIT',
+        'project-authored periodic courtyard footprint study'),LOptions,LVolumeSamples);
+    try Result:=EncodeWfcTrainingText(LDocument);
+    finally LDocument.Free; end;
+    Exit;
   end;
   if AIndex = 5 then
   begin
@@ -196,6 +226,18 @@ begin
     end;
     Exit;
   end;
+  if AIndex = TRAINING_STUDIO_CIRCULAR_PRESET then
+  begin
+    SetLength(LSamples, 2);
+    LSamples[0] := MakeWfcTextTrainingSample('fall-circle', 'rise fall ');
+    LSamples[1] := MakeWfcTextTrainingSample('rest-circle', 'rise rest ');
+    LDocument := BuildWfcTextTrainingDocument(
+      MakeWfcTrainingMetadata('circular-rise-and-rest', 'MIT',
+        'project-authored independent text circles'), LSamples, 4, wmbWrap);
+    try Result := EncodeWfcTrainingText(LDocument);
+    finally LDocument.Free; end;
+    Exit;
+  end;
   SetLength(LSamples, 2);
   LSamples[0] := MakeWfcTextTrainingSample('first', 'a cat.');
   LSamples[1] := MakeWfcTextTrainingSample('second', 'a bat.');
@@ -218,13 +260,59 @@ begin
     0: begin Result.Width := 8; Result.Height := 1 end;
     3: begin Result.Width := 3; Result.Height := 1 end;
     4: begin Result.Width := 6; Result.Height := 1 end;
+    6: begin Result.Width := 40; Result.Height := 1 end;
   end;
 end;
 
 function TrainingStudioPresetDepth(const AIndex: Integer): Integer;
 begin
   CheckIndex(AIndex);
-  if AIndex = 5 then Result := 4 else Result := 1;
+  if AIndex in [5,TRAINING_STUDIO_PATTERN3D_PRESET] then Result := 4 else Result := 1;
+end;
+
+function TrainingStudioPresetLocks(const AIndex, APublicPassIndex: Integer):
+  TWfcPipelineCellLocks;
+begin
+  CheckIndex(AIndex);
+  Result := nil;
+  if AIndex=TRAINING_STUDIO_PATTERN3D_PRESET then
+  begin
+    SetLength(Result,3);
+    Result[0]:=MakeWfcPipelineCellLock(APublicPassIndex,0,0,0,'stone');
+    Result[1]:=MakeWfcPipelineCellLock(APublicPassIndex,2,2,1,'leaf');
+    Result[2]:=MakeWfcPipelineCellLock(APublicPassIndex,1,1,2,'air');
+    Exit;
+  end;
+  if AIndex <> TRAINING_STUDIO_CIRCULAR_PRESET then Exit;
+  { These are visible run choices, not inferred corpus constraints or private
+    state identifiers. The first phrase falls and the second rests. }
+  SetLength(Result, 3);
+  Result[0] := MakeWfcPipelineCellLock(APublicPassIndex, 0, 0, 0, 'r');
+  Result[1] := MakeWfcPipelineCellLock(APublicPassIndex, 5, 0, 0, 'f');
+  Result[2] := MakeWfcPipelineCellLock(APublicPassIndex, 15, 0, 0, 'r');
+end;
+
+function TrainingStudioCircularOutputIsValid(const ATokens: TWfcModelTokens): Boolean;
+var I, J: Integer; Phrase: String;
+begin
+  Result := False;
+  if (Length(ATokens) < 20) or (Length(ATokens) mod 10 <> 0) then Exit;
+  { Independent public-token grammar, including the last-to-first word seam.
+    Each ten-scalar block returns to 'rise '; the locks distinguish the first
+    two blocks. No private sequence state or solver signature is trusted. }
+  for I := 0 to Length(ATokens) div 10 - 1 do
+  begin
+    Phrase := '';
+    for J := 0 to 9 do
+    begin
+      if Length(ATokens[I * 10 + J]) <> 1 then Exit;
+      Phrase := Phrase + String(ATokens[I * 10 + J]);
+    end;
+    if (Phrase <> 'rise fall ') and (Phrase <> 'rise rest ') then Exit;
+    if (I = 0) and (Phrase <> 'rise fall ') then Exit;
+    if (I = 1) and (Phrase <> 'rise rest ') then Exit;
+  end;
+  Result := True;
 end;
 
 end.

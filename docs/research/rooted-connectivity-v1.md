@@ -194,5 +194,7 @@ decisions, contradictions, backtracks, runtime, and peak storage, including
 failures. The current evidence establishes finite correctness and early
 bottleneck deduction, not general relative efficiency. Candidate-specific
 port filtering, richer cut explanations, authored/trained profile tooling,
-portable recipe encoding, and chunk-boundary connectivity summaries remain
-future work.
+and chunk-boundary connectivity summaries remain future work. The additive
+[portable recipe contract](../pipeline-connectivity.md) now preserves explicit
+profiles and lowers public connectivity through learned projections. It does
+not change this propagator or its original finite evidence.

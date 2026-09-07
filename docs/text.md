@@ -48,13 +48,35 @@ checked surrogate pairs. Positions in every text API are token/scalar ordinals,
 never native byte offsets or JavaScript UTF-16 code-unit offsets.
 
 `LearnWfcTextModel` tokenizes an ordered array of nonempty documents and passes
-the resulting isolated samples to `LearnSequenceModelCorpus`. A second overload
-accepts `TWfcTextTokenizeCallback`, so an application can own a specialized
-tokenization policy while retaining sequence validation and learning. The
+the resulting isolated samples to `LearnSequenceModelCorpus`. Both overloads
+accept a trailing source boundary, defaulting to `wmbOpen`. For example,
+`LearnWfcTextModel(Documents, 3, wttkUnicodeScalar, wmbWrap)` learns each
+document as an independent circle. A second overload accepts
+`TWfcTextTokenizeCallback` with the same optional boundary, so an application
+can own a specialized tokenization policy while retaining sequence validation
+and learning. The
 standard high-level completion request currently uses the versioned scalar
 tokenizer. A standard word tokenizer remains open until the repository carries
 its own versioned Unicode word-boundary data; platform-dependent classification
 is not an acceptable shortcut.
+
+For source authoring, `BuildWfcTextTrainingDocument` in `wfc_text_training`
+accepts a final optional `TWfcModelBoundary` argument. Omitted or `wmbOpen`
+preserves the original finite-document contract. Explicit `wmbWrap` makes each
+raw scalar sample its own circle, with one observation per scalar and no
+synthetic beginning/end evidence or cross-sample joins. The authored source
+persists as `wfclearn=5` and learns `wfcs=2`. This is separate from selecting a
+wrapped output extent for an existing model: a circular source actually learns
+the last-to-first history, including repeated history for short circles.
+Use generic `wseWrap` for a closed output or `wseFragment` for a finite extract;
+endpoint-requiring extents have no observed endpoints in a circular model.
+For text completion, set `Request.Extent` independently to `wseWrap` for a
+closed output or `wseFragment` for a finite extract; selecting an output extent
+does not retroactively change the model's source observations.
+The [Training Studio](training-studio.md#raw-text-is-an-explicit-import) exposes
+the declaration and a public-lock demonstration. Tokenization stays unchanged;
+this does not add a word tokenizer or imply that repeating text is developed
+music.
 
 ## path extents
 

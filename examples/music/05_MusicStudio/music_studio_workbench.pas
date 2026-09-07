@@ -804,7 +804,7 @@ function FailureName(const K: TGraphContradictionKind): String;
 const NAMES: array[TGraphContradictionKind] of String =
   ('none','empty-domain','invalid-lock','adjacency','previous-pass',
    'required-support','final-validation','pass-dependency','entry-domain',
-   'excluded-assignment','connectivity');
+   'excluded-assignment','connectivity','value-quota');
 begin Result := NAMES[K]; end;
 
 function DispositionName(const D: TGraphPassDisposition): String;

@@ -32,6 +32,7 @@ uses
 
 const
   WFC_SEQUENCE_TEXT_VERSION = 1;
+  WFC_SEQUENCE_WRAPPED_TEXT_VERSION = 2;
   WFC_SEQUENCE_MAX_ENCODED_TEXT_LENGTH = 16777216;
   WFC_SEQUENCE_MAX_TEXT_LINE_COUNT = 262144;
 
@@ -39,6 +40,7 @@ function EncodeWfcSequenceText(
   const AModel: TWfcSequenceModel): String;
 function DecodeWfcSequenceText(
   const AText: String): TWfcSequenceModel;
+function WfcSequenceModelTextVersion(const AModel: TWfcSequenceModel): Integer;
 
 implementation
 
@@ -81,9 +83,10 @@ begin
 end;
 
 function CheckedLineCount(const ASampleCount, ATokenCount,
-  AStateCount: Integer): Integer;
+  AStateCount: Integer; const ABoundary: TWfcModelBoundary): Integer;
 begin
   Result := WFC_SEQUENCE_FIXED_LINE_COUNT;
+  if ABoundary = wmbWrap then Inc(Result);
   Result := CheckedAdd(Result, ASampleCount,
     'sequence text line count');
   Result := CheckedAdd(Result, ATokenCount,
@@ -226,6 +229,7 @@ end;
 
 procedure ParseStateLine(const ALine: String;
   const AExpectedIndex, AOrder, ATokenCount: Integer;
+  const ABoundary: TWfcModelBoundary;
   out AState: TWfcSequenceState;
   out ACount, AStartCount, AEndCount: Integer);
 var
@@ -270,6 +274,8 @@ begin
     TextError('state start count exceeds its observation count');
   if AEndCount > ACount then
     TextError('state end count exceeds its observation count');
+  if (ABoundary = wmbWrap) and ((AStartCount <> 0) or (AEndCount <> 0)) then
+    TextError('circular state start and end counts must be zero');
 
   SetLength(LHistory, AOrder - 1);
   for I := 0 to Length(LHistory) - 1 do
@@ -277,10 +283,20 @@ begin
     LField := TakeCommaField(ALine,
       'a history atom', LStart);
     LHistory[I] := ParseHistoryAtom(LField, ATokenCount);
+    if (ABoundary = wmbWrap) and (LHistory[I].Kind <> wshToken) then
+      TextError('circular history cannot contain BOS');
   end;
   LField := Copy(ALine, LStart, Length(ALine) - LStart + 1);
   LEmittedTokenIndex := ParseEmittedAtom(LField, ATokenCount);
   AState := MakeWfcSequenceState(LHistory, LEmittedTokenIndex);
+end;
+
+function WfcSequenceModelTextVersion(const AModel: TWfcSequenceModel): Integer;
+begin
+  if not Assigned(AModel) then
+    raise EArgumentNilException.Create('WFC sequence model cannot be nil');
+  if AModel.Boundary = wmbWrap then Result := WFC_SEQUENCE_WRAPPED_TEXT_VERSION
+  else Result := WFC_SEQUENCE_TEXT_VERSION;
 end;
 
 function EncodeWfcSequenceText(
@@ -309,12 +325,17 @@ begin
   LStartCounts := AModel.CopyStartCounts;
   LEndCounts := AModel.CopyEndCounts;
   SetLength(LLines, CheckedLineCount(AModel.SampleCount,
-    AModel.PublicTokenCount, AModel.StateCount));
+    AModel.PublicTokenCount, AModel.StateCount, AModel.Boundary));
 
   LLineIndex := 0;
   LLines[LLineIndex] := 'wfcs=' +
-    IntToStr(WFC_SEQUENCE_TEXT_VERSION);
+    IntToStr(WfcSequenceModelTextVersion(AModel));
   Inc(LLineIndex);
+  if AModel.Boundary = wmbWrap then
+  begin
+    LLines[LLineIndex] := 'boundary=wrap';
+    Inc(LLineIndex);
+  end;
   LLines[LLineIndex] := 'order=' + IntToStr(AModel.Order);
   Inc(LLineIndex);
   LLines[LLineIndex] := 'samples=' + IntToStr(AModel.SampleCount);
@@ -381,6 +402,8 @@ function DecodeWfcSequenceText(
   const AText: String): TWfcSequenceModel;
 var
   I: Integer;
+  LBoundary: TWfcModelBoundary;
+  LHeader: String;
   LEndCounts: TWfcModelIntegerArray;
   LLineIndex: Integer;
   LLines: TWfcTextLines;
@@ -402,10 +425,18 @@ begin
     TextError('document is incomplete');
   LLineIndex := 0;
 
-  if RequireLine(LLines, LLineIndex, 'format version') <>
-      'wfcs=1' then
+  LHeader := RequireLine(LLines, LLineIndex, 'format version');
+  if LHeader = 'wfcs=1' then LBoundary := wmbOpen
+  else if LHeader = 'wfcs=2' then LBoundary := wmbWrap
+  else
     TextError('unsupported or noncanonical format version');
   Inc(LLineIndex);
+  if LBoundary = wmbWrap then
+  begin
+    if RequireLine(LLines, LLineIndex, 'boundary') <> 'boundary=wrap' then
+      TextError('version 2 requires canonical boundary=wrap');
+    Inc(LLineIndex);
+  end;
 
   LOrder := ParseCanonicalInteger(ValueAfterPrefix(
     RequireLine(LLines, LLineIndex, 'order'),
@@ -475,7 +506,7 @@ begin
   for I := 0 to LStateCount - 1 do
   begin
     ParseStateLine(RequireLine(LLines, LLineIndex,
-      'state record'), I, LOrder, LTokenCount, LStates[I],
+      'state record'), I, LOrder, LTokenCount, LBoundary, LStates[I],
       LStateCounts[I], LStartCounts[I], LEndCounts[I]);
     Inc(LLineIndex);
   end;
@@ -488,7 +519,7 @@ begin
 
   try
     Result := TWfcSequenceModel.Create(LOrder, LSampleLengths,
-      LTokens, LStates, LStateCounts, LStartCounts, LEndCounts);
+      LTokens, LStates, LStateCounts, LStartCounts, LEndCounts, LBoundary);
   except
     on E: EWfcSequence do
       raise EConvertError.Create('invalid ' +

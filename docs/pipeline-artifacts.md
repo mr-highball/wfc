@@ -6,11 +6,21 @@ pipeline without serializing a live `TGraph`:
 - `wfcrules=1` stores an immutable hand-authored local rule model;
 - `wfcpipeline=1` stores an immutable declarative pipeline recipe containing
   typed resources, passes, dependencies, projection bridges, and public-token
-  requirements;
+  requirements; opt-in `wfcpipeline=2` adds whole-pass public-token quotas,
+  `wfcpipeline=3` adds rooted public-token connectivity, and `wfcpipeline=4`
+  adds overlapping-volume resources/adapters/bridges while preserving both policies;
+  the additive `wfcpipeline=5` extension supplies independent pass topologies
+  and mapped public-token requirements;
 - `wfcpipeline-run=1` stores one recipe-bound invocation, including shape,
-  seed, solve policy, public locks, and public allowed-token domains; and
+  seed, solve policy, public locks, and public allowed-token domains;
+  explicit per-pass extents select `wfcpipeline-run=2`; and
 - `wfcpipeline-result=1` stores the terminal status, evidence identity, pass
-  outcomes, and complete public output of that invocation.
+  outcomes, and complete public output of that invocation; `wfcpipeline-result=2`
+  retains the complete per-pass layout table for a version-2 run.
+
+The [mapped extension](portable-mapped-passes.md) is explicitly opt-in and does
+not change existing recipe1–4/run1/result1 bytes.
+The fixed-grid Mapped World UI does not yet expose portable import/export.
 
 All four formats are implemented once in portable Pascal and use the same
 source on native FPC and pas2js. They need no JSON, YAML, reflection, serializer,
@@ -25,6 +35,24 @@ To generate a recipe from editable samples, see
 [training documents and wfc-learn](training.md). That workflow preserves
 source/license labels and ordered corpus fingerprints for cardinal, pattern,
 and sequence resources without introducing a file-format dependency.
+
+To assemble multiple complete authored or learned recipes, use
+[immutable pipeline composition](pipeline-composition.md). It preserves each
+fragment's internal constraints and provenance while explicitly remapping names
+and indices. The output uses the existing recipe5/run2/result2 path; composition
+does not introduce a workspace journal format or implicitly connect fragments.
+
+For reusable input lowering and controlled in-memory editing, see
+[preparation and replacement](pipeline-preparation.md) and
+[prepared sessions](pipeline-sessions.md). Session outcomes preserve actual
+selective reuse, ownership and pending/currentness evidence; they are not a
+new artifact and must not be relabeled as fresh result1/result2 documents.
+The separate [workspace journal and evidence layer](pipeline-workspaces.md)
+saves those ordered operations, verifies them by complete actual replay and
+provides atomic authoring. A decoded journal contains unverified claims, not a
+trusted result. Its `wfc-workspace-journal=1` envelope is handled by
+`wfc_workspace`; the generic artifact-family registry and existing
+recipe1–5/run1–2/result1–2 behavior are unchanged.
 
 ## Hand-authored rule models
 
@@ -125,7 +153,8 @@ multiplication. Collection and text-envelope checks happen before their large
 outer allocations. Each typed resource decoder applies its own limits before
 dense allocation; the recipe then accounts its relation slots before accepting
 the resource and proceeding to the next one. Runtime preflight multiplies the
-cell count by the complete pass count and separately by the public-layer count.
+cell count by the complete pass count and separately by the public-layer count
+for uniform layouts; independent layouts sum their actual pass/public counts.
 It also charges every public label and the longest possible token in each
 public vocabulary across that pass's entire grid. A request that could exceed
 the result encoding budget is rejected before a graph is allocated, even when
@@ -140,10 +169,11 @@ passes must be private because their graph keys are representation details.
 They can reach a public layer only through one of the closed bridge kinds:
 
 - `pattern2d-projection` declares a wrapped rank-2 palette projection;
+- `pattern3d-projection` declares a wrapped, same-sized rank-3 XYZ projection;
 - `sequence-projection` declares the emitted-token projection of a rank-1
   sequence.
 
-The two bridge-version fields are independent. Versions 1 and 2 are accepted;
+The 2D pattern and sequence bridge-version fields are independent. Versions 1 and 2 are accepted;
 newly constructed recipes select version 2. Version 1 retains the original
 forward-only materialization contract. Version 2 additionally lowers public
 locks and domains through its matching bridge before the private source pass
@@ -151,9 +181,18 @@ is solved. Unknown versions fail closed, and changing one bridge field never
 changes the other projection kind.
 
 This preparation behavior is the `WFC_PIPELINE_RUNTIME_VERSION = 2`
-contract; the outer recipe, run, and result text envelopes remain version 1.
+contract; it does not change the outer run or result text envelopes. Recipes
+without global extensions remain version 1; [quota-only recipes](pipeline-value-quotas.md)
+select version 2, and [connectivity-bearing recipes](pipeline-connectivity.md)
+select version 3, with or without quotas. A recipe containing an overlapping
+volume resource, adapter or bridge selects version 4. It adds independent
+`pattern3d-graph-adapter-version=1` and `pattern3d-bridge-version=1` fields;
+the latter includes inverse public XYZ domains from its first version. Both
+policy sections are present, with zero version/count when absent. Legacy
+recipes never read the appended 3D version fields and keep exact identities.
+See [overlapping volumes](overlapping-3d.md).
 
-Pattern projection rejects palette tokens in the reserved private-key form
+2D pattern projection rejects palette tokens in the reserved private-key form
 `@p` followed only by decimal digits. The recipe and runtime adapter call the
 same project-owned predicate, so a recipe cannot validate and later fail only
 because its public vocabulary collides with latent graph keys.
@@ -162,7 +201,7 @@ The IR validates bridge topology, endpoints, dependency and vocabulary
 ownership, and derives target vocabularies. The compiler materializes those
 bridges into a fresh graph. Its tentative-commit hook independently checks
 private pattern and sequence captures, exact transform copies, both projection
-kinds, and public-token requirements before the core can publish staged
+kinds (including full XYZ footprints), public-token requirements, and declared quotas before the core can publish staged
 entries. Rule and generic-model passes use the graph's complete local
 constraint surface because those adapters do not expose a separate solved
 capture validator.
@@ -207,20 +246,32 @@ validator both enforce the range; see the [complete count contract](pass-counts.
 
 ## Canonical recipe, run, and result text
 
-`wfc_pipeline_text` encodes and decodes `wfcpipeline=1`. Its line-oriented
+`wfc_pipeline_text` encodes and decodes `wfcpipeline=1`, quota-bearing
+`wfcpipeline=2`, connectivity-bearing `wfcpipeline=3`, and feature-selected
+overlapping-volume `wfcpipeline=4`. Explicit spatial construction selects
+`wfcpipeline=5`, even for uniform geometry; its separate topology and mapped
+records are described in [portable mapped pipelines](portable-mapped-passes.md).
+Its line-oriented
 format has fixed field order and contiguous indexed records for resources,
 passes, dependencies, bridges, requirements, terms, and allowed tokens.
 Embedded documents are carried as one canonical percent-encoded field.
+The [quota extension](pipeline-value-quotas.md) adds its own ordered section,
+token/line limits, independent commit recount, and private-source lowering.
+The [connectivity extension](pipeline-connectivity.md) adds rooted port profiles,
+private-source lowering, and independent public traversal. Existing version-1
+and quota-only version-2 documents retain exact bytes and signatures.
 
-`wfc_pipeline_run_text` applies the same rules to `wfcpipeline-run=1`. A run
+`wfc_pipeline_run_text` applies the same rules to `wfcpipeline-run=1` and `=2`. A run
 repeats the recipe signature and records its positive rank-compatible shape,
 complete unsigned 32-bit seed, strategy, local and outer backtrack limits,
 trace policy, ordered public locks, and ordered public allowed-token domains.
 An assigned empty allowed-token array is an explicit contradictory domain; it
 is not the same thing as an absent domain. Decoding requires the referenced
 recipe and resolves every pass and token against its public vocabulary.
+Run2 appends a complete extent table to the checked pass-zero dimensions.
 
-`wfc_pipeline_result_text` encodes `wfcpipeline-result=1`. A result repeats both
+`wfc_pipeline_result_text` encodes `wfcpipeline-result=1` or `=2` to match its run.
+Result2 includes all pass layouts, including private passes. A result repeats both
 the recipe and run signatures, effective algorithm versions, shape, seed, and
 solve options. It then records status, stable pass counters, evidence kind and
 signature, structured failure fields, one terminal outcome per recipe pass,
@@ -353,7 +404,7 @@ and canonical encoding remain in the shared portable Pascal units.
 
 The contracts below use distribution-facing hyphenated command names. Checked
 repository builds retain their Pascal source-host basenames as
-`wfc_validate[.exe]` and `wfc_run[.exe]`;
+`wfc_validate[.exe]`, `wfc_inspect[.exe]`, and `wfc_run[.exe]`;
 packaging may expose the hyphenated names without changing
 behavior.
 
@@ -361,6 +412,8 @@ behavior.
 
 ```text
 wfc-validate recipe [--quiet | --emit-canonical] [--] INPUT
+wfc-validate run [--quiet | --emit-canonical] [--] RECIPE RUN
+wfc-validate result [--replay] [--quiet | --emit-canonical] [--] RECIPE RUN RESULT
 wfc-validate --help
 wfc-validate --version
 ```
@@ -368,9 +421,34 @@ wfc-validate --version
 `INPUT` is one recipe file or `-` for standard input. The default success
 output is a one-line recipe summary. `--quiet` suppresses it;
 `--emit-canonical` writes the exact input after strict decode and byte-for-byte
-canonical verification. The tool validates `wfcpipeline=1` syntax, signatures,
+canonical verification. Recipe validation supports `wfcpipeline=1,2,3,4,5` syntax, signatures,
 typed resources, provenance, references, topology, vocabularies, and static
 limits. It does not compile or solve the recipe.
+
+The expanded validator also checks standalone rules, cardinal/overlapping/
+sequence models, training sources, recipe-bound runs, and recipe/run-bound
+results. Only `result --replay` executes: it requires the fresh complete
+canonical result to match every saved byte. A valid stored or exactly replayed
+non-solved result returns `0`, not the runner's `4`. Ordinary result decoding
+does not establish every adjacency, input constraint, private witness, or
+claimed evidence event. See the [artifact tools guide](artifact-tools.md) for
+the precise validation scopes, formats, input limits, and API ownership.
+
+### `wfc-inspect`
+
+```text
+wfc-inspect recipe [--limit N] [--] INPUT
+wfc-inspect run [--limit N] [--] RECIPE RUN
+wfc-inspect result [--limit N] [--] RECIPE RUN RESULT
+```
+
+The inspector supports the same eight artifact families without executing or
+training. Its deterministic report exposes model structure, pass dependencies,
+constraints, provenance, invocation settings, and public result cells.
+Percent-encoded tokens are terminal-safe; explicit record and byte truncation
+make omitted details visible. This is a saved-artifact view, not live domains
+or interactive trace replay. The [complete guide](artifact-tools.md) includes
+the other families and examples.
 
 ### `wfc-run`
 
@@ -383,7 +461,8 @@ wfc-run --version
 `RECIPE` and `RUN` are canonical artifact files. Either one may be `-` for
 standard input, but not both. The tool strictly decodes the recipe first,
 decodes the run against it, prepares a fresh runtime, executes once, and writes
-one exact canonical `wfcpipeline-result=1` document. `--quiet` suppresses that
+one exact canonical `wfcpipeline-result=1` or `=2` document matching the run.
+`--quiet` suppresses that
 document without changing the outcome code. A solver contradiction or either
 backtrack limit still forms a valid canonical result and exits `4`; invalid
 recipe, run, transform-alias inputs, compile request, or runtime preflight does
@@ -391,11 +470,11 @@ not masquerade as a solver result.
 
 | Exit | `wfc-validate` | `wfc-run` |
 | ---: | --- | --- |
-| `0` | valid recipe, help, or version | solved result, help, or version |
-| `1` | invalid recipe artifact | invalid recipe, run, or executable invocation |
+| `0` | valid artifact, successful requested replay, help, or version | solved result, help, or version |
+| `1` | invalid artifact/context or replay failure | invalid recipe, run, or executable invocation |
 | `2` | command-line usage error | command-line usage error |
 | `3` | input/output failure | input/output failure |
-| `4` | reserved; recipe validation does not solve | valid canonical non-solved result |
+| `4` | unused; a valid stored non-solved result validates with `0` | valid canonical non-solved result |
 | `70` | unexpected internal failure | unexpected internal failure |
 
 Options must precede positional paths. `--` permits a path beginning with a

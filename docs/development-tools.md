@@ -18,9 +18,124 @@ FPC=/opt/fpc/bin/fpc bash ./build.sh
 Omit the override when `fpc` is on `PATH`. Executables are staged in
 `build/native/bin`; append `.exe` on Windows. Generated files stay under
 ignored `build` directories. This gate compiles and runs the pure conformance
-tests, tool `--version` smoke checks, real command-line process tests, live
+tests, tool help/version smoke checks, real command-line process tests, live
 server tests, and the streamed Music Studio exporter tests. It does not
 substitute for the browser execution gate below.
+
+## Check package completeness
+
+The native gate runs this read-only FPC tool before the larger test suites:
+
+```text
+build/native/bin/wfc_package_check --root .
+```
+
+It compares every maintained source unit with `fpmake.pp`, `wfc.lpk`, and
+`wfc_package.pas`, checking missing/duplicate entries, source declarations,
+and canonical filenames. Add `.exe` on Windows. See
+[package checking](package-checking.md) for the static-checking boundary,
+standalone build, limits, and installed-unit consumer tests.
+
+## Check asset inventory and bytes
+
+The native gate builds `wfc_asset_check` and runs its portable SHA-256,
+manifest, and command suites plus a real native process fixture. Given an
+explicit canonical inventory, run:
+
+```text
+build/native/bin/wfc_asset_check --root . --manifest ASSETS.wfcassets --files build/tracked.wfcfiles
+```
+
+Add `.exe` on Windows. The [asset guide](assets.md) covers standalone FPC
+compilation, exact-byte inventory capture on Windows and Bash, adjustable
+limits, command exits, and the native fixture. The checker never calls Git:
+CI supplies the complete tracked list, while source-distribution producers
+can supply their own complete list. It does not scan for omitted files.
+
+Package-unit completeness, asset byte identity, and provenance review are
+different checks. The current nine historical declarations have unresolved
+provenance; an ordinary matching byte check reports that status and succeeds,
+whereas `--require-reviewed` refuses it. Neither proves legal permission.
+These historical files are not consumed by standard demo execution. The
+project-owned [streaming SHA-256 API](asset-sha256.md) remains a tool unit,
+not a new core/runtime package dependency.
+
+## Save and restore an editable workspace
+
+The same native gate builds `build/native/bin/wfc_workspace[.exe]` from
+`tools/wfc_workspace_cli.lpr`; its smoke command is `--help`, not `--version`.
+It exposes `inspect`, `replay`, `begin`, `edit`, `initial`, `preview` and
+`repair` over complete explicit files. No browser or server is needed.
+
+Use the [workspace guide](pipeline-workspaces.md#native-cli) for a runnable
+fixture walkthrough, adjustable logical policies, ownership, exact exit codes
+and the difference between graph-free unverified inspection and actual replay.
+Initial/repair exit10 means a normal unsolved attempt was successfully recorded
+in a new journal, not that an arbitrary tool failure should be ignored.
+
+`wfc_workspace_cli_process_test` invokes the actual native executable and
+`wfc_workspace_cli_fixture` with a fresh output directory. It checks all seven
+commands, complete independently constructed histories, refusal/failed-outcome
+statuses, explicit scopes, limits and new-file preservation. The process suite
+stays native; the four context/evidence/journal/replay conformance groups run
+under both FPC and pas2js through the existing browser tooling. The separate
+[Pipeline Workspace editor](../examples/passes/08_PipelineWorkspace/README.md)
+uses the same APIs without replacing the older domain-specific demos.
+
+To run the process suite alone after building, supply exactly these three
+positional arguments (append `.exe` to the executable names on Windows):
+
+```text
+build/native/bin/wfc_workspace_cli_process_test build/native/bin/wfc_workspace build/native/bin/wfc_workspace_cli_fixture build/workspace-cli-check
+```
+
+`build/workspace-cli-check` must not exist; its parent must exist. Evidence is
+retained there in `fixture with spaces` and `logs`. The maintained fixture
+currently exercises 38 real child-process cases with 334 harness checks,
+including two independently compared histories. The suite handles the expected
+exit10 cases individually and still fails on an unexpected child status.
+
+## Build a complete Pipeline Workspace example
+
+The standalone scripts build the native host, existing workspace CLI and FPC
+static server without running a solve or starting a service:
+
+```powershell
+.\build-workspace.ps1 -Compiler 'C:/path/to/fpc.exe'
+.\build-browser-workspace.ps1 -Compiler 'C:/path/to/pas2js.exe'
+.\build\workspace\native\bin\wfc_serve.exe --root build/browser/workspace/www --port 8768
+```
+
+```bash
+FPC=/path/to/fpc bash ./build-workspace.sh
+PAS2JS=/path/to/pas2js bash ./build-browser-workspace.sh
+./build/workspace/native/bin/wfc_serve --root build/browser/workspace/www --port 8768
+```
+
+Open `http://127.0.0.1:8768/`. Startup is empty and does not solve. Stage a
+preset or import complete definition files, inspect, begin an explicit epoch,
+then execute its initial attempt. The [example guide](../examples/passes/08_PipelineWorkspace/README.md)
+explains cell inputs, scope previews, mapped geometry changes, exact journal
+restore/save, and current versus historical views. Preview replays prior
+history; only inspection is graph-free. The [native guide](../examples/passes/08_PipelineWorkspace/NATIVE.md)
+shows preset/import exports and continuation through `wfc_workspace` without
+requiring a test fixture. Composition extents and SVG viewing windows are
+independent; caller policy bounds are logical allowances, not peak heap limits.
+
+The normal `build.ps1` / `build.sh` gate also builds `PipelineWorkspace` into
+`build/native/bin`, runs all three shared controller/preset/view suites, and
+invokes the real native host process matrix. To run that matrix alone, use
+exactly four positional arguments (append `.exe` on Windows):
+
+```text
+build/native/bin/pipeline_workspace_native_process_test build/native/bin/PipelineWorkspace build/native/bin/wfc_workspace build/native/bin/pipeline_workspace_native_fixture build/pipeline-workspace-check
+```
+
+The final directory must not exist and its parent must exist. The 37 real
+child cases include independent decoding/replay, larger signed layouts,
+64 sequence cells with a 32-cell view, normal unsolved exit10, strict refusals
+and no-overwrite preservation. The fixture/process programs are native-only;
+the shared suites and separate actual UI workflow run in browser conformance.
 
 ## Serve a browser demo
 
@@ -54,6 +169,8 @@ authentication gateway, upload service, or general application backend.
 | Neighborhood Counts | `build-browser-counts` | `build/browser/counts/www` |
 | Learned Terraces | `build-browser-terraces` | `build/browser/terraces/www` |
 | Connected Routes | `build-browser-connectivity` | `build/browser/connectivity/www` |
+| Mapped World | `build-browser-mapped` | `build/browser/mapped/www` |
+| Pipeline Workspace | `build-browser-workspace` | `build/browser/workspace/www` |
 
 Use the `.ps1` entry on Windows or the `.sh` entry in a POSIX shell. Pass
 `-Compiler 'C:/path/to/pas2js.exe'` to PowerShell, or set `PAS2JS` for the shell
@@ -63,16 +180,30 @@ an external host. Keep unrelated or private files outside its document root.
 
 ### Server contract
 
+For user-defined-length Ensemble WAVE downloads on a phone without the direct
+browser file picker, use the dedicated
+[`EnsembleStudioServe` host](ensemble-http-downloads.md). It reuses these
+static-file safeguards and adds a narrow, in-process music-rendering endpoint.
+The `wfc_serve` executable described below remains static-only.
+
 ```text
-wfc_serve --root DIRECTORY [--port 8000] [--max-requests N]
+wfc_serve --root DIRECTORY [--port 8000] [--bind ADDRESS] [--max-requests N]
 wfc_serve --version
 wfc_serve --help
 ```
 
-The root must be an existing ordinary directory. The listener binds only
-`127.0.0.1`; there is no all-interfaces switch. The optional positive
+The root must be an existing ordinary directory. The listener defaults to
+`127.0.0.1`. Version 2 adds an explicit `--bind` address for trusted LAN testing;
+there is still no all-interfaces switch. The optional positive
 `--max-requests` stops after that many accepted connections, including invalid
 requests. Without it, the foreground process keeps serving until stopped.
+
+On Unix, the listener sets `SO_REUSEADDR` before binding so a stopped server
+can restart on the same port while old HTTP connections finish their TCP
+wait state. It does not enable `SO_REUSEPORT`: a second active listener on
+the same address and port must still be refused. Windows binding
+behavior is unchanged. Live tests check both refusal of a competing listener
+and immediate same-port restart after real HTTP traffic.
 
 Only GET and HEAD are accepted. Directories resolve to `index.html`, with a
 query-preserving redirect when a trailing slash is missing. There is no
@@ -84,8 +215,10 @@ returns the corresponding headers without a body.
 Request headers are limited to 16 KiB and targets to 2,048 bytes. Header reads
 have a two-second deadline and responses a 15-second send deadline. The server
 is sequential: a slow connection may delay the next one within those bounds.
-HTTP/1.1 requires a `localhost` or `127.0.0.1` Host value. Request bodies and
-transfer encoding are rejected.
+HTTP/1.1 requires a Host matching the selected bind address. `localhost` is also
+accepted only when bound to the default `127.0.0.1`. An optional valid port is
+accepted as before; arbitrary hostnames and other LAN addresses are not.
+Request bodies and transfer encoding are rejected.
 
 The deliberately narrow URL policy decodes once and rejects malformed escapes,
 traversal, backslashes, control bytes, non-ASCII paths, hidden/dot components,
@@ -101,17 +234,58 @@ checked FPC 3.2.2/3.3.1 execution verified Windows; the Darwin bindings were
 checked against Apple and compiler sources, but local macOS execution was not
 available. The hosted native lanes are the cross-platform runtime gate.
 
+### Access from a trusted local network
+
+Select this computer's Wi-Fi or Ethernet IPv4 address explicitly. For example,
+if it is `192.168.1.25`:
+
+```powershell
+.\build\native\bin\wfc_serve.exe --root build/browser/ensemble/www --bind 192.168.1.25 --port 4178
+```
+
+Open `http://192.168.1.25:4178/` on a device connected to the same LAN. Use the
+actual address assigned to your computer, not the example address. This
+instance listens only on that address; a separate default-bound instance can
+serve localhost, including on the same port.
+
+The bind address must be canonical dotted-decimal IPv4 in `127.0.0.0/8`,
+`10.0.0.0/8`, `172.16.0.0/12`, or `192.168.0.0/16`. Hostnames, leading-zero
+octets, wildcard `0.0.0.0`, public addresses, IPv6, and other ranges are rejected.
+The operating system must have the selected address assigned. DHCP changes
+may require restarting with the new address.
+
+The server has no login or TLS: everyone who can reach this listener can read
+all ordinary files under its root. Serve only the staged demo directory, use
+a trusted network, and do not add router port forwarding. Binding a private
+address alone is not a remote-client access rule. The server does not change
+firewall settings or network profiles. If the operating-system firewall blocks
+access, explicitly allow only this executable and TCP port, on the intended
+private interface, from the local subnet. Changing Windows firewall rules
+requires an administrator. Guest-network/client isolation may also prevent
+devices from reaching one another; a successful request from the server PC
+does not prove another device can connect.
+
+The ordinary preview and download controls remain available subject to the
+client browser's capabilities. Direct streamed **Save As** depends on the
+browser's file-picker API, which may be unavailable over LAN HTTP. The music
+demos detect that condition and offer their native FPC rendering commands;
+the localhost instance remains available for browsers supporting that API.
+
 ## Check browser evidence
 
-Every maintained browser demo exposes an event-driven `?selftest=1` route.
-The browser must execute the compiled Pascal before the resulting DOM is
-checked; merely fetching the original HTML proves nothing about generation.
+The domain demos expose event-driven `?selftest=1` routes. Pipeline Workspace
+instead has an ordinary empty startup and a separate real-entry UI program
+that drives its visible controls. Neither its startup nor a fetched HTML file
+claims successful generation. The browser must execute the compiled Pascal
+before the resulting DOM is checked.
 
-`wfc_browser_check` is the project-owned native verifier for the resulting
-browser evidence. The hosted gate starts the included FPC server, opens the
-self-test route in headless Chrome, and verifies the demo's exact body-state
-contract. The browser remains the JavaScript execution engine; the FPC tools
-serve files and inspect evidence, not emulate a browser.
+`wfc_browser_capture` waits for the requested terminal markers in an owned
+headless browser and publishes its rendered DOM. `wfc_browser_check` then
+independently verifies that file against the same exact body-state contract.
+Both are project-owned native Pascal tools, served by `wfc_serve`. The browser
+remains the JavaScript execution engine; the FPC tools do not emulate it.
+See [native browser capture](browser-capture.md) for the protocol, ownership,
+deadline, and failure contracts.
 
 ```text
 wfc_browser_check --dom FILE --expect NAME=VALUE [--expect ...]
@@ -136,6 +310,14 @@ Quoted markup, raw-text elements, comments, and inert template contents
 cannot supply a forged body marker. This bounded parser is an evidence reader,
 not an HTML sanitizer or a general browser parser.
 
+An attribute mismatch or nonempty self-test message includes a body `data-*`
+state snapshot in the failure diagnostic. The snapshot is limited to 4 KiB,
+prioritizes the main self-test state/message, escapes non-ASCII bytes and
+control characters, and marks truncation. Individual names and values are
+also shortened for display; the underlying assertion still compares complete
+values exactly. This preserves asynchronous phase markers in hosted logs
+without interpreting a pending operation as success.
+
 Harness mode creates a new HTML file beside one local compiled `.js` filename;
 it refuses an existing destination. It calls the embedded Pascal RTL and marks
 success only after a synchronous test returns successfully. It is not a promise
@@ -151,12 +333,12 @@ speaker emitted sound.
 
 ## Run Pascal conformance in a real browser
 
-Build the native checker and server first, then stage the portable test programs
+Build the native capture tool, checker, and server first, then stage the portable test programs
 with pas2js and execute them in a Chromium-family browser:
 
 On Windows, run the browser conformance runner in **PowerShell 7 or newer**
 (`pwsh`), not Windows PowerShell 5.1. Its timeout cleanup uses the modern .NET
-process-tree API to terminate only the browser/server processes it owns. The
+process-tree API to terminate only the capture/browser/server processes it owns. The
 runner checks this shell version before starting any process.
 
 ```powershell
@@ -168,6 +350,26 @@ runner checks this shell version before starting any process.
 PAS2JS=/opt/pas2js/bin/pas2js bash ./build-browser-tests.sh
 WFC_BROWSER=/usr/bin/chromium bash ./test-browser-tests.sh
 ```
+
+The Bash runner's cleanup targets its recorded child PIDs, not whole process
+trees. It polls for two seconds after TERM and another two after KILL before
+reporting a still-live child; it only reaps after that child's liveness is gone.
+The watchdog gets six seconds after TERM so its own timer cleanup can normally
+finish first. A failed or forcibly killed watchdog fails cleanup instead of
+silently accepting a possibly unfinished timer teardown. Cleanup preserves an
+existing failure status and fails an otherwise successful run if teardown fails.
+
+These are bounded polling sequences, not hard wall-clock guarantees under
+arbitrary scheduler delays. The outer 65-second watchdog starts termination of both
+capture and browser; the main capture wait still depends on the operating
+system actually terminating that process. Forced watchdog termination cannot
+guarantee its timer descendant has exited. This Bash path does not establish
+operating-system process-group or job containment. PowerShell uses finite
+five-second cleanup waits; cleanup time is separate from the test deadline.
+The native capture deadline remains 60 seconds. The outer watchdog's extra
+five seconds are teardown grace for a complete timeout diagnostic and orderly
+exit, not additional browser execution or I/O time. PowerShell applies the
+same grace only to the actual capture child, not deadline/profile helpers.
 
 For diagnosis, select one exact current test basename without changing the
 default full gate:
@@ -186,10 +388,12 @@ source-derived suite; a focused success does not certify the other programs.
 
 Staging compiles `test/*_test.lpr` for `-Tbrowser`, embeds the matching RTL, and
 uses the FPC checker to create harnesses under `build/browser/tests/www`.
-It also rebuilds all ten demos and copies their three named public assets
+It also rebuilds all registered demos and copies their three named public assets
 into `demo-entries` below that root. `wfc_browser_demo_entries_test` loads the
-actual `index.html?selftest=1` pages in sequential same-origin frames and checks
-their rendered contracts. This catches entry-point/bootstrap problems that
+eleven `index.html?selftest=1` pages plus the ordinary workspace `index.html`
+in sequential same-origin frames and checks their distinct rendered contracts.
+Workspace startup must be ready with publication0, no baseline/current output
+and no fabricated self-test claim. This catches entry-point/bootstrap problems that
 controller-only fixtures cannot. The named main stylesheet must also have
 loaded, parsed CSS rules; a resource request alone is not proof of success
 on browsers that omit HTTP status from resource timing entries. No external
@@ -197,11 +401,25 @@ server is required.
 Native DOM-parser, socket-server, and renderer-process tests are excluded;
 they execute in the native gate. The runner independently derives that same
 current source list, rejects missing HTML or compiled scripts, and ignores stale
-staged pages rather than counting them as current coverage. It owns a loopback server, launches
-each page in a separate browser profile, applies a 60-second process timeout
-and a 15-second browser virtual-time budget, and requires
-`data-self-test=passed`. Rendered DOM and browser/server logs remain in
-`build/browser/tests/results`.
+staged pages rather than counting them as current coverage. It owns a loopback
+server and prepares a new browser profile for every attempt. A native monotonic
+60-second deadline is created before browser launch. The FPC capture tool
+waits for `data-self-test=passed` and all additional required markers, without
+accelerating browser time or taking a timed `--dump-dom` snapshot. Rendered DOM
+and capture/browser logs remain in unique run directories under
+`build/browser/tests/results`. A fixed `<test>.dom` convenience copy is cleared
+before each attempt and published only after the fresh capture passes the
+independent checker; it is not a substitute for a successful runner exit.
+
+`pipeline_workspace_ui_test` separately loads the same staged workspace entry
+and drives the full asynchronous editing workflow. Both maintained runners
+require `data-workspace-ui-self-test=passed`, stage-count14, current=complete,
+and every one of its fourteen stage markers, not a provisional synchronous
+harness success. The stages cover startup, queue cancellation, preset drafts,
+initial-once behavior, draft isolation, seed epochs, cell inputs, failed repair,
+private-provider scope, view windows, geometry, unverified journal claims,
+file import and restored history. The ordinary application does not run this
+workflow on behalf of a user. Functional DOM checks do not imply visual review.
 
 The ensemble stream demo test also requires its application-owned
 `data-stream-self-test=passed` and `data-stream-release=passed` markers. Its fake writable-file transactions are
@@ -219,21 +437,42 @@ with `build-browser-voices.ps1` or `build-browser-voices.sh`, then serve
 [Voice Studio host guide](../examples/music/07_VoiceStudio/README.md).
 
 The actual-page gate additionally requires `data-demo-entries-self-test=passed`
-after all ten pages finish. Each page retains a 15-second virtual deadline;
-this aggregate test receives 140 seconds of accelerated browser virtual time.
-Its real process deadline remains 60 seconds, as for every other program.
+after all registered pages finish. Each page retains its in-page 15-second deadline,
+now measured in ordinary browser time. The aggregate's native deadline remains
+60 seconds, as for every other program.
 Pending/missing page evidence never counts as success. This browser-only test
 does not appear in the native gate.
 
-PowerShell accepts `-Checker` when staging and `-Server`, `-Checker`, and
-`-Port` when running; the default port is 4180. The shell scripts use
-`WFC_BROWSER_CHECK`, `WFC_SERVE`, and `WFC_BROWSER`, with port 4180. Shell
+The Ensemble stream harness and actual demo page also require
+`data-http-stream-self-test=passed` for optional native-download discovery,
+strict capability parsing, current-setting links, and release handling.
+
+PowerShell accepts `-Checker` when staging and `-Server`, `-Checker`, `-Capture`,
+and `-Port` when running; the default port is 4180. The shell scripts use
+`WFC_BROWSER_CHECK`, `WFC_BROWSER_CAPTURE`, `WFC_SERVE`, `WFC_BROWSER`, and
+`WFC_BROWSER_PORT` (default 4180). Shell
 execution uses the host's `curl` and standard `sleep`/`kill` commands. Its owned-child
-watchdog applies the 60-second deadline, then allows up to two seconds before
+watchdog waits 65 seconds (including the teardown-only grace), then allows up to two seconds before
 forced termination; GNU `timeout` is not required. The shell runner is exercised
 by the Linux browser lane. Both runners collect per-program failures and fail the
-overall run if any current program fails. Interactive demo
-self-tests are a separate hosted gate with each demo's fuller attribute map.
+overall run if any current program fails. Interactive demo self-tests use the
+same runner with each demo's fuller attribute map:
+
+```powershell
+.\test-browser-tests.ps1 -Browser 'C:/path/to/chrome.exe' `
+  -WebRoot build/browser/music/www -Page 'index.html?selftest=1' `
+  -Expect @('data-state=solved', 'data-arrangement-test=passed')
+```
+
+```bash
+WFC_BROWSER=/usr/bin/chromium bash ./test-browser-tests.sh \
+  --root build/browser/music/www --page 'index.html?selftest=1' \
+  --expect data-state=solved --expect data-arrangement-test=passed
+```
+
+The mandatory `data-self-test=passed` assertion is included automatically.
+Standalone mode cannot be combined with a conformance test selector. These
+examples are focused checks, not the complete hosted attribute map.
 
 To rerun only the native host-boundary checks after a native build:
 
@@ -276,10 +515,32 @@ The [Ensemble Studio renderer](../examples/music/06_EnsembleStudio/README.md)
 and independent-role `VoiceStudioRender --format wave|midi` use this utility
 after exact duration/frame or MIDI planning. See
 [Voice Studio](../examples/music/07_VoiceStudio/README.md) for actual commands.
+The [workspace CLI](pipeline-workspaces.md#native-cli) uses the same helper
+after complete journal authoring and encoding, with an explicit new output
+path for each accepted action. Existing input/output files are not overwritten;
+file I/O failure does not change the already saved history.
 The browser host uses
 a user-authorized writable-file transaction instead; choosing an existing
 file in the browser save picker can authorize replacement and does not carry
 the native new-file-only guarantee.
+
+## Native solver benchmark
+
+The native build also produces `wfc_solver_benchmark`, a project-owned FPC
+measurement host. It needs no browser or server. For example:
+
+```text
+build/native/bin/wfc_solver_benchmark --cells 4096 --values 4 --weights skewed --topology independent --compatibility dense --trace 0 --repeat 3
+```
+
+On Windows, the executable has an `.exe` suffix. `--help` lists the full
+strict CLI, including line/equality propagation controls and optional trace
+capture. It reports monotonic whole-solve milliseconds and deterministic
+checksums/counters to stdout; it writes no files. Usage errors return 2,
+failed measurements return 1, and success returns 0. There is no timing
+pass/fail threshold. Its explicit benchmark safety bounds are not library
+or composition limits. Read the [decision-index experiment](research/decision-index-v1.md)
+for the frozen scan baseline, reproduction method, raw results and caveats.
 
 ## Evidence scope
 

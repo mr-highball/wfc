@@ -187,6 +187,8 @@ procedure RequireVoxel3DSpatialClausesFromModelPass(
 
 implementation
 
+uses wfc_lattice;
+
 type
   TIntegerArray = array of Integer;
   TByteArray = array of Byte;
@@ -427,6 +429,26 @@ begin
   end;
 end;
 
+procedure RequireIdenticalBridgeLayout(const ATargetGraph,
+  ASourceGraph: TGraph; const AOperation: String);
+var Target, Source: TWfcLatticeLayout;
+begin
+  Target := ATargetGraph.PassLayout; Source := ASourceGraph.PassLayout;
+  { Compare identity directly: legacy adapters can be prepared before Reshape,
+    when both layouts are empty. Do not validate or normalize either record. }
+  if (Target.Cells.X <> Source.Cells.X) or
+    (Target.Cells.Y <> Source.Cells.Y) or
+    (Target.Cells.Z <> Source.Cells.Z) or
+    (Target.Origin.X <> Source.Origin.X) or
+    (Target.Origin.Y <> Source.Origin.Y) or
+    (Target.Origin.Z <> Source.Origin.Z) or
+    (Target.Pitch.X <> Source.Pitch.X) or
+    (Target.Pitch.Y <> Source.Pitch.Y) or
+    (Target.Pitch.Z <> Source.Pitch.Z) or
+    (Target.Wrap <> Source.Wrap) then
+    raise EVoxel3DPassMap.Create(AOperation + ' requires identical pass layouts');
+end;
+
 procedure ValidateRelationship(const ATargetAdapter,
   ASourceAdapter: TVoxel3DGraphAdapter);
 begin
@@ -437,6 +459,8 @@ begin
   if ATargetAdapter.PassIndex = ASourceAdapter.PassIndex then
     raise EVoxel3DPassMap.Create(
       'a voxel pass cannot project from itself');
+  RequireIdenticalBridgeLayout(ATargetAdapter.AppliedGraph,
+    ASourceAdapter.AppliedGraph, 'voxel pass bridge');
   if PassDependsTransitively(ATargetAdapter.AppliedGraph,
       ASourceAdapter.PassIndex, ATargetAdapter.PassIndex) then
     raise EVoxel3DPassMap.Create(
@@ -807,6 +831,8 @@ begin
     raise EVoxel3DPassMap.Create(
       'a voxel pass cannot project from itself');
   ASourceGraph := LRoot.PassGraph[ASourcePassIndex];
+  RequireIdenticalBridgeLayout(ATargetAdapter.AppliedGraph, ASourceGraph,
+    'voxel model-pass bridge');
   if not WfcModelDefinitionMatchesGraph(ASourceModel, ASourceGraph) then
     raise EVoxel3DPassMap.Create(
       'source graph does not match its model definition, rank, or boundary');

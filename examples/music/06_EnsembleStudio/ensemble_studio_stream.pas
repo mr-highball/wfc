@@ -30,6 +30,7 @@ interface
 uses
   SysUtils,
   wfc,
+  ensemble_studio_profiles,
   wfc_music_audio,
   wfc_music_audio_stream,
   wfc_music_arrangement,
@@ -45,12 +46,14 @@ const
   ENSEMBLE_STUDIO_STREAM_TPQ = 480;
   ENSEMBLE_STUDIO_STREAM_QUANTUM = 240;
   ENSEMBLE_STUDIO_STREAM_DEFAULT_SEGMENT_CELLS = 5;
+  ENSEMBLE_STUDIO_STREAM_VOICE_COUNT = 3;
 
 type
   EEnsembleStudioStream = class(Exception);
 
   TEnsembleStudioStreamOptions = record
     Seed: TGraphSeed;
+    Profile: TEnsembleStudioProfile;
     SegmentCellCount: Integer;
     MaxBacktracks: Integer;
     MaxPassBacktracks: Integer;
@@ -169,10 +172,7 @@ function EnsembleStudioStreamSecondsText(
 implementation
 
 uses
-  wfc_sequence,
-  wfc_sequence_learn,
-  wfc_music_sequence,
-  ensemble_studio_workbench;
+  wfc_music_sequence, ensemble_studio_planning;
 
 const
   TICKS_PER_SECOND = 960;
@@ -313,44 +313,11 @@ begin
   AModels := Default(TWfcMusicEnsembleModels);
 end;
 
-function BuildModels: TWfcMusicEnsembleModels;
-var
-  I: Integer;
-  LFrames: TWfcMusicEnsembleFrames;
-  LEnsemble, LHarmony, LRhythm: TWfcSequenceSamples;
-begin
-  Result := Default(TWfcMusicEnsembleModels);
-  SetLength(LEnsemble, ENSEMBLE_STUDIO_CORPUS_COUNT);
-  SetLength(LHarmony, ENSEMBLE_STUDIO_CORPUS_COUNT);
-  SetLength(LRhythm, ENSEMBLE_STUDIO_CORPUS_COUNT);
-  for I := 0 to ENSEMBLE_STUDIO_CORPUS_COUNT - 1 do
-  begin
-    LFrames := EnsembleStudioCorpus(I);
-    LEnsemble[I] := MakeWfcSequenceSample(
-      EncodeWfcMusicEnsembleFrames(LFrames));
-    LRhythm[I] := MakeWfcSequenceSample(
-      EncodeWfcMusicRhythmFrames(
-        ProjectWfcMusicEnsembleFramesToRhythm(LFrames)));
-    LHarmony[I] := MakeWfcSequenceSample(
-      EncodeWfcMusicPitchClassSets(
-        ProjectWfcMusicEnsembleFramesToPitchClassSets(LFrames, 12)));
-  end;
-  try
-    Result.Harmony := LearnSequenceModelCorpus(LHarmony,
-      ENSEMBLE_STUDIO_CELLS_PER_BAR);
-    Result.Rhythm := LearnSequenceModelCorpus(LRhythm,
-      ENSEMBLE_STUDIO_CELLS_PER_BAR);
-    Result.Ensemble := LearnSequenceModelCorpus(LEnsemble,
-      ENSEMBLE_STUDIO_CELLS_PER_BAR);
-  except
-    FreeModels(Result);
-    raise;
-  end;
-end;
 
 procedure ValidateStreamOptions(
   const AOptions: TEnsembleStudioStreamOptions);
 begin
+  EnsembleStudioProfileName(AOptions.Profile);
   {$IFDEF PAS2JS}
   if (AOptions.Seed <> Trunc(AOptions.Seed)) or
       (AOptions.Seed < 0) or (AOptions.Seed > Cardinal($FFFFFFFF)) then
@@ -388,17 +355,17 @@ begin
     StreamError('frame plan is inconsistent');
   FPlan := APlan;
   FOptions := AOptions;
-  FModels := BuildModels;
+  FModels := BuildEnsembleStudioProfileModels(FOptions.Profile);
   try
     LConfig := DefaultWfcMusicEnsembleStreamConfig(FModels,
-      ENSEMBLE_STUDIO_VOICE_COUNT, 12, ENSEMBLE_STUDIO_STREAM_QUANTUM,
+      ENSEMBLE_STUDIO_STREAM_VOICE_COUNT, 12, ENSEMBLE_STUDIO_STREAM_QUANTUM,
       FPlan.RequestedTicks, FOptions.Seed);
     LConfig.SegmentCellCount := FOptions.SegmentCellCount;
     LConfig.Rounding := wmarCeilToCell;
     LConfig.Search.SolveOptions.MaxBacktracks := FOptions.MaxBacktracks;
     LConfig.Search.MaxPassBacktracks := FOptions.MaxPassBacktracks;
     LConfig.Search.SolveOptions.CaptureTrace := FOptions.CaptureTrace;
-    FGenerator := TWfcMusicEnsembleStream.Create(LConfig);
+    FGenerator := CreateEnsembleStudioStream(LConfig, FOptions.Profile);
     if FGenerator.ActualTicks <> FPlan.ActualTicks then
       StreamError('generation rounding differs from the preflight plan');
   except
@@ -562,7 +529,7 @@ begin
   LFramePlan.CellCount := APlan.CellCount;
   try
     FFrameStream := TEnsembleStudioFrameStream.Create(LFramePlan, AOptions);
-    SetLength(LCapacities, ENSEMBLE_STUDIO_VOICE_COUNT);
+    SetLength(LCapacities, ENSEMBLE_STUDIO_STREAM_VOICE_COUNT);
     LCapacities[0] := 1;
     LCapacities[1] := 3;
     LCapacities[2] := 1;

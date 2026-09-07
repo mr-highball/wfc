@@ -18,6 +18,19 @@ while their foundations are still demonstrations or stubs.
 
 ## Current reality
 
+### Expansion stopping checkpoint
+
+The current expansion milestone includes the native/browser Pipeline Workspace
+and [project-owned asset inventory tooling](docs/assets.md). The checker,
+canonical manifest and streaming SHA-256 implementation complete this tooling
+task; they do not declare the complete roadmap or a 1.0 release finished.
+Nine retained historical assets still have unresolved provenance records.
+
+The next development cycle should begin with contributor/release documentation
+and newcomer usability, then prioritize measured solver/repair improvements
+and deeper domain examples. The remaining items and 1.0 exit gates below stay
+open; the current milestone is a deliberate stopping point.
+
 The repository already contains the beginnings of the ecosystem:
 
 - a fluent `TGraph` API with 2D and 3D neighbors, custom string values,
@@ -31,6 +44,19 @@ The repository already contains the beginnings of the ecosystem:
   matching-offset or distinct-cell semantics, duplicate-safe canonicalization,
   zero-count absence, portable recipe encoding, independent validation, and a
   shared native/browser neighborhood inspection and bounded-repair demo;
+- opt-in [mapped passes](docs/mapped-passes.md) with per-pass integer world
+  layouts, exact point/cell/region reads, unique-provider counts, and atomic
+  layout replacement and scoped repair across unlike grids;
+- a shared native/pas2js [Mapped World workbench](examples/passes/07_MappedWorld/README.md)
+  with fixed coarse-terrain/fine-foliage/inset-housing grids, editable domains,
+  locks, demands and sampling, a weighted landscape sandbox, independent
+  footprint inspection, and safe versus explicitly diagnostic SVG export;
+  its [seeded experiment](docs/research/mapped-world-footprints-v1.md) separates
+  weak-model satisfaction from physical clearance and demonstrates bounded,
+  explicitly authorized provider repair, not guaranteed or minimum-edit repair;
+- [whole-pass value quotas](docs/value-quotas.md) with reversible domain bounds,
+  independent recount, and [portable public-token recipes](docs/pipeline-value-quotas.md)
+  that lower through exact-copy and learned-state projection passes;
 - a versioned portable random source with an explicit pipeline seed,
   independent index-derived pass streams, run-to-run rewind, and matching
   native/pas2js golden fixtures;
@@ -98,6 +124,13 @@ The repository already contains the beginnings of the ecosystem:
   compiles every overlapping footprint contribution into exact cross-pass
   clauses, a reusable validated `patterns -> projection` owner, and a
   four-pass learned terrain/foliage/structure fixture on native FPC and pas2js;
+- additive [overlapping 3D volumes](docs/overlapping-3d.md): literal cuboid
+  extraction and symmetry, exact six-direction overlap, open/wrapped XYZ
+  projection, compact standalone `wfcp=2`, a wrapped public-pass bridge and
+  transactional owner with inverse public voxel domains; native/browser
+  conformance now includes saved training v6, declarative recipes v4, public
+  quotas/connectivity, exact workspace replay, artifact tools, and a rotatable
+  Studio lattice preset with shared native/browser SVG export;
 - an immutable bounded sequence model with typed BOS history, deterministic
   order-N learning from pretokenized UTF-8 corpora, raw counts, structural
   suffix/prefix recombination, whole/prefix/suffix/fragment and derived wrapped
@@ -109,6 +142,10 @@ The repository already contains the beginnings of the ecosystem:
   caller-defined tokenizer learning, anchored infill, prefix continuation,
   structured semantic failure, independent text validation, and a shared
   native/pas2js demonstration;
+- explicit [circular sequence training](docs/sequences.md#circular-source-training)
+  with per-sample wrapped histories, raw balanced context counts, strict
+  `wfcs=2` / `wfclearn=5` artifacts, full recipe/lock/policy/replay support,
+  and a shared native/browser circular-text training preset;
 - a reusable three-pass text owner with separate structure, lexical, and
   punctuation sequence models; atomic N-source public projection maps;
   exact versioned surface fragments; independent cross-layer validation;
@@ -124,6 +161,15 @@ The repository already contains the beginnings of the ecosystem:
   vectors, distinct exact/allowed pitch-class sets, safe continuation-model
   preflight, common-excerpt training, a transactional three-pass owner, and
   shared native/browser Ensemble Studio;
+- a [musical-form planner](docs/music-form.md) with caller-owned finite chord
+  and motif catalogs, explicit cadence and boundary-motion constraints,
+  independently validated immutable phrase plans, and a bounded phrase cursor;
+  Ensemble Studio exposes a developed-period profile while preserving the
+  original structural model's exact replay;
+- an opt-in [native Ensemble download host](docs/ensemble-http-downloads.md)
+  for user-selected-duration WAVE over ordinary trusted-LAN HTTP, with bounded
+  rendering, strict same-origin capability discovery, and incomplete-download
+  protection; the general static server remains static-only;
 - [Independent Voices v1](docs/music-voices.md) with detached common-excerpt
   role training, one chord-capable vocabulary per voice, shared harmony/rhythm
   providers, pitch ranges and optional pair gaps, existential exact-coverage
@@ -171,6 +217,28 @@ The repository already contains the beginnings of the ecosystem:
 - a project-owned collision-safe token lookup plus shared Pascal application
   logic for strict recipe validation and headless recipe-plus-run execution,
   with thin bounded-I/O native hosts;
+- [immutable pipeline fragment composition](docs/pipeline-composition.md) with
+  explicit resource/pass names, checked remapping of all seven row families,
+  retained source/license provenance, and recipe5 output for independent run
+  extents; it assembles definitions, not mutable workspaces or replay journals;
+- [reusable preparation and editable bindings](docs/pipeline-preparation.md)
+  with identity-bound detached input plans, compiler-base domain restoration,
+  actual alias/inverse ownership transitions and explicit replacement budgets;
+- [prepared pipeline sessions](docs/pipeline-sessions.md) with revision-bound
+  repair permission, cumulative pending requirements, separate historical/current
+  output and complete actual detached solver reports. This is an in-memory API,
+  not a saved journal, general workspace editor or live atomic-publication layer;
+- [workspace journals and exact replay](docs/pipeline-workspaces.md), with
+  complete accepted-operation history, unverified imported claims, actual
+  replay comparison and atomic live publication. The separate
+  [Pipeline Workspace](examples/passes/08_PipelineWorkspace/README.md) adds
+  editable canonical drafts, caller-defined pass geometry, cell inputs,
+  explicit repair roots, saved-history restore and native/browser diagnostic
+  views, with included FPC export and hosting tools;
+- [saved-artifact validation and inspection](docs/artifact-tools.md) across
+  rules, cardinal/pattern/sequence models, training sources, recipes, bound
+  runs, and bound results; explicit exact-byte result replay, terminal-safe
+  bounded reports, and an FPC real-process conformance runner;
 - Portable Training v1: immutable pretokenized corpora, strict editable
   `wfclearn=1` text, explicit capacity preflights, and a shared native
   `wfc-learn` host producing cardinal, overlapping-pattern, or sequence
@@ -180,12 +248,13 @@ The repository already contains the beginnings of the ecosystem:
 - a shared editable training workspace with strict source/run/result
   invalidation, detached outputs, explicit interactive resource policy, and
   a project-owned Unicode-scalar raw-text import bridge; Training Studio
-  connects those APIs to a pas2js corpus/lock/export workbench and five
+  connects those APIs to a pas2js corpus/lock/export workbench and six
   independently validated native presets;
 - stack-safe iterative traversal of large planes while preserving the legacy
   solver's north/east/south/west depth-first order;
 - checked one-command native build gates, an FPM package, a runtime-only
-  Lazarus package, and a hosted stable/development CI workflow;
+  Lazarus package, an included FPC package-inventory checker with separate
+  built-unit consumer tests, and a hosted stable/development CI workflow;
 - single-pass and multi-pass console world examples;
 - the original A-major and manually inferred riff grammars, now portable Pascal
   studies with native console hosts, owned MIDI and streaming WAVE output,
@@ -230,15 +299,22 @@ It is not yet the finished system described above:
   interactive trace stepping, search controls, and richer domain-specific
   browser inspection remain;
 - model learning now covers pretokenized cardinal radius-one corpora,
-  structurally compatible overlapping 2D footprints, and bounded order-N
+  structurally compatible overlapping 2D/3D footprints, and bounded order-N
   sequences with explicit projection; Unicode-scalar text tokenization and
   exact completion domains now sit above that sequence layer, while a
-  project-owned versioned word-boundary table, wrapped sequence training,
-  overlapping 3D footprints, structured multi-license provenance, media import and
+  project-owned versioned word-boundary table,
+  structured multi-license provenance, media import and
   word-oriented text import, larger/background browser training, artifact-family
-  lint, and general inspection tools remain;
-- the hosted CI definition is present, but its first remote run still needs to
-  be observed before the Phase 0 exit gate is claimed complete;
+  semantic/asset lint, and live interactive inspection remain;
+- the [hosted gate at `4d3db9b`](https://github.com/mr-highball/wfc/actions/runs/34020117117)
+  passed stable FPC on Linux/macOS/Windows, development FPC on Linux, and the
+  pas2js browser lane on 2026-09-06 UTC, including Linux package/clean-checkout
+  checks and native browser completion/rejection fixtures; this verifies that
+  revision, not completion of the remaining roadmap;
+- the [hosted gate at `919de23`](https://github.com/mr-highball/wfc/actions/runs/34023626156)
+  also passed all five platforms on 2026-09-06 UTC, including the indexed
+  decision-selection solver and corrected circular-training process fixtures;
+  this is not evidence for later overlapping-volume commits;
 - the portable music path now has project-owned PCM/WAVE rendering, native
   file export, MIDI-to-score import and selected-excerpt training, and an
   interactive browser Music Studio with HTML audio and user-defined-duration
@@ -325,6 +401,12 @@ integer weights, deterministic Q16 Shannon observation with an exact
 unit-weight minimum-remaining-values path, locks, bounded backtracking,
 structured contradictions, independent validation, atomic pass staging,
 explicit deny-all directions, and pass-local caller domain masks.
+An indexed decision heap now avoids rescanning every cell for each observation
+while retaining the same MRV/Q16 choices, traversal ties, random draws, and
+causal traces. Its [reproducible experiment](docs/research/decision-index-v1.md)
+compares the frozen scan kernel and documents both the additional per-cell
+memory and workloads this optimization does not accelerate. Dense domains and
+relation support scans still need separate scalability work.
 The opt-in restart coordinator retries only local backtrack-limit exhaustion,
 using fixed or capped-doubling budgets and separately versioned seed derivation.
 Its attempt-zero contract preserves ordinary and negotiated replay; diagnostic
@@ -399,11 +481,30 @@ The separate [Rooted Connectivity v1](docs/connectivity.md) primitive now adds
 reciprocal-port possible-graph pruning, mandatory cut participation, exact
 search-time validation, and reversible domains. Its two spatial demo cases
 exercise roads and multi-floor circulation; existing settlement/voxel model
-versions retain their earlier semantics. Portable recipe encoding, stronger
-port-specific filtering, chunk-boundary summaries, and global cardinality
-remain future work. The [research record](docs/research/rooted-connectivity-v1.md)
+versions retain their earlier semantics. [Portable connectivity recipes](docs/pipeline-connectivity.md)
+now preserve public profiles, including exact-copy aliases and private learned-state
+lowering, through native/browser artifact replay.
+[Training-source authoring](docs/training-connectivity.md) now preserves explicit
+token ports, output anchors, and required participation through source editing,
+retraining, native CLI export, and the browser network editor. It composes with
+authored quotas without inferring either policy from observations. Stronger
+port-specific filtering, inferred orientation semantics, and chunk-boundary
+summaries remain future work.
+The [research record](docs/research/rooted-connectivity-v1.md)
 states the soundness argument and finite oracle scope without a generalized
 arc-consistency or relative-performance claim.
+
+[Whole-pass Value Quotas v1](docs/value-quotas.md) now adds inclusive cardinality
+bounds over explicit value sets in unresolved same-pass domains. It composes
+with provider requirements and connectivity, trails its removals, independently
+recounts published and preserved assignments, and identifies clauses in traces.
+Its finite brute-force oracle checks satisfiability and sound pruning.
+[Portable recipe quotas](docs/pipeline-value-quotas.md) now lower public sets
+through exact-copy and learned-state projection passes before solving, with
+independent public recount. [Training source authoring](docs/training-value-quotas.md)
+preserves explicit policy across native/browser edit, save/load, and retrain.
+Regional quotas, stronger propagation over interacting sets, and efficient
+incremental search-time count maintenance remain future work.
 
 The first packaged domain fixture proves the sequential subset with terrain →
 biome → foliage. The selective-settlement fixture expands that proof to
@@ -495,6 +596,46 @@ latent assignments separate from projected tokens, independently validates
 both, and round-trips strict standalone `wfcp=1` artifacts. Its first pass
 adapter now materializes wrapped, same-size, depth-one projections for ordinary
 downstream semantic layers without exposing private pattern keys.
+The additive [3D layer](docs/overlapping-3d.md) now learns actual cuboid payloads,
+including literal gravity-preserving D4, 24 proper cube rotations and all 48
+cube isometries. Equality-checked overlap-slab classes compile all six relations;
+independent full-XYZ checks cover open expansion and wrapped projection.
+Standalone `wfcp=2` derives relations instead of storing a quadratic text table.
+The same-size wrapped pass bridge and owner support semantic consumers and
+inverse public locks/domains, including distinct footprint offsets that alias
+on a small torus. Source v6 and recipe v4 now carry this through declarative
+resources, exact XYZ public constraints, persistent quotas/connectivity,
+workspace replay and artifact-family dispatch. The shared token-volume view
+provides cutaway/yaw SVG in native FPC and pas2js. The new
+[core mapped-pass API](docs/mapped-passes.md) supports unlike-sized integer-world
+layouts, exact point/footprint reads, unique-cell counts, and transactional
+selective/negotiated repair in native FPC and pas2js. Existing projection
+adapters retain explicit identical-layout guards. The shared
+[Mapped World workbench](examples/passes/07_MappedWorld/README.md) now exposes
+cell/point/region sampling, domains and caller locks, explicit housing demands,
+scoped ordinary/negotiated repair and independently checked SVG. Its tutorial
+reproduces an interior blocker; its editable sandbox is not restricted to that
+single uncertain cell. The three showcase grids are fixed, not an editor for
+arbitrary layouts. [Portable mapped pipelines](docs/portable-mapped-passes.md)
+support recipe5 with ordered topologies and public mapped
+clauses; run2 supplies independent extents; result2 records every pass layout.
+The same terrain/foliage/housing recipe now executes at multiple requested
+extents through the native save/validate/replay tools. The [immutable fragment composer](docs/pipeline-composition.md)
+now supplies checked definition assembly and explicit index/name remapping.
+Reusable [preparation](docs/pipeline-preparation.md) and
+[prepared sessions](docs/pipeline-sessions.md) now supply input replacement,
+explicit repair permission and detached outcomes for one bound immutable recipe.
+The [workspace layer](docs/pipeline-workspaces.md) now retains complete
+operation/outcome histories and supports exact candidate replay with atomic
+publication. The generic [Pipeline Workspace editor](examples/passes/08_PipelineWorkspace/README.md)
+adds imported multi-resource definitions, explicit per-pass geometry epochs,
+cell inputs, repair permission previews, and journal import/export. It preserves
+linked-layout guards and refuses incompatible shrinkage rather than resampling
+or clipping. Interactive graph composition beyond canonical document authoring,
+history compaction/acceleration, migration of older demo interfaces, and more
+targeted repair strategies remain open. Existing 2D versions and bytes remain unchanged. The
+[research record](docs/research/mapped-world-footprints-v1.md) records focused
+native/browser evidence separately from full integration gates.
 The sequence version-1 layer learns bounded order-N latent states from ordered
 pretokenized UTF-8 corpora, resets typed BOS history at every sample boundary,
 retains raw observation/start/end counts, derives exact suffix/prefix
@@ -527,15 +668,30 @@ options, source/license labels and content fingerprints while exporting
 cardinal, overlapping-pattern, or whole-sequence recipes. Four bundled corpora
 replay exact source-to-result artifacts on native FPC.
 Training Studio now connects editable corpora and explicit Unicode-scalar raw
-text to that workflow through one reusable invalidation-aware workspace, six
+text to that workflow through one reusable invalidation-aware workspace, eight
 native presets, and a browser lock/inspection/export workbench. Full-volume
 training uses `wfclearn=2`, depth-sensitive provenance, XYZ locks/domains, and
 labeled browser Z slices. A fifth exact CLI bundle replays the volume preset.
 Its
 interactive envelope is bounded and synchronous; raw media/voxel/music
 extraction, larger background jobs, and general recipe authoring remain open.
-Word-boundary tables, wrapped sequence training, overlapping 3D extraction,
-broader artifact lint/inspection, and the complete exit gate remain open.
+Authored quotas use `wfclearn=3`; explicit connectivity selects `wfclearn=4`
+with persistent world-axis profiles and output roots/terminals. Both lower to
+the actual learned public output, remain distinct from sample frequencies,
+and are protected against loss during edits or model-only export.
+Circular sequence training additionally selects `wfclearn=5`, emits `wfcs=2`,
+and lowers to a wrapped sequence pass. It learns each sample's seam explicitly,
+retains raw balanced context counts without BOS or endpoint evidence, and
+exposes source boundary choice through both direct text learning and Studio.
+Overlapping-volume training additionally uses `wfclearn=6` and recipe v4;
+the lattice preset teaches joint cuboids and exposes full XYZ public locking,
+cutaway views and native SVG output without new dependencies.
+The [artifact tools](docs/artifact-tools.md) now validate all nine saved
+rule/training/pipeline families and explain their structure with explicitly
+bounded reports. Result validation distinguishes static bound-artifact checks
+from opt-in complete runtime replay, including exact non-solved outcomes.
+Word-boundary tables,
+broader semantic/asset lint, live inspection, and the complete exit gate remain open.
 
 ### Deliverables
 
@@ -546,14 +702,15 @@ broader artifact lint/inspection, and the complete exit gate remain open.
 - Extend the current pretokenized `wfc-learn` host beyond cardinal grids,
   overlapping 2D patterns, and sequences with project-owned raw-text/media,
   voxel, and musical-event importers and richer domain extraction.
-- Extend the current strict recipe `wfc-validate` host across the run/result
-  family and add unreachable-value, asymmetric-rule, impossible-input, and
-  missing-asset lint profiles.
+- Extend the eight-family `wfc-validate` host with unreachable-value,
+  asymmetric-rule, impossible-input, and missing-asset lint profiles beyond
+  strict schema/binding checks and explicit deterministic result replay.
 - Extend the current deterministic recipe-plus-run `wfc-run` host with explicit
   reproducible batch orchestration.
-- Generalize the existing fixed-fixture causal-trace inspector into
-  `wfc-inspect` for arbitrary rule graphs, pass layers, entropy/domain views,
-  interactive decision replay, and richer contradiction explanations.
+- Extend the saved-artifact `wfc-inspect` model/pass/layer reports with live
+  entropy/domain views, interactive decision replay, and richer contradiction
+  explanations; the fixed-fixture causal-trace inspector remains a separate
+  demonstration rather than a substitute for those interactive capabilities.
 - Preserve source hashes and corpus licenses in generated model metadata.
 - Add compact binary caching only after the portable text format is stable.
 
@@ -598,6 +755,15 @@ selective recovery without an external runtime library.
 cross-pass invariants; the same model and seed match between native and web.
 
 ### 3D structures
+
+- The overlapping-volume core now complements cardinal volume learning with
+  actual cuboid footprints, literal symmetry, exact public projection and
+  backward-lowered public voxel domains. The native/pas2js pass fixture proves
+  `patterns -> terrain -> foliage` at nonzero depth. The full declarative
+  training/workspace slice now includes Studio preset 7, public XYZ policies,
+  saved replay and a dependency-free, shared isometric SVG renderer with
+  rotation and cutaways. These are symbolic volumes, not physical building
+  certification. See [overlapping 3D](docs/overlapping-3d.md).
 
 - Learned Terraces now connects six-direction volume learning to authored
   socket/support variants and spatial foliage in a three-pass transaction.
@@ -743,6 +909,11 @@ polyphonic/harmonic breadth or expressive-performance learning.
   structural recombination, derived BOS-free wrapped cycles, projection-aware
   pass helpers, independent path validation, and canonical `wfcs=1` text on
   native FPC and pas2js.
+- An additive circular source profile now learns per-sample modulo histories,
+  validates weighted context circulation, and retains exact open-model replay.
+  Direct scalar/caller-tokenized learning, constrained circular completion,
+  source import, portable pipeline execution and native/browser Studio share
+  this contract; a finite fragment remains distinct from a closed output.
 - Text Completion Foundation v1 now adds whole, prefix, suffix, fragment, and
   cycle extents; atomic prefix/suffix/mask/locked-span helpers; exact globally
   feasible token domains with aggregate learned weights; a lossless
@@ -858,7 +1029,9 @@ The project remains under the MIT license. To make that promise meaningful:
 - add SPDX identifiers or an equivalent clear license reference to maintained
   project source;
 - maintain a third-party notice and asset manifest containing origin, author,
-  version, license, modifications, and hashes;
+  version, license, modifications, and hashes: the version-1 asset manifest
+  and native byte-inventory CI check now exist, while the nine historical
+  asset records remain unresolved and a complete release notice set is open;
 - keep the project-owned MIT FPC/pas2js media and presentation stack as the
   standard path; the original music studies have been ported, and the old
   playback submodule and engine shell are removed, not retained as exceptions;

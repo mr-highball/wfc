@@ -27,8 +27,18 @@ The original A-major and manually authored riff studies are also plain FPC
 console programs, with owned MIDI and streaming WAVE export. No submodule,
 external media library, or engine package is needed. The 2D world, three-pass text workbench,
 Building 3D, Training Studio, Music Studio, Ensemble Studio, Voice Studio,
-Neighborhood Counts, Connected Routes, and Learned Terraces have separate pas2js browser entry
-points described below.
+Neighborhood Counts, Connected Routes, Learned Terraces, Mapped World, and Pipeline Workspace have
+separate pas2js browser entry points described below.
+
+For the generic [Pipeline Workspace](../examples/passes/08_PipelineWorkspace/README.md)
+alone, run `build-workspace.ps1` and `build-browser-workspace.ps1`, or
+`bash ./build-workspace.sh` and `bash ./build-browser-workspace.sh`. The native
+output under `build/workspace/native/bin` includes `PipelineWorkspace`,
+`wfc_workspace`, and the FPC `wfc_serve`. Browser assets are staged under
+`build/browser/workspace/www`. Compiler overrides use `FPC`/`PAS2JS` or the
+PowerShell `Compiler` parameter. Builds do not start a server. The example
+guide covers hosting, and its [native guide](../examples/passes/08_PipelineWorkspace/NATIVE.md)
+covers canonical exports and subsequent journal operations.
 
 FPC 3.2.2 is the supported stable compiler. The current FPC development
 compiler is also exercised as a compatibility canary.
@@ -86,7 +96,8 @@ From the repository root, use the entry point for your shell:
 ```
 
 Both scripts rebuild with assertions and range, overflow, and I/O checks, run
-`wfc_test`, `wfc_world2d_test`, `wfc_world2d_settlement_test`,
+`wfc_test`, `wfc_lattice_test`, `wfc_mapped_passes_test`,
+`wfc_world2d_test`, `wfc_world2d_settlement_test`,
 `wfc_learn_test`, `wfc_pattern2d_test`, `wfc_pattern2d_passes_test`,
 `wfc_sequence_test`,
 `wfc_text_test`, `wfc_text_passes_test`, `wfc_text_pass_transaction_test`,
@@ -116,12 +127,23 @@ Both scripts rebuild with assertions and range, overflow, and I/O checks, run
 `wfc_sequence_partial_projection_test`, `wfc_music_voices_training_test`,
 `wfc_music_voices_graph_test`, `wfc_music_voices_stream_test`,
 `wfc_music_voices_demo_test`,
-`wfc_browser_dom_test`, `wfc_serve_test`,
+`wfc_browser_dom_test`, `wfc_browser_args_test`, `wfc_browser_socket_test`,
+`wfc_browser_websocket_test`, `wfc_browser_cdp_test`, `wfc_browser_capture_test`,
+`wfc_serve_test`,
 `wfc_text_codec_test`, `wfc_rule_model_test`,
+`wfc_sha256_test`, `wfc_asset_manifest_test`, `wfc_asset_check_app_test`,
 `wfc_rule_text_test`, `wfc_pipeline_model_test`, `wfc_pipeline_text_test`,
 `wfc_pipeline_run_test`, `wfc_pipeline_run_text_test`,
 `wfc_pipeline_compile_test`, `wfc_pipeline_result_test`,
 `wfc_pipeline_result_text_test`, `wfc_pipeline_runtime_test`,
+`wfc_pipeline_prepare_test`, `wfc_pipeline_prepare_threads_test`,
+`wfc_pipeline_replace_test`, `wfc_pipeline_replace_inverse_test`,
+`wfc_pipeline_session_test`, `wfc_pipeline_session_oracle_test`,
+`wfc_pipeline_session_evidence_test`, `wfc_workspace_context_test`,
+`wfc_workspace_journal_test`, `wfc_workspace_replay_test`,
+`pipeline_workspace_workbench_test`, `pipeline_workspace_view_test`,
+`pipeline_workspace_presets_test`,
+`wfc_regeneration_scope_test`,
 `wfc_token_lookup_test`, `wfc_validate_app_test`, `wfc_run_app_test`,
 `wfc_training_test`, `wfc_training_text_test`, `wfc_learn_app_test`,
 `wfc_learn3d_test`, `wfc_model3d_text_test`, `wfc_training3d_test`,
@@ -159,18 +181,48 @@ user-selected note counts and exact fractional-second WAVE timing,
 deterministic MIDI/WAVE files, format errors, and no-overwrite publication.
 See the [A-major](../examples/music/01_simple_A_major/README.md) and
 [riff](../examples/music/02_simple_song_riffs/README.md) usage guides.
+
+The native `pipeline_workspace_native_process_test` launches the actual
+Pipeline Workspace host, independent artifact/replay verifier, and existing
+workspace CLI. It covers requested unlike layouts, an independently sized
+view, exact import/export, normal unsolved histories, and no-overwrite refusals.
+The browser-only `pipeline_workspace_ui_test` instead drives the real staged
+workspace page: explicit generation, edits, permissions, resize refusal,
+file import and complete journal restore. Its dedicated asynchronous completion
+and stage markers are required in addition to the ordinary harness marker.
+The ordinary workspace entry starts without an epoch or hidden solve; startup
+resource checks and the interaction workflow are separate tests.
 A checked process suite also runs both native pipeline tools against the
 canonical files in `test/fixtures/pipeline-cli` and
 `examples/2D/05_LearnedPatternWorld/pipeline`: file and standard-input paths,
 exact validator and result bytes (including the domain-sized bundle), quiet
 output, and the documented invalid, usage, I/O, solved, and non-solved exit
 classes are all exercised.
-A second, 30-case process suite checks `wfc_learn`, `wfc_validate`, and
+A second process suite checks `wfc_learn`, `wfc_validate`, and
 `wfc_run` against all five source/model/recipe/run/result bundles in
 `examples/learning/04_TrainingDocuments`. It covers file/stdin training,
 standalone output, recipe validation, solved replay, quiet/version behavior,
 and invalid/usage/I/O diagnostics. The native training-text suite requires
 that absolute fixture directory as its first argument; the build supplies it.
+The artifact-family extension adds shared document, inspection, and CLI
+application suites plus a native FPC real-process runner for `wfc_validate`
+and `wfc_inspect`. It tests strict file/stdin handling across nine families,
+context binding, solved/non-solved exact replay, and inspection limits.
+Workspace conformance adds four portable context/evidence/journal/replay entry
+groups. The native `wfc_workspace_cli_process_test` instead invokes the real
+`wfc_workspace` host and `wfc_workspace_cli_fixture` in a fresh directory,
+checking ordered histories, exact replay, scope refusal, normal-unsolved
+exit10 and new-file preservation. All browser build/execution scripts exclude
+that native-only process test; they discover the four portable groups normally.
+The native gate also builds `wfc_asset_check` and runs
+`wfc_asset_check_process_test` against fresh synthetic files. The three shared
+SHA-256/manifest/application programs above are also part of portable browser
+discovery; the filesystem process fixture is native-only. The
+[asset guide](assets.md) explains its exact-byte inventory format, standalone
+FPC build, fixture invocation, review status and resource limits. Ordinary
+native builds and the checker do not require Git. CI separately supplies its
+complete tracked inventory for a real repository byte check; this is distinct
+from package-unit completeness and from provenance review.
 A compiler error, failed check,
 or example failure produces a nonzero exit code. Compiler units and binaries
 are written beneath `build/native/`; running the gate does not modify tracked
@@ -191,17 +243,23 @@ FPC=/opt/fpc/bin/fpc ./build.sh -O2
 ## Headless pipeline tools
 
 The native builds expose the same project-owned application
-logic through thin hosts. The recipe-only validator accepts one file or
-standard input:
+logic through thin hosts. The validator checks eight artifact families,
+including editable sources and context-bound runs/results:
 
 ```text
 wfc-validate recipe [--quiet | --emit-canonical] [--] INPUT
+wfc-validate run [--quiet | --emit-canonical] [--] RECIPE RUN
+wfc-validate result [--replay] [--quiet | --emit-canonical] [--] RECIPE RUN RESULT
+wfc-inspect recipe [--limit N] [--] INPUT
 ```
 
 Default success output is a one-line static summary. `--emit-canonical` emits
-the exact strictly verified `wfcpipeline=1` input, and `--quiet` emits nothing.
-This command validates the recipe and its embedded resources; it does not
-compile or solve.
+the exact strictly verified primary input, and `--quiet` emits nothing.
+Recipe validation does not compile or solve. Only explicit result replay
+executes the recorded run and compares the complete canonical result.
+The inspector exposes a bounded, terminal-safe view without execution.
+See [artifact tools](artifact-tools.md) for all nine families, their different
+validation scopes, exit codes, limits, and runnable examples.
 
 The runner accepts one recipe and its bound run artifact:
 
@@ -211,7 +269,7 @@ wfc-run [--quiet] [--] RECIPE RUN
 
 These are the distribution-facing command names used in help and diagnostics.
 The checked repository build writes the native source-host names
-`build/native/bin/wfc_validate[.exe]` and
+`build/native/bin/wfc_validate[.exe]`, `build/native/bin/wfc_inspect[.exe]`, and
 `build/native/bin/wfc_run[.exe]`; the training host is
 `build/native/bin/wfc_learn[.exe]`. Portable application logic is also tested
 in real browsers through the [included FPC tools](development-tools.md).
@@ -225,14 +283,46 @@ shared application units or artifact contracts.
 
 One positional path may be `-`, but both cannot read standard input. By
 default, solved and non-solved executions both emit one canonical
-`wfcpipeline-result=1` document. `--quiet` suppresses that output. Exit `0`
+`wfcpipeline-result=1` or `=2` document matching the run's format.
+`--quiet` suppresses that output. Exit `0`
 means solved, `1` means an invalid recipe/run/executable invocation, `2` is a
 usage error, `3` is an I/O error, `4` means a valid canonical non-solved
 result, and `70` is an unexpected internal failure. The complete lifecycle,
 ownership, safety bounds, and CLI contracts are in
 [Portable pipeline artifacts](pipeline-artifacts.md).
 
+## Workspace file tools
+
+The separate [workspace host](pipeline-workspaces.md#native-cli) is built as
+`build/native/bin/wfc_workspace[.exe]`. Its smoke argument is `--help`, not
+`--version`; no browser/server is required for these file commands:
+
+```powershell
+.\build\native\bin\wfc_workspace.exe --help
+```
+
+```bash
+./build/native/bin/wfc_workspace --help
+```
+
+The [fixture walkthrough](pipeline-workspaces.md#walk-through-actual-generated-artifacts)
+uses `wfc_workspace_cli_fixture --make` to generate real recipe/run inputs,
+then begins, edits, repairs and replays journal files. The native build also
+builds this fixture and runs its process conformance. A journal decode or
+`inspect` reports unverified claims; only full actual replay verifies history.
+The generic artifact tools and fresh result1/result2 registry are unchanged.
+
 ## FPM package
+
+Every maintained `src/*.pas` unit belongs to both the FPM and runtime-only
+Lazarus packages, including `wfc_music_form`, `wfc_pipeline_connectivity`,
+`wfc_pipeline_prepare`, `wfc_pipeline_session` and the five
+[workspace context/evidence/journal/replay units](pipeline-workspaces.md).
+The normal native gate first runs the included
+[package completeness checker](package-checking.md). It compares source unit
+declarations with all three package lists; source-only compilation cannot
+hide a forgotten package entry. This inventory check complements actual
+package compilation; it does not replace it.
 
 `fpmake.pp` describes the runtime `wfc` package. Its only declared dependency,
 `rtl-generics`, is part of the standard FPC distribution; no third-party
@@ -264,16 +354,44 @@ FPMake writes a target-specific `wfc-*.fpm` metadata file at the repository
 root. That generated file is ignored; compiled units are written beneath
 `build/fpm/units/`.
 
+To test installation without changing system directories, install into a
+private prefix under `build/`. These examples assume the same native `fpc`
+on `PATH` was used for the build:
+
+```powershell
+$packageTarget = "$(fpc -iTP)-$(fpc -iTO)"
+$packagePrefix = Join-Path (Get-Location) 'build/package-install'
+./build/fpm/bootstrap/bin/fpmake.exe install `
+  "--prefix=$packagePrefix" "--baseinstalldir=$packagePrefix/" `
+  "--unitinstalldir=$packagePrefix/units/$packageTarget/wfc"
+```
+
+```bash
+package_target="$(fpc -iTP)-$(fpc -iTO)"
+package_prefix="$PWD/build/package-install"
+./build/fpm/bootstrap/bin/fpmake install \
+  --prefix="$package_prefix" --baseinstalldir="$package_prefix/" \
+  --unitinstalldir="$package_prefix/units/$package_target/wfc"
+```
+
+Repeat any required `--compiler` and `--globalunitdir` overrides from the
+build command. The installed library units are in
+`build/package-install/units/<cpu>-<os>/wfc`; use that directory for the
+[package-only consumer check](package-checking.md#installed-unit-proof).
+
 ## Lazarus package and project
 
 `wfc.lpk` is a runtime-only package. It does not depend on the LCL. Build the
-package and the conformance project without allowing Lazarus to rewrite their
-metadata:
+package and the conformance project without saving project metadata:
 
 ```text
 lazbuild -B --no-write-project wfc.lpk
 lazbuild -B --no-write-project test/wfc_test.lpi
 ```
+
+Lazarus can still regenerate `wfc_package.pas`; its `uses` list follows the
+`wfc.lpk` item order. Keep those lists aligned when adding units. Different
+Lazarus versions can also change generated whitespace.
 
 The package output is written to `build/lazarus/package/<target>`. The test
 executable is written to `build/lazarus/test/bin`, with its units kept in the
@@ -310,7 +428,9 @@ build/native/bin/wfc_serve --root build/browser/world2d/www --port 8080
 ```
 
 Build the server with the native gate first; use `wfc_serve.exe` on Windows.
-See [development tools](development-tools.md) for its loopback-only serving boundary.
+The server binds to loopback by default. See
+[development tools](development-tools.md#access-from-a-trusted-local-network)
+for opt-in trusted-LAN serving on one explicit address.
 
 Open `http://localhost:8080/` for the interactive viewer. The deterministic
 browser fixture at `http://localhost:8080/?selftest=1` succeeds only when the
@@ -395,8 +515,10 @@ PAS2JS=/opt/pas2js/bin/pas2js bash ./build-browser-training.sh
 
 Serve `build/browser/training/www` and append `?selftest=1`. The test exercises
 all six presets, full-depth volume slices and XYZ locks, source/run invalidation,
-public-token locks, contradiction
-recovery, and stale-import rejection. The final overlapping-checkerboard
+public-token locks, persistent quotas and connectivity networks, contradiction
+recovery, and stale-import rejection. Its five `data-connectivity-*` checks
+(edit, replay, contradiction, invalidation, volume) must each report `passed`.
+The final overlapping-checkerboard
 fixture must report `data-state="solved"`, `data-self-test="passed"`,
 `data-source-signature="0FA2C5EA"`, `data-recipe-signature="DBCBA621"`,
 `data-result-signature="947C4AFD"`, and `data-cell-count="16"`.
@@ -470,6 +592,80 @@ both 2D and multi-floor SVG exports plus no-replace behavior in
 [host guide](../examples/passes/06_ConnectedRoutes/README.md) and
 [constraint contract](connectivity.md).
 
+## Mapped World browser and native hosts
+
+Mapped World shares its session owner, literal-coordinate validator, inspector
+and SVG renderer between native FPC and pas2js. The three showcase grids are
+fixed: 8 × 6 terrain at pitch 4, 32 × 24 foliage at pitch 1, and 3 × 2 housing
+at pitch 8 with an inset origin. Domains, locks, housing demands, sampling and
+sandbox weights are editable; these dimensions are not a core graph-size cap.
+
+Stage and host the browser on an unused port:
+
+```powershell
+.\build-browser-mapped.ps1 -Compiler 'C:/path/to/pas2js.exe'
+.\build\native\bin\wfc_serve.exe --root build/browser/mapped/www --port 4192
+```
+
+```bash
+PAS2JS=/opt/pas2js/bin/pas2js bash ./build-browser-mapped.sh
+build/native/bin/wfc_serve --root build/browser/mapped/www --port 4192
+```
+
+Build the included FPC server with the native gate first, then open
+`http://127.0.0.1:4192/`. Append `?selftest=1` to run the actual browser entry
+fixture. Stop the foreground server with Ctrl+C. The
+[demo guide](../examples/passes/07_MappedWorld/README.md) covers trusted-LAN
+hosting, isolated checked native builds, all CLI options and exit statuses.
+
+The native build scripts register `wfc_mapped_world_test`,
+`wfc_mapped_world_geometry_test`, `MappedWorld --selftest`, and the real-process
+`wfc_mapped_world_process_test`. The portable owner and geometry suites also
+run through pas2js; file/process tests stay native. After the native build:
+
+```powershell
+.\build\native\bin\MappedWorld.exe --selftest
+.\build\native\bin\MappedWorld.exe --seed 3 --demand 0,0=house --repair foliage --trace
+```
+
+On Unix, use `build/native/bin/MappedWorld`. Each CLI invocation first generates
+the baseline, then applies requested edits and exactly the authorized repair.
+Changing `--repair foliage` to `--repair housing` demonstrates an expected
+failure with the seed-3 interior tree; it must not widen its own scope.
+
+`--svg NEW-FILE` requires current model-valid, physically clear output.
+Point/undersized-region studies can satisfy the selected model without clearing
+the full footprint. Only explicit `--diagnostic-svg NEW-FILE` may export such
+an unsafe study or a labeled retained baseline; neither output option replaces
+an existing destination. Browser edits likewise invalidate safe downloads.
+The [portable mapped extension](portable-mapped-passes.md) uses the maintained
+native and browser gates.
+Its layout, geometry, model/codec, run/result, runtime and artifact suites are
+registered in both native scripts and portable browser discovery. The separate
+native-only `wfc_pipeline_mapped_process_test` invokes the actual `wfc_run`,
+`wfc_validate` and `wfc_inspect` executables with independent per-pass extents,
+canonical stdin/stdout, solved/nonsolved replay and invalid bindings. Its
+fixture directory is new on every run; browser discovery excludes this process
+harness. Mapped World UI import/export and general layout editing remain open.
+
+The [prepared session](pipeline-sessions.md) is a separate in-memory library
+boundary above [reusable input preparation](pipeline-preparation.md); it does
+not itself migrate the Mapped World demo. The separate
+[workspace layer](pipeline-workspaces.md) provides saved journal import/export,
+exact replay and atomic authoring, without adding those controls to the demo UI.
+The six portable preparation/replacement/session/scope suites and the four
+workspace context/evidence/journal/replay groups are discovered by all browser
+scripts. `wfc_pipeline_prepare_threads_test` is native-only and
+excluded by both build and execution scripts on each shell platform.
+
+The [footprint research record](research/mapped-world-footprints-v1.md)
+records the four-target native checks, actual browser fixture, and full stable
+Win32 build pass with its separate formatting-audit qualification. The first
+full browser run passed 138/139 programs and all 11 actual demo entries; its
+sole timed-out case passed one unchanged, separately recorded focused
+re-execution. The record preserves that first-run failure and the remaining
+desktop/mobile visual-review gap.
+
 ## Voice Studio browser and native hosts
 
 The independent-role studio stages the same portable training, graph,
@@ -524,14 +720,16 @@ commands, the complete marker contract, and explicit scope limits.
 
 ## Hosted pas2js gate
 
-The hosted browser gate builds the eight pas2js demos with a matching compiler
+The hosted browser gate builds the registered pas2js demos with a matching compiler
 and RTL. It serves standalone demo self-tests and the ensemble/independent-voice
 controllers' portable conformance hosts with the project-owned FPC server,
-executes them in headless Chrome, and checks rendered body attributes with the
-FPC checker.
+executes them in headless Chrome, waits for complete rendered body contracts
+with the FPC capture client, and independently checks the saved DOM with the
+FPC checker. Both conformance and standalone demos use this same maintained
+runner; no virtual-time snapshot is used as completion evidence.
 It also compiles every portable standalone conformance program for the browser
 and executes those pages through the same FPC tools. An additional browser-only
-entry regression loads all eight actual demo pages and their self-test queries,
+entry regression loads the registered actual demo pages and their self-test queries,
 including the HTML bootstrap and awaited controller checks. Native socket, DOM-parser,
 and renderer-process tests remain native. The source-derived test manifest
 rejects missing staged programs; see [development tools](development-tools.md)
@@ -545,9 +743,30 @@ not assertions that every console fixture has a browser host.
 The hosted workflow runs the checked native gate with FPC 3.2.2 on Linux,
 macOS, and Windows. The Linux lane also builds the FPM and Lazarus packages,
 runs the core Lazarus project, and verifies that generation leaves the checkout
-clean. A separate Linux lane builds all ten browser demos and executes
+clean. A separate Linux lane builds the registered browser demos and executes
 standalone demo self-tests plus portable browser conformance (including the
 Ensemble Studio and Voice Studio controllers) in headless Chrome using the included FPC
 development tools. A canary runs
 against the current official FPC development image and records the image digest
 and compiler revision in the job log. The checkout contains no submodules.
+
+After the stable native builds, the workflow uses Git only as a producer of
+the complete tracked file list. The included FPC asset command converts that
+list into canonical bytes and checks it against `ASSETS.wfcassets`. Windows
+captures native stdout as bytes rather than through shell text encoding. The
+ordinary check reports unresolved declarations without inventing provenance;
+`--require-reviewed` is a separate stricter release requirement. See
+[asset checking and capture recipes](assets.md#capture-a-complete-source-inventory).
+
+On 2026-09-06 UTC, [CI run 34005958438](https://github.com/mr-highball/wfc/actions/runs/34005958438)
+passed all five jobs for `b3bd1aea028ce908075b30d1dbe4731359f4c285`:
+stable FPC 3.2.2 on Linux, macOS, and Windows; development FPC on Linux;
+and the pinned pas2js browser lane. The successful gate includes Linux package
+and clean-checkout checks, native browser completion/rejection fixtures, and
+the real browser demo-entry checks. This is evidence for that revision, not
+a claim that all roadmap work is complete.
+
+The earlier [dated native verification record](verification/hosted-native-2026-09-06.md)
+links the observed compiler matrix, test coverage, package checks, and known
+browser-lane failure at that revision. It is historical evidence, not a
+substitute for the current workflow result.

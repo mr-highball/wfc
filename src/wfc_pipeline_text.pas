@@ -32,6 +32,11 @@ uses
 
 const
   WFC_PIPELINE_TEXT_VERSION = 1;
+  WFC_PIPELINE_VALUE_QUOTA_TEXT_VERSION = 2;
+  WFC_PIPELINE_CONNECTIVITY_TEXT_VERSION = 3;
+  WFC_PIPELINE_PATTERN_3D_TEXT_VERSION = 4;
+  WFC_PIPELINE_MAPPED_TEXT_VERSION = 5;
+  WFC_PIPELINE_MAX_SUPPORTED_TEXT_VERSION = WFC_PIPELINE_MAPPED_TEXT_VERSION;
   WFC_PIPELINE_MAX_ENCODED_TEXT_LENGTH = 268435456;
   WFC_PIPELINE_MAX_TEXT_LINE_COUNT = 26 +
     WFC_PIPELINE_MAX_RESOURCE_COUNT + WFC_PIPELINE_MAX_PASS_COUNT +
@@ -40,7 +45,20 @@ const
     WFC_PIPELINE_MAX_REQUIREMENT_COUNT +
     WFC_PIPELINE_MAX_TOTAL_REQUIREMENT_TERM_COUNT +
     WFC_PIPELINE_MAX_TOTAL_ALLOWED_TOKEN_COUNT;
+  WFC_PIPELINE_VALUE_QUOTA_MAX_TEXT_LINE_COUNT = WFC_PIPELINE_MAX_TEXT_LINE_COUNT +
+    2 + WFC_PIPELINE_MAX_VALUE_QUOTA_COUNT +
+    WFC_PIPELINE_MAX_TOTAL_VALUE_QUOTA_TOKEN_COUNT;
+  WFC_PIPELINE_CONNECTIVITY_MAX_TEXT_LINE_COUNT =
+    WFC_PIPELINE_VALUE_QUOTA_MAX_TEXT_LINE_COUNT + 2 +
+    WFC_PIPELINE_MAX_CONNECTIVITY_COUNT +
+    WFC_PIPELINE_MAX_TOTAL_CONNECTIVITY_REQUIRED_POSITION_COUNT +
+    WFC_PIPELINE_MAX_TOTAL_CONNECTIVITY_VALUE_COUNT;
+  WFC_PIPELINE_PATTERN_3D_MAX_TEXT_LINE_COUNT =
+    WFC_PIPELINE_CONNECTIVITY_MAX_TEXT_LINE_COUNT + 2;
+  WFC_PIPELINE_MAPPED_MAX_TEXT_LINE_COUNT =
+    WFC_PIPELINE_PATTERN_3D_MAX_TEXT_LINE_COUNT + 4 + WFC_PIPELINE_MAX_PASS_COUNT;
 
+function WfcPipelineModelTextVersion(const AModel: TWfcPipelineModel): Integer;
 function EncodeWfcPipelineModelText(
   const AModel: TWfcPipelineModel): String;
 function DecodeWfcPipelineModelText(
@@ -51,6 +69,8 @@ implementation
 uses
   SysUtils,
   wfc,
+  wfc_lattice,
+  wfc_pipeline_layout,
   wfc_model,
   wfc_sequence,
   wfc_text_codec;
@@ -115,12 +135,13 @@ begin
   Inc(ALineCount);
 end;
 
-procedure AddLineCapacity(var ACount: Integer; const AAdditional: Integer);
+procedure AddLineCapacity(var ACount: Integer; const AAdditional: Integer;
+  const AMaximum: Integer = WFC_PIPELINE_MAX_TEXT_LINE_COUNT);
 begin
   if AAdditional < 0 then
     raise EArgumentOutOfRangeException.Create(
       'canonical WFC pipeline line addition cannot be negative');
-  if ACount > WFC_PIPELINE_MAX_TEXT_LINE_COUNT - AAdditional then
+  if ACount > AMaximum - AAdditional then
     raise ERangeError.Create('canonical WFC pipeline text has too many lines');
   Inc(ACount, AAdditional);
 end;
@@ -143,24 +164,63 @@ begin
   end;
 end;
 
-procedure PreflightTextEnvelope(const AText: String);
+procedure PreflightTextEnvelope(const AText: String; out AVersion: Integer);
 var
   I: SizeInt;
   LLineCount: Integer;
   LTextLength: SizeInt;
+  LMaximumLines: Integer;
+  LKnownVersion: Boolean;
 begin
   LTextLength := Length(AText);
   if (LTextLength < 0) or
       (LTextLength > SizeInt(WFC_PIPELINE_MAX_ENCODED_TEXT_LENGTH)) then
     TextError('document exceeds the version-1 encoded length limit');
+  { Determine the exact supported header before allocating the line array.
+    V1 retains its original denial-of-service envelope even when V2 exists. }
+  LKnownVersion := True;
+  if Copy(AText, 1, 14) = 'wfcpipeline=1'#10 then
+  begin
+    AVersion := WFC_PIPELINE_TEXT_VERSION;
+    LMaximumLines := WFC_PIPELINE_MAX_TEXT_LINE_COUNT;
+  end
+  else if Copy(AText, 1, 14) = 'wfcpipeline=2'#10 then
+  begin
+    AVersion := WFC_PIPELINE_VALUE_QUOTA_TEXT_VERSION;
+    LMaximumLines := WFC_PIPELINE_VALUE_QUOTA_MAX_TEXT_LINE_COUNT;
+  end
+  else if Copy(AText, 1, 14) = 'wfcpipeline=3'#10 then
+  begin
+    AVersion := WFC_PIPELINE_CONNECTIVITY_TEXT_VERSION;
+    LMaximumLines := WFC_PIPELINE_CONNECTIVITY_MAX_TEXT_LINE_COUNT;
+  end
+  else if Copy(AText, 1, 14) = 'wfcpipeline=4'#10 then
+  begin
+    AVersion := WFC_PIPELINE_PATTERN_3D_TEXT_VERSION;
+    LMaximumLines := WFC_PIPELINE_PATTERN_3D_MAX_TEXT_LINE_COUNT;
+  end
+  else if Copy(AText, 1, 14) = 'wfcpipeline=5'#10 then
+  begin
+    AVersion := WFC_PIPELINE_MAPPED_TEXT_VERSION;
+    LMaximumLines := WFC_PIPELINE_MAPPED_MAX_TEXT_LINE_COUNT;
+  end
+  else
+  begin
+    { Preserve V1's early envelope diagnostic for malformed, line-heavy
+      inputs too. No unsupported header is admitted after this scan. }
+    LKnownVersion := False;
+    AVersion := WFC_PIPELINE_TEXT_VERSION;
+    LMaximumLines := WFC_PIPELINE_MAX_TEXT_LINE_COUNT;
+  end;
   LLineCount := 0;
   for I := 1 to LTextLength do
     if AText[I] = #10 then
     begin
-      if LLineCount = WFC_PIPELINE_MAX_TEXT_LINE_COUNT then
-        TextError('document exceeds the version-1 line-count limit');
+      if LLineCount = LMaximumLines then
+        TextError('document exceeds the version-' + IntToStr(AVersion) + ' line-count limit');
       Inc(LLineCount);
     end;
+  if not LKnownVersion then TextError('unsupported or noncanonical format version');
 end;
 
 function SplitRecord(const AText: String;
@@ -244,6 +304,8 @@ begin
       Result := 'pattern2d';
     wprkSequence:
       Result := 'sequence';
+    wprkPattern3D:
+      Result := 'pattern3d';
   else
     raise ERangeError.Create('unknown WFC pipeline resource kind');
   end;
@@ -260,6 +322,8 @@ begin
     Result := wprkPattern2D
   else if AText = 'sequence' then
     Result := wprkSequence
+  else if AText = 'pattern3d' then
+    Result := wprkPattern3D
   else
     TextError('resource has an unknown kind');
 end;
@@ -328,6 +392,8 @@ begin
       Result := 'pattern2d';
     wpakSequence:
       Result := 'sequence';
+    wpakPattern3D:
+      Result := 'pattern3d';
   else
     raise ERangeError.Create('unknown WFC pipeline adapter kind');
   end;
@@ -346,6 +412,8 @@ begin
     Result := wpakPattern2D
   else if AText = 'sequence' then
     Result := wpakSequence
+  else if AText = 'pattern3d' then
+    Result := wpakPattern3D
   else
     TextError('pass has an unknown adapter kind');
 end;
@@ -358,6 +426,8 @@ begin
       Result := 'pattern2d-projection';
     wpbkSequenceProjection:
       Result := 'sequence-projection';
+    wpbkPattern3DProjection:
+      Result := 'pattern3d-projection';
   else
     raise ERangeError.Create('unknown WFC pipeline bridge kind');
   end;
@@ -370,6 +440,8 @@ begin
     Result := wpbkPattern2DProjection
   else if AText = 'sequence-projection' then
     Result := wpbkSequenceProjection
+  else if AText = 'pattern3d-projection' then
+    Result := wpbkPattern3DProjection
   else
     TextError('bridge has an unknown kind');
 end;
@@ -383,6 +455,8 @@ begin
       Result := 'exact';
     wprqAny:
       Result := 'any';
+    wprqMapped:
+      Result := 'mapped-v1';
     wprqCount:
       case ACountMode of
         gpcmMatchingTerms:
@@ -407,6 +481,8 @@ begin
     AKind := wprqExact
   else if AText = 'any' then
     AKind := wprqAny
+  else if AText = 'mapped-v1' then
+    AKind := wprqMapped
   else if AText = 'count-terms-v1' then
   begin
     AKind := wprqCount;
@@ -419,6 +495,31 @@ begin
   end
   else
     TextError('requirement has an unknown kind');
+end;
+
+function MappedKindName(const AKind: TGraphPassMapKind): String;
+begin
+  case AKind of gpmkPoint:Result:='point'; gpmkCellCoverage:Result:='cell';
+    gpmkRegionCoverage:Result:='region';
+    else raise ERangeError.Create('unknown mapped query kind'); end;
+end;
+
+function ParseMappedKind(const AText: String): TGraphPassMapKind;
+begin
+  if AText='point' then Result:=gpmkPoint else if AText='cell' then Result:=gpmkCellCoverage
+  else if AText='region' then Result:=gpmkRegionCoverage else TextError('unknown mapped query kind');
+end;
+
+function MappedMatchName(const AMatch: TGraphPassMapMatch): String;
+begin
+  case AMatch of gpmmAll:Result:='all'; gpmmCount:Result:='count';
+    else raise ERangeError.Create('unknown mapped query match'); end;
+end;
+
+function ParseMappedMatch(const AText: String): TGraphPassMapMatch;
+begin
+  if AText='all' then Result:=gpmmAll else if AText='count' then Result:=gpmmCount
+  else TextError('unknown mapped query match');
 end;
 
 function RunModeName(const AMode: TGraphRunMode): String;
@@ -537,6 +638,35 @@ begin
   end;
 end;
 
+function WfcPipelineModelTextVersion(const AModel: TWfcPipelineModel): Integer;
+begin
+  if not Assigned(AModel) then
+    raise EArgumentNilException.Create('WFC pipeline model cannot be nil');
+  if AModel.HasPassMapping then Result := WFC_PIPELINE_MAPPED_TEXT_VERSION
+  else if AModel.HasPattern3D then Result := WFC_PIPELINE_PATTERN_3D_TEXT_VERSION
+  else if AModel.ConnectivityCount <> 0 then Result := WFC_PIPELINE_CONNECTIVITY_TEXT_VERSION
+  else if AModel.ValueQuotaCount = 0 then Result := WFC_PIPELINE_TEXT_VERSION
+  else Result := WFC_PIPELINE_VALUE_QUOTA_TEXT_VERSION;
+end;
+
+function OpeningMask(const AOpenings: TGraphDirections): Integer;
+var D: TGraphDirection;
+begin
+  Result := 0;
+  for D := Low(TGraphDirection) to High(TGraphDirection) do
+    if D in AOpenings then Result := Result or (1 shl Ord(D));
+end;
+
+function ParseOpenings(const AText: String): TGraphDirections;
+var D: TGraphDirection; Mask: Integer;
+begin
+  Mask := ParseCanonicalInteger(AText, 'connectivity opening mask');
+  if Mask > 63 then TextError('connectivity opening mask must be in 0..63');
+  Result := [];
+  for D := Low(TGraphDirection) to High(TGraphDirection) do
+    if (Mask and (1 shl Ord(D))) <> 0 then Include(Result, D);
+end;
+
 function EncodeWfcPipelineModelText(
   const AModel: TWfcPipelineModel): String;
 var
@@ -554,12 +684,17 @@ var
   LResource: TWfcPipelineResource;
   LTerm: TWfcPipelineRequirementTerm;
   LVersions: TWfcPipelineVersions;
+  LQuota: TWfcPipelineValueQuota;
+  LConnectivity: TWfcPipelineConnectivity;
+  LTextVersion: Integer;
+  LTopology: TWfcPipelinePassTopology;
 begin
   if not Assigned(AModel) then
     raise EArgumentNilException.Create('WFC pipeline model cannot be nil');
 
   LMetadata := AModel.CopyMetadata;
   LVersions := AModel.CopyVersions;
+  LTextVersion := WfcPipelineModelTextVersion(AModel);
   LExpectedLineCount := WFC_PIPELINE_FIXED_LINE_COUNT;
   AddLineCapacity(LExpectedLineCount, AModel.ResourceCount);
   AddLineCapacity(LExpectedLineCount, AModel.PassCount);
@@ -569,6 +704,11 @@ begin
   for I := 0 to AModel.RequirementCount - 1 do
   begin
     LRequirement := AModel.RequirementAt(I);
+    if LRequirement.Kind = wprqMapped then
+    begin
+      AddLineCapacity(LExpectedLineCount,1+Length(LRequirement.MappedQuery.AllowedProviderTokens));
+      Continue;
+    end;
     if LRequirement.Kind = wprqCount then
       AddLineCapacity(LExpectedLineCount, 1);
     AddLineCapacity(LExpectedLineCount, Length(LRequirement.Terms));
@@ -576,10 +716,38 @@ begin
       AddLineCapacity(LExpectedLineCount,
         Length(LRequirement.Terms[J].AllowedProviderTokens));
   end;
+  if LTextVersion >= WFC_PIPELINE_VALUE_QUOTA_TEXT_VERSION then
+  begin
+    AddLineCapacity(LExpectedLineCount, 2 + AModel.ValueQuotaCount,
+      WFC_PIPELINE_VALUE_QUOTA_MAX_TEXT_LINE_COUNT);
+    for I := 0 to AModel.ValueQuotaCount - 1 do
+    begin
+      LQuota := AModel.ValueQuotaAt(I);
+      AddLineCapacity(LExpectedLineCount, Length(LQuota.Values),
+        WFC_PIPELINE_VALUE_QUOTA_MAX_TEXT_LINE_COUNT);
+    end;
+  end;
+  if LTextVersion >= WFC_PIPELINE_CONNECTIVITY_TEXT_VERSION then
+  begin
+    AddLineCapacity(LExpectedLineCount, 2 + AModel.ConnectivityCount,
+      WFC_PIPELINE_CONNECTIVITY_MAX_TEXT_LINE_COUNT);
+    for I := 0 to AModel.ConnectivityCount - 1 do
+    begin
+      LConnectivity := AModel.ConnectivityAt(I);
+      AddLineCapacity(LExpectedLineCount, Length(LConnectivity.RequiredPositions),
+        WFC_PIPELINE_CONNECTIVITY_MAX_TEXT_LINE_COUNT);
+      AddLineCapacity(LExpectedLineCount, Length(LConnectivity.Values),
+        WFC_PIPELINE_CONNECTIVITY_MAX_TEXT_LINE_COUNT);
+    end;
+  end;
+  if AModel.HasPattern3D then
+    AddLineCapacity(LExpectedLineCount, 2, WFC_PIPELINE_PATTERN_3D_MAX_TEXT_LINE_COUNT);
+  if AModel.HasPassMapping then
+    AddLineCapacity(LExpectedLineCount,4+AModel.PassCount,WFC_PIPELINE_MAPPED_MAX_TEXT_LINE_COUNT);
   SetLength(LLines, LExpectedLineCount);
   LCount := 0;
   AppendLine(LLines, LCount, 'wfcpipeline=' +
-    IntToStr(WFC_PIPELINE_TEXT_VERSION));
+    IntToStr(LTextVersion));
   AppendLine(LLines, LCount, 'name=' + EncodeToken(LMetadata.Name));
   AppendLine(LLines, LCount, 'license=' +
     EncodeToken(LMetadata.LicenseIdentifier));
@@ -610,12 +778,36 @@ begin
     IntToStr(LVersions.Pattern2DBridgeVersion));
   AppendLine(LLines, LCount, 'sequence-bridge-version=' +
     IntToStr(LVersions.SequenceBridgeVersion));
+  if AModel.HasPassMapping then
+    AppendLine(LLines,LCount,'pattern3d-present='+BooleanName(AModel.HasPattern3D));
+  if AModel.HasPattern3D then
+  begin
+    AppendLine(LLines, LCount, 'pattern3d-graph-adapter-version=' +
+      IntToStr(LVersions.Pattern3DGraphAdapterVersion));
+    AppendLine(LLines, LCount, 'pattern3d-bridge-version=' +
+      IntToStr(LVersions.Pattern3DBridgeVersion));
+  end;
 
   AppendLine(LLines, LCount, 'rank=' + IntToStr(AModel.Rank));
   AppendLine(LLines, LCount, 'wrap=' +
     BooleanName(AModel.WrapNeighbors));
   AppendLine(LLines, LCount, 'traversal=' +
     RunModeName(AModel.RunMode));
+
+  if AModel.HasPassMapping then
+  begin
+    AppendLine(LLines,LCount,'pass-mapping-version='+IntToStr(AModel.PassMappingVersion));
+    AppendLine(LLines,LCount,'graph-pass-mapping-version='+IntToStr(WFC_PASS_MAPPING_VERSION));
+    AppendLine(LLines,LCount,'pass-topologies='+IntToStr(AModel.PassCount));
+    for I := 0 to AModel.PassCount-1 do
+    begin
+      LTopology:=AModel.PassTopologyAt(I);
+      with LTopology do
+        AppendLine(LLines,LCount,'pass-topology='+IntToStr(I)+','+IntToStr(Rank)+','+
+          IntToStr(Origin.X)+','+IntToStr(Origin.Y)+','+IntToStr(Origin.Z)+','+
+          IntToStr(Pitch.X)+','+IntToStr(Pitch.Y)+','+IntToStr(Pitch.Z)+','+BooleanName(Wrap));
+    end;
+  end;
 
   AppendLine(LLines, LCount, 'resources=' +
     IntToStr(AModel.ResourceCount));
@@ -679,6 +871,19 @@ begin
       IntToStr(LRequirement.ProviderPassIndex) + ',' +
       RequirementKindName(LRequirement.Kind, LRequirement.CountMode) + ',' +
       IntToStr(Length(LRequirement.Terms)));
+    if LRequirement.Kind=wprqMapped then
+    begin
+      with LRequirement.MappedQuery do
+      begin
+        AppendLine(LLines,LCount,'mapped='+IntToStr(I)+','+MappedKindName(Kind)+','+MappedMatchName(Match)+','+
+          IntToStr(MinimumOffset.DeltaX)+','+IntToStr(MinimumOffset.DeltaY)+','+IntToStr(MinimumOffset.DeltaZ)+','+
+          IntToStr(MaximumOffset.DeltaX)+','+IntToStr(MaximumOffset.DeltaY)+','+IntToStr(MaximumOffset.DeltaZ)+','+
+          IntToStr(MinimumMatches)+','+IntToStr(MaximumMatches)+','+IntToStr(Length(AllowedProviderTokens)));
+        for J := 0 to High(AllowedProviderTokens) do
+          AppendLine(LLines,LCount,'mapped-token='+IntToStr(I)+','+IntToStr(J)+','+EncodeToken(AllowedProviderTokens[J]));
+      end;
+      Continue;
+    end;
     if LRequirement.Kind = wprqCount then
       AppendLine(LLines, LCount, 'count=' + IntToStr(I) + ',' +
         IntToStr(LRequirement.MinimumCount) + ',' +
@@ -694,6 +899,47 @@ begin
         AppendLine(LLines, LCount, 'allowed=' + IntToStr(I) + ',' +
           IntToStr(J) + ',' + IntToStr(K) + ',' +
           EncodeToken(LTerm.AllowedProviderTokens[K]));
+    end;
+  end;
+
+  if LTextVersion >= WFC_PIPELINE_VALUE_QUOTA_TEXT_VERSION then
+  begin
+    AppendLine(LLines, LCount, 'value-quota-version=' + IntToStr(AModel.ValueQuotaVersion));
+    AppendLine(LLines, LCount, 'value-quotas=' + IntToStr(AModel.ValueQuotaCount));
+    for I := 0 to AModel.ValueQuotaCount - 1 do
+    begin
+      LQuota := AModel.ValueQuotaAt(I);
+      AppendLine(LLines, LCount, 'value-quota=' + IntToStr(I) + ',' +
+        IntToStr(LQuota.PassIndex) + ',' + EncodeToken(LQuota.LabelText) + ',' +
+        IntToStr(LQuota.MinimumCount) + ',' + IntToStr(LQuota.MaximumCount) + ',' +
+        IntToStr(Length(LQuota.Values)));
+      for J := 0 to High(LQuota.Values) do
+        AppendLine(LLines, LCount, 'quota-token=' + IntToStr(I) + ',' +
+          IntToStr(J) + ',' + EncodeToken(LQuota.Values[J]));
+    end;
+  end;
+
+  if LTextVersion >= WFC_PIPELINE_CONNECTIVITY_TEXT_VERSION then
+  begin
+    AppendLine(LLines, LCount, 'connectivity-version=' + IntToStr(AModel.ConnectivityVersion));
+    AppendLine(LLines, LCount, 'connectivities=' + IntToStr(AModel.ConnectivityCount));
+    for I := 0 to AModel.ConnectivityCount - 1 do
+    begin
+      LConnectivity := AModel.ConnectivityAt(I);
+      AppendLine(LLines, LCount, 'connectivity=' + IntToStr(I) + ',' +
+        IntToStr(LConnectivity.PassIndex) + ',' + EncodeToken(LConnectivity.LabelText) + ',' +
+        IntToStr(LConnectivity.Root.X) + ',' + IntToStr(LConnectivity.Root.Y) + ',' +
+        IntToStr(LConnectivity.Root.Z) + ',' + BooleanName(LConnectivity.RequireAllParticipants) + ',' +
+        IntToStr(Length(LConnectivity.RequiredPositions)) + ',' + IntToStr(Length(LConnectivity.Values)));
+      for J := 0 to High(LConnectivity.RequiredPositions) do
+        with LConnectivity.RequiredPositions[J] do
+          AppendLine(LLines, LCount, 'terminal=' + IntToStr(I) + ',' + IntToStr(J) + ',' +
+            IntToStr(X) + ',' + IntToStr(Y) + ',' + IntToStr(Z));
+      for J := 0 to High(LConnectivity.Values) do
+        with LConnectivity.Values[J] do
+          AppendLine(LLines, LCount, 'profile=' + IntToStr(I) + ',' + IntToStr(J) + ',' +
+            EncodeToken(Value) + ',' + IntToStr(OpeningMask(Openings)) + ',' +
+            BooleanName(RequiredByValue));
     end;
   end;
 
@@ -759,6 +1005,29 @@ var
   LTotalRequirementTermCount: Integer;
   LVersions: TWfcPipelineVersions;
   LWrapNeighbors: Boolean;
+  LTextVersion: Integer;
+  LQuotaTail: Integer;
+  LConnectivityTail: Integer;
+  LQuotaVersion: Integer;
+  LConnectivityVersion: Integer;
+  LQuotaCount: Integer;
+  LQuotaTokenCount: Integer;
+  LTotalQuotaTokenCount: Integer;
+  LQuotaPassIndex: Integer;
+  LQuotaMinimum: Integer;
+  LQuotaMaximum: Integer;
+  LQuotaLabel: TWfcModelToken;
+  LQuotaTokens: TWfcModelTokens;
+  LQuotas: TWfcPipelineValueQuotas;
+  LConnectivityCount, LTerminalCount, LProfileCount: Integer;
+  LTotalTerminalCount, LTotalProfileCount: Integer;
+  LConnectivity: TWfcPipelineConnectivity;
+  LConnectivities: TWfcPipelineConnectivities;
+  LHasPattern3D: Boolean;
+  LMappingVersion,LTopologyCount: Integer;
+  LTopologies: TWfcPipelinePassTopologies;
+  LTopology: TWfcPipelinePassTopology;
+  LMappedQuery: TWfcPipelineMappedQuery;
 
   function DecodeOuterToken(const AValue,
     AFieldName: String): TWfcModelToken;
@@ -778,18 +1047,70 @@ var
     Inc(LTotalEncodedTokenLength, Integer(LEncodedLength));
     Result := DecodeToken(AValue);
   end;
+
+  function ReadQuotaRecord(const APrefix: String; const AFields: Integer;
+    const AName: String): TWfcPipelineTextFields;
+  var LLine: String;
+  begin
+    LLine := RequireLine(LLines, LLineIndex, AName);
+    { A quota row contains one escaped outer token and a fixed number of
+      bounded decimal fields. Reject an oversized row BEFORE splitting it
+      into copied field strings. Nested resource rows have their own limits. }
+    if Length(LLine) > WFC_PIPELINE_MAX_ENCODED_TOKEN_LENGTH + 128 then
+      TextError(AName + ' exceeds the encoded row-length limit');
+    Inc(LLineIndex);
+    Result := SplitRecord(ValueAfterPrefix(LLine, APrefix, AName), AFields, AName);
+  end;
+
+  function ReadCoordinate(const AText, AFieldName: String;
+    const AAxis: Integer): TGraphCoordinate;
+  var LValue: Integer;
+  begin
+    LValue := ParseCanonicalInteger(AText, AFieldName);
+    if LTextVersion = WFC_PIPELINE_MAPPED_TEXT_VERSION then
+    begin
+      if (AAxis >= LTopologies[LConnectivity.PassIndex].Rank) and (LValue <> 0) then
+        TextError(AFieldName + ' lies outside the owner pass rank');
+    end
+    else if (AAxis >= LRank) and (LValue <> 0) then
+      TextError(AFieldName + ' lies outside the recipe rank');
+    Result := TGraphCoordinate(LValue);
+  end;
 begin
   Result := nil;
-  PreflightTextEnvelope(AText);
+  PreflightTextEnvelope(AText, LTextVersion);
   WfcTextSplitCanonicalLines(AText, WFC_PIPELINE_TEXT_ARTIFACT,
     LLines);
   if Length(LLines) < WFC_PIPELINE_FIXED_LINE_COUNT then
     TextError('document is incomplete');
   LLineIndex := 0;
   if RequireLine(LLines, LLineIndex, 'format version') <>
-      'wfcpipeline=1' then
+      'wfcpipeline=' + IntToStr(LTextVersion) then
     TextError('unsupported or noncanonical format version');
   Inc(LLineIndex);
+  LQuotas := nil;
+  LConnectivities := nil;
+  LTopologies := nil; LMappingVersion := 0;
+  LHasPattern3D := LTextVersion = WFC_PIPELINE_PATTERN_3D_TEXT_VERSION;
+  { A canonical V2 section needs a version, count, one descriptor and at
+    least one token. Reserve this minimum before allocating older sections. }
+  if LTextVersion = WFC_PIPELINE_VALUE_QUOTA_TEXT_VERSION then LQuotaTail := 4
+  else LQuotaTail := 0;
+  LConnectivityTail := 0;
+  if LTextVersion = WFC_PIPELINE_CONNECTIVITY_TEXT_VERSION then
+  begin
+    { V3 has a possibly empty two-line quota section followed by a nonempty
+      connectivity section: version, count, descriptor and one profile. }
+    LConnectivityTail := 4;
+    LQuotaTail := 2 + LConnectivityTail;
+  end;
+  if LTextVersion >= WFC_PIPELINE_PATTERN_3D_TEXT_VERSION then
+  begin
+    { Both optional registries still have explicit zero-version/zero-count
+      sections in V4. The two new version lines precede all registries. }
+    LConnectivityTail := 2;
+    LQuotaTail := 2 + LConnectivityTail;
+  end;
 
   { Pascal does not define argument evaluation order. Read stateful fields
     one at a time before any constructor/helper call. }
@@ -803,6 +1124,7 @@ begin
   LMetadata.SourceFingerprint := DecodeOuterToken(ReadValueLine(LLines,
     LLineIndex, 'fingerprint=', 'fingerprint'), 'fingerprint');
 
+  LVersions := CurrentWfcPipelineVersions;
   LVersions.GraphModelVersion := ParseCanonicalInteger(
     ReadValueLine(LLines, LLineIndex, 'graph-model-version=',
       'graph-model version'), 'graph-model version');
@@ -836,6 +1158,18 @@ begin
   LVersions.SequenceBridgeVersion := ParseCanonicalInteger(
     ReadValueLine(LLines, LLineIndex, 'sequence-bridge-version=',
       'sequence bridge version'), 'sequence bridge version');
+  if LTextVersion = WFC_PIPELINE_MAPPED_TEXT_VERSION then
+    LHasPattern3D := ParseBooleanName(ReadValueLine(LLines,LLineIndex,
+      'pattern3d-present=','pattern3d presence'),'pattern3d presence');
+  if LHasPattern3D then
+  begin
+    LVersions.Pattern3DGraphAdapterVersion := ParseCanonicalInteger(
+      ReadValueLine(LLines, LLineIndex, 'pattern3d-graph-adapter-version=',
+        'pattern3d graph-adapter version'), 'pattern3d graph-adapter version');
+    LVersions.Pattern3DBridgeVersion := ParseCanonicalInteger(
+      ReadValueLine(LLines, LLineIndex, 'pattern3d-bridge-version=',
+        'pattern3d bridge version'), 'pattern3d bridge version');
+  end;
 
   LRank := ParseCanonicalInteger(ReadValueLine(LLines, LLineIndex,
     'rank=', 'rank'), 'rank');
@@ -844,10 +1178,41 @@ begin
   LRunMode := ParseRunMode(ReadValueLine(LLines, LLineIndex,
     'traversal=', 'traversal mode'));
 
+  if LTextVersion = WFC_PIPELINE_MAPPED_TEXT_VERSION then
+  begin
+    LMappingVersion := ParseCanonicalInteger(ReadValueLine(LLines,LLineIndex,
+      'pass-mapping-version=','pass-mapping version'),'pass-mapping version');
+    if LMappingVersion<>WFC_PIPELINE_PASS_MAPPING_VERSION then TextError('unsupported pass-mapping version');
+    if ParseCanonicalInteger(ReadValueLine(LLines,LLineIndex,
+      'graph-pass-mapping-version=','graph pass-mapping version'),'graph pass-mapping version')<>WFC_PASS_MAPPING_VERSION then
+      TextError('unsupported graph pass-mapping version');
+    LTopologyCount := ParseBoundedCount(ReadValueLine(LLines,LLineIndex,
+      'pass-topologies=','pass topology count'),'pass topology count',WFC_PIPELINE_MAX_PASS_COUNT);
+    if LTopologyCount=0 then TextError('spatial recipe requires pass topologies');
+    RequireRecordCapacity(LTopologyCount,7+LQuotaTail,LLineIndex,LLines,'pass topology');
+    SetLength(LTopologies,LTopologyCount);
+    for I := 0 to LTopologyCount-1 do
+    begin
+      LFields:=ReadQuotaRecord('pass-topology=',9,'pass topology');
+      if ParseCanonicalInteger(LFields[0],'topology index')<>I then TextError('pass topology indices must be complete and ordered');
+      LTopology.Rank:=ParseCanonicalInteger(LFields[1],'pass rank');
+      LTopology.Origin.X:=ParseCanonicalSignedInteger(LFields[2],'pass origin X');
+      LTopology.Origin.Y:=ParseCanonicalSignedInteger(LFields[3],'pass origin Y');
+      LTopology.Origin.Z:=ParseCanonicalSignedInteger(LFields[4],'pass origin Z');
+      LTopology.Pitch.X:=ParseCanonicalInteger(LFields[5],'pass pitch X');
+      LTopology.Pitch.Y:=ParseCanonicalInteger(LFields[6],'pass pitch Y');
+      LTopology.Pitch.Z:=ParseCanonicalInteger(LFields[7],'pass pitch Z');
+      LTopology.Wrap:=ParseBooleanName(LFields[8],'pass wrap');
+      try
+        LTopologies[I]:=MakeWfcPipelinePassTopology(LTopology.Rank,LTopology.Origin,LTopology.Pitch,LTopology.Wrap);
+      except on E:Exception do TextError(E.Message); end;
+    end;
+  end;
+
   LResourceCount := ParseBoundedCount(ReadValueLine(LLines,
     LLineIndex, 'resources=', 'resource count'), 'resource count',
     WFC_PIPELINE_MAX_RESOURCE_COUNT);
-  RequireRecordCapacity(LResourceCount, 6, LLineIndex, LLines,
+  RequireRecordCapacity(LResourceCount, 6 + LQuotaTail, LLineIndex, LLines,
     'resource');
   SetLength(LResources, LResourceCount);
   LTotalPayloadLength := 0;
@@ -878,7 +1243,9 @@ begin
 
   LPassCount := ParseBoundedCount(ReadValueLine(LLines, LLineIndex,
     'passes=', 'pass count'), 'pass count', WFC_PIPELINE_MAX_PASS_COUNT);
-  RequireRecordCapacity(LPassCount, 5, LLineIndex, LLines, 'pass');
+  if (LTextVersion=WFC_PIPELINE_MAPPED_TEXT_VERSION) and (LPassCount<>Length(LTopologies)) then
+    TextError('pass topology count must equal pass count');
+  RequireRecordCapacity(LPassCount, 5 + LQuotaTail, LLineIndex, LLines, 'pass');
   SetLength(LPasses, LPassCount);
   for I := 0 to LPassCount - 1 do
   begin
@@ -901,7 +1268,7 @@ begin
   LDependencyCount := ParseBoundedCount(ReadValueLine(LLines,
     LLineIndex, 'dependencies=', 'dependency count'),
     'dependency count', WFC_PIPELINE_MAX_DEPENDENCY_COUNT);
-  RequireRecordCapacity(LDependencyCount, 4, LLineIndex, LLines,
+  RequireRecordCapacity(LDependencyCount, 4 + LQuotaTail, LLineIndex, LLines,
     'dependency');
   SetLength(LDependencies, LDependencyCount);
   for I := 0 to LDependencyCount - 1 do
@@ -918,7 +1285,7 @@ begin
   LBridgeCount := ParseBoundedCount(ReadValueLine(LLines,
     LLineIndex, 'bridges=', 'bridge count'), 'bridge count',
     WFC_PIPELINE_MAX_BRIDGE_COUNT);
-  RequireRecordCapacity(LBridgeCount, 3, LLineIndex, LLines, 'bridge');
+  RequireRecordCapacity(LBridgeCount, 3 + LQuotaTail, LLineIndex, LLines, 'bridge');
   SetLength(LBridges, LBridgeCount);
   for I := 0 to LBridgeCount - 1 do
   begin
@@ -936,7 +1303,7 @@ begin
   LRequirementCount := ParseBoundedCount(ReadValueLine(LLines,
     LLineIndex, 'requirements=', 'requirement count'),
     'requirement count', WFC_PIPELINE_MAX_REQUIREMENT_COUNT);
-  RequireRecordCapacity(LRequirementCount, 2, LLineIndex, LLines,
+  RequireRecordCapacity(LRequirementCount, 2 + LQuotaTail, LLineIndex, LLines,
     'requirement');
   SetLength(LRequirements, LRequirementCount);
   for I := 0 to LRequirementCount - 1 do
@@ -954,12 +1321,48 @@ begin
     ParseRequirementKind(LFields[4], LRequirementKind, LCountMode);
     LTermCount := ParseBoundedCount(LFields[5],
       'requirement term count', WFC_PIPELINE_MAX_REQUIREMENT_TERM_COUNT);
+    if LRequirementKind=wprqMapped then
+    begin
+      if LTextVersion<>WFC_PIPELINE_MAPPED_TEXT_VERSION then TextError('mapped clauses require recipe version 5');
+      if LTermCount<>0 then TextError('mapped requirements cannot contain legacy terms');
+      LFields:=ReadQuotaRecord('mapped=',12,'mapped query');
+      if ParseCanonicalInteger(LFields[0],'mapped parent index')<>I then TextError('mapped query parent index is incorrect');
+      LMappedQuery:=Default(TWfcPipelineMappedQuery);
+      LMappedQuery.Kind:=ParseMappedKind(LFields[1]); LMappedQuery.Match:=ParseMappedMatch(LFields[2]);
+      LMappedQuery.MinimumOffset.DeltaX:=ParseCanonicalSignedInteger(LFields[3],'mapped minimum X');
+      LMappedQuery.MinimumOffset.DeltaY:=ParseCanonicalSignedInteger(LFields[4],'mapped minimum Y');
+      LMappedQuery.MinimumOffset.DeltaZ:=ParseCanonicalSignedInteger(LFields[5],'mapped minimum Z');
+      LMappedQuery.MaximumOffset.DeltaX:=ParseCanonicalSignedInteger(LFields[6],'mapped maximum X');
+      LMappedQuery.MaximumOffset.DeltaY:=ParseCanonicalSignedInteger(LFields[7],'mapped maximum Y');
+      LMappedQuery.MaximumOffset.DeltaZ:=ParseCanonicalSignedInteger(LFields[8],'mapped maximum Z');
+      LMappedQuery.MinimumMatches:=ParseCanonicalInteger(LFields[9],'mapped minimum matches');
+      LMappedQuery.MaximumMatches:=ParseCanonicalInteger(LFields[10],'mapped maximum matches');
+      LAllowedCount:=ParseBoundedCount(LFields[11],'mapped allowed-token count',WFC_PIPELINE_MAX_ALLOWED_TOKEN_COUNT);
+      if LAllowedCount=0 then TextError('mapped query must allow at least one token');
+      if LTotalAllowedTokenCount>WFC_PIPELINE_MAX_TOTAL_ALLOWED_TOKEN_COUNT-LAllowedCount then
+        TextError('aggregate mapped allowed-token count exceeds the limit');
+      Inc(LTotalAllowedTokenCount,LAllowedCount);
+      RequireRecordCapacity(LAllowedCount,2+LQuotaTail,LLineIndex,LLines,'mapped token');
+      SetLength(LMappedQuery.AllowedProviderTokens,LAllowedCount);
+      for J := 0 to LAllowedCount-1 do
+      begin
+        LFields:=ReadQuotaRecord('mapped-token=',3,'mapped token');
+        if (ParseCanonicalInteger(LFields[0],'mapped token parent index')<>I) or
+          (ParseCanonicalInteger(LFields[1],'mapped token index')<>J) then TextError('mapped token indices must be complete and ordered');
+        LMappedQuery.AllowedProviderTokens[J]:=DecodeOuterToken(LFields[2],'mapped provider token');
+      end;
+      try
+        LRequirements[I]:=MakeWfcPipelineMappedRequirement(LRequirementConsumerIndex,
+          LRequirementConsumerToken,LRequirementProviderIndex,LMappedQuery);
+      except on E:Exception do TextError(E.Message); end;
+      Continue;
+    end;
     if LTotalRequirementTermCount >
         WFC_PIPELINE_MAX_TOTAL_REQUIREMENT_TERM_COUNT - LTermCount then
       TextError('aggregate requirement-term count exceeds the version-1 limit');
     Inc(LTotalRequirementTermCount, LTermCount);
     RequireRecordCapacity(LTermCount + Ord(LRequirementKind = wprqCount),
-      2, LLineIndex, LLines,
+      2 + LQuotaTail, LLineIndex, LLines,
       'requirement term');
     LCountMinimum := 0;
     LCountMaximum := 0;
@@ -998,7 +1401,7 @@ begin
           WFC_PIPELINE_MAX_TOTAL_ALLOWED_TOKEN_COUNT - LAllowedCount then
         TextError('aggregate allowed-token count exceeds the version-1 limit');
       Inc(LTotalAllowedTokenCount, LAllowedCount);
-      RequireRecordCapacity(LAllowedCount, 2, LLineIndex, LLines,
+      RequireRecordCapacity(LAllowedCount, 2 + LQuotaTail, LLineIndex, LLines,
         'allowed-token');
       SetLength(LAllowedTokens, LAllowedCount);
       for K := 0 to LAllowedCount - 1 do
@@ -1029,6 +1432,138 @@ begin
         LRequirementProviderIndex, LRequirementKind, LTerms);
   end;
 
+  if LTextVersion >= WFC_PIPELINE_VALUE_QUOTA_TEXT_VERSION then
+  begin
+    LQuotaVersion := ParseCanonicalInteger(ReadValueLine(LLines, LLineIndex,
+        'value-quota-version=', 'value-quota version'), 'value-quota version');
+    if (LQuotaVersion <> WFC_PIPELINE_VALUE_QUOTA_VERSION) and
+        not ((LTextVersion >= WFC_PIPELINE_CONNECTIVITY_TEXT_VERSION) and (LQuotaVersion = 0)) then
+      TextError('unsupported value-quota version');
+    LQuotaCount := ParseBoundedCount(ReadValueLine(LLines, LLineIndex,
+      'value-quotas=', 'value-quota count'), 'value-quota count',
+      WFC_PIPELINE_MAX_VALUE_QUOTA_COUNT);
+    if (LTextVersion = WFC_PIPELINE_VALUE_QUOTA_TEXT_VERSION) and (LQuotaCount = 0) then
+      TextError('version 2 requires at least one value quota');
+    if ((LQuotaCount = 0) and (LQuotaVersion <> 0)) or
+        ((LQuotaCount <> 0) and (LQuotaVersion = 0)) then
+      TextError('value-quota version must be zero exactly when the registry is empty');
+    { Every quota needs a descriptor AND a token. The cap makes this product
+      safe; the remaining-line check precedes the descriptor array allocation. }
+    RequireRecordCapacity(2 * LQuotaCount, 2 + LConnectivityTail,
+      LLineIndex, LLines, 'value-quota');
+    SetLength(LQuotas, LQuotaCount);
+    LTotalQuotaTokenCount := 0;
+    for I := 0 to LQuotaCount - 1 do
+    begin
+      LFields := ReadQuotaRecord('value-quota=', 6, 'value-quota record');
+      if ParseCanonicalInteger(LFields[0], 'value-quota index') <> I then
+        TextError('value-quota indices must be complete and ordered');
+      LQuotaPassIndex := ParseCanonicalInteger(LFields[1], 'value-quota pass index');
+      if LQuotaPassIndex >= LPassCount then TextError('value-quota pass index is outside the recipe');
+      LQuotaLabel := DecodeOuterToken(LFields[2], 'value-quota label');
+      if LQuotaLabel = '' then TextError('value-quota label cannot be empty');
+      LQuotaMinimum := ParseCanonicalInteger(LFields[3], 'value-quota minimum');
+      LQuotaMaximum := ParseCanonicalInteger(LFields[4], 'value-quota maximum');
+      if LQuotaMinimum > LQuotaMaximum then TextError('value-quota minimum exceeds maximum');
+      LQuotaTokenCount := ParseBoundedCount(LFields[5], 'value-quota token count',
+        WFC_PIPELINE_MAX_VALUE_QUOTA_TOKEN_COUNT);
+      if LQuotaTokenCount = 0 then TextError('value-quota token set cannot be empty');
+      if LTotalQuotaTokenCount > WFC_PIPELINE_MAX_TOTAL_VALUE_QUOTA_TOKEN_COUNT - LQuotaTokenCount then
+        TextError('aggregate value-quota token count exceeds the limit');
+      Inc(LTotalQuotaTokenCount, LQuotaTokenCount);
+      RequireRecordCapacity(LQuotaTokenCount, 2 + LConnectivityTail + 2 * (LQuotaCount - I - 1),
+        LLineIndex, LLines, 'value-quota token');
+      SetLength(LQuotaTokens, LQuotaTokenCount);
+      for J := 0 to LQuotaTokenCount - 1 do
+      begin
+        LFields := ReadQuotaRecord('quota-token=', 3, 'value-quota token record');
+        if (ParseCanonicalInteger(LFields[0], 'value-quota token parent index') <> I) or
+            (ParseCanonicalInteger(LFields[1], 'value-quota token index') <> J) then
+          TextError('value-quota token indices must be complete and ordered');
+        LQuotaTokens[J] := DecodeOuterToken(LFields[2], 'value-quota token');
+        if LQuotaTokens[J] = '' then TextError('value-quota token cannot be empty');
+      end;
+      LQuotas[I] := MakeWfcPipelineValueQuota(LQuotaPassIndex, LQuotaLabel,
+        LQuotaTokens, LQuotaMinimum, LQuotaMaximum);
+    end;
+  end;
+
+  if LTextVersion >= WFC_PIPELINE_CONNECTIVITY_TEXT_VERSION then
+  begin
+    LConnectivityVersion := ParseCanonicalInteger(ReadValueLine(LLines, LLineIndex,
+      'connectivity-version=', 'connectivity version'), 'connectivity version');
+    if (LConnectivityVersion <> WFC_PIPELINE_CONNECTIVITY_VERSION) and
+        not ((LTextVersion >= WFC_PIPELINE_PATTERN_3D_TEXT_VERSION) and (LConnectivityVersion = 0)) then
+      TextError('unsupported connectivity version');
+    LConnectivityCount := ParseBoundedCount(ReadValueLine(LLines, LLineIndex,
+      'connectivities=', 'connectivity count'), 'connectivity count',
+      WFC_PIPELINE_MAX_CONNECTIVITY_COUNT);
+    if (LTextVersion = WFC_PIPELINE_CONNECTIVITY_TEXT_VERSION) and (LConnectivityCount = 0) then
+      TextError('version 3 requires at least one connectivity');
+    if ((LConnectivityCount = 0) and (LConnectivityVersion <> 0)) or
+        ((LConnectivityCount <> 0) and (LConnectivityVersion = 0)) then
+      TextError('connectivity version must be zero exactly when the registry is empty');
+    RequireRecordCapacity(2 * LConnectivityCount, 2, LLineIndex, LLines, 'connectivity');
+    SetLength(LConnectivities, LConnectivityCount);
+    LTotalTerminalCount := 0;
+    LTotalProfileCount := 0;
+    for I := 0 to LConnectivityCount - 1 do
+    begin
+      LFields := ReadQuotaRecord('connectivity=', 9, 'connectivity record');
+      if ParseCanonicalInteger(LFields[0], 'connectivity index') <> I then
+        TextError('connectivity indices must be complete and ordered');
+      LConnectivity.PassIndex := ParseCanonicalInteger(LFields[1], 'connectivity pass index');
+      if LConnectivity.PassIndex >= LPassCount then
+        TextError('connectivity pass index is outside the recipe');
+      LConnectivity.LabelText := DecodeOuterToken(LFields[2], 'connectivity label');
+      if LConnectivity.LabelText = '' then TextError('connectivity label cannot be empty');
+      LConnectivity.Root.X := ReadCoordinate(LFields[3], 'connectivity root X', 0);
+      LConnectivity.Root.Y := ReadCoordinate(LFields[4], 'connectivity root Y', 1);
+      LConnectivity.Root.Z := ReadCoordinate(LFields[5], 'connectivity root Z', 2);
+      LConnectivity.RequireAllParticipants := ParseBooleanName(LFields[6], 'connectivity all-participants');
+      LTerminalCount := ParseBoundedCount(LFields[7], 'connectivity terminal count',
+        WFC_PIPELINE_MAX_CONNECTIVITY_REQUIRED_POSITION_COUNT);
+      LProfileCount := ParseBoundedCount(LFields[8], 'connectivity profile count',
+        WFC_PIPELINE_MAX_CONNECTIVITY_VALUE_COUNT);
+      if LProfileCount = 0 then TextError('connectivity profiles cannot be empty');
+      if LTotalTerminalCount > WFC_PIPELINE_MAX_TOTAL_CONNECTIVITY_REQUIRED_POSITION_COUNT - LTerminalCount then
+        TextError('aggregate connectivity terminal count exceeds the limit');
+      if LTotalProfileCount > WFC_PIPELINE_MAX_TOTAL_CONNECTIVITY_VALUE_COUNT - LProfileCount then
+        TextError('aggregate connectivity profile count exceeds the limit');
+      Inc(LTotalTerminalCount, LTerminalCount);
+      Inc(LTotalProfileCount, LProfileCount);
+      RequireRecordCapacity(LTerminalCount + LProfileCount,
+        2 + 2 * (LConnectivityCount - I - 1), LLineIndex, LLines, 'connectivity child');
+      { Release the previous iteration's arrays before sizing new children. }
+      LConnectivity.RequiredPositions := nil;
+      LConnectivity.Values := nil;
+      SetLength(LConnectivity.RequiredPositions, LTerminalCount);
+      for J := 0 to LTerminalCount - 1 do
+      begin
+        LFields := ReadQuotaRecord('terminal=', 5, 'connectivity terminal record');
+        if (ParseCanonicalInteger(LFields[0], 'terminal parent index') <> I) or
+            (ParseCanonicalInteger(LFields[1], 'terminal index') <> J) then
+          TextError('connectivity terminal indices must be complete and ordered');
+        LConnectivity.RequiredPositions[J].X := ReadCoordinate(LFields[2], 'terminal X', 0);
+        LConnectivity.RequiredPositions[J].Y := ReadCoordinate(LFields[3], 'terminal Y', 1);
+        LConnectivity.RequiredPositions[J].Z := ReadCoordinate(LFields[4], 'terminal Z', 2);
+      end;
+      SetLength(LConnectivity.Values, LProfileCount);
+      for J := 0 to LProfileCount - 1 do
+      begin
+        LFields := ReadQuotaRecord('profile=', 5, 'connectivity profile record');
+        if (ParseCanonicalInteger(LFields[0], 'profile parent index') <> I) or
+            (ParseCanonicalInteger(LFields[1], 'profile index') <> J) then
+          TextError('connectivity profile indices must be complete and ordered');
+        LConnectivity.Values[J].Value := DecodeOuterToken(LFields[2], 'connectivity profile token');
+        if LConnectivity.Values[J].Value = '' then TextError('connectivity profile token cannot be empty');
+        LConnectivity.Values[J].Openings := ParseOpenings(LFields[3]);
+        LConnectivity.Values[J].RequiredByValue := ParseBooleanName(LFields[4], 'connectivity required-by-value');
+      end;
+      LConnectivities[I] := LConnectivity;
+    end;
+  end;
+
   LSignatureText := ReadValueLine(LLines, LLineIndex,
     'signature=', 'pipeline signature');
   if not SignatureTextIsCanonical(LSignatureText) then
@@ -1042,12 +1577,23 @@ begin
   LModel := nil;
   try
     try
-      LModel := TWfcPipelineModel.Create(LMetadata, LVersions,
+      if LTextVersion=WFC_PIPELINE_MAPPED_TEXT_VERSION then
+        LModel:=TWfcPipelineModel.Create(LMetadata,LVersions,LRank,LWrapNeighbors,LRunMode,
+          LResources,LPasses,LDependencies,LBridges,LRequirements,LQuotas,LConnectivities,
+          LMappingVersion,LTopologies)
+      else LModel := TWfcPipelineModel.Create(LMetadata, LVersions,
         LRank, LWrapNeighbors, LRunMode, LResources, LPasses,
-        LDependencies, LBridges, LRequirements);
+        LDependencies, LBridges, LRequirements, LQuotas, LConnectivities);
     except
       on E: EWfcPipelineModel do
         TextError(E.Message);
+    end;
+    if LHasPattern3D <> LModel.HasPattern3D then
+    begin
+      if LTextVersion = WFC_PIPELINE_MAPPED_TEXT_VERSION then
+        TextError('pattern3d capability presence must match the recipe features')
+      else
+        TextError('version 4 is required exactly for pattern3d recipes');
     end;
     if WfcPipelineSignatureHex(LModel.Signature) <> LSignatureText then
       TextError('pipeline signature does not match its semantic recipe');

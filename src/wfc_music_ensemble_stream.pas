@@ -127,6 +127,12 @@ type
       bypassed by this hook. It runs once before this segment's finite search. }
     procedure ConfigureSegment(const AIndex, AStartTick: TWfcMusicArrangementWide;
       const ACellCount: Integer; const AGraph: TGraph); virtual;
+    { Observational application proof after built-in path/domain/music checks.
+      Candidate is borrowed for this call only. Do not retain it or advance
+      application state here: later preparation may still fail. False rejects
+      the segment before any public frontier, count, or constraint changes. }
+    function ValidateSegment(const Candidate: TWfcMusicEnsembleSegment;
+      out Failure: String): Boolean; virtual;
   public
     constructor Create(const AConfig: TWfcMusicEnsembleStreamConfig);
     function Next(out ASegment: TWfcMusicEnsembleSegment;
@@ -510,6 +516,13 @@ procedure TWfcMusicEnsembleStream.ConfigureSegment(
 begin
 end;
 
+function TWfcMusicEnsembleStream.ValidateSegment(
+  const Candidate: TWfcMusicEnsembleSegment; out Failure: String): Boolean;
+begin
+  Failure := '';
+  Result := True;
+end;
+
 function HarmonyMatches(const AFrame: TWfcMusicEnsembleFrame;
   const AHarmony: TWfcMusicPitchClassSet; const ASteps: Integer;
   const AMode: TWfcMusicEnsembleHarmonyMode): Boolean;
@@ -627,6 +640,8 @@ var
   LCandidate: TWfcMusicEnsembleSegment;
   LFrontier: TWfcMusicEnsembleStreamFrontier;
   LRemainingConstraints: TWfcMusicEnsembleStreamConstraints;
+  LValidationFailure: String;
+  LValid: Boolean;
 begin
   ASegment := nil;
   AReport := Default(TGraphNegotiationReport);
@@ -694,6 +709,15 @@ begin
       ValidateLayers(LGraph, LLayers, LCells);
       LCandidate := TWfcMusicEnsembleSegment.Create(FNextIndex, FProducedTicks,
         LCells, LSeed, LFinal, FConfig, LLayers);
+      LValid := ValidateSegment(LCandidate, LValidationFailure);
+      if FStatus = wmasCancelled then Exit(wmaspCancelled);
+      if not LValid then
+      begin
+        if LValidationFailure = '' then
+          LValidationFailure := 'application segment validation failed';
+        SetFailure(LValidationFailure);
+        Exit(wmaspFailed);
+      end;
       LFrontier := Default(TWfcMusicEnsembleStreamFrontier);
       LFrontier.HasPrevious := True;
       LFrontier.EndTick := FProducedTicks + LCells * FConfig.QuantumTicks;

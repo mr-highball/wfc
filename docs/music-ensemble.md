@@ -176,7 +176,25 @@ unobserved joint token. `LockEnsembleFrames`, `IntersectAllowedTokens`,
 `IntersectTokenConstraints`, and `IntersectLockedSpan` constrain complete
 public layer tokens. Empty allowed domains are valid contradictions, not
 instructions to ignore a lock. `ClearAllowedTokens` restores the saved
-endpoint baseline at that position.
+endpoint baseline at that position, including any initial plan mask.
+
+`Config.InitialTokenConstraints[Layer]` supplies optional public-token masks
+that are intersected after model/projection setup and before the immutable
+baseline snapshot. Later user locks therefore obey
+`model/boundary ∩ initial mask ∩ user lock`; clearing a user lock cannot widen
+the plan, including an explicitly empty initial domain. The constructor reads
+the supplied arrays without retaining caller-owned mutable aliases.
+
+`Config.ValidateComposition` is an optional borrowed
+`TWfcMusicEnsembleCompositionValidator` method callback. It receives the
+immutable candidate and an output validation issue, after built-in checks in
+`Pipeline.Validate`. Returning false rejects the candidate while the graph
+commit transaction can still restore entries and RNG. Exceptions also fail
+closed. The callback owner must outlive the pipeline; it must not free the
+candidate, reenter validation, or mutate external state under the assumption
+that publication is guaranteed. Nil preserves the original behavior. This
+hook enables the [form adapter](music-form.md) to check the actual realized
+cells against its retained plan, not just trust intended domain masks.
 
 Ordinary, negotiated, and selectively regenerated operations reuse `TGraph`.
 Changed provider constraints reopen the necessary descendant closure. A seed

@@ -6,6 +6,13 @@ workspace, learners, presets, and independent output checker.
 
 ## Run the browser workbench
 
+For joint 3D patterns, select **Arched lattice / overlapping volumes** (preset
+7), or open `index.html?preset=7` after serving the workbench. Train and solve
+the editable courtyard corpus, then rotate the SVG, hide air, and cut away
+upper Z layers. Click a face to select the exact XYZ cell for a public lock.
+The view and its SVG download never alter the full saved result. Source,
+recipe, run and result downloads retain the complete replay path.
+
 From the repository root, with pas2js and its matching standard RTL configured:
 
 ```powershell
@@ -24,12 +31,37 @@ build/native/bin/wfc_serve --root build/browser/training/www --port 4176
 ```
 
 Build the server with the native gate first; use `wfc_serve.exe` on Windows.
-See [development tools](../../../docs/development-tools.md) for its loopback-only serving boundary.
+The server binds to loopback by default. See
+[development tools](../../../docs/development-tools.md#access-from-a-trusted-local-network)
+for opt-in trusted-LAN serving on one explicit address.
 
 Open `http://127.0.0.1:4176/`. Start with the overlapping checkerboard,
 then try editing its token records, changing seed/size, adding two adjacent
 same-token locks, and clearing the conflict. Recipe/run/result exports can be
 replayed through the existing validator and runner.
+
+The **Whole-output quotas** editor adds explicit token-count requirements to
+the saved training source. Try the whole-token phrase preset: select `café`,
+set minimum and maximum to `1`, apply, then solve. Download/import the source
+and retrain to preserve that policy. The 4×4 overlapping checkerboard also
+makes a clear failure example: `A=8` solves, `A=7` contradicts, and clearing
+quotas restores the original result. Draft edits must be applied or discarded
+before solving; model-only export is disabled when it would lose quotas.
+See [quota authoring](../../../docs/training-value-quotas.md).
+
+The **Connectivity networks** editor saves explicit root/terminal XYZ positions
+and participating public tokens with reciprocal directional ports. Load the
+route corpus demonstration to generate a root-to-terminal path on a 4×3 board
+with exactly six road cells. Change road ports to east/west only to make the
+different-row destination unreachable; restore north/south to recover. This
+shows local sample relationships, global quantity, and reachability working
+together. The demonstration is separate from the numbered presets.
+
+Networks and quotas are saved together in version-4 training source. Editors
+preserve one another's saved policies, require apply/discard for drafts, and
+prevent model-only exports that would drop either requirement. Profiles are
+authored, not inferred from the corpus. See
+[connectivity authoring](../../../docs/training-connectivity.md).
 
 Select **Volume checkerboard / six neighbors** for a 3D corpus. Width, height,
 and depth control the requested volume; output is displayed in labeled Z
@@ -37,9 +69,30 @@ slices. Click any slice cell to copy X/Y/Z, add a lock, and solve again. With
 this wrapped alternating corpus, even extents solve while odd wrapped cycles
 contradict; increasing the search budget cannot repair an impossible cycle.
 
+Select **Circular text / rise and rest** (preset 6), then **Train recipe** and
+**Configure & solve**. Two independent order-four raw-text circles, `rise fall `
+and `rise rest `, teach actual last-to-first history. Three visible public
+locks (`r` at 0, `f` at 5, `r` at 15) make the first phrase fall and the second
+rest; the forty-cell output wraps back to its first cell. Change or clear locks
+in the existing editor. For example, adding `r` at 1 contradicts the existing
+`r` at 0; removing that lock restores exact replay. A width of 39 cannot close
+this phrase cycle and also contradicts; it is not silently padded. The boundary
+policy is displayed alongside the training profile.
+
+These preset locks are run choices, not source training records. Only the
+first train after loading this preset installs them; ordinary retraining or
+source import clears locks. Export the run as well as the source/recipe to
+retain the exact public constraints. Circular source has no BOS or invented
+start/end evidence, and never joins separate samples. It demonstrates cyclic
+constraint training, not semantic understanding or musical development.
+
 Imported canonical source must use LF and exactly one final LF. Raw text is a
 separate explicit Unicode-scalar import; it preserves whitespace and treats
-the whole provided text as one sample. Source/license fields are declarations
+the whole provided text as one sample. Its **Sample boundary** selector defaults
+to **Open**; opt into **Circular** only when the sample itself is a complete
+circle (including any trailing space). Open sources retain their original
+format, while circular sequence source uses `wfclearn=5` and learns `wfcs=2`.
+Source/license fields are declarations
 you supply, not inferred permissions. All bundled presets are project-authored
 and MIT licensed.
 Browser text fields use LF line endings; canonical token records can retain
@@ -47,19 +100,28 @@ explicit CR or CRLF tokens without textarea normalization.
 
 ## Native demonstrations
 
-The checked native build (`build.ps1` or `build.sh`) also runs all six
+The checked native build (`build.ps1` or `build.sh`) also runs all eight
 presets. Manually:
 
 ```text
 build/native/bin/TrainingStudio --selftest
+build/native/bin/TrainingStudio --quota-demo
+build/native/bin/TrainingStudio --quota-selftest
+build/native/bin/TrainingStudio --connectivity-demo
+build/native/bin/TrainingStudio --connectivity-selftest
 build/native/bin/TrainingStudio 2 0
 build/native/bin/TrainingStudio 5 0
+build/native/bin/TrainingStudio 6 0
 ```
 
-Use `TrainingStudio.exe` on Windows. Arguments are preset index 0–5 and
+Use `TrainingStudio.exe` on Windows. Arguments are preset index 0–7 and
 an optional unsigned decimal seed; default is preset 2, seed 0. The native
 demonstration is a self-checking console view, not an interactive native window.
 For arbitrary file-based training and replay, use `wfc_learn`/`wfc_run`.
+The quota demonstration is a separate checked native path; it uses the same
+source-owned editing, retraining, contradiction, and replay workspace as the UI.
+The connectivity demonstration additionally checks independent road reachability,
+quantity, policy persistence, contradiction/recovery, and XYZ participation.
 
 The console and browser token grid show percent-encoded values so whitespace and Unicode
 remain visible and byte-portable.
@@ -77,6 +139,8 @@ and trace disabled:
 | 3 — whole token phrases | `red fox .` | `920A363A` |
 | 4 — raw Unicode-scalar text | `a cat.` | `F65D4875` |
 | 5 — volume checkerboard | 4×4×4, alternating along X/Y/Z | `CBDC737A` |
+| 6 — circular text | Forty cells, three public locks, explicit closing seam | `3437A49D` |
+| 7 — arched lattice | 4×4×4, 35 joint patterns, three public XYZ locks | `32E7DE7F` |
 
 The first four presets reproduce the editable source/model/recipe bytes from
 [TrainingDocuments](../04_TrainingDocuments/README.md). Their run/result
@@ -87,6 +151,12 @@ The fifth training-document bundle (`adjacency3d`) exactly matches Studio
 preset 5, including its unlocked 1,024-backtrack run. Its source and recipe
 signatures are `C6E52736` and `4B8C29E4`.
 
+The added circular preset uses the same search settings but three public locks.
+Its source is `7078B027`, recipe `6F936E07`, and seed-zero result `3437A49D`.
+It produces `rise fall rise rest rise rest rise fall ` (including the final
+space), using twenty source scalars and seventeen latent states. The six
+original unlocked fixtures above remain unchanged.
+
 At `?selftest=1`, the browser returns to preset 2 and publishes:
 
 ```text
@@ -96,12 +166,46 @@ data-source-signature="0FA2C5EA"
 data-recipe-signature="DBCBA621"
 data-result-signature="947C4AFD"
 data-cell-count="16"
+data-connectivity-edit="passed"
+data-connectivity-replay="passed"
+data-connectivity-contradiction="passed"
+data-connectivity-invalidation="passed"
+data-connectivity-volume="passed"
+data-circular-sequence="passed"
+data-overlapping-volume="passed"
+data-overlapping-volume-view="passed"
+data-overlapping-volume-recovery="passed"
+data-volume-view-isolation="passed"
 ```
 
 The interactive envelope is deliberately finite: 512 source tokens, 64
 samples, 128 learned values/patterns/states, 512 output cells, and at most
-4,096 local/64 pass backtracks. The UI runs synchronously. Open pattern
+4,096 local/64 pass backtracks. The UI runs synchronously. Open 2D pattern
 training remains model-only in the CLI and cannot export a Studio recipe.
+Open 3D input can export a wrapped-output recipe; an incompatible periodic
+extent produces a contradiction, not padding or relaxed constraints.
+
+## Native volume SVG
+
+The native build also produces `TrainingStudioVolume` (`.exe` on Windows):
+
+```text
+TrainingStudioVolume --help
+TrainingStudioVolume --seed 0 --output courtyard.svg
+TrainingStudioVolume --seed 4 --width 8 --height 4 --depth 4 --yaw 90 --cut-depth 2 --output courtyard-cut.svg
+```
+
+Without `--output`, SVG goes to stdout. An explicit path must be new: existing
+files are never overwritten. The host reuses preset 7, its three fixed public
+XYZ locks, the shared workspace and the same Pascal SVG renderer. Native
+callers can set `--max-cells`, `--max-quads`, and `--backtracks` explicitly;
+the default 512-cell interactive budget is not a core volume limit. Numeric,
+memory and search constraints still apply; an unsolved run emits no SVG.
+
+Preset 7 uses source signature `C87487A5`, recipe `E63D8AD3`, and seed-zero
+result `32E7DE7F`. Its complete source6/model2/recipe4/run/result chain is
+replay-tested natively and in pas2js. Its symbolic stone/leaf/air rules are
+not a claim of physically buildable architecture.
 
 See the [workspace and raw-text guide](../../../docs/training-studio.md) for
 API ownership, exact invalidation behavior, provenance, policy limits, and

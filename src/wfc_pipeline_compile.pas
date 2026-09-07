@@ -31,6 +31,8 @@ uses
   Classes,
   SysUtils,
   wfc,
+  wfc_lattice,
+  wfc_pipeline_layout,
   wfc_pipeline_model;
 
 const
@@ -42,6 +44,9 @@ const
     recipe from requesting an impractical dense graph. }
   WFC_PIPELINE_COMPILE_MAX_DIMENSION = 4194304;
   WFC_PIPELINE_COMPILE_MAX_CELL_COUNT = 4194304;
+  { Aggregate latent-state visits for recipe quota lowering, checked before
+    allocating a graph. This bounds compilation, not the solver's search. }
+  WFC_PIPELINE_COMPILE_MAX_QUOTA_CANDIDATE_VISITS = 16777216;
 
 type
   TWfcPipelineCompileStage = (
@@ -52,7 +57,9 @@ type
     wpcsAdapters,
     wpcsBridges,
     wpcsRequirements,
-    wpcsVerification
+    wpcsVerification,
+    wpcsValueQuotas,
+    wpcsConnectivity
   );
 
   EWfcPipelineCompile = class(Exception)
@@ -75,7 +82,12 @@ type
     wpcvkTransform,
     wpcvkPatternBridge,
     wpcvkSequenceBridge,
-    wpcvkRequirement
+    wpcvkRequirement,
+    wpcvkValueQuota,
+    wpcvkConnectivity,
+    wpcvkPattern3DPass,
+    wpcvkPattern3DBridge,
+    wpcvkLayout
   );
 
   TWfcPipelineCommitValidation = record
@@ -83,6 +95,8 @@ type
     PassIndex: Integer;
     BridgeIndex: Integer;
     RequirementIndex: Integer;
+    ValueQuotaIndex: Integer;
+    ConnectivityIndex: Integer;
     EntryIndex: Integer;
   end;
 
@@ -93,15 +107,27 @@ type
   strict private
     FRecipe: TWfcPipelineModel;
     FGraph: TGraph;
+    FLayouts: TWfcPipelineLayoutTable;
     FLastValidation: TWfcPipelineCommitValidation;
     procedure Initialize(const ARecipe: TWfcPipelineModel;
-      const AWidth, AHeight, ADepth: Integer);
+      const AExtents: TWfcPipelinePassExtents);
+    function QuotaMaterializedPass(const APassIndex: Integer): Integer;
+    function ProjectionBridgeForPass(const APassIndex: Integer): Integer;
+    procedure ValidateValueQuotaWork;
+    procedure InstallValueQuotas;
+    function ValidateValueQuotaCommit(out AFailedPassIndex,
+      AFailedEntryIndex: Integer): Boolean;
+    procedure InstallConnectivity;
+    function ValidateConnectivityCommit(out AFailedPassIndex,
+      AFailedEntryIndex: Integer): Boolean;
   private
     function ValidatePendingCommit(out AFailedPassIndex,
       AFailedEntryIndex: Integer): Boolean;
   public
     constructor Create(const ARecipe: TWfcPipelineModel;
-      const AWidth, AHeight, ADepth: Integer);
+      const AWidth, AHeight, ADepth: Integer); overload;
+    constructor Create(const ARecipe: TWfcPipelineModel;
+      const AExtents: TWfcPipelinePassExtents); overload;
     destructor Destroy; override;
 
     property Recipe: TWfcPipelineModel read FRecipe;
@@ -111,7 +137,9 @@ type
   end;
 
 function CompileWfcPipeline(const ARecipe: TWfcPipelineModel;
-  const AWidth, AHeight, ADepth: Integer): TWfcCompiledPipeline;
+  const AWidth, AHeight, ADepth: Integer): TWfcCompiledPipeline; overload;
+function CompileWfcPipeline(const ARecipe: TWfcPipelineModel;
+  const AExtents: TWfcPipelinePassExtents): TWfcCompiledPipeline; overload;
 
 function WfcPipelineCompileStageName(
   const AStage: TWfcPipelineCompileStage): String;
@@ -123,12 +151,22 @@ uses
   wfc_rule_model,
   wfc_pattern2d,
   wfc_pattern2d_graph,
+  wfc_pattern3d,
+  wfc_pattern3d_graph,
   wfc_sequence,
-  wfc_sequence_graph;
+  wfc_sequence_graph,
+  wfc_token_lookup,
+  wfc_pipeline_mapping,
+  wfc_pipeline_connectivity;
 
 type
   TStringArray = array of String;
   TIntegerArray = array of Integer;
+  TQuotaRecount = record
+    Lookup: TWfcTokenLookup;
+    Counts: TIntegerArray;
+    InvalidEntry: Integer;
+  end;
 
   { The root and every pass retain the same owner. The core invokes this hook
     after staged assignments have reached live entries but before it discards
@@ -165,6 +203,10 @@ begin
       Result := 'requirements';
     wpcsVerification:
       Result := 'verification';
+    wpcsValueQuotas:
+      Result := 'value-quotas';
+    wpcsConnectivity:
+      Result := 'connectivity';
   else
     Result := 'unknown';
   end;
@@ -233,29 +275,6 @@ begin
   Result := LPlane * ADepth;
 end;
 
-procedure ValidateRankShape(const ARecipe: TWfcPipelineModel;
-  const AWidth, AHeight, ADepth: Integer);
-begin
-  CheckedEntryCount(AWidth, AHeight, ADepth);
-  case ARecipe.Rank of
-    1:
-      if (AHeight <> 1) or (ADepth <> 1) then
-        raise EArgumentException.CreateFmt(
-          'rank-1 pipeline requires height and depth 1 [%d x %d x %d]',
-          [AWidth, AHeight, ADepth]);
-    2:
-      if ADepth <> 1 then
-        raise EArgumentException.CreateFmt(
-          'rank-2 pipeline requires depth 1 [%d x %d x %d]',
-          [AWidth, AHeight, ADepth]);
-    3:
-      ;
-  else
-    raise EArgumentException.CreateFmt(
-      'pipeline rank is unsupported [%d]', [ARecipe.Rank]);
-  end;
-end;
-
 function RecipeHasDependency(const ARecipe: TWfcPipelineModel;
   const AConsumer, AProvider: Integer): Boolean;
 var
@@ -291,6 +310,8 @@ begin
   AValue.PassIndex := -1;
   AValue.BridgeIndex := -1;
   AValue.RequirementIndex := -1;
+  AValue.ValueQuotaIndex := -1;
+  AValue.ConnectivityIndex := -1;
   AValue.EntryIndex := -1;
 end;
 
@@ -428,6 +449,29 @@ begin
   Result := AIssue.Y * Integer(AGraph.Dimension.Width) + AIssue.X;
 end;
 
+function Pattern3DIssueEntry(const AGraph: TGraph;
+  const AIssue: TWfcOverlapping3DIssue;
+  const AProjection: Boolean = False): Integer;
+var X, Y, Z, W, H, D: Integer;
+begin
+  Result := -1;
+  W := Integer(AGraph.Dimension.Width); H := Integer(AGraph.Dimension.Height);
+  D := Integer(AGraph.Dimension.Depth);
+  if (AIssue.X < 0) or (AIssue.Y < 0) or (AIssue.Z < 0) or
+      (AIssue.X >= W) or (AIssue.Y >= H) or (AIssue.Z >= D) then Exit;
+  X := AIssue.X; Y := AIssue.Y; Z := AIssue.Z;
+  if AProjection and (AIssue.Kind = wo3ikProjectionToken) then
+  begin
+    { A projection mismatch reports its contributing anchor and footprint
+      offset. Attribute a public commit failure to the actual wrapped voxel,
+      not to that private anchor. Both dimensions and offsets are bounded. }
+    X := (X + AIssue.PatternOffsetX) mod W;
+    Y := (Y + AIssue.PatternOffsetY) mod H;
+    Z := (Z + AIssue.PatternOffsetZ) mod D;
+  end;
+  Result := (Z * H + Y) * W + X;
+end;
+
 constructor TWfcPipelineCommitGraph.CreatePass(const ARoot: TGraph;
   const APassIndex: Integer);
 begin
@@ -456,19 +500,410 @@ constructor TWfcCompiledPipeline.Create(const ARecipe: TWfcPipelineModel;
 begin
   inherited Create;
   InitializeCommitValidation(FLastValidation);
-  Initialize(ARecipe, AWidth, AHeight, ADepth);
+  if not Assigned(ARecipe) then
+    raise EWfcPipelineCompile.CreateFailure(wpcsPreflight, -1, 'recipe cannot be nil');
+  try
+    { Preserve the legacy preflight ordering and diagnostics. Per-pass ranks
+      and topology still undergo the shared resolver immediately afterwards. }
+    CheckedEntryCount(AWidth, AHeight, ADepth);
+    if (ARecipe.Rank = 1) and ((AHeight <> 1) or (ADepth <> 1)) then
+      raise EArgumentException.CreateFmt(
+        'rank-1 pipeline requires height and depth 1 [%d x %d x %d]',
+        [AWidth, AHeight, ADepth]);
+    if (ARecipe.Rank = 2) and (ADepth <> 1) then
+      raise EArgumentException.CreateFmt(
+        'rank-2 pipeline requires depth 1 [%d x %d x %d]',
+        [AWidth, AHeight, ADepth]);
+    Initialize(ARecipe, UniformWfcPipelinePassExtents(ARecipe, AWidth, AHeight, ADepth));
+  except
+    on E: EWfcPipelineCompile do raise;
+    on E: Exception do raise EWfcPipelineCompile.CreateFailure(wpcsPreflight, -1, E.Message);
+  end;
+end;
+
+constructor TWfcCompiledPipeline.Create(const ARecipe: TWfcPipelineModel;
+  const AExtents: TWfcPipelinePassExtents);
+begin
+  inherited Create;
+  InitializeCommitValidation(FLastValidation);
+  Initialize(ARecipe, AExtents);
 end;
 
 destructor TWfcCompiledPipeline.Destroy;
 begin
   FGraph.Free;
   FGraph := nil;
+  FLayouts.Free;
+  FLayouts := nil;
   FRecipe := nil;
   inherited Destroy;
 end;
 
+function TWfcCompiledPipeline.QuotaMaterializedPass(
+  const APassIndex: Integer): Integer;
+var
+  LSteps: Integer;
+begin
+  Result := APassIndex;
+  LSteps := 0;
+  while FRecipe.PassAt(Result).Mode = gpmTransform do
+  begin
+    Inc(LSteps);
+    if LSteps >= FRecipe.PassCount then
+      raise EInvalidOperation.Create('quota transform chain does not terminate');
+    Result := FRecipe.PassAt(Result).TransformSourceIndex;
+  end;
+end;
+
+function TWfcCompiledPipeline.ProjectionBridgeForPass(
+  const APassIndex: Integer): Integer;
+var
+  I: Integer;
+begin
+  for I := 0 to FRecipe.BridgeCount - 1 do
+    if FRecipe.BridgeAt(I).TargetPassIndex = APassIndex then
+      Exit(I);
+  Result := -1;
+end;
+
+procedure TWfcCompiledPipeline.ValidateValueQuotaWork;
+var
+  I, LBridgeIndex, LPassIndex, LCount, LTotal: Integer;
+  LPass: TWfcPipelinePass;
+begin
+  LTotal := 0;
+  for I := 0 to FRecipe.ValueQuotaCount - 1 do
+  begin
+    LPassIndex := QuotaMaterializedPass(FRecipe.ValueQuotaAt(I).PassIndex);
+    LBridgeIndex := ProjectionBridgeForPass(LPassIndex);
+    if LBridgeIndex < 0 then Continue;
+    LPass := FRecipe.PassAt(FRecipe.BridgeAt(LBridgeIndex).SourcePassIndex);
+    case FRecipe.BridgeAt(LBridgeIndex).Kind of
+      wpbkPattern2DProjection:
+        LCount := FRecipe.BorrowPattern2DResource(LPass.ResourceIndex).PatternCount;
+      wpbkPattern3DProjection:
+        LCount := FRecipe.BorrowPattern3DResource(LPass.ResourceIndex).PatternCount;
+      wpbkSequenceProjection:
+        LCount := FRecipe.BorrowSequenceResource(LPass.ResourceIndex).StateCount;
+    else
+      raise EInvalidOperation.Create('unknown quota projection bridge');
+    end;
+    if LCount > WFC_PIPELINE_COMPILE_MAX_QUOTA_CANDIDATE_VISITS - LTotal then
+      raise EWfcPipelineCompile.CreateFailure(wpcsValueQuotas, I,
+        'aggregate quota lowering exceeds the candidate-visit limit');
+    Inc(LTotal, LCount);
+  end;
+end;
+
+procedure TWfcCompiledPipeline.InstallValueQuotas;
+var
+  I, J, LPassIndex, LBridgeIndex, LSourceIndex, LCount: Integer;
+  LQuota: TWfcPipelineValueQuota;
+  LBridge: TWfcPipelineBridge;
+  LValues, LSourceValues, LAllowedValues: TGraphValues;
+  LLookup: TWfcTokenLookup;
+  LPattern: TWfcOverlappingModel2D;
+  LPattern3D: TWfcOverlappingModel3D;
+  LSequence: TWfcSequenceModel;
+  LToken: TWfcModelToken;
+  LLabel: String;
+begin
+  for I := 0 to FRecipe.ValueQuotaCount - 1 do
+  begin
+    try
+      LQuota := FRecipe.ValueQuotaAt(I);
+      LPassIndex := QuotaMaterializedPass(LQuota.PassIndex);
+      { Internal labels use immutable descriptor ordinals, not user labels:
+        two public aliases may use the same label on one shared source. }
+      LLabel := 'pipeline-value-quota:' + IntToStr(I);
+      SetLength(LValues, Length(LQuota.Values));
+      for J := 0 to Length(LValues) - 1 do
+        LValues[J] := TokenToGraphValue(LQuota.Values[J], 'quota token');
+      FGraph.SwitchToPass(LPassIndex);
+      FGraph.RequireValueQuota(MakeGraphValueQuotaConstraint(LLabel,
+        LValues, LQuota.MinimumCount, LQuota.MaximumCount));
+
+      LBridgeIndex := ProjectionBridgeForPass(LPassIndex);
+      if LBridgeIndex < 0 then Continue;
+      LBridge := FRecipe.BridgeAt(LBridgeIndex);
+      LSourceIndex := LBridge.SourcePassIndex;
+      LSourceValues := FGraph.PassGraph[LSourceIndex].CopyRegisteredValues;
+      SetLength(LAllowedValues, Length(LSourceValues));
+      LCount := 0;
+      LLookup := TWfcTokenLookup.Create(LQuota.Values);
+      try
+        LPattern := nil;
+        LPattern3D := nil;
+        LSequence := nil;
+        case LBridge.Kind of
+          wpbkPattern2DProjection:
+            begin
+              LPattern := FRecipe.BorrowPattern2DResource(
+                FRecipe.PassAt(LSourceIndex).ResourceIndex);
+              if Length(LSourceValues) <> LPattern.PatternCount then
+                raise EInvalidOperation.Create('quota pattern registry mismatch');
+            end;
+          wpbkPattern3DProjection:
+            begin
+              LPattern3D := FRecipe.BorrowPattern3DResource(
+                FRecipe.PassAt(LSourceIndex).ResourceIndex);
+              if Length(LSourceValues) <> LPattern3D.PatternCount then
+                raise EInvalidOperation.Create('quota volume pattern registry mismatch');
+            end;
+          wpbkSequenceProjection:
+            begin
+              LSequence := FRecipe.BorrowSequenceResource(
+                FRecipe.PassAt(LSourceIndex).ResourceIndex);
+              if Length(LSourceValues) <> LSequence.StateCount then
+                raise EInvalidOperation.Create('quota sequence registry mismatch');
+            end;
+        end;
+        for J := 0 to Length(LSourceValues) - 1 do
+        begin
+          if Assigned(LPattern) then
+            { Wrapped projection has one public cell per latent anchor. Do
+              not count every overlapping footprint occurrence. }
+            LToken := LPattern.PaletteTokenAt(
+              LPattern.PatternPaletteIndexAt(J, 0, 0))
+          else if Assigned(LPattern3D) then
+            LToken := LPattern3D.PaletteTokenAt(
+              LPattern3D.PatternPaletteIndexAt(J, 0, 0, 0))
+          else
+            LToken := LSequence.PublicTokenAt(
+              LSequence.StateEmittedTokenIndexAt(J));
+          if LLookup.Find(LToken) >= 0 then
+          begin
+            LAllowedValues[LCount] := LSourceValues[J];
+            Inc(LCount);
+          end;
+        end;
+      finally
+        LLookup.Free;
+      end;
+      SetLength(LAllowedValues, LCount);
+      FGraph.SwitchToPass(LSourceIndex);
+      if LCount > 0 then
+        FGraph.RequireValueQuota(MakeGraphValueQuotaConstraint(LLabel,
+          LAllowedValues, LQuota.MinimumCount, LQuota.MaximumCount))
+      else if LQuota.MinimumCount > 0 then
+        { No source state can emit a requested member. A positive-shape
+          graph cannot contain zero members of its entire vocabulary. This
+          expresses unsatisfiability without an illegal empty quota set. }
+        FGraph.RequireValueQuota(MakeGraphValueQuotaConstraint(LLabel,
+          LSourceValues, 0, 0));
+    except
+      on E: Exception do
+        raise EWfcPipelineCompile.CreateFailure(wpcsValueQuotas, I, E.Message);
+    end;
+  end;
+end;
+
+function TWfcCompiledPipeline.ValidateValueQuotaCommit(
+  out AFailedPassIndex, AFailedEntryIndex: Integer): Boolean;
+var
+  I, J, LCount, LPassIndex: Integer;
+  LQuota: TWfcPipelineValueQuota;
+  LRecounts: array of TQuotaRecount;
+
+  procedure RecountOwner(const APassIndex: Integer);
+  var
+    X, Y, Z, LTokenIndex: Integer;
+    LEntry: TGraphEntry;
+    LLayout: TWfcLatticeLayout;
+  begin
+    if Assigned(LRecounts[APassIndex].Lookup) then Exit;
+    LRecounts[APassIndex].Lookup := TWfcTokenLookup.Create(
+      FRecipe.CopyPublicVocabulary(APassIndex));
+    SetLength(LRecounts[APassIndex].Counts,
+      LRecounts[APassIndex].Lookup.Count);
+    LRecounts[APassIndex].InvalidEntry := -1;
+    LLayout := FLayouts.PassLayoutAt(APassIndex);
+    for Z := 0 to LLayout.Cells.Z - 1 do
+      for Y := 0 to LLayout.Cells.Y - 1 do
+        for X := 0 to LLayout.Cells.X - 1 do
+        begin
+          LEntry := FGraph.PassGraph[APassIndex].Entry[X, Y, Z];
+          LTokenIndex := LRecounts[APassIndex].Lookup.Find(
+            GraphValueToToken(LEntry.Value));
+          if LEntry.Empty or (LTokenIndex < 0) then
+          begin
+            LRecounts[APassIndex].InvalidEntry :=
+              (Z * LLayout.Cells.Y + Y) * LLayout.Cells.X + X;
+            Exit;
+          end;
+          Inc(LRecounts[APassIndex].Counts[LTokenIndex]);
+        end;
+  end;
+
+begin
+  Result := False;
+  AFailedPassIndex := -1;
+  AFailedEntryIndex := -1;
+  if FRecipe.ValueQuotaCount = 0 then Exit(True);
+  SetLength(LRecounts, FRecipe.PassCount);
+  try
+    for I := 0 to FRecipe.ValueQuotaCount - 1 do
+    begin
+      LQuota := FRecipe.ValueQuotaAt(I);
+      LPassIndex := LQuota.PassIndex;
+      { Transaction-local histograms scan each public owner once. They read
+        immutable recipe vocabularies and live public entries, never mutable
+        graph quota registrations, and cannot survive rollback or replay. }
+      RecountOwner(LPassIndex);
+      LCount := 0;
+      for J := 0 to Length(LQuota.Values) - 1 do
+        Inc(LCount, LRecounts[LPassIndex].Counts[
+          LRecounts[LPassIndex].Lookup.Find(LQuota.Values[J])]);
+      if (LRecounts[LPassIndex].InvalidEntry >= 0) or
+          (LCount < LQuota.MinimumCount) or (LCount > LQuota.MaximumCount) then
+      begin
+        FLastValidation.Kind := wpcvkValueQuota;
+        FLastValidation.PassIndex := LPassIndex;
+        FLastValidation.ValueQuotaIndex := I;
+        FLastValidation.EntryIndex := LRecounts[LPassIndex].InvalidEntry;
+        AFailedPassIndex := LPassIndex;
+        AFailedEntryIndex := FLastValidation.EntryIndex;
+        Exit;
+      end;
+    end;
+  finally
+    for I := 0 to Length(LRecounts) - 1 do LRecounts[I].Lookup.Free;
+  end;
+  Result := True;
+end;
+
+procedure TWfcCompiledPipeline.InstallConnectivity;
+var I, J, K, LPassIndex, LBridgeIndex, LSourceIndex, LCount: Integer;
+  Q: TWfcPipelineConnectivity; B: TWfcPipelineBridge;
+  LProfiles, LLatentProfiles: TGraphConnectivityValues;
+  LSourceValues: TGraphValues; LProfileTokens: TWfcModelTokens;
+  LLookup: TWfcTokenLookup; LPattern: TWfcOverlappingModel2D;
+  LPattern3D: TWfcOverlappingModel3D;
+  LSequence: TWfcSequenceModel; LToken: TWfcModelToken; LLabel: String;
+begin
+  for I := 0 to FRecipe.ConnectivityCount - 1 do
+  begin
+    try
+      Q := FRecipe.ConnectivityAt(I);
+      LPassIndex := WfcPipelineMaterializedPublicPass(FRecipe, Q.PassIndex);
+      LLabel := 'pipeline-connectivity:' + IntToStr(I);
+      SetLength(LProfiles, Length(Q.Values));
+      SetLength(LProfileTokens, Length(Q.Values));
+      for J := 0 to Length(Q.Values) - 1 do
+      begin
+        LProfiles[J] := MakeGraphConnectivityValue(
+          TokenToGraphValue(Q.Values[J].Value, 'connectivity public profile'),
+          Q.Values[J].Openings, Q.Values[J].RequiredByValue);
+        LProfileTokens[J] := Q.Values[J].Value;
+      end;
+      FGraph.SwitchToPass(LPassIndex);
+      FGraph.RequireConnectivity(MakeGraphConnectivityConstraint(LLabel,
+        Q.Root, Q.RequiredPositions, LProfiles, Q.RequireAllParticipants));
+      LBridgeIndex := WfcPipelineProjectionBridgeForPass(FRecipe, LPassIndex);
+      if LBridgeIndex < 0 then Continue;
+      B := FRecipe.BridgeAt(LBridgeIndex); LSourceIndex := B.SourcePassIndex;
+      LSourceValues := FGraph.PassGraph[LSourceIndex].CopyRegisteredValues;
+      SetLength(LLatentProfiles, Length(LSourceValues));
+      LLookup := TWfcTokenLookup.Create(LProfileTokens);
+      try
+        LPattern := nil; LPattern3D := nil; LSequence := nil;
+        case B.Kind of
+          wpbkPattern2DProjection:
+            begin
+              LPattern := FRecipe.BorrowPattern2DResource(
+                FRecipe.PassAt(LSourceIndex).ResourceIndex);
+              if Length(LSourceValues) <> LPattern.PatternCount then
+                raise EInvalidOperation.Create('connectivity pattern registry mismatch');
+            end;
+          wpbkPattern3DProjection:
+            begin
+              LPattern3D := FRecipe.BorrowPattern3DResource(
+                FRecipe.PassAt(LSourceIndex).ResourceIndex);
+              if Length(LSourceValues) <> LPattern3D.PatternCount then
+                raise EInvalidOperation.Create('connectivity volume pattern registry mismatch');
+            end;
+          wpbkSequenceProjection:
+            begin
+              LSequence := FRecipe.BorrowSequenceResource(
+                FRecipe.PassAt(LSourceIndex).ResourceIndex);
+              if Length(LSourceValues) <> LSequence.StateCount then
+                raise EInvalidOperation.Create('connectivity sequence registry mismatch');
+            end;
+        else
+          raise EInvalidOperation.Create('unknown connectivity projection bridge');
+        end;
+        LCount := 0;
+        for J := 0 to Length(LSourceValues) - 1 do
+        begin
+          if Assigned(LPattern) then
+            LToken := LPattern.PaletteTokenAt(LPattern.PatternPaletteIndexAt(J, 0, 0))
+          else if Assigned(LPattern3D) then
+            LToken := LPattern3D.PaletteTokenAt(LPattern3D.PatternPaletteIndexAt(J, 0, 0, 0))
+          else
+            LToken := LSequence.PublicTokenAt(LSequence.StateEmittedTokenIndexAt(J));
+          K := LLookup.Find(LToken);
+          if K < 0 then Continue;
+          { One latent choice is one public cell. Preserve the exact public
+            ports and mandatory flag on EVERY state emitting this token. }
+          LLatentProfiles[LCount] := MakeGraphConnectivityValue(LSourceValues[J],
+            Q.Values[K].Openings, Q.Values[K].RequiredByValue);
+          Inc(LCount);
+        end;
+      finally LLookup.Free; end;
+      if LCount = 0 then
+        { Existing bridge adapters reject unrepresented public tokens first;
+          do not invent participation when that invariant is broken. }
+        raise EInvalidOperation.Create('connectivity projection has no participating source state');
+      SetLength(LLatentProfiles, LCount);
+      FGraph.SwitchToPass(LSourceIndex);
+      FGraph.RequireConnectivity(MakeGraphConnectivityConstraint(LLabel,
+        Q.Root, Q.RequiredPositions, LLatentProfiles, Q.RequireAllParticipants));
+    except
+      on E: Exception do
+        raise EWfcPipelineCompile.CreateFailure(wpcsConnectivity, I, E.Message);
+    end;
+  end;
+end;
+
+function TWfcCompiledPipeline.ValidateConnectivityCommit(
+  out AFailedPassIndex, AFailedEntryIndex: Integer): Boolean;
+var I, X, Y, Z, LWidth, LHeight, LDepth, LCell: Integer;
+  Q: TWfcPipelineConnectivity; LTokens: TWfcModelTokens;
+  LLayout: TWfcLatticeLayout;
+begin
+  AFailedPassIndex := -1; AFailedEntryIndex := -1;
+  if FRecipe.ConnectivityCount = 0 then Exit(True);
+  PreflightWfcPipelineConnectivity(FRecipe, FLayouts, I);
+  for I := 0 to FRecipe.ConnectivityCount - 1 do
+  begin
+    Q := FRecipe.ConnectivityAt(I);
+    LLayout := FLayouts.PassLayoutAt(Q.PassIndex);
+    LWidth := LLayout.Cells.X; LHeight := LLayout.Cells.Y; LDepth := LLayout.Cells.Z;
+    SetLength(LTokens, FLayouts.PassCellCount(Q.PassIndex));
+    LCell := 0;
+    for Z := 0 to LDepth - 1 do
+      for Y := 0 to LHeight - 1 do
+        for X := 0 to LWidth - 1 do
+        begin
+          LTokens[LCell] := GraphValueToToken(FGraph.PassGraph[Q.PassIndex].Entry[X,Y,Z].Value);
+          Inc(LCell);
+        end;
+    if not ValidateWfcPipelineConnectivity(FRecipe, I, LLayout,
+      LTokens, AFailedEntryIndex) then
+    begin
+      AFailedPassIndex := Q.PassIndex;
+      FLastValidation.Kind := wpcvkConnectivity;
+      FLastValidation.PassIndex := Q.PassIndex;
+      FLastValidation.ConnectivityIndex := I;
+      FLastValidation.EntryIndex := AFailedEntryIndex;
+      Exit(False);
+    end;
+  end;
+  Result := True;
+end;
+
 procedure TWfcCompiledPipeline.Initialize(const ARecipe: TWfcPipelineModel;
-  const AWidth, AHeight, ADepth: Integer);
+  const AExtents: TWfcPipelinePassExtents);
 var
   I: Integer;
   J: Integer;
@@ -490,6 +925,8 @@ var
   LTokenIndex: Integer;
   LTokenValues: TGraphValues;
   LVersions: TWfcPipelineVersions;
+  LLayout: TWfcLatticeLayout;
+  LMappedQuery: TGraphPassMapQuery;
 begin
   if not Assigned(ARecipe) then
     raise EWfcPipelineCompile.CreateFailure(wpcsPreflight, -1,
@@ -498,7 +935,21 @@ begin
   LStage := wpcsPreflight;
   LItemIndex := -1;
   try
-    ValidateRankShape(ARecipe, AWidth, AHeight, ADepth);
+    FLayouts := ResolveWfcPipelineLayoutTable(ARecipe, AExtents);
+    for I := 0 to ARecipe.PassCount - 1 do
+    begin
+      LItemIndex := I;
+      LLayout := FLayouts.PassLayoutAt(I);
+      CheckedEntryCount(LLayout.Cells.X, LLayout.Cells.Y, LLayout.Cells.Z);
+    end;
+    LItemIndex := -1;
+    ValidateValueQuotaWork;
+    if ARecipe.ConnectivityCount <> 0 then
+    begin
+      LStage := wpcsConnectivity;
+      PreflightWfcPipelineConnectivity(ARecipe, FLayouts, LItemIndex);
+      LStage := wpcsPreflight;
+    end;
     LVersions := ARecipe.CopyVersions;
     if LVersions.BundleGraphAdapterVersion <>
         WFC_PIPELINE_COMPILER_VERSION then
@@ -522,7 +973,6 @@ begin
     LItemIndex := -1;
     FGraph := TWfcPipelineCommitGraph.Create;
     TWfcPipelineCommitGraph(FGraph).Owner := Self;
-    FGraph.WrapNeighbors := ARecipe.WrapNeighbors;
     FGraph.Mode := ARecipe.RunMode;
     FGraph.CurrentPass := LGraphLabels[0];
     for I := 1 to ARecipe.PassCount - 1 do
@@ -531,27 +981,19 @@ begin
       FGraph.SwitchToPass(LGraphLabels[I]);
     end;
 
-    { Rebuild every mode from an empty dependency surface. This avoids
-      retaining the core's sequential compatibility edge on overlay and
-      transform passes. }
+    { Configure all storage while every pass is a neutral overlay. A fresh
+      definitionless legacy pass would otherwise appear to copy its predecessor
+      before its actual adapter has been installed. }
     for I := 0 to ARecipe.PassCount - 1 do
     begin
       LItemIndex := I;
-      LPass := ARecipe.PassAt(I);
       FGraph.SwitchToPass(I);
       FGraph.PassMode := gpmOverlay;
       FGraph.ClearDependencies;
-      case LPass.Mode of
-        gpmLegacy:
-          FGraph.PassMode := gpmLegacy;
-        gpmTransform:
-          FGraph.TransformFrom(LGraphLabels[LPass.TransformSourceIndex]);
-        gpmOverlay:
-          ;
-      else
-        raise ERangeError.Create('recipe contains an unknown pass mode');
-      end;
     end;
+    LStage := wpcsShape;
+    LItemIndex := -1;
+    FGraph.ConfigurePassLayouts(FLayouts.CopyLayouts);
 
     LStage := wpcsDependencies;
     for I := 0 to ARecipe.DependencyCount - 1 do
@@ -579,10 +1021,6 @@ begin
             [I, LPassGraph.DependencyIndex[J]]);
     end;
 
-    LStage := wpcsShape;
-    LItemIndex := -1;
-    FGraph.Reshape(AWidth, AHeight, ADepth);
-
     LStage := wpcsAdapters;
     for I := 0 to ARecipe.PassCount - 1 do
     begin
@@ -601,6 +1039,9 @@ begin
         wpakPattern2D:
           ApplyOverlappingModel2DToGraph(
             ARecipe.BorrowPattern2DResource(LPass.ResourceIndex), FGraph);
+        wpakPattern3D:
+          ApplyOverlappingModel3DToGraph(
+            ARecipe.BorrowPattern3DResource(LPass.ResourceIndex), FGraph);
         wpakSequence:
           ApplySequenceModelToGraph(
             ARecipe.BorrowSequenceResource(LPass.ResourceIndex), FGraph,
@@ -620,6 +1061,11 @@ begin
         wpbkPattern2DProjection:
           ApplyOverlappingProjectionFromPass2D(
             ARecipe.BorrowPattern2DResource(
+              ARecipe.PassAt(LBridge.SourcePassIndex).ResourceIndex),
+            FGraph, LGraphLabels[LBridge.SourcePassIndex]);
+        wpbkPattern3DProjection:
+          ApplyOverlappingProjectionFromPass3D(
+            ARecipe.BorrowPattern3DResource(
               ARecipe.PassAt(LBridge.SourcePassIndex).ResourceIndex),
             FGraph, LGraphLabels[LBridge.SourcePassIndex]);
         wpbkSequenceProjection:
@@ -668,6 +1114,20 @@ begin
       LItemIndex := I;
       LRequirement := ARecipe.RequirementAt(I);
       FGraph.SwitchToPass(LRequirement.ConsumerPassIndex);
+      if LRequirement.Kind = wprqMapped then
+      begin
+        LMappedQuery := WfcPipelineMappedQueryGeometry(LRequirement.MappedQuery);
+        SetLength(LMappedQuery.Values,
+          Length(LRequirement.MappedQuery.AllowedProviderTokens));
+        for J := 0 to Length(LMappedQuery.Values) - 1 do
+          LMappedQuery.Values[J] := TokenToGraphValue(
+            LRequirement.MappedQuery.AllowedProviderTokens[J],
+            'mapped requirement ' + IntToStr(I) + ' provider token ' + IntToStr(J));
+        FGraph.Rules[TokenToGraphValue(LRequirement.ConsumerToken,
+          'mapped requirement ' + IntToStr(I) + ' consumer token')]
+          .RequireMappedFromPass(LGraphLabels[LRequirement.ProviderPassIndex], LMappedQuery);
+        Continue;
+      end;
       SetLength(LTerms, Length(LRequirement.Terms));
       for J := 0 to Length(LRequirement.Terms) - 1 do
       begin
@@ -708,12 +1168,39 @@ begin
       end;
     end;
 
+    { Legacy mode tests actual definition presence. Install it only after
+      adapters, bridges and requirement-owned definitions exist, never while a
+      legitimate larger pass still looks like a temporary predecessor copy. }
+    LStage := wpcsPasses;
+    for I := 0 to ARecipe.PassCount - 1 do
+    begin
+      LItemIndex := I;
+      LPass := ARecipe.PassAt(I);
+      FGraph.SwitchToPass(I);
+      case LPass.Mode of
+        gpmLegacy: FGraph.PassMode := gpmLegacy;
+        gpmTransform: FGraph.TransformFrom(LGraphLabels[LPass.TransformSourceIndex]);
+        gpmOverlay: ;
+      else raise ERangeError.Create('recipe contains an unknown pass mode');
+      end;
+    end;
+
+    LStage := wpcsValueQuotas;
+    LItemIndex := -1;
+    InstallValueQuotas;
+
+    LStage := wpcsConnectivity;
+    LItemIndex := -1;
+    InstallConnectivity;
+
     LStage := wpcsVerification;
     for I := 0 to ARecipe.PassCount - 1 do
     begin
       LItemIndex := I;
       LPass := ARecipe.PassAt(I);
       LPassGraph := FGraph.PassGraph[I];
+      if not SameWfcLatticeLayout(LPassGraph.PassLayout, FLayouts.PassLayoutAt(I)) then
+        raise EInvalidOperation.CreateFmt('constructed layout differs for pass %d', [I]);
       if LPassGraph.CurrentPass <> LGraphLabels[I] then
         raise EInvalidOperation.CreateFmt(
           'constructed pass label differs at index %d', [I]);
@@ -772,7 +1259,12 @@ var
   LPatternGrid: TWfcPatternGrid2D;
   LPatternReport: TWfcOverlapping2DValidationReport;
   LProjection: TWfcTokenGrid2D;
+  LPatternGrid3D: TWfcPatternGrid3D;
+  LPatternReport3D: TWfcOverlapping3DValidationReport;
+  LProjection3D: TWfcTokenGrid3D;
   LProviderGraph: TGraph;
+  LConsumerLayout, LProviderLayout: TWfcLatticeLayout;
+  LProviderTokens: TWfcModelTokens;
   LRequirement: TWfcPipelineRequirement;
   LSequence: TWfcGeneratedSequence;
   LSequenceReport: TWfcSequenceGraphValidationReport;
@@ -788,6 +1280,25 @@ begin
   InitializeCommitValidation(FLastValidation);
   AFailedPassIndex := -1;
   AFailedEntryIndex := -1;
+
+  { The graph is borrowed and mutable. Never validate a caller-reconfigured
+    graph against the original recipe using changed dimensions or wrapping. }
+  if FGraph.TotalPassCount <> FRecipe.PassCount then
+  begin
+    FLastValidation.Kind := wpcvkLayout;
+    FLastValidation.PassIndex := 0;
+    AFailedPassIndex := 0;
+    Exit(False);
+  end;
+  for I := 0 to FRecipe.PassCount - 1 do
+    if not SameWfcLatticeLayout(FGraph.PassGraph[I].PassLayout,
+      FLayouts.PassLayoutAt(I)) then
+    begin
+      FLastValidation.Kind := wpcvkLayout;
+      FLastValidation.PassIndex := I;
+      AFailedPassIndex := I;
+      Exit(False);
+    end;
 
   { Validate private typed representations before their materialized public
     bridges. Rule and generic-model passes use the graph's own complete local
@@ -808,6 +1319,19 @@ begin
           FLastValidation.PassIndex := I;
           FLastValidation.EntryIndex := PatternIssueEntry(
             FGraph.PassGraph[I], LPatternReport.Issue);
+          AFailedPassIndex := I;
+          AFailedEntryIndex := FLastValidation.EntryIndex;
+          Exit(False);
+        end;
+      wpakPattern3D:
+        if not CaptureSolvedPatternGrid3D(
+            FRecipe.BorrowPattern3DResource(LPass.ResourceIndex),
+            FGraph.PassGraph[I], LPatternGrid3D, LPatternReport3D) then
+        begin
+          FLastValidation.Kind := wpcvkPattern3DPass;
+          FLastValidation.PassIndex := I;
+          FLastValidation.EntryIndex := Pattern3DIssueEntry(
+            FGraph.PassGraph[I], LPatternReport3D.Issue);
           AFailedPassIndex := I;
           AFailedEntryIndex := FLastValidation.EntryIndex;
           Exit(False);
@@ -837,9 +1361,10 @@ begin
     LPass := FRecipe.PassAt(I);
     if LPass.Mode <> gpmTransform then
       Continue;
-    for Z := 0 to Integer(FGraph.Dimension.Depth) - 1 do
-      for Y := 0 to Integer(FGraph.Dimension.Height) - 1 do
-        for X := 0 to Integer(FGraph.Dimension.Width) - 1 do
+    LConsumerLayout := FLayouts.PassLayoutAt(I);
+    for Z := 0 to LConsumerLayout.Cells.Z - 1 do
+      for Y := 0 to LConsumerLayout.Cells.Y - 1 do
+        for X := 0 to LConsumerLayout.Cells.X - 1 do
         begin
           LSourceEntry := FGraph.PassGraph[
             LPass.TransformSourceIndex].Entry[X, Y, Z];
@@ -848,8 +1373,8 @@ begin
               ((not LEntry.Empty) and
                (LEntry.Value <> LSourceEntry.Value)) then
           begin
-            LPosition := (Z * Integer(FGraph.Dimension.Height) + Y) *
-              Integer(FGraph.Dimension.Width) + X;
+            LPosition := (Z * LConsumerLayout.Cells.Y + Y) *
+              LConsumerLayout.Cells.X + X;
             FLastValidation.Kind := wpcvkTransform;
             FLastValidation.PassIndex := I;
             FLastValidation.EntryIndex := LPosition;
@@ -878,6 +1403,23 @@ begin
           FLastValidation.EntryIndex := PatternIssueEntry(
             FGraph.PassGraph[LBridge.TargetPassIndex],
             LPatternReport.Issue);
+          AFailedPassIndex := LBridge.TargetPassIndex;
+          AFailedEntryIndex := FLastValidation.EntryIndex;
+          Exit(False);
+        end;
+      wpbkPattern3DProjection:
+        if not CaptureSolvedOverlappingProjectionPass3D(
+            FRecipe.BorrowPattern3DResource(
+              FRecipe.PassAt(LBridge.SourcePassIndex).ResourceIndex),
+            FGraph.PassGraph[LBridge.SourcePassIndex],
+            FGraph.PassGraph[LBridge.TargetPassIndex],
+            LPatternGrid3D, LProjection3D, LPatternReport3D) then
+        begin
+          FLastValidation.Kind := wpcvkPattern3DBridge;
+          FLastValidation.PassIndex := LBridge.TargetPassIndex;
+          FLastValidation.BridgeIndex := I;
+          FLastValidation.EntryIndex := Pattern3DIssueEntry(
+            FGraph.PassGraph[LBridge.TargetPassIndex], LPatternReport3D.Issue, True);
           AFailedPassIndex := LBridge.TargetPassIndex;
           AFailedEntryIndex := FLastValidation.EntryIndex;
           Exit(False);
@@ -931,6 +1473,20 @@ begin
     LRequirement := FRecipe.RequirementAt(I);
     LProviderGraph := FGraph.PassGraph[
       LRequirement.ProviderPassIndex];
+    LConsumerLayout := FLayouts.PassLayoutAt(LRequirement.ConsumerPassIndex);
+    LProviderLayout := FLayouts.PassLayoutAt(LRequirement.ProviderPassIndex);
+    if LRequirement.Kind = wprqMapped then
+    begin
+      SetLength(LProviderTokens, FLayouts.PassCellCount(LRequirement.ProviderPassIndex));
+      LPosition := 0;
+      for Z := 0 to LProviderLayout.Cells.Z - 1 do
+        for Y := 0 to LProviderLayout.Cells.Y - 1 do
+          for X := 0 to LProviderLayout.Cells.X - 1 do
+          begin
+            LProviderTokens[LPosition] := GraphValueToToken(LProviderGraph.Entry[X,Y,Z].Value);
+            Inc(LPosition);
+          end;
+    end;
     if (LRequirement.Kind = wprqCount) and
         (LRequirement.CountMode = gpcmDistinctCells) then
       SetLength(LCountMatchedIndices, Length(LRequirement.Terms))
@@ -938,9 +1494,9 @@ begin
       SetLength(LCountMatchedIndices, 0);
     LConsumerValue := TokenToGraphValue(LRequirement.ConsumerToken,
       'commit requirement consumer token');
-    for Z := 0 to Integer(FGraph.Dimension.Depth) - 1 do
-      for Y := 0 to Integer(FGraph.Dimension.Height) - 1 do
-        for X := 0 to Integer(FGraph.Dimension.Width) - 1 do
+    for Z := 0 to LConsumerLayout.Cells.Z - 1 do
+      for Y := 0 to LConsumerLayout.Cells.Y - 1 do
+        for X := 0 to LConsumerLayout.Cells.X - 1 do
         begin
           LEntry := FGraph.PassGraph[
             LRequirement.ConsumerPassIndex].Entry[X, Y, Z];
@@ -954,7 +1510,7 @@ begin
                     Length(LRequirement.Terms) - 1 do
                   if RequirementTermMatches(LProviderGraph, X, Y, Z,
                       LRequirement.Terms[LPosition],
-                      FRecipe.WrapNeighbors) then
+                      LProviderLayout.Wrap) then
                   begin
                     LMatched := True;
                     Break;
@@ -962,8 +1518,13 @@ begin
               end;
             wprqCount:
               LMatched := RequirementCountMatches(LProviderGraph,
-                X, Y, Z, LRequirement, FRecipe.WrapNeighbors,
+                X, Y, Z, LRequirement, LProviderLayout.Wrap,
                 LCountMatchedIndices);
+            wprqMapped:
+              LMatched := ValidateWfcPipelineMappedRequirement(LRequirement,
+                LConsumerLayout, LProviderLayout,
+                (Z * LConsumerLayout.Cells.Y + Y) * LConsumerLayout.Cells.X + X,
+                LProviderTokens);
           else
             raise EInvalidOperation.Create(
               'recipe contains an unknown requirement kind');
@@ -975,21 +1536,28 @@ begin
               LRequirement.ConsumerPassIndex;
             FLastValidation.RequirementIndex := I;
             FLastValidation.EntryIndex :=
-              (Z * Integer(FGraph.Dimension.Height) + Y) *
-              Integer(FGraph.Dimension.Width) + X;
+              (Z * LConsumerLayout.Cells.Y + Y) * LConsumerLayout.Cells.X + X;
             AFailedPassIndex := FLastValidation.PassIndex;
             AFailedEntryIndex := FLastValidation.EntryIndex;
             Exit(False);
           end;
         end;
   end;
-  Result := True;
+  Result := ValidateValueQuotaCommit(AFailedPassIndex, AFailedEntryIndex);
+  if Result then
+    Result := ValidateConnectivityCommit(AFailedPassIndex, AFailedEntryIndex);
 end;
 
 function CompileWfcPipeline(const ARecipe: TWfcPipelineModel;
   const AWidth, AHeight, ADepth: Integer): TWfcCompiledPipeline;
 begin
   Result := TWfcCompiledPipeline.Create(ARecipe, AWidth, AHeight, ADepth);
+end;
+
+function CompileWfcPipeline(const ARecipe: TWfcPipelineModel;
+  const AExtents: TWfcPipelinePassExtents): TWfcCompiledPipeline;
+begin
+  Result := TWfcCompiledPipeline.Create(ARecipe, AExtents);
 end;
 
 end.

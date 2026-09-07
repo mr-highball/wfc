@@ -22,8 +22,8 @@ History uses a typed beginning-of-sequence item, `wshBos`, rather than a
 reserved string token. Its token index is always `-1`, so every nonempty valid
 UTF-8 caller token remains available. Each sample begins with a fresh BOS
 history.
-History never crosses a sample boundary, and the learner never adds a
-last-to-first relation. Learning is therefore bounded/open only in version 1.
+History never crosses a sample boundary. Open learning does not observe the
+last-to-first seam. It remains the default, preserving the version-1 contract.
 
 Tokens and states are ordered by first appearance across the ordered corpus.
 The model retains raw observation, start, and end counts. It does not normalize,
@@ -37,6 +37,53 @@ was not adjacent in the corpus. This is the defining order-N behavior: the
 model stores observed N-grams, then derives transitions from exact
 suffix/prefix overlap. It does not quietly memorize order-N+1 pairs.
 
+## Circular source training
+
+Both learner functions accept a final `TWfcModelBoundary` argument:
+
+```pascal
+Model := LearnSequenceModel(Tokens, Order, wmbWrap);
+Model := LearnSequenceModelCorpus(Samples, Order, wmbWrap);
+```
+
+The returned models are caller-owned. Omitting the argument, or passing
+`wmbOpen`, keeps all existing open-model bytes, counts, ordering and replay
+identities unchanged. The immutable model exposes `Boundary` and `ModelVersion`.
+
+With `wmbWrap`, each nonempty sample is an independent circle. The state at
+position `p` contains the preceding `Order - 1` tokens taken cyclically from
+that same sample, followed by its emitted token. An order greater than sample
+length repeats the history as often as necessary; it does not add synthetic
+observations. Every original position contributes exactly once. A singleton
+at order 1024 therefore contributes one state and one observation, not 1024.
+There is no BOS, no observed beginning or end, and every start/end count is
+zero. Samples are neither joined nor rotated into extra training examples.
+
+This distinction matters even for `A B` at order 2. Open learning observes
+`BOS -> A` and `A -> B`, which cannot form a BOS-free cycle. Circular learning
+observes `B -> A` as well as `A -> B`; an even-length output can close, while
+an odd-length output cannot. Wrapping is a constraint, not permission to copy
+a completed output until its requested length is filled.
+
+Raw weighted context counts must balance: the total number of observations
+leaving each history context equals the total entering that context. The
+constructor and decoder check this in addition to uniqueness, vocabulary,
+sample totals, no BOS/endpoints, and predecessor/successor support. These are
+aggregate model consistency checks. They do not reconstruct the original
+sample order or prove that the summary can be partitioned into the recorded
+individual sample lengths. Retain the source training document for provenance
+and exact relearning.
+
+Circular training uses the same resource limits as open training; it does not
+increase the state, order, total-history or encoding ceilings. It adds no
+tokenizer, normalization, smoothing, external library or runtime dependency.
+
+The [Training Studio](training-studio.md) offers a circular-text preset and an
+explicit raw-text boundary choice. Its portable `wfclearn=5` sources retain
+the circular policy through learning, recipe export, public locks/quotas,
+validation, inspection and exact result replay. The preset's phrase locks are
+visible constraints, not changes to the learned vocabulary or weights.
+
 ## immutable model
 
 `TWfcSequenceModel` exposes ordered public tokens, sample lengths, typed state
@@ -46,8 +93,8 @@ copy methods return detached arrays.
 
 For order 1 the history is empty, so every observed token state is compatible
 with every other. Higher orders progressively retain more left context. A
-state with a fully BOS history is a legal observed start; a positive end count
-marks an observed end.
+state with a fully BOS history is a legal observed open start; a positive end
+count marks an observed open end. Circular models have neither endpoint.
 
 ## graph application and boundaries
 
@@ -75,15 +122,20 @@ values are outputs and are not mistaken for caller locks.
 
 On a wrapped graph, every position is restricted to states with no BOS history
 and the last state must structurally connect to the first. This is a cycle
-derived from the learned overlap relation. It is not evidence that the source
-was trained as wrapped, and some models have no satisfiable derived cycle.
+derived from the learned overlap relation. For an open-trained model it is
+not evidence of circular source observations, and some models have no cycle.
+For a circular-trained model the seam was explicitly included in training,
+but not every requested output length or lock combination is satisfiable.
+Use `wseWrap` to enforce closure, or `wseFragment` for an open finite excerpt
+without invented endpoints. `wseWhole`, `wsePrefix`, and `wseSuffix` are
+unsatisfiable for a circular model because they require observed endpoints.
 
 `CaptureSolvedSequence` returns public token projection and public state
 indices, records the selected extent, then independently validates its required
 start/end semantics or the closing wrapped transition. Model-qualified graph
 keys are private adapter values. They are
 collision-safe with caller tokens and never belong in public output,
-validation diagnostics, or `wfcs=1` artifacts.
+validation diagnostics, or saved `wfcs` artifacts.
 
 `SequenceStatesSatisfyEntryConstraints` checks a complete captured state path
 against current caller locks and allowed domains while proving the applied
@@ -140,7 +192,7 @@ The [text pass owner](text.md#pass-composition) uses the same generic bundle to
 make its punctuation surface depend directly on both lexical and structural
 passes.
 
-## canonical `wfcs=1` text
+## Canonical sequence text
 
 `EncodeWfcSequenceText` writes a strict ASCII, LF-only document with a final LF.
 It records, in fixed order, the sequence order, ordered sample lengths, ordered
@@ -179,6 +231,32 @@ missing final LF, and trailing data. A decoded document must re-encode
 byte-for-byte. Canonical text therefore identifies the immutable learned model
 without making graph-adapter implementation details part of the format.
 
+Open models always encode as `wfcs=1`, with the original layout above.
+Circular models use `wfcs=2` and a required `boundary=wrap` line immediately
+after the header. The remaining record layout is unchanged. For the circular
+order-2 sample `A B`:
+
+```text
+wfcs=2
+boundary=wrap
+order=2
+samples=1
+s=0,2
+tokens=2
+t=0,A
+t=1,B
+states=2
+q=0,1,0,0,T1,E0
+q=1,1,0,0,T0,E1
+end
+```
+
+Version 2 rejects `boundary=open`, missing/duplicate boundary fields, BOS,
+nonzero start/end counts, and unbalanced weighted contexts. Version 1 does
+not accept a version-2 boundary line. `WfcSequenceModelTextVersion(Model)`
+reports the canonical encoding version rather than silently upgrading old
+files. Both versions retain the same strict text envelope limits.
+
 ## Exact continued segments
 
 `TWfcSequenceSegmentBoundary` is a separate, versioned boundary contract for
@@ -197,31 +275,41 @@ model. A public token alone is not enough to identify an order-N frontier.
 
 This is not `wseFragment`: tiny early segments may still carry typed BOS
 history. Excluding all BOS-bearing states at every new segment would reject
-valid continuations. Existing finite extents, wrapping, model formats, and
-graph-adapter version constants remain unchanged. See the
+valid continuations. A circular model has no observed initial/terminal
+boundary: obtain a validated fragment or ring witness first, then use its
+exact final state as a continuing frontier without requiring an observed end.
+Continued segments alone do not guarantee that an eventual last segment
+closes onto the first. Existing graph-adapter version constants remain
+unchanged. See the
 [ensemble stream](music-ensemble-stream.md) for a three-pass application and
 its independently checked continuation semantics.
 
 ## replay identity
 
 Relearning the same model requires the exact ordered sample/token arrays,
-sequence order, and `WFC_SEQUENCE_LEARN_ALGORITHM_VERSION`. Serialized identity
-also includes `WFC_SEQUENCE_MODEL_VERSION` and `WFC_SEQUENCE_TEXT_VERSION`.
+sequence order, source boundary, and learner version. Open learning retains
+`WFC_SEQUENCE_LEARN_ALGORITHM_VERSION = 1`; circular learning uses
+`WFC_SEQUENCE_WRAPPED_LEARN_ALGORITHM_VERSION = 2`. Open model/text version
+constants stay 1; the corresponding wrapped constants are 2. Consult
+`Model.ModelVersion` and `WfcSequenceModelTextVersion(Model)` for a particular
+model. The graph's private identity also includes circular provenance without
+changing existing open-model keys.
 Graph output additionally depends on `WFC_SEQUENCE_GRAPH_MODEL_VERSION`,
 `WFC_SEQUENCE_GRAPH_ADAPTER_VERSION`, graph length and wrapping, token-domain
 intersections, selected extent, pass constraints, solve options,
 solver/random versions, and the seed described in
 [deterministic generation](determinism.md).
 
-## version-1 scope
+## Scope and conformance
 
-Version 1 deliberately does not perform smoothing, train a wrapped corpus, or
-implement a probabilistic language model. It learns hard structural constraints
+Neither learning mode performs smoothing or implements a probabilistic
+language model. The library learns hard structural constraints
 and raw relative counts from caller-supplied tokens. Dedicated extent and bulk
 constraint helpers, exact public-domain analysis, and Unicode-scalar text
 completion are now available. A standard project-owned word-boundary tokenizer,
-variable-length editor, arbitrary-corpus training interface, and browser editor
-with global cross-pass domains remain roadmap work. The fixed-length
+variable-length editor, and browser editor with global cross-pass domains
+remain roadmap work. Editable arbitrary-corpus import is available through
+the bounded Training Studio. The fixed-length
 [three-pass text workbench](../examples/text/03_PassComposition/README.md) now
 provides interactive public locks, lineage, contradictions, and exact replay.
 
@@ -230,6 +318,15 @@ codec, exporter, or inspector that can reasonably be implemented for FPC and
 pas2js belongs in the ecosystem rather than becoming a required library. The
 Unicode-scalar tokenizer and exact domain analyzer follow that rule without a
 host regex, locale service, or third-party runtime.
+
+`wfc_sequence_wrap_test` compares the learner against literal repeated-source
+window histograms across binary corpora, heterogeneous lengths and orders
+larger than samples. It independently enumerates candidate public rings to
+check exact feasible domains, and covers strict codec mutations, weighted
+balance rejection, locks, closing-edge contradictions and model identity.
+The training and circular-studio suites cover the source-to-replayed-result
+path on native FPC and pas2js. The native artifact process suite checks the
+new saved formats through real command-line file and stdin boundaries.
 
 See the portable
 [LearnSequence example](../examples/sequence/01_LearnSequence/README.md) for

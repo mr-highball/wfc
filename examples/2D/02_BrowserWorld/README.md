@@ -49,7 +49,9 @@ build/native/bin/wfc_serve --root build/browser/world2d/www --port 8080
 ```
 
 Build the server with the native gate first; use `wfc_serve.exe` on Windows.
-See [development tools](../../../docs/development-tools.md) for its loopback-only serving boundary.
+The server binds to loopback by default. See
+[development tools](../../../docs/development-tools.md#access-from-a-trusted-local-network)
+for opt-in trusted-LAN serving on one explicit address.
 
 Then open `http://127.0.0.1:8080/`.
 

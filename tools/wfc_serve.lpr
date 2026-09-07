@@ -30,8 +30,10 @@ uses
 
 procedure Usage;
 begin
-  WriteLn('Usage: wfc_serve --root DIRECTORY [--port 8000] [--max-requests N]');
-  WriteLn('Serve static files on 127.0.0.1 only. Stop with Ctrl+C.');
+  WriteLn('Usage: wfc_serve --root DIRECTORY [--port 8000] [--bind ADDRESS] [--max-requests N]');
+  WriteLn('Serve static files on 127.0.0.1 by default. Stop with Ctrl+C.');
+  WriteLn('--bind selects a literal loopback or private IPv4 address on this computer.');
+  WriteLn('LAN access is for trusted networks only: no authentication or TLS.');
   WriteLn('GET/HEAD, no directory listing, no uploads, no script execution.');
   WriteLn('Paths are printable ASCII; links/reparse points are not served.');
   WriteLn('--max-requests bounds accepted connections for automated checks.');
@@ -55,9 +57,9 @@ end;
 
 procedure Main;
 var
-  LRoot, LOption, LValue: String;
+  LRoot, LOption, LValue, LBindAddress: String;
   LPort, LMaxRequests, I: Integer;
-  LSeenRoot, LSeenPort, LSeenMax: Boolean;
+  LSeenRoot, LSeenPort, LSeenMax, LSeenBind: Boolean;
 begin
   if (ParamCount = 1) and (ParamStr(1) = '--version') then
   begin
@@ -65,11 +67,13 @@ begin
     Exit;
   end;
   LRoot := '';
+  LBindAddress := '127.0.0.1';
   LPort := 8000;
   LMaxRequests := 0;
   LSeenRoot := False;
   LSeenPort := False;
   LSeenMax := False;
+  LSeenBind := False;
   I := 1;
   while I <= ParamCount do
   begin
@@ -97,6 +101,15 @@ begin
       LSeenPort := True;
       LPort := DecimalArgument(LValue, 1, 65535);
     end
+    else if LOption = '--bind' then
+    begin
+      if LSeenBind then
+        raise EWfcServe.Create('duplicate --bind');
+      LSeenBind := True;
+      if not ValidWfcServeBindAddress(LValue) then
+        raise EWfcServe.Create('bind address must be a canonical loopback or private IPv4 address');
+      LBindAddress := LValue;
+    end
     else if LOption = '--max-requests' then
     begin
       if LSeenMax then
@@ -110,7 +123,7 @@ begin
   end;
   if not LSeenRoot then
     raise EWfcServe.Create('--root is required');
-  RunWfcServe(LRoot, LPort, LMaxRequests);
+  RunWfcServe(LRoot, LPort, LMaxRequests, LBindAddress);
 end;
 
 begin

@@ -30,11 +30,15 @@ interface
 uses
   SysUtils,
   wfc,
+  wfc_lattice,
+  wfc_pipeline_layout,
   wfc_model,
   wfc_pipeline_model;
 
 const
   WFC_PIPELINE_RUN_VERSION = 1;
+  WFC_PIPELINE_RUN_MAPPED_VERSION = 2;
+  WFC_PIPELINE_RUN_LAYOUT_VERSION = WFC_PIPELINE_LAYOUT_VERSION;
   WFC_PIPELINE_RUN_SIGNATURE_VERSION = 1;
 
   { Run artifacts can be supplied by untrusted tooling. These fixed limits
@@ -87,6 +91,8 @@ type
   TWfcPipelineRun = class
   strict private
     FRecipeSignature: TWfcPipelineSignature;
+    FFormatVersion: Integer;
+    FLayouts: TWfcPipelineLayoutTable;
     FWidth: Integer;
     FHeight: Integer;
     FDepth: Integer;
@@ -100,6 +106,14 @@ type
     FSignature: TWfcPipelineRunSignature;
     function GetLockCount: Integer;
     function GetDomainCount: Integer;
+    function GetPassCount: Integer;
+    function GetTotalCellCount: Integer;
+    procedure Initialize(const ARecipe: TWfcPipelineModel;
+      const AExtents: TWfcPipelinePassExtents; const AFormatVersion: Integer;
+      const ASeed: TGraphSeed; const AStrategy: TWfcPipelineSolveStrategy;
+      const AMaxBacktracks, AMaxPassBacktracks: Integer;
+      const ACaptureTrace: Boolean; const ALocks: TWfcPipelineCellLocks;
+      const ADomains: TWfcPipelineCellDomains);
     function CalculateSignature: TWfcPipelineRunSignature;
     procedure ValidateLockIndex(const AIndex: Integer);
     procedure ValidateDomainIndex(const AIndex: Integer);
@@ -111,14 +125,30 @@ type
       const AMaxBacktracks, AMaxPassBacktracks: Integer;
       const ACaptureTrace: Boolean;
       const ALocks: TWfcPipelineCellLocks;
-      const ADomains: TWfcPipelineCellDomains);
+      const ADomains: TWfcPipelineCellDomains); overload;
+    constructor Create(const ARecipe: TWfcPipelineModel;
+      const AExtents: TWfcPipelinePassExtents; const ASeed: TGraphSeed;
+      const AStrategy: TWfcPipelineSolveStrategy;
+      const AMaxBacktracks, AMaxPassBacktracks: Integer;
+      const ACaptureTrace: Boolean; const ALocks: TWfcPipelineCellLocks;
+      const ADomains: TWfcPipelineCellDomains); overload;
+    destructor Destroy; override;
 
     function LockAt(const AIndex: Integer): TWfcPipelineCellLock;
     function DomainAt(const AIndex: Integer): TWfcPipelineCellDomain;
     function CopyLocks: TWfcPipelineCellLocks;
     function CopyDomains: TWfcPipelineCellDomains;
+    function CopyPassExtents: TWfcPipelinePassExtents;
+    function CopyPassLayouts: TWfcLatticeLayouts;
+    function PassLayoutAt(const APassIndex: Integer): TWfcLatticeLayout;
+    function PassTopologyAt(const APassIndex: Integer): TWfcPipelinePassTopology;
+    function PassCellCount(const APassIndex: Integer): Integer;
+    function PassOffsetAt(const APassIndex: Integer): Integer;
 
     property RecipeSignature: TWfcPipelineSignature read FRecipeSignature;
+    property FormatVersion: Integer read FFormatVersion;
+    property PassCount: Integer read GetPassCount;
+    property TotalCellCount: Integer read GetTotalCellCount;
     property Width: Integer read FWidth;
     property Height: Integer read FHeight;
     property Depth: Integer read FDepth;
@@ -144,6 +174,7 @@ implementation
 
 uses
   wfc_text_codec,
+  wfc_pipeline_mapping,
   wfc_token_lookup;
 
 type
@@ -246,8 +277,28 @@ begin
   end;
 end;
 
-procedure ValidateShape(const ARecipe: TWfcPipelineModel;
-  const AWidth, AHeight, ADepth: Integer);
+procedure RequireRunInteger(const AValue, AMinimum, AMaximum: Double;
+  const AName: String);
+{$IFDEF PAS2JS}var LValid: Boolean;{$ENDIF}
+begin
+  {$IFDEF PAS2JS}
+  asm LValid = typeof AValue === 'number' && Number.isFinite(AValue) && Number.isInteger(AValue); end;
+  if not LValid then raise EWfcPipelineRun.Create(AName + ' must be a finite integer');
+  {$ENDIF}
+  if (AValue < AMinimum) or (AValue > AMaximum) then
+    raise EWfcPipelineRun.Create(AName + ' is out of range');
+end;
+
+procedure RequireRunBoolean(const AValue: Boolean; const AName: String);
+{$IFDEF PAS2JS}var LValid: Boolean;{$ENDIF}
+begin
+  {$IFDEF PAS2JS}
+  asm LValid = typeof AValue === 'boolean'; end;
+  if not LValid then raise EWfcPipelineRun.Create(AName + ' must be Boolean');
+  {$ENDIF}
+end;
+
+procedure ValidateShape(const AWidth, AHeight, ADepth: Integer);
 var
   LPlaneCells: Integer;
 begin
@@ -266,24 +317,11 @@ begin
     raise EWfcPipelineRun.Create(
       'run cell count exceeds the version-1 limit');
 
-  case ARecipe.Rank of
-    1:
-      if (AHeight <> 1) or (ADepth <> 1) then
-        raise EWfcPipelineRun.Create(
-          'rank-1 run must have height 1 and depth 1');
-    2:
-      if ADepth <> 1 then
-        raise EWfcPipelineRun.Create('rank-2 run must have depth 1');
-    3:
-      ;
-  else
-    raise EWfcPipelineRun.CreateFmt('recipe rank is unknown [%d]',
-      [ARecipe.Rank]);
-  end;
 end;
 
 procedure ValidateCell(const ARecipe: TWfcPipelineModel;
-  const AWidth, AHeight, ADepth, APassIndex, AX, AY, AZ: Integer;
+  const ALayouts: TWfcPipelineLayoutTable;
+  const APassIndex, AX, AY, AZ: Integer;
   const ALabel: String;
   const AVocabularies: TWfcPipelineVocabularyArray;
   out AVocabulary: TWfcModelTokens);
@@ -297,11 +335,11 @@ begin
   if LPass.Visibility <> wppvPublic then
     raise EWfcPipelineRun.CreateFmt('%s cannot target private pass %d',
       [ALabel, APassIndex]);
-  if (AX < 0) or (AX >= AWidth) or
-      (AY < 0) or (AY >= AHeight) or
-      (AZ < 0) or (AZ >= ADepth) then
-    raise EWfcPipelineRun.CreateFmt('%s coordinate is out of range',
-      [ALabel]);
+  try
+    ALayouts.LocalCellIndex(APassIndex, MakeWfcLatticeVector(AX, AY, AZ));
+  except
+    on E: Exception do raise EWfcPipelineRun.Create(ALabel + ' coordinate is out of range: ' + E.Message);
+  end;
   AVocabulary := AVocabularies[APassIndex];
 end;
 
@@ -387,15 +425,30 @@ var
   J: Integer;
   LDomain: TWfcPipelineCellDomain;
   LLock: TWfcPipelineCellLock;
+  LLayout: TWfcLatticeLayout;
 begin
   Result := Cardinal(2166136261);
   HashAscii(Result, 'wfcpipeline-run');
-  HashCardinal(Result, WFC_PIPELINE_RUN_VERSION);
+  HashCardinal(Result, FFormatVersion);
   HashCardinal(Result, WFC_PIPELINE_RUN_SIGNATURE_VERSION);
   HashCardinal(Result, FRecipeSignature);
   HashInteger(Result, FWidth);
   HashInteger(Result, FHeight);
   HashInteger(Result, FDepth);
+  if FFormatVersion = WFC_PIPELINE_RUN_MAPPED_VERSION then
+  begin
+    HashAscii(Result, 'pass-layout-extents');
+    HashInteger(Result, WFC_PIPELINE_RUN_LAYOUT_VERSION);
+    HashInteger(Result, WFC_PASS_MAPPING_VERSION);
+    HashInteger(Result, PassCount);
+    for I := 0 to PassCount - 1 do
+    begin
+      LLayout := FLayouts.PassLayoutAt(I);
+      HashInteger(Result, LLayout.Cells.X);
+      HashInteger(Result, LLayout.Cells.Y);
+      HashInteger(Result, LLayout.Cells.Z);
+    end;
+  end;
   HashCardinal(Result, FSeed);
   HashInteger(Result, Ord(FStrategy));
   HashInteger(Result, FMaxBacktracks);
@@ -459,6 +512,45 @@ constructor TWfcPipelineRun.Create(const ARecipe: TWfcPipelineModel;
   const ACaptureTrace: Boolean; const ALocks: TWfcPipelineCellLocks;
   const ADomains: TWfcPipelineCellDomains);
 var
+  LFormatVersion: Integer;
+  LExtents: TWfcPipelinePassExtents;
+begin
+  inherited Create;
+  if not Assigned(ARecipe) then
+    raise EWfcPipelineRun.Create('run recipe cannot be nil');
+  ValidateShape(AWidth, AHeight, ADepth);
+  LFormatVersion := WFC_PIPELINE_RUN_VERSION;
+  if ARecipe.HasPassMapping then
+    LFormatVersion := WFC_PIPELINE_RUN_MAPPED_VERSION;
+  try
+    LExtents := UniformWfcPipelinePassExtents(ARecipe, AWidth, AHeight, ADepth);
+  except
+    on E: Exception do raise EWfcPipelineRun.Create('run extents: ' + E.Message);
+  end;
+  Initialize(ARecipe, LExtents, LFormatVersion, ASeed, AStrategy,
+    AMaxBacktracks, AMaxPassBacktracks, ACaptureTrace, ALocks, ADomains);
+end;
+
+constructor TWfcPipelineRun.Create(const ARecipe: TWfcPipelineModel;
+  const AExtents: TWfcPipelinePassExtents; const ASeed: TGraphSeed;
+  const AStrategy: TWfcPipelineSolveStrategy;
+  const AMaxBacktracks, AMaxPassBacktracks: Integer;
+  const ACaptureTrace: Boolean; const ALocks: TWfcPipelineCellLocks;
+  const ADomains: TWfcPipelineCellDomains);
+begin
+  inherited Create;
+  Initialize(ARecipe, AExtents, WFC_PIPELINE_RUN_MAPPED_VERSION,
+    ASeed, AStrategy, AMaxBacktracks, AMaxPassBacktracks,
+    ACaptureTrace, ALocks, ADomains);
+end;
+
+procedure TWfcPipelineRun.Initialize(const ARecipe: TWfcPipelineModel;
+  const AExtents: TWfcPipelinePassExtents; const AFormatVersion: Integer;
+  const ASeed: TGraphSeed; const AStrategy: TWfcPipelineSolveStrategy;
+  const AMaxBacktracks, AMaxPassBacktracks: Integer;
+  const ACaptureTrace: Boolean; const ALocks: TWfcPipelineCellLocks;
+  const ADomains: TWfcPipelineCellDomains);
+var
   I: Integer;
   J: Integer;
   LDomain: TWfcPipelineCellDomain;
@@ -470,11 +562,29 @@ var
   LTokenLookups: TWfcPipelineTokenLookupArray;
   LVocabulary: TWfcModelTokens;
   LVocabularies: TWfcPipelineVocabularyArray;
+  LLayout: TWfcLatticeLayout;
 begin
-  inherited Create;
   if not Assigned(ARecipe) then
     raise EWfcPipelineRun.Create('run recipe cannot be nil');
-  ValidateShape(ARecipe, AWidth, AHeight, ADepth);
+  { Resolve and check every pass before allocating token/vocabulary storage. }
+  try
+    FLayouts := ResolveWfcPipelineLayoutTable(ARecipe, AExtents);
+  except
+    on E: Exception do
+      raise EWfcPipelineRun.Create('run layouts: ' + E.Message);
+  end;
+  for I := 0 to FLayouts.PassCount - 1 do
+  begin
+    LLayout := FLayouts.PassLayoutAt(I);
+    ValidateShape(LLayout.Cells.X, LLayout.Cells.Y, LLayout.Cells.Z);
+  end;
+  FFormatVersion := AFormatVersion;
+  RequireRunInteger(ASeed, 0, High(Cardinal), 'run seed');
+  RequireRunInteger(Ord(AStrategy), Ord(Low(TWfcPipelineSolveStrategy)),
+    Ord(High(TWfcPipelineSolveStrategy)), 'run strategy');
+  RequireRunInteger(AMaxBacktracks, 0, WFC_PIPELINE_RUN_MAX_BACKTRACKS, 'run backtrack limit');
+  RequireRunInteger(AMaxPassBacktracks, 0, WFC_PIPELINE_RUN_MAX_PASS_BACKTRACKS, 'run pass-backtrack limit');
+  RequireRunBoolean(ACaptureTrace, 'run trace flag');
   ValidateStrategy(AStrategy);
   if (AMaxBacktracks < 0) or
       (AMaxBacktracks > WFC_PIPELINE_RUN_MAX_BACKTRACKS) then
@@ -515,7 +625,7 @@ begin
           LLock.PassIndex, LLock.X, LLock.Y, LLock.Z) >= 0) then
         raise EWfcPipelineRun.Create(
           'run locks must be in strict pass/row-major order');
-      ValidateCell(ARecipe, AWidth, AHeight, ADepth,
+      ValidateCell(ARecipe, FLayouts,
         LLock.PassIndex, LLock.X, LLock.Y, LLock.Z,
         'run lock', LVocabularies, LVocabulary);
       if not WfcModelTokenIsValid(LLock.Token) then
@@ -536,7 +646,7 @@ begin
           LDomain.X, LDomain.Y, LDomain.Z) >= 0) then
         raise EWfcPipelineRun.Create(
           'run domains must be in strict pass/row-major order');
-      ValidateCell(ARecipe, AWidth, AHeight, ADepth,
+      ValidateCell(ARecipe, FLayouts,
         LDomain.PassIndex, LDomain.X, LDomain.Y, LDomain.Z,
         'run domain', LVocabularies, LVocabulary);
       CheckedLength(Length(LDomain.AllowedTokens),
@@ -595,9 +705,10 @@ begin
     end;
 
     FRecipeSignature := ARecipe.Signature;
-    FWidth := AWidth;
-    FHeight := AHeight;
-    FDepth := ADepth;
+    LLayout := FLayouts.PassLayoutAt(0);
+    FWidth := LLayout.Cells.X;
+    FHeight := LLayout.Cells.Y;
+    FDepth := LLayout.Cells.Z;
     FSeed := ASeed;
     FStrategy := AStrategy;
     FMaxBacktracks := AMaxBacktracks;
@@ -613,6 +724,52 @@ begin
   finally
     FreeTokenLookups(LTokenLookups);
   end;
+end;
+
+destructor TWfcPipelineRun.Destroy;
+begin
+  FLayouts.Free;
+  inherited Destroy;
+end;
+
+function TWfcPipelineRun.GetPassCount: Integer;
+begin
+  Result := FLayouts.PassCount;
+end;
+
+function TWfcPipelineRun.GetTotalCellCount: Integer;
+begin
+  Result := FLayouts.TotalCellCount;
+end;
+
+function TWfcPipelineRun.CopyPassExtents: TWfcPipelinePassExtents;
+begin
+  Result := FLayouts.CopyExtents;
+end;
+
+function TWfcPipelineRun.CopyPassLayouts: TWfcLatticeLayouts;
+begin
+  Result := FLayouts.CopyLayouts;
+end;
+
+function TWfcPipelineRun.PassLayoutAt(const APassIndex: Integer): TWfcLatticeLayout;
+begin
+  Result := FLayouts.PassLayoutAt(APassIndex);
+end;
+
+function TWfcPipelineRun.PassTopologyAt(const APassIndex: Integer): TWfcPipelinePassTopology;
+begin
+  Result := FLayouts.PassTopologyAt(APassIndex);
+end;
+
+function TWfcPipelineRun.PassCellCount(const APassIndex: Integer): Integer;
+begin
+  Result := FLayouts.PassCellCount(APassIndex);
+end;
+
+function TWfcPipelineRun.PassOffsetAt(const APassIndex: Integer): Integer;
+begin
+  Result := FLayouts.PassOffsetAt(APassIndex);
 end;
 
 function TWfcPipelineRun.GetLockCount: Integer;

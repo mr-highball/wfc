@@ -29,7 +29,14 @@ uses
   wfc_music_ensemble_stream, wfc_music_ensemble_audio, wfc_midi_stream,
   wfc_music_ensemble_midi, wfc_music_voices_graph, wfc_music_voices_training,
   wfc_music_voices_stream, wfc_connectivity_reference, wfc_learn3d,
-  wfc_terraces3d, wfc_terraces3d_view, wfc_trace_stream;
+  wfc_terraces3d, wfc_terraces3d_view, wfc_trace_stream,
+  wfc_pipeline_connectivity, wfc_music_form, wfc_volume_symmetry,
+  wfc_pattern3d, wfc_pattern3d_learn, wfc_pattern3d_text, wfc_pattern3d_graph,
+  wfc_token_volume_view, wfc_lattice, wfc_pipeline_layout,
+  wfc_pipeline_mapping, wfc_pipeline_compose, wfc_pipeline_prepare,
+  wfc_pipeline_session, wfc_pipeline_session_evidence,
+  wfc_pipeline_workspace_context, wfc_pipeline_workspace_journal,
+  wfc_pipeline_workspace_journal_text, wfc_pipeline_workspace_replay;
 
 implementation
 

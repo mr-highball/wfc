@@ -106,7 +106,9 @@ build/native/bin/wfc_serve --root build/browser/building3d/www --port 8080
 ```
 
 Build the server with the native gate first; use `wfc_serve.exe` on Windows.
-See [development tools](../../../docs/development-tools.md) for its loopback-only serving boundary.
+The server binds to loopback by default. See
+[development tools](../../../docs/development-tools.md#access-from-a-trusted-local-network)
+for opt-in trusted-LAN serving on one explicit address.
 
 Open `http://localhost:8080/`. The workbench can:
 

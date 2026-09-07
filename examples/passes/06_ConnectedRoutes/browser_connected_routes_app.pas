@@ -32,7 +32,8 @@ uses
   Web,
   SysUtils,
   wfc,
-  connected_routes_demo;
+  connected_routes_demo,
+  connected_routes_portable;
 
 type
   TBrowserConnectedRoutesApplication = class
@@ -723,6 +724,9 @@ begin
       (FResult.Signature = CIRCULATION_FIRST_SIGNATURE) and
       (document.body.getAttribute('data-case') = 'circulation'),
       'final recovery changed');
+    AssertTest(ConnectedRoutesPortableSelfTest = 6,
+      'portable connectivity artifacts did not independently replay');
+    document.body.setAttribute('data-portable-artifacts', 'passed');
     document.body.setAttribute('data-self-test', 'passed');
   except
     on E: Exception do

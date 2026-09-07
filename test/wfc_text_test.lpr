@@ -625,12 +625,64 @@ begin
   end;
 end;
 
+procedure TestCircularTextCompletion;
+var
+  M: TWfcSequenceModel;
+  Request: TWfcTextCompletionRequest;
+  Completion: TWfcTextCompletion;
+  Report: TWfcTextCompletionReport;
+  Validation: TWfcTextValidationReport;
+  Source, Expected: TWfcModelToken;
+  I: Integer;
+begin
+  Source := BmpToken + NonBmpToken;
+  M := LearnWfcTextModel(DocumentsOf([Source]), 3, wttkUnicodeScalar, wmbWrap);
+  try
+    Check((M.Boundary = wmbWrap) and (M.ObservationCount = 2),
+      'text learner opts into a circle without multiplying scalar observations');
+    Request := DefaultWfcTextCompletionRequest(6, wseWrap, 19);
+    Request.Prefix := ScalarTokens(BmpToken);
+    Request.Suffix := ScalarTokens(NonBmpToken);
+    SetLength(Request.LockedSpans, 1);
+    Request.LockedSpans[0] := MakeWfcTextLockedSpan(3, ScalarTokens(NonBmpToken));
+    Expected := Source + Source + Source;
+    Check(TryCompleteWfcText(M, Request, Completion, Report) and
+      (Completion.Text = Expected) and (Length(Completion.Generated.Tokens) = 6),
+      'circular Unicode completion honors anchors and full requested scalar extent');
+    Check(ValidateWfcTextCompletion(M, Request, Completion, Validation),
+      'independent text validator proves projection, Unicode identity, locks and closure');
+    Request.TokenLength := 5;
+    Request.Suffix := nil;
+    Check(not TryCompleteWfcText(M, Request, Completion, Report) and
+      (Report.Status = wctcsUnsatisfiable) and (Completion.Text = '') and
+      (Length(Completion.Generated.Tokens) = 0),
+      'odd circular completion rejects the seam and clears prior output');
+    Request.Extent := wseFragment;
+    Check(TryCompleteWfcText(M, Request, Completion, Report) and
+      (Completion.Text = Source + Source + BmpToken),
+      'explicit finite excerpt does not pretend to close the circle');
+    Request.Extent := wseWhole;
+    Check(not TryCompleteWfcText(M, Request, Completion, Report) and
+      (Report.Status = wctcsUnsatisfiable), 'circular training invents no whole-text endpoints');
+  finally M.Free; end;
+  M := LearnWfcTextModel(DocumentsOf(['red blue', 'red green']),
+    2, @TokenizeAsciiWords, wmbWrap);
+  try
+    Check((M.Boundary = wmbWrap) and (M.StateCount = 4) and
+      (M.ObservationCount = 4), 'caller-defined token learning also accepts circular samples');
+    for I := 0 to M.StateCount - 1 do
+      Check((M.StartCountAt(I) = 0) and (M.EndCountAt(I) = 0),
+        'caller tokenizer output is not given artificial endpoints');
+  finally M.Free; end;
+end;
+
 begin
   WriteLn('WFC text foundation conformance suite');
   WriteLn('====================================');
   RunTest('Unicode-scalar tokenization', @TestScalarTokenizer);
   RunTest('caller tokenizer learning', @TestCallerTokenizerLearning);
   RunTest('sequence extent semantics', @TestExtentSemantics);
+  RunTest('circular Unicode training and constrained completion', @TestCircularTextCompletion);
   RunTest('exact domain analysis', @TestDomainAnalysis);
   RunTest('bulk constraint helpers', @TestBulkConstraintHelpers);
   RunTest('completion and independent validation',

@@ -30,20 +30,29 @@ interface
 uses
   SysUtils,
   wfc,
+  wfc_lattice,
   wfc_model,
   wfc_rule_model,
   wfc_pattern2d,
-  wfc_sequence;
+  wfc_pattern3d,
+  wfc_sequence,
+  wfc_pipeline_layout;
 
 const
   WFC_PIPELINE_MODEL_VERSION = 1;
   WFC_PIPELINE_MODEL_SIGNATURE_VERSION = 1;
   WFC_PIPELINE_GRAPH_ADAPTER_VERSION = 1;
+  { Opt-in whole-pass public-token quotas. The legacy model/adapter versions,
+    version record, and all quota-free identities remain unchanged. }
+  WFC_PIPELINE_VALUE_QUOTA_VERSION = 1;
+  WFC_PIPELINE_CONNECTIVITY_VERSION = 1;
+  WFC_PIPELINE_PASS_MAPPING_VERSION = 1;
   { Bridge version 2 adds deterministic inverse lowering of public run inputs
     into the private source pass. Version 1 remains accepted as the portable
     forward-only contract. }
   WFC_PIPELINE_PATTERN_BRIDGE_VERSION = 2;
   WFC_PIPELINE_SEQUENCE_BRIDGE_VERSION = 2;
+  WFC_PIPELINE_PATTERN_3D_BRIDGE_VERSION = 1;
 
   WFC_PIPELINE_NO_INDEX = -1;
 
@@ -65,6 +74,14 @@ const
   WFC_PIPELINE_MAX_ENCODED_TOKEN_LENGTH = 1048576;
   WFC_PIPELINE_MAX_TOTAL_ENCODED_TOKEN_LENGTH = 16777216;
   WFC_PIPELINE_MAX_TOTAL_RESOURCE_RELATION_SLOT_COUNT = 16777216;
+  WFC_PIPELINE_MAX_VALUE_QUOTA_COUNT = 4096;
+  WFC_PIPELINE_MAX_VALUE_QUOTA_TOKEN_COUNT = 1024;
+  WFC_PIPELINE_MAX_TOTAL_VALUE_QUOTA_TOKEN_COUNT = 65536;
+  WFC_PIPELINE_MAX_CONNECTIVITY_COUNT = 4096;
+  WFC_PIPELINE_MAX_CONNECTIVITY_VALUE_COUNT = 1024;
+  WFC_PIPELINE_MAX_TOTAL_CONNECTIVITY_VALUE_COUNT = 65536;
+  WFC_PIPELINE_MAX_CONNECTIVITY_REQUIRED_POSITION_COUNT = 65536;
+  WFC_PIPELINE_MAX_TOTAL_CONNECTIVITY_REQUIRED_POSITION_COUNT = 65536;
 
 type
   EWfcPipelineModel = class(Exception);
@@ -77,7 +94,8 @@ type
     wprkModel,
     wprkRules,
     wprkPattern2D,
-    wprkSequence
+    wprkSequence,
+    wprkPattern3D
   );
 
   TWfcPipelinePassVisibility = (
@@ -90,18 +108,21 @@ type
     wpakModel,
     wpakRules,
     wpakPattern2D,
-    wpakSequence
+    wpakSequence,
+    wpakPattern3D
   );
 
   TWfcPipelineBridgeKind = (
     wpbkPattern2DProjection,
-    wpbkSequenceProjection
+    wpbkSequenceProjection,
+    wpbkPattern3DProjection
   );
 
   TWfcPipelineRequirementKind = (
     wprqExact,
     wprqAny,
-    wprqCount
+    wprqCount,
+    wprqMapped
   );
 
   TWfcPipelineVersions = record
@@ -116,6 +137,10 @@ type
     SequenceGraphAdapterVersion: Integer;
     Pattern2DBridgeVersion: Integer;
     SequenceBridgeVersion: Integer;
+    { Read only for recipes that use a 3D overlapping resource/adapter/bridge.
+      Legacy callers may still initialize only the original eleven fields. }
+    Pattern3DGraphAdapterVersion: Integer;
+    Pattern3DBridgeVersion: Integer;
   end;
 
   TWfcPipelineMetadata = record
@@ -168,6 +193,14 @@ type
   end;
   TWfcPipelineRequirementTerms = array of TWfcPipelineRequirementTerm;
 
+  TWfcPipelineMappedQuery = record
+    Kind: TGraphPassMapKind;
+    Match: TGraphPassMapMatch;
+    MinimumOffset, MaximumOffset: TGraphOffset;
+    AllowedProviderTokens: TWfcModelTokens;
+    MinimumMatches, MaximumMatches: Integer;
+  end;
+
   TWfcPipelineRequirement = record
     ConsumerPassIndex: Integer;
     ConsumerToken: TWfcModelToken;
@@ -177,8 +210,45 @@ type
     MinimumCount: Integer;
     MaximumCount: Integer;
     Terms: TWfcPipelineRequirementTerms;
+    { Read only when Kind=wprqMapped. Legacy callers need not initialize it. }
+    MappedQuery: TWfcPipelineMappedQuery;
   end;
   TWfcPipelineRequirements = array of TWfcPipelineRequirement;
+
+  { Values is a nonempty set in the target's strict public-vocabulary order.
+    Whole-pass bounds are independent of invocation shape. Public transform
+    aliases retain their own declaration/diagnostic identity; the compiler
+    lowers their quota through the exact-copy chain, never materializing a
+    rule definition on the alias. }
+  TWfcPipelineValueQuota = record
+    PassIndex: Integer;
+    LabelText: TWfcModelToken;
+    Values: TWfcModelTokens;
+    MinimumCount: Integer;
+    MaximumCount: Integer;
+  end;
+  TWfcPipelineValueQuotas = array of TWfcPipelineValueQuota;
+
+  { Portable public tokens, not native graph-string encodings. All six port
+    directions are meaningful profile data, including on lower-rank grids. }
+  TWfcPipelineConnectivityValue = record
+    Value: TWfcModelToken;
+    Openings: TGraphDirections;
+    RequiredByValue: Boolean;
+  end;
+  TWfcPipelineConnectivityValues = array of TWfcPipelineConnectivityValue;
+  { Profiles follow strict public-vocabulary order. Explicit terminals follow
+    strict (Z,Y,X) order and exclude the already-required root. Coordinates
+    are exact nonnegative Integers; invocation bounds are checked at compile. }
+  TWfcPipelineConnectivity = record
+    PassIndex: Integer;
+    LabelText: TWfcModelToken;
+    Root: TGraphPosition;
+    RequiredPositions: TGraphPositions;
+    Values: TWfcPipelineConnectivityValues;
+    RequireAllParticipants: Boolean;
+  end;
+  TWfcPipelineConnectivities = array of TWfcPipelineConnectivity;
 
   { TWfcPipelineModel }
 
@@ -200,11 +270,17 @@ type
     FDependencies: TWfcPipelineDependencies;
     FBridges: TWfcPipelineBridges;
     FRequirements: TWfcPipelineRequirements;
+    FValueQuotas: TWfcPipelineValueQuotas;
+    FConnectivities: TWfcPipelineConnectivities;
     FVocabularies: array of TWfcModelTokens;
     FModelResources: array of TWfcModel;
     FRuleResources: array of TWfcRuleModel;
     FPatternResources: array of TWfcOverlappingModel2D;
     FSequenceResources: array of TWfcSequenceModel;
+    FPattern3DResources: array of TWfcOverlappingModel3D;
+    FHasPattern3D: Boolean;
+    FPassMappingVersion: Integer;
+    FPassTopologies: TWfcPipelinePassTopologies;
     FSignature: TWfcPipelineSignature;
 
     function GetResourceCount: Integer;
@@ -212,6 +288,11 @@ type
     function GetDependencyCount: Integer;
     function GetBridgeCount: Integer;
     function GetRequirementCount: Integer;
+    function GetValueQuotaCount: Integer;
+    function GetValueQuotaVersion: Integer;
+    function GetConnectivityCount: Integer;
+    function GetConnectivityVersion: Integer;
+    function GetHasPassMapping: Boolean;
     procedure Initialize(const AMetadata: TWfcPipelineMetadata;
       const AVersions: TWfcPipelineVersions;
       const ARank: Integer; const AWrapNeighbors: Boolean;
@@ -220,12 +301,18 @@ type
       const APasses: TWfcPipelinePasses;
       const ADependencies: TWfcPipelineDependencies;
       const ABridges: TWfcPipelineBridges;
-      const ARequirements: TWfcPipelineRequirements);
+      const ARequirements: TWfcPipelineRequirements;
+      const AValueQuotas: TWfcPipelineValueQuotas;
+      const AConnectivities: TWfcPipelineConnectivities;
+      const APassMappingVersion: Integer = 0;
+      const APassTopologies: TWfcPipelinePassTopologies = nil);
     procedure ValidateResourceIndex(const AIndex: Integer);
     procedure ValidatePassIndex(const AIndex: Integer);
     procedure ValidateDependencyIndex(const AIndex: Integer);
     procedure ValidateBridgeIndex(const AIndex: Integer);
     procedure ValidateRequirementIndex(const AIndex: Integer);
+    procedure ValidateValueQuotaIndex(const AIndex: Integer);
+    procedure ValidateConnectivityIndex(const AIndex: Integer);
   public
     constructor Create(const AMetadata: TWfcPipelineMetadata;
       const ARank: Integer; const AWrapNeighbors: Boolean;
@@ -236,6 +323,25 @@ type
       const ABridges: TWfcPipelineBridges;
       const ARequirements: TWfcPipelineRequirements); overload;
     constructor Create(const AMetadata: TWfcPipelineMetadata;
+      const ARank: Integer; const AWrapNeighbors: Boolean;
+      const ARunMode: TGraphRunMode;
+      const AResources: TWfcPipelineResources;
+      const APasses: TWfcPipelinePasses;
+      const ADependencies: TWfcPipelineDependencies;
+      const ABridges: TWfcPipelineBridges;
+      const ARequirements: TWfcPipelineRequirements;
+      const AValueQuotas: TWfcPipelineValueQuotas); overload;
+    constructor Create(const AMetadata: TWfcPipelineMetadata;
+      const AVersions: TWfcPipelineVersions;
+      const ARank: Integer; const AWrapNeighbors: Boolean;
+      const ARunMode: TGraphRunMode;
+      const AResources: TWfcPipelineResources;
+      const APasses: TWfcPipelinePasses;
+      const ADependencies: TWfcPipelineDependencies;
+      const ABridges: TWfcPipelineBridges;
+      const ARequirements: TWfcPipelineRequirements;
+      const AValueQuotas: TWfcPipelineValueQuotas); overload;
+    constructor Create(const AMetadata: TWfcPipelineMetadata;
       const AVersions: TWfcPipelineVersions;
       const ARank: Integer; const AWrapNeighbors: Boolean;
       const ARunMode: TGraphRunMode;
@@ -244,6 +350,40 @@ type
       const ADependencies: TWfcPipelineDependencies;
       const ABridges: TWfcPipelineBridges;
       const ARequirements: TWfcPipelineRequirements); overload;
+    constructor Create(const AMetadata: TWfcPipelineMetadata;
+      const ARank: Integer; const AWrapNeighbors: Boolean;
+      const ARunMode: TGraphRunMode;
+      const AResources: TWfcPipelineResources;
+      const APasses: TWfcPipelinePasses;
+      const ADependencies: TWfcPipelineDependencies;
+      const ABridges: TWfcPipelineBridges;
+      const ARequirements: TWfcPipelineRequirements;
+      const AValueQuotas: TWfcPipelineValueQuotas;
+      const AConnectivities: TWfcPipelineConnectivities); overload;
+    constructor Create(const AMetadata: TWfcPipelineMetadata;
+      const AVersions: TWfcPipelineVersions;
+      const ARank: Integer; const AWrapNeighbors: Boolean;
+      const ARunMode: TGraphRunMode;
+      const AResources: TWfcPipelineResources;
+      const APasses: TWfcPipelinePasses;
+      const ADependencies: TWfcPipelineDependencies;
+      const ABridges: TWfcPipelineBridges;
+      const ARequirements: TWfcPipelineRequirements;
+      const AValueQuotas: TWfcPipelineValueQuotas;
+      const AConnectivities: TWfcPipelineConnectivities); overload;
+    constructor Create(const AMetadata: TWfcPipelineMetadata;
+      const AVersions: TWfcPipelineVersions;
+      const ARank: Integer; const AWrapNeighbors: Boolean;
+      const ARunMode: TGraphRunMode;
+      const AResources: TWfcPipelineResources;
+      const APasses: TWfcPipelinePasses;
+      const ADependencies: TWfcPipelineDependencies;
+      const ABridges: TWfcPipelineBridges;
+      const ARequirements: TWfcPipelineRequirements;
+      const AValueQuotas: TWfcPipelineValueQuotas;
+      const AConnectivities: TWfcPipelineConnectivities;
+      const APassMappingVersion: Integer;
+      const APassTopologies: TWfcPipelinePassTopologies); overload;
     destructor Destroy; override;
 
     function CopyMetadata: TWfcPipelineMetadata;
@@ -253,11 +393,17 @@ type
     function DependencyAt(const AIndex: Integer): TWfcPipelineDependency;
     function BridgeAt(const AIndex: Integer): TWfcPipelineBridge;
     function RequirementAt(const AIndex: Integer): TWfcPipelineRequirement;
+    function ValueQuotaAt(const AIndex: Integer): TWfcPipelineValueQuota;
+    function ConnectivityAt(const AIndex: Integer): TWfcPipelineConnectivity;
     function CopyResources: TWfcPipelineResources;
     function CopyPasses: TWfcPipelinePasses;
     function CopyDependencies: TWfcPipelineDependencies;
     function CopyBridges: TWfcPipelineBridges;
     function CopyRequirements: TWfcPipelineRequirements;
+    function CopyValueQuotas: TWfcPipelineValueQuotas;
+    function CopyConnectivities: TWfcPipelineConnectivities;
+    function PassTopologyAt(const AIndex: Integer): TWfcPipelinePassTopology;
+    function CopyPassTopologies: TWfcPipelinePassTopologies;
     function CopyPublicVocabulary(
       const APassIndex: Integer): TWfcModelTokens;
     function FindResource(const AId: TWfcModelToken): Integer;
@@ -269,6 +415,8 @@ type
       const AIndex: Integer): TWfcOverlappingModel2D;
     function BorrowSequenceResource(
       const AIndex: Integer): TWfcSequenceModel;
+    function BorrowPattern3DResource(
+      const AIndex: Integer): TWfcOverlappingModel3D;
 
     property Rank: Integer read FRank;
     property WrapNeighbors: Boolean read FWrapNeighbors;
@@ -278,10 +426,25 @@ type
     property DependencyCount: Integer read GetDependencyCount;
     property BridgeCount: Integer read GetBridgeCount;
     property RequirementCount: Integer read GetRequirementCount;
+    property ValueQuotaCount: Integer read GetValueQuotaCount;
+    { Zero means no quota extension; otherwise the explicit supported version. }
+    property ValueQuotaVersion: Integer read GetValueQuotaVersion;
+    property ConnectivityCount: Integer read GetConnectivityCount;
+    property ConnectivityVersion: Integer read GetConnectivityVersion;
     property Signature: TWfcPipelineSignature read FSignature;
+    property HasPattern3D: Boolean read FHasPattern3D;
+    property HasPassMapping: Boolean read GetHasPassMapping;
+    property PassMappingVersion: Integer read FPassMappingVersion;
   end;
 
 function CurrentWfcPipelineVersions: TWfcPipelineVersions;
+
+function MakeWfcPipelineMappedRequirement(const AConsumerPassIndex: Integer;
+  const AConsumerToken: TWfcModelToken; const AProviderPassIndex: Integer;
+  const AQuery: TWfcPipelineMappedQuery): TWfcPipelineRequirement;
+{ Geometry only: its one nonempty placeholder is not a public/native token
+  encoding. Compilers must independently convert AllowedProviderTokens. }
+function WfcPipelineMappedQueryGeometry(const AQuery: TWfcPipelineMappedQuery): TGraphPassMapQuery;
 
 function MakeWfcPipelineMetadata(const AName,
   ALicenseIdentifier, ASourceDescription,
@@ -326,6 +489,20 @@ function MakeWfcPipelineCountRequirement(
   const AMinimumCount, AMaximumCount: Integer;
   const ACountMode: TGraphPassCountMode): TWfcPipelineRequirement;
 
+function MakeWfcPipelineValueQuota(const APassIndex: Integer;
+  const ALabelText: TWfcModelToken; const AValues: TWfcModelTokens;
+  const AMinimumCount, AMaximumCount: Integer): TWfcPipelineValueQuota;
+
+function MakeWfcPipelineConnectivityValue(const AValue: TWfcModelToken;
+  const AOpenings: TGraphDirections;
+  const ARequiredByValue: Boolean = False): TWfcPipelineConnectivityValue;
+
+function MakeWfcPipelineConnectivity(const APassIndex: Integer;
+  const ALabelText: TWfcModelToken; const ARoot: TGraphPosition;
+  const ARequiredPositions: TGraphPositions;
+  const AValues: TWfcPipelineConnectivityValues;
+  const ARequireAllParticipants: Boolean = False): TWfcPipelineConnectivity;
+
 function WfcPipelineSignatureHex(
   const ASignature: TWfcPipelineSignature): String;
 
@@ -337,6 +514,8 @@ uses
   wfc_rule_text,
   wfc_pattern2d_text,
   wfc_pattern2d_graph,
+  wfc_pattern3d_text,
+  wfc_pattern3d_graph,
   wfc_sequence_text,
   wfc_sequence_graph;
 
@@ -360,7 +539,7 @@ procedure RequireEnumResourceKind(const AValue: TWfcPipelineResourceKind;
   const ALabel: String);
 begin
   case AValue of
-    wprkModel, wprkRules, wprkPattern2D, wprkSequence:
+    wprkModel, wprkRules, wprkPattern2D, wprkSequence, wprkPattern3D:
       Exit;
   else
     raise EWfcPipelineModel.CreateFmt('%s is unknown [%d]',
@@ -384,7 +563,7 @@ procedure RequireEnumAdapter(const AValue: TWfcPipelineAdapterKind;
   const ALabel: String);
 begin
   case AValue of
-    wpakEmpty, wpakModel, wpakRules, wpakPattern2D, wpakSequence:
+    wpakEmpty, wpakModel, wpakRules, wpakPattern2D, wpakSequence, wpakPattern3D:
       Exit;
   else
     raise EWfcPipelineModel.CreateFmt('%s is unknown [%d]',
@@ -396,7 +575,7 @@ procedure RequireEnumBridge(const AValue: TWfcPipelineBridgeKind;
   const ALabel: String);
 begin
   case AValue of
-    wpbkPattern2DProjection, wpbkSequenceProjection:
+    wpbkPattern2DProjection, wpbkSequenceProjection, wpbkPattern3DProjection:
       Exit;
   else
     raise EWfcPipelineModel.CreateFmt('%s is unknown [%d]',
@@ -408,7 +587,7 @@ procedure RequireEnumRequirement(const AValue: TWfcPipelineRequirementKind;
   const ALabel: String);
 begin
   case AValue of
-    wprqExact, wprqAny, wprqCount:
+    wprqExact, wprqAny, wprqCount, wprqMapped:
       Exit;
   else
     raise EWfcPipelineModel.CreateFmt('%s is unknown [%d]',
@@ -512,10 +691,17 @@ end;
 function CloneRequirement(const AValue: TWfcPipelineRequirement):
   TWfcPipelineRequirement;
 begin
+  Result := Default(TWfcPipelineRequirement);
   Result.ConsumerPassIndex := AValue.ConsumerPassIndex;
   Result.ConsumerToken := AValue.ConsumerToken;
   Result.ProviderPassIndex := AValue.ProviderPassIndex;
   Result.Kind := AValue.Kind;
+  if AValue.Kind = wprqMapped then
+  begin
+    Result.MappedQuery := AValue.MappedQuery;
+    Result.MappedQuery.AllowedProviderTokens := CloneTokens(AValue.MappedQuery.AllowedProviderTokens);
+    Exit;
+  end;
   if AValue.Kind = wprqCount then
   begin
     Result.CountMode := AValue.CountMode;
@@ -529,6 +715,157 @@ begin
     Result.MaximumCount := 0;
   end;
   Result.Terms := CloneTerms(AValue.Terms);
+end;
+
+function WfcPipelineMappedQueryGeometry(const AQuery: TWfcPipelineMappedQuery): TGraphPassMapQuery;
+{$IFDEF PAS2JS}var Valid: Boolean;{$ENDIF}
+begin
+  {$IFDEF PAS2JS}
+  asm
+    function passive(o, names) {
+      if (o === null || typeof o !== 'object' || Array.isArray(o)) return false;
+      for (const key of names) {
+        let p=o, d;
+        while (p !== null) { d=Object.getOwnPropertyDescriptor(p,key); if (d) break; p=Object.getPrototypeOf(p); }
+        if (!d || !Object.prototype.hasOwnProperty.call(d,'value')) return false;
+      }
+      return true;
+    }
+    Valid=passive(AQuery,['Kind','Match','MinimumOffset','MaximumOffset','MinimumMatches','MaximumMatches','AllowedProviderTokens']);
+    if (Valid) Valid=passive(AQuery.MinimumOffset,['DeltaX','DeltaY','DeltaZ']) && passive(AQuery.MaximumOffset,['DeltaX','DeltaY','DeltaZ']) && Array.isArray(AQuery.AllowedProviderTokens);
+    if (Valid) Valid=AQuery.AllowedProviderTokens.length <= pas.wfc_pipeline_model.WFC_PIPELINE_MAX_ALLOWED_TOKEN_COUNT;
+    if (Valid) for (let i=0;i<AQuery.AllowedProviderTokens.length;i++) {
+      const d=Object.getOwnPropertyDescriptor(AQuery.AllowedProviderTokens,String(i));
+      if (!d || !Object.prototype.hasOwnProperty.call(d,'value') || typeof d.value !== 'string') { Valid=false; break; }
+    }
+  end;
+  if not Valid then raise EWfcPipelineModel.Create('mapped query requires passive records and a dense public-token array');
+  {$ENDIF}
+  CheckedLength(Length(AQuery.AllowedProviderTokens),'mapped allowed-token count',WFC_PIPELINE_MAX_ALLOWED_TOKEN_COUNT);
+  Result := Default(TGraphPassMapQuery);
+  Result.Kind := AQuery.Kind; Result.Match := AQuery.Match;
+  Result.MinimumOffset := AQuery.MinimumOffset; Result.MaximumOffset := AQuery.MaximumOffset;
+  Result.MinimumMatches := AQuery.MinimumMatches; Result.MaximumMatches := AQuery.MaximumMatches;
+  SetLength(Result.Values,1); Result.Values[0] := 'portable-geometry';
+  Result := NormalizeGraphPassMapQuery(Result);
+end;
+
+function MakeWfcPipelineMappedRequirement(const AConsumerPassIndex: Integer;
+  const AConsumerToken: TWfcModelToken; const AProviderPassIndex: Integer;
+  const AQuery: TWfcPipelineMappedQuery): TWfcPipelineRequirement;
+var Geometry: TGraphPassMapQuery;
+begin
+  Geometry := WfcPipelineMappedQueryGeometry(AQuery);
+  Result := Default(TWfcPipelineRequirement);
+  Result.ConsumerPassIndex := AConsumerPassIndex; Result.ConsumerToken := AConsumerToken;
+  Result.ProviderPassIndex := AProviderPassIndex; Result.Kind := wprqMapped;
+  Result.MappedQuery.Kind := Geometry.Kind; Result.MappedQuery.Match := Geometry.Match;
+  Result.MappedQuery.MinimumOffset := Geometry.MinimumOffset;
+  Result.MappedQuery.MaximumOffset := Geometry.MaximumOffset;
+  Result.MappedQuery.MinimumMatches := Geometry.MinimumMatches;
+  Result.MappedQuery.MaximumMatches := Geometry.MaximumMatches;
+  Result.MappedQuery.AllowedProviderTokens := CloneTokens(AQuery.AllowedProviderTokens);
+end;
+
+function CloneValueQuota(const AValue: TWfcPipelineValueQuota):
+  TWfcPipelineValueQuota;
+begin
+  Result.PassIndex := AValue.PassIndex;
+  Result.LabelText := AValue.LabelText;
+  Result.MinimumCount := AValue.MinimumCount;
+  Result.MaximumCount := AValue.MaximumCount;
+  Result.Values := CloneTokens(AValue.Values);
+end;
+
+procedure RequireQuotaInteger(const AValue: Integer; const ALabel: String);
+begin
+  { Match the core quota guard: positive comparisons reject NaN/undefined,
+    and strict Trunc equality rejects fractional and string-valued JS input. }
+  if not ((AValue >= 0) and (AValue <= High(Integer))) then
+    raise EWfcPipelineModel.Create(ALabel +
+      ' must be an exact integer in 0..High(Integer)');
+  {$IFDEF PAS2JS}
+  if AValue <> Trunc(AValue) then
+    raise EWfcPipelineModel.Create(ALabel + ' must be an exact integer');
+  {$ENDIF}
+end;
+
+procedure RequirePattern3DSignedInteger(const AValue: Integer; const ALabel: String);
+{$IFDEF PAS2JS}var Valid: Boolean;{$ENDIF}
+begin
+  {$IFDEF PAS2JS}
+  asm
+    Valid = typeof AValue === 'number' && Number.isFinite(AValue) &&
+      Math.floor(AValue) === AValue && AValue >= -2147483648 && AValue <= 2147483647;
+  end;
+  if not Valid then
+    raise EWfcPipelineModel.Create(ALabel + ' must be an exact signed Integer');
+  {$ENDIF}
+end;
+
+function CloneConnectivity(const AValue: TWfcPipelineConnectivity):
+  TWfcPipelineConnectivity;
+begin
+  Result.PassIndex := AValue.PassIndex;
+  Result.LabelText := AValue.LabelText;
+  Result.Root := AValue.Root;
+  Result.RequiredPositions := Copy(AValue.RequiredPositions, 0,
+    Length(AValue.RequiredPositions));
+  Result.Values := Copy(AValue.Values, 0, Length(AValue.Values));
+  Result.RequireAllParticipants := AValue.RequireAllParticipants;
+end;
+
+procedure RequireConnectivityBoolean(const AValue: Boolean;
+  const ALabel: String);
+begin
+  if (AValue <> False) and (AValue <> True) then
+    raise EWfcPipelineModel.Create(ALabel + ' must be Boolean');
+  {$IFNDEF PAS2JS}
+  if Ord(AValue) > 1 then
+    raise EWfcPipelineModel.Create(ALabel + ' must be Boolean');
+  {$ENDIF}
+end;
+
+procedure RequireConnectivityPosition(const AValue: TGraphPosition;
+  const ARank: Integer; const ALabel: String);
+
+  procedure Axis(const ACoordinate: TGraphCoordinate);
+  begin
+    if not ((ACoordinate >= 0) and
+        (ACoordinate <= TGraphCoordinate(High(Integer)))) then
+      raise EWfcPipelineModel.Create(ALabel +
+        ' coordinate must be an exact integer in 0..High(Integer)');
+    {$IFDEF PAS2JS}
+    if ACoordinate <> Trunc(ACoordinate) then
+      raise EWfcPipelineModel.Create(ALabel + ' coordinate must be an exact integer');
+    {$ENDIF}
+  end;
+
+begin
+  Axis(AValue.X);
+  Axis(AValue.Y);
+  Axis(AValue.Z);
+  if ((ARank = 1) and (AValue.Y <> 0)) or
+      ((ARank < 3) and (AValue.Z <> 0)) then
+    raise EWfcPipelineModel.Create(ALabel + ' coordinate exceeds the recipe rank');
+end;
+
+function ConnectivityPositionBefore(const ALeft,
+  ARight: TGraphPosition): Boolean;
+begin
+  Result := (ALeft.Z < ARight.Z) or
+    ((ALeft.Z = ARight.Z) and ((ALeft.Y < ARight.Y) or
+    ((ALeft.Y = ARight.Y) and (ALeft.X < ARight.X))));
+end;
+
+function ConnectivityOpeningMask(const AOpenings: TGraphDirections): Integer;
+var
+  D: TGraphDirection;
+begin
+  Result := 0;
+  for D := Low(TGraphDirection) to High(TGraphDirection) do
+    if D in AOpenings then
+      Result := Result or (1 shl Ord(D));
 end;
 
 function CurrentWfcPipelineVersions: TWfcPipelineVersions;
@@ -545,6 +882,38 @@ begin
   Result.SequenceGraphAdapterVersion := WFC_SEQUENCE_GRAPH_ADAPTER_VERSION;
   Result.Pattern2DBridgeVersion := WFC_PIPELINE_PATTERN_BRIDGE_VERSION;
   Result.SequenceBridgeVersion := WFC_PIPELINE_SEQUENCE_BRIDGE_VERSION;
+  Result.Pattern3DGraphAdapterVersion := WFC_PATTERN_3D_GRAPH_ADAPTER_VERSION;
+  Result.Pattern3DBridgeVersion := WFC_PIPELINE_PATTERN_3D_BRIDGE_VERSION;
+end;
+
+function NormalizeVersions(const AValue: TWfcPipelineVersions;
+  const AHasPattern3D: Boolean): TWfcPipelineVersions;
+begin
+  { Do not copy the complete caller record: the appended scalar fields may be
+    uninitialized in legacy native callers (or absent properties in JS). }
+  Result := CurrentWfcPipelineVersions;
+  Result.GraphModelVersion := AValue.GraphModelVersion;
+  Result.RandomAlgorithmVersion := AValue.RandomAlgorithmVersion;
+  Result.SolverAlgorithmVersion := AValue.SolverAlgorithmVersion;
+  Result.PipelineAlgorithmVersion := AValue.PipelineAlgorithmVersion;
+  Result.BundleGraphAdapterVersion := AValue.BundleGraphAdapterVersion;
+  Result.ModelGraphAdapterVersion := AValue.ModelGraphAdapterVersion;
+  Result.RulesGraphAdapterVersion := AValue.RulesGraphAdapterVersion;
+  Result.Pattern2DGraphAdapterVersion := AValue.Pattern2DGraphAdapterVersion;
+  Result.SequenceGraphAdapterVersion := AValue.SequenceGraphAdapterVersion;
+  Result.Pattern2DBridgeVersion := AValue.Pattern2DBridgeVersion;
+  Result.SequenceBridgeVersion := AValue.SequenceBridgeVersion;
+  if AHasPattern3D then
+  begin
+    RequireQuotaInteger(AValue.Pattern3DGraphAdapterVersion, 'pattern3d graph-adapter version');
+    RequireQuotaInteger(AValue.Pattern3DBridgeVersion, 'pattern3d bridge version');
+    if AValue.Pattern3DGraphAdapterVersion <> WFC_PATTERN_3D_GRAPH_ADAPTER_VERSION then
+      raise EWfcPipelineModel.Create('unsupported pattern3d graph-adapter version');
+    if AValue.Pattern3DBridgeVersion <> WFC_PIPELINE_PATTERN_3D_BRIDGE_VERSION then
+      raise EWfcPipelineModel.Create('unsupported pattern3d bridge version');
+    Result.Pattern3DGraphAdapterVersion := AValue.Pattern3DGraphAdapterVersion;
+    Result.Pattern3DBridgeVersion := AValue.Pattern3DBridgeVersion;
+  end;
 end;
 
 procedure ValidateVersions(const AValue: TWfcPipelineVersions);
@@ -666,6 +1035,8 @@ begin
   if AKind = wprqCount then
     raise EWfcPipelineModel.Create(
       'count requirements require MakeWfcPipelineCountRequirement');
+  if AKind=wprqMapped then
+    raise EWfcPipelineModel.Create('mapped declarations require MakeWfcPipelineMappedRequirement');
   CheckedLength(Length(ATerms), 'requirement term count',
     WFC_PIPELINE_MAX_REQUIREMENT_TERM_COUNT);
   for I := 0 to Length(ATerms) - 1 do
@@ -706,6 +1077,48 @@ begin
   Result.MinimumCount := AMinimumCount;
   Result.MaximumCount := AMaximumCount;
   Result.Terms := CloneTerms(ATerms);
+end;
+
+function MakeWfcPipelineValueQuota(const APassIndex: Integer;
+  const ALabelText: TWfcModelToken; const AValues: TWfcModelTokens;
+  const AMinimumCount, AMaximumCount: Integer): TWfcPipelineValueQuota;
+begin
+  { Like the other IR factories, this detaches bounded input storage; the
+    immutable recipe constructor performs semantic/vocabulary validation. }
+  CheckedLength(Length(AValues), 'value-quota token count',
+    WFC_PIPELINE_MAX_VALUE_QUOTA_TOKEN_COUNT);
+  Result.PassIndex := APassIndex;
+  Result.LabelText := ALabelText;
+  Result.Values := CloneTokens(AValues);
+  Result.MinimumCount := AMinimumCount;
+  Result.MaximumCount := AMaximumCount;
+end;
+
+function MakeWfcPipelineConnectivityValue(const AValue: TWfcModelToken;
+  const AOpenings: TGraphDirections;
+  const ARequiredByValue: Boolean): TWfcPipelineConnectivityValue;
+begin
+  Result.Value := AValue;
+  Result.Openings := AOpenings;
+  Result.RequiredByValue := ARequiredByValue;
+end;
+
+function MakeWfcPipelineConnectivity(const APassIndex: Integer;
+  const ALabelText: TWfcModelToken; const ARoot: TGraphPosition;
+  const ARequiredPositions: TGraphPositions;
+  const AValues: TWfcPipelineConnectivityValues;
+  const ARequireAllParticipants: Boolean): TWfcPipelineConnectivity;
+begin
+  CheckedLength(Length(ARequiredPositions), 'connectivity terminal count',
+    WFC_PIPELINE_MAX_CONNECTIVITY_REQUIRED_POSITION_COUNT);
+  CheckedLength(Length(AValues), 'connectivity profile count',
+    WFC_PIPELINE_MAX_CONNECTIVITY_VALUE_COUNT);
+  Result.PassIndex := APassIndex;
+  Result.LabelText := ALabelText;
+  Result.Root := ARoot;
+  Result.RequiredPositions := Copy(ARequiredPositions, 0, Length(ARequiredPositions));
+  Result.Values := Copy(AValues, 0, Length(AValues));
+  Result.RequireAllParticipants := ARequireAllParticipants;
 end;
 
 function TextIsAscii(const AValue: String): Boolean;
@@ -839,7 +1252,10 @@ var
   LRequirement: TWfcPipelineRequirement;
   LResource: TWfcPipelineResource;
   LTerm: TWfcPipelineRequirementTerm;
+  LQuota: TWfcPipelineValueQuota;
+  LConnectivity: TWfcPipelineConnectivity;
   LVersions: TWfcPipelineVersions;
+  LTopology: TWfcPipelinePassTopology;
 begin
   Result := Cardinal(2166136261);
   HashAscii(Result, 'wfcpipeline-model');
@@ -858,6 +1274,12 @@ begin
   HashInteger(Result, LVersions.SequenceGraphAdapterVersion);
   HashInteger(Result, LVersions.Pattern2DBridgeVersion);
   HashInteger(Result, LVersions.SequenceBridgeVersion);
+  if AModel.HasPattern3D then
+  begin
+    HashAscii(Result, 'pattern3d-feature-v1');
+    HashInteger(Result, LVersions.Pattern3DGraphAdapterVersion);
+    HashInteger(Result, LVersions.Pattern3DBridgeVersion);
+  end;
 
   LMetadata := AModel.CopyMetadata;
   HashToken(Result, LMetadata.Name);
@@ -919,6 +1341,19 @@ begin
     HashToken(Result, LRequirement.ConsumerToken);
     HashInteger(Result, LRequirement.ProviderPassIndex);
     HashInteger(Result, Ord(LRequirement.Kind));
+    if LRequirement.Kind = wprqMapped then
+    begin
+      with LRequirement.MappedQuery do
+      begin
+        HashInteger(Result,Ord(Kind)); HashInteger(Result,Ord(Match));
+        HashInteger(Result,MinimumOffset.DeltaX); HashInteger(Result,MinimumOffset.DeltaY); HashInteger(Result,MinimumOffset.DeltaZ);
+        HashInteger(Result,MaximumOffset.DeltaX); HashInteger(Result,MaximumOffset.DeltaY); HashInteger(Result,MaximumOffset.DeltaZ);
+        HashInteger(Result,MinimumMatches); HashInteger(Result,MaximumMatches);
+        HashInteger(Result,Length(AllowedProviderTokens));
+        for J := 0 to High(AllowedProviderTokens) do HashToken(Result,AllowedProviderTokens[J]);
+      end;
+      Continue;
+    end;
     if LRequirement.Kind = wprqCount then
     begin
       HashInteger(Result, Ord(LRequirement.CountMode));
@@ -935,6 +1370,72 @@ begin
       HashInteger(Result, Length(LTerm.AllowedProviderTokens));
       for K := 0 to Length(LTerm.AllowedProviderTokens) - 1 do
         HashToken(Result, LTerm.AllowedProviderTokens[K]);
+    end;
+  end;
+  { Do not even hash a zero count for legacy recipes: their complete version-1
+    identities are already public goldens and must remain byte-for-byte. }
+  if AModel.ValueQuotaCount <> 0 then
+  begin
+    HashAscii(Result, 'wfcpipeline-value-quotas');
+    HashInteger(Result, AModel.ValueQuotaVersion);
+    HashInteger(Result, WFC_GRAPH_VALUE_QUOTA_VERSION);
+    HashInteger(Result, AModel.ValueQuotaCount);
+    for I := 0 to AModel.ValueQuotaCount - 1 do
+    begin
+      LQuota := AModel.ValueQuotaAt(I);
+      HashInteger(Result, LQuota.PassIndex);
+      HashToken(Result, LQuota.LabelText);
+      HashInteger(Result, LQuota.MinimumCount);
+      HashInteger(Result, LQuota.MaximumCount);
+      HashInteger(Result, Length(LQuota.Values));
+      for J := 0 to Length(LQuota.Values) - 1 do
+        HashToken(Result, LQuota.Values[J]);
+    end;
+  end;
+  if AModel.ConnectivityCount <> 0 then
+  begin
+    HashAscii(Result, 'wfcpipeline-connectivity');
+    HashInteger(Result, AModel.ConnectivityVersion);
+    HashInteger(Result, WFC_GRAPH_CONNECTIVITY_VERSION);
+    HashInteger(Result, AModel.ConnectivityCount);
+    for I := 0 to AModel.ConnectivityCount - 1 do
+    begin
+      LConnectivity := AModel.ConnectivityAt(I);
+      HashInteger(Result, LConnectivity.PassIndex);
+      HashToken(Result, LConnectivity.LabelText);
+      HashInteger(Result, Integer(LConnectivity.Root.X));
+      HashInteger(Result, Integer(LConnectivity.Root.Y));
+      HashInteger(Result, Integer(LConnectivity.Root.Z));
+      HashBoolean(Result, LConnectivity.RequireAllParticipants);
+      HashInteger(Result, Length(LConnectivity.RequiredPositions));
+      for J := 0 to Length(LConnectivity.RequiredPositions) - 1 do
+      begin
+        HashInteger(Result, Integer(LConnectivity.RequiredPositions[J].X));
+        HashInteger(Result, Integer(LConnectivity.RequiredPositions[J].Y));
+        HashInteger(Result, Integer(LConnectivity.RequiredPositions[J].Z));
+      end;
+      HashInteger(Result, Length(LConnectivity.Values));
+      for J := 0 to Length(LConnectivity.Values) - 1 do
+      begin
+        HashToken(Result, LConnectivity.Values[J].Value);
+        HashInteger(Result, ConnectivityOpeningMask(LConnectivity.Values[J].Openings));
+        HashBoolean(Result, LConnectivity.Values[J].RequiredByValue);
+      end;
+    end;
+  end;
+  if AModel.HasPassMapping then
+  begin
+    HashAscii(Result,'wfcpipeline-pass-mapping');
+    HashInteger(Result,AModel.PassMappingVersion);
+    HashInteger(Result,WFC_PASS_MAPPING_VERSION);
+    HashInteger(Result,AModel.PassCount);
+    for I := 0 to AModel.PassCount-1 do
+    begin
+      LTopology := AModel.PassTopologyAt(I);
+      HashInteger(Result,LTopology.Rank);
+      HashInteger(Result,LTopology.Origin.X); HashInteger(Result,LTopology.Origin.Y); HashInteger(Result,LTopology.Origin.Z);
+      HashInteger(Result,LTopology.Pitch.X); HashInteger(Result,LTopology.Pitch.Y); HashInteger(Result,LTopology.Pitch.Z);
+      HashBoolean(Result,LTopology.Wrap);
     end;
   end;
 end;
@@ -959,7 +1460,7 @@ begin
   inherited Create;
   Initialize(AMetadata, CurrentWfcPipelineVersions, ARank,
     AWrapNeighbors, ARunMode, AResources, APasses, ADependencies,
-    ABridges, ARequirements);
+    ABridges, ARequirements, nil, nil);
 end;
 
 constructor TWfcPipelineModel.Create(
@@ -974,13 +1475,100 @@ constructor TWfcPipelineModel.Create(
 begin
   inherited Create;
   Initialize(AMetadata, AVersions, ARank, AWrapNeighbors, ARunMode,
-    AResources, APasses, ADependencies, ABridges, ARequirements);
+    AResources, APasses, ADependencies, ABridges, ARequirements, nil, nil);
+end;
+
+constructor TWfcPipelineModel.Create(
+  const AMetadata: TWfcPipelineMetadata; const ARank: Integer;
+  const AWrapNeighbors: Boolean; const ARunMode: TGraphRunMode;
+  const AResources: TWfcPipelineResources;
+  const APasses: TWfcPipelinePasses;
+  const ADependencies: TWfcPipelineDependencies;
+  const ABridges: TWfcPipelineBridges;
+  const ARequirements: TWfcPipelineRequirements;
+  const AValueQuotas: TWfcPipelineValueQuotas);
+begin
+  inherited Create;
+  Initialize(AMetadata, CurrentWfcPipelineVersions, ARank,
+    AWrapNeighbors, ARunMode, AResources, APasses, ADependencies,
+    ABridges, ARequirements, AValueQuotas, nil);
+end;
+
+constructor TWfcPipelineModel.Create(
+  const AMetadata: TWfcPipelineMetadata;
+  const AVersions: TWfcPipelineVersions; const ARank: Integer;
+  const AWrapNeighbors: Boolean; const ARunMode: TGraphRunMode;
+  const AResources: TWfcPipelineResources;
+  const APasses: TWfcPipelinePasses;
+  const ADependencies: TWfcPipelineDependencies;
+  const ABridges: TWfcPipelineBridges;
+  const ARequirements: TWfcPipelineRequirements;
+  const AValueQuotas: TWfcPipelineValueQuotas);
+begin
+  inherited Create;
+  Initialize(AMetadata, AVersions, ARank, AWrapNeighbors, ARunMode,
+    AResources, APasses, ADependencies, ABridges, ARequirements, AValueQuotas, nil);
+end;
+
+constructor TWfcPipelineModel.Create(
+  const AMetadata: TWfcPipelineMetadata; const ARank: Integer;
+  const AWrapNeighbors: Boolean; const ARunMode: TGraphRunMode;
+  const AResources: TWfcPipelineResources;
+  const APasses: TWfcPipelinePasses;
+  const ADependencies: TWfcPipelineDependencies;
+  const ABridges: TWfcPipelineBridges;
+  const ARequirements: TWfcPipelineRequirements;
+  const AValueQuotas: TWfcPipelineValueQuotas;
+  const AConnectivities: TWfcPipelineConnectivities);
+begin
+  inherited Create;
+  Initialize(AMetadata, CurrentWfcPipelineVersions, ARank,
+    AWrapNeighbors, ARunMode, AResources, APasses, ADependencies,
+    ABridges, ARequirements, AValueQuotas, AConnectivities);
+end;
+
+constructor TWfcPipelineModel.Create(
+  const AMetadata: TWfcPipelineMetadata;
+  const AVersions: TWfcPipelineVersions; const ARank: Integer;
+  const AWrapNeighbors: Boolean; const ARunMode: TGraphRunMode;
+  const AResources: TWfcPipelineResources;
+  const APasses: TWfcPipelinePasses;
+  const ADependencies: TWfcPipelineDependencies;
+  const ABridges: TWfcPipelineBridges;
+  const ARequirements: TWfcPipelineRequirements;
+  const AValueQuotas: TWfcPipelineValueQuotas;
+  const AConnectivities: TWfcPipelineConnectivities);
+begin
+  inherited Create;
+  Initialize(AMetadata, AVersions, ARank, AWrapNeighbors, ARunMode,
+    AResources, APasses, ADependencies, ABridges, ARequirements,
+    AValueQuotas, AConnectivities);
+end;
+
+constructor TWfcPipelineModel.Create(const AMetadata: TWfcPipelineMetadata;
+  const AVersions: TWfcPipelineVersions; const ARank: Integer;
+  const AWrapNeighbors: Boolean; const ARunMode: TGraphRunMode;
+  const AResources: TWfcPipelineResources; const APasses: TWfcPipelinePasses;
+  const ADependencies: TWfcPipelineDependencies; const ABridges: TWfcPipelineBridges;
+  const ARequirements: TWfcPipelineRequirements; const AValueQuotas: TWfcPipelineValueQuotas;
+  const AConnectivities: TWfcPipelineConnectivities; const APassMappingVersion: Integer;
+  const APassTopologies: TWfcPipelinePassTopologies);
+begin
+  inherited Create;
+  RequireQuotaInteger(APassMappingVersion,'pass-mapping version');
+  if APassMappingVersion <> WFC_PIPELINE_PASS_MAPPING_VERSION then
+    raise EWfcPipelineModel.Create('unsupported explicit pass-mapping version');
+  Initialize(AMetadata,AVersions,ARank,AWrapNeighbors,ARunMode,AResources,APasses,
+    ADependencies,ABridges,ARequirements,AValueQuotas,AConnectivities,
+    APassMappingVersion,APassTopologies);
 end;
 
 destructor TWfcPipelineModel.Destroy;
 var
   I: Integer;
 begin
+  for I := 0 to Length(FPattern3DResources) - 1 do
+    FPattern3DResources[I].Free;
   for I := 0 to Length(FSequenceResources) - 1 do
     FSequenceResources[I].Free;
   for I := 0 to Length(FPatternResources) - 1 do
@@ -1000,7 +1588,11 @@ procedure TWfcPipelineModel.Initialize(
   const APasses: TWfcPipelinePasses;
   const ADependencies: TWfcPipelineDependencies;
   const ABridges: TWfcPipelineBridges;
-  const ARequirements: TWfcPipelineRequirements);
+  const ARequirements: TWfcPipelineRequirements;
+  const AValueQuotas: TWfcPipelineValueQuotas;
+  const AConnectivities: TWfcPipelineConnectivities;
+  const APassMappingVersion: Integer;
+  const APassTopologies: TWfcPipelinePassTopologies);
 var
   I: Integer;
   J: Integer;
@@ -1027,10 +1619,28 @@ var
   LTotalRequirementTermCount: Integer;
   LTotalResourceRelationSlotCount: Integer;
   LVersions: TWfcPipelineVersions;
+  LQuotaCount: Integer;
+  LTotalQuotaTokenCount: Integer;
+  LConnectivityCount: Integer;
+  LTotalConnectivityValueCount: Integer;
+  LTotalConnectivityPositionCount: Integer;
+  LDirections: TGraphDirections;
+  LDirection: TGraphDirection;
+  LTopologyTable: TWfcPipelineLayoutTable;
+  LOneCellExtents: TWfcPipelinePassExtents;
+  LGeometry: TGraphPassMapQuery;
+  {$IFDEF PAS2JS}LTopologiesValid: Boolean;{$ENDIF}
+
+  function PassRank(const AIndex: Integer): Integer;
+  begin
+    ValidatePassIndex(AIndex);
+    Result := FPassTopologies[AIndex].Rank;
+  end;
 
   procedure ValidateIndex(const AIndex, ACount: Integer;
     const ALabel: String);
   begin
+    if FHasPattern3D or HasPassMapping then RequireQuotaInteger(AIndex, ALabel);
     if (AIndex < 0) or (AIndex >= ACount) then
       raise EWfcPipelineModel.CreateFmt('%s is out of bounds [%d]',
         [ALabel, AIndex]);
@@ -1086,7 +1696,6 @@ var
 
 begin
   ValidateVersions(AVersions);
-  LVersions := AVersions;
 
   if (ARank < 1) or (ARank > 3) then
     raise EWfcPipelineModel.CreateFmt(
@@ -1101,12 +1710,66 @@ begin
     WFC_PIPELINE_MAX_PASS_COUNT);
   if LPassCount = 0 then
     raise EWfcPipelineModel.Create('pipeline must contain at least one pass');
+  FPassMappingVersion := APassMappingVersion;
+  try
+    if HasPassMapping then
+    begin
+      RequireQuotaInteger(ARank,'mapped recipe rank');
+      RequireConnectivityBoolean(AWrapNeighbors,'mapped recipe pass-zero wrap');
+      {$IFDEF PAS2JS}
+      asm
+        LTopologiesValid=Array.isArray(APassTopologies) && APassTopologies.length === LPassCount;
+      end;
+      if not LTopologiesValid then
+        raise EWfcPipelineModel.Create('mapped topology count must equal pass count');
+      {$ENDIF}
+      if Length(APassTopologies) <> LPassCount then
+        raise EWfcPipelineModel.Create('mapped topology count must equal pass count');
+      SetLength(LOneCellExtents,LPassCount);
+      for I := 0 to LPassCount-1 do LOneCellExtents[I] := MakeWfcLatticeVector(1,1,1);
+      LTopologyTable := TWfcPipelineLayoutTable.Create(APassTopologies,LOneCellExtents);
+      try
+        FPassTopologies := LTopologyTable.CopyTopologies;
+      finally LTopologyTable.Free; end;
+      if (ARank <> FPassTopologies[0].Rank) or (AWrapNeighbors <> FPassTopologies[0].Wrap) then
+        raise EWfcPipelineModel.Create('legacy rank/wrap must equal explicit pass-zero topology');
+    end
+    else
+    begin
+      SetLength(FPassTopologies,LPassCount);
+      for I := 0 to LPassCount-1 do FPassTopologies[I] := LegacyWfcPipelinePassTopology(ARank,AWrapNeighbors);
+    end;
+  except
+    { Both explicit layouts and synthesized legacy layouts are model input.
+      Keep their validation failures inside the typed model boundary. }
+    on E: EWfcLattice do
+      raise EWfcPipelineModel.Create(E.Message);
+  end;
   LDependencyCount := CheckedLength(Length(ADependencies),
     'pipeline dependency count', WFC_PIPELINE_MAX_DEPENDENCY_COUNT);
   LBridgeCount := CheckedLength(Length(ABridges),
     'pipeline bridge count', WFC_PIPELINE_MAX_BRIDGE_COUNT);
   LRequirementCount := CheckedLength(Length(ARequirements),
     'pipeline requirement count', WFC_PIPELINE_MAX_REQUIREMENT_COUNT);
+  LQuotaCount := CheckedLength(Length(AValueQuotas),
+    'pipeline value-quota count', WFC_PIPELINE_MAX_VALUE_QUOTA_COUNT);
+  LConnectivityCount := CheckedLength(Length(AConnectivities),
+    'pipeline connectivity count', WFC_PIPELINE_MAX_CONNECTIVITY_COUNT);
+  FHasPattern3D := False;
+  for I := 0 to LResourceCount - 1 do
+    if AResources[I].Kind = wprkPattern3D then FHasPattern3D := True;
+  for I := 0 to LPassCount - 1 do
+    if APasses[I].AdapterKind = wpakPattern3D then FHasPattern3D := True;
+  for I := 0 to LBridgeCount - 1 do
+    if ABridges[I].Kind = wpbkPattern3DProjection then FHasPattern3D := True;
+  LVersions := NormalizeVersions(AVersions, FHasPattern3D);
+  if FHasPattern3D then
+  begin
+    RequireQuotaInteger(ARank, 'pattern3d recipe rank');
+    RequireConnectivityBoolean(AWrapNeighbors, 'pattern3d recipe wrap policy');
+  end;
+  if LConnectivityCount <> 0 then
+    RequireQuotaInteger(ARank, 'connectivity recipe rank');
 
   { Preflight all nested record counts and all copied outer token bytes before
     allocating owner arrays or invoking a nested resource decoder. }
@@ -1115,6 +1778,9 @@ begin
   LTotalPayloadLength := 0;
   LTotalRequirementTermCount := 0;
   LTotalResourceRelationSlotCount := 0;
+  LTotalQuotaTokenCount := 0;
+  LTotalConnectivityValueCount := 0;
+  LTotalConnectivityPositionCount := 0;
   AccumulateOuterToken(AMetadata.Name, 'pipeline name', False);
   AccumulateOuterToken(AMetadata.LicenseIdentifier,
     'pipeline license identifier', False);
@@ -1152,6 +1818,21 @@ begin
   begin
     AccumulateOuterToken(ARequirements[I].ConsumerToken,
       Format('requirement %d consumer token', [I]), False);
+    RequireEnumRequirement(ARequirements[I].Kind,Format('requirement %d kind',[I]));
+    if ARequirements[I].Kind = wprqMapped then
+    begin
+      if not HasPassMapping then raise EWfcPipelineModel.Create('mapped requirements require the explicit spatial constructor');
+      LGeometry := WfcPipelineMappedQueryGeometry(ARequirements[I].MappedQuery);
+      LAllowedCount := CheckedLength(Length(ARequirements[I].MappedQuery.AllowedProviderTokens),
+        'mapped allowed-token count',WFC_PIPELINE_MAX_ALLOWED_TOKEN_COUNT);
+      if LAllowedCount=0 then raise EWfcPipelineModel.Create('mapped query must allow at least one public token');
+      if LTotalAllowedTokenCount > WFC_PIPELINE_MAX_TOTAL_ALLOWED_TOKEN_COUNT-LAllowedCount then
+        raise EWfcPipelineModel.Create('aggregate mapped allowed-token count exceeds the limit');
+      Inc(LTotalAllowedTokenCount,LAllowedCount);
+      for K := 0 to LAllowedCount-1 do
+        AccumulateOuterToken(ARequirements[I].MappedQuery.AllowedProviderTokens[K],'mapped allowed token',False);
+      Continue;
+    end;
     LTermCount := CheckedLength(Length(ARequirements[I].Terms),
       Format('requirement %d term count', [I]),
       WFC_PIPELINE_MAX_REQUIREMENT_TERM_COUNT);
@@ -1179,6 +1860,92 @@ begin
     end;
   end;
 
+  for I := 0 to LQuotaCount - 1 do
+  begin
+    RequireQuotaInteger(AValueQuotas[I].PassIndex,
+      Format('value-quota %d pass index', [I]));
+    RequireQuotaInteger(AValueQuotas[I].MinimumCount,
+      Format('value-quota %d minimum', [I]));
+    RequireQuotaInteger(AValueQuotas[I].MaximumCount,
+      Format('value-quota %d maximum', [I]));
+    if AValueQuotas[I].MinimumCount > AValueQuotas[I].MaximumCount then
+      raise EWfcPipelineModel.CreateFmt(
+        'value-quota %d bounds must satisfy 0 <= minimum <= maximum', [I]);
+    AccumulateOuterToken(AValueQuotas[I].LabelText,
+      Format('value-quota %d label', [I]), False);
+    LAllowedCount := CheckedLength(Length(AValueQuotas[I].Values),
+      Format('value-quota %d token count', [I]),
+      WFC_PIPELINE_MAX_VALUE_QUOTA_TOKEN_COUNT);
+    if LAllowedCount = 0 then
+      raise EWfcPipelineModel.CreateFmt(
+        'value-quota %d must contain at least one public token', [I]);
+    if LTotalQuotaTokenCount >
+        WFC_PIPELINE_MAX_TOTAL_VALUE_QUOTA_TOKEN_COUNT - LAllowedCount then
+      raise EWfcPipelineModel.Create(
+        'aggregate value-quota token count exceeds the quota version-1 limit');
+    Inc(LTotalQuotaTokenCount, LAllowedCount);
+    for J := 0 to LAllowedCount - 1 do
+      AccumulateOuterToken(AValueQuotas[I].Values[J],
+        Format('value-quota %d token %d', [I, J]), False);
+  end;
+
+  for I := 0 to LConnectivityCount - 1 do
+  begin
+    RequireQuotaInteger(AConnectivities[I].PassIndex,
+      Format('connectivity %d pass index', [I]));
+    AccumulateOuterToken(AConnectivities[I].LabelText,
+      Format('connectivity %d label', [I]), False);
+    ValidateIndex(AConnectivities[I].PassIndex,LPassCount,'connectivity owner');
+    RequireConnectivityPosition(AConnectivities[I].Root, FPassTopologies[AConnectivities[I].PassIndex].Rank,
+      Format('connectivity %d root', [I]));
+    RequireConnectivityBoolean(AConnectivities[I].RequireAllParticipants,
+      Format('connectivity %d all-participants flag', [I]));
+    LTermCount := CheckedLength(Length(AConnectivities[I].RequiredPositions),
+      Format('connectivity %d terminal count', [I]),
+      WFC_PIPELINE_MAX_CONNECTIVITY_REQUIRED_POSITION_COUNT);
+    if LTotalConnectivityPositionCount >
+        WFC_PIPELINE_MAX_TOTAL_CONNECTIVITY_REQUIRED_POSITION_COUNT - LTermCount then
+      raise EWfcPipelineModel.Create('aggregate connectivity terminal count exceeds the limit');
+    Inc(LTotalConnectivityPositionCount, LTermCount);
+    LAllowedCount := CheckedLength(Length(AConnectivities[I].Values),
+      Format('connectivity %d profile count', [I]),
+      WFC_PIPELINE_MAX_CONNECTIVITY_VALUE_COUNT);
+    if LAllowedCount = 0 then
+      raise EWfcPipelineModel.CreateFmt('connectivity %d requires participating profiles', [I]);
+    if LTotalConnectivityValueCount >
+        WFC_PIPELINE_MAX_TOTAL_CONNECTIVITY_VALUE_COUNT - LAllowedCount then
+      raise EWfcPipelineModel.Create('aggregate connectivity profile count exceeds the limit');
+    Inc(LTotalConnectivityValueCount, LAllowedCount);
+    for J := 0 to LTermCount - 1 do
+    begin
+      RequireConnectivityPosition(AConnectivities[I].RequiredPositions[J], FPassTopologies[AConnectivities[I].PassIndex].Rank,
+        Format('connectivity %d terminal %d', [I, J]));
+      if (AConnectivities[I].RequiredPositions[J].X = AConnectivities[I].Root.X) and
+          (AConnectivities[I].RequiredPositions[J].Y = AConnectivities[I].Root.Y) and
+          (AConnectivities[I].RequiredPositions[J].Z = AConnectivities[I].Root.Z) then
+        raise EWfcPipelineModel.CreateFmt('connectivity %d terminal repeats the root', [I]);
+      if (J <> 0) and not ConnectivityPositionBefore(
+          AConnectivities[I].RequiredPositions[J - 1],
+          AConnectivities[I].RequiredPositions[J]) then
+        raise EWfcPipelineModel.CreateFmt(
+          'connectivity %d terminals must use strict Z,Y,X order', [I]);
+    end;
+    for J := 0 to LAllowedCount - 1 do
+    begin
+      AccumulateOuterToken(AConnectivities[I].Values[J].Value,
+        Format('connectivity %d profile %d token', [I, J]), False);
+      RequireConnectivityBoolean(AConnectivities[I].Values[J].RequiredByValue,
+        Format('connectivity %d profile %d required-by-value flag', [I, J]));
+      LDirections := [];
+      for LDirection := Low(TGraphDirection) to High(TGraphDirection) do
+        if LDirection in AConnectivities[I].Values[J].Openings then
+          Include(LDirections, LDirection);
+      if LDirections <> AConnectivities[I].Values[J].Openings then
+        raise EWfcPipelineModel.CreateFmt(
+          'connectivity %d profile %d has an invalid opening direction', [I, J]);
+    end;
+  end;
+
   FMetadata := AMetadata;
   FVersions := LVersions;
   FRank := ARank;
@@ -1190,6 +1957,7 @@ begin
   SetLength(FRuleResources, LResourceCount);
   SetLength(FPatternResources, LResourceCount);
   SetLength(FSequenceResources, LResourceCount);
+  SetLength(FPattern3DResources, LResourceCount);
   for I := 0 to LResourceCount - 1 do
   begin
     RequireEnumResourceKind(AResources[I].Kind,
@@ -1256,6 +2024,16 @@ begin
               raise EWfcPipelineModel.CreateFmt(
                 'resource %d sequence document is not canonical', [I]);
           end;
+        wprkPattern3D:
+          begin
+            FPattern3DResources[I] := DecodeWfcPattern3DText(AResources[I].Document);
+            LCurrentRelationSlotCount := CheckedDenseRelationSlotCount(
+              FPattern3DResources[I].PatternCount,
+              Format('resource %d pattern3d relation slots', [I]), 6);
+            if EncodeWfcPattern3DText(FPattern3DResources[I]) <> AResources[I].Document then
+              raise EWfcPipelineModel.CreateFmt(
+                'resource %d pattern3d document is not canonical', [I]);
+          end;
       end;
       if LTotalResourceRelationSlotCount >
           WFC_PIPELINE_MAX_TOTAL_RESOURCE_RELATION_SLOT_COUNT -
@@ -1287,6 +2065,9 @@ begin
     RequireEnumPassMode(APasses[I].Mode, Format('pass %d mode', [I]));
     RequireEnumAdapter(APasses[I].AdapterKind,
       Format('pass %d adapter', [I]));
+    if FHasPattern3D or HasPassMapping then
+      RequireConnectivityBoolean(APasses[I].HasSequenceExtent,
+        Format('pass %d sequence extent flag', [I]));
 
     if APasses[I].Mode = gpmTransform then
     begin
@@ -1321,7 +2102,7 @@ begin
           if FResources[APasses[I].ResourceIndex].Kind <> wprkModel then
             raise EWfcPipelineModel.CreateFmt(
               'pass %d model adapter requires a model resource', [I]);
-          if FModelResources[APasses[I].ResourceIndex].Rank <> ARank then
+          if FModelResources[APasses[I].ResourceIndex].Rank <> PassRank(I) then
             raise EWfcPipelineModel.CreateFmt(
               'pass %d model rank does not match pipeline rank', [I]);
           if APasses[I].HasSequenceExtent or
@@ -1339,7 +2120,7 @@ begin
           if FResources[APasses[I].ResourceIndex].Kind <> wprkRules then
             raise EWfcPipelineModel.CreateFmt(
               'pass %d rules adapter requires a rules resource', [I]);
-          if FRuleResources[APasses[I].ResourceIndex].Rank <> ARank then
+          if FRuleResources[APasses[I].ResourceIndex].Rank <> PassRank(I) then
             raise EWfcPipelineModel.CreateFmt(
               'pass %d rules rank does not match pipeline rank', [I]);
           if APasses[I].HasSequenceExtent or
@@ -1357,7 +2138,7 @@ begin
           if FResources[APasses[I].ResourceIndex].Kind <> wprkPattern2D then
             raise EWfcPipelineModel.CreateFmt(
               'pass %d pattern2d adapter requires a pattern2d resource', [I]);
-          if ARank <> 2 then
+          if PassRank(I) <> 2 then
             raise EWfcPipelineModel.CreateFmt(
               'pass %d pattern2d adapter requires pipeline rank 2', [I]);
           if APasses[I].Visibility <> wppvPrivate then
@@ -1375,7 +2156,7 @@ begin
           if FResources[APasses[I].ResourceIndex].Kind <> wprkSequence then
             raise EWfcPipelineModel.CreateFmt(
               'pass %d sequence adapter requires a sequence resource', [I]);
-          if ARank <> 1 then
+          if PassRank(I) <> 1 then
             raise EWfcPipelineModel.CreateFmt(
               'pass %d sequence adapter requires pipeline rank 1', [I]);
           if APasses[I].Visibility <> wppvPrivate then
@@ -1386,14 +2167,34 @@ begin
               'pass %d sequence adapter requires an extent', [I]);
           RequireEnumSequenceExtent(APasses[I].SequenceExtent,
             Format('pass %d sequence extent', [I]));
-          if AWrapNeighbors and
+          if FPassTopologies[I].Wrap and
               (APasses[I].SequenceExtent <> wseWrap) then
             raise EWfcPipelineModel.CreateFmt(
               'wrapped sequence pass %d requires wrap extent', [I]);
-          if (not AWrapNeighbors) and
+          if (not FPassTopologies[I].Wrap) and
               (APasses[I].SequenceExtent = wseWrap) then
             raise EWfcPipelineModel.CreateFmt(
               'open sequence pass %d cannot use wrap extent', [I]);
+        end;
+      wpakPattern3D:
+        begin
+          RequireQuotaInteger(APasses[I].ResourceIndex, Format('pass %d resource', [I]));
+          ValidateIndex(APasses[I].ResourceIndex, LResourceCount,
+            Format('pass %d resource', [I]));
+          if FResources[APasses[I].ResourceIndex].Kind <> wprkPattern3D then
+            raise EWfcPipelineModel.CreateFmt(
+              'pass %d pattern3d adapter requires a pattern3d resource', [I]);
+          if PassRank(I) <> 3 then
+            raise EWfcPipelineModel.CreateFmt(
+              'pass %d pattern3d adapter requires pipeline rank 3', [I]);
+          if APasses[I].Visibility <> wppvPrivate then
+            raise EWfcPipelineModel.CreateFmt(
+              'pass %d pattern3d adapter must remain private', [I]);
+          RequireConnectivityBoolean(APasses[I].HasSequenceExtent,
+            Format('pattern3d pass %d sequence extent flag', [I]));
+          if APasses[I].HasSequenceExtent or (APasses[I].SequenceExtent <> wseWhole) then
+            raise EWfcPipelineModel.CreateFmt(
+              'pattern3d pass %d cannot name a sequence extent', [I]);
         end;
     end;
     FPasses[I] := APasses[I];
@@ -1470,7 +2271,7 @@ begin
     case ABridges[I].Kind of
       wpbkPattern2DProjection:
         begin
-          if (ARank <> 2) or (not AWrapNeighbors) then
+          if (PassRank(ABridges[I].SourcePassIndex) <> 2) or (not FPassTopologies[ABridges[I].SourcePassIndex].Wrap) then
             raise EWfcPipelineModel.CreateFmt(
               'pattern2d bridge %d requires a wrapped rank-2 pipeline', [I]);
           if (FPasses[ABridges[I].SourcePassIndex].AdapterKind <>
@@ -1503,7 +2304,7 @@ begin
         end;
       wpbkSequenceProjection:
         begin
-          if ARank <> 1 then
+          if PassRank(ABridges[I].SourcePassIndex) <> 1 then
             raise EWfcPipelineModel.CreateFmt(
               'sequence bridge %d requires a rank-1 pipeline', [I]);
           if (FPasses[ABridges[I].SourcePassIndex].AdapterKind <>
@@ -1523,6 +2324,32 @@ begin
             FSequenceResources[
               FPasses[ABridges[I].SourcePassIndex].ResourceIndex].CopyPublicTokens,
             Format('sequence bridge %d', [I]));
+        end;
+      wpbkPattern3DProjection:
+        begin
+          if (PassRank(ABridges[I].SourcePassIndex) <> 3) or (not FPassTopologies[ABridges[I].SourcePassIndex].Wrap) then
+            raise EWfcPipelineModel.CreateFmt(
+              'pattern3d bridge %d requires a wrapped rank-3 pipeline', [I]);
+          if (FPasses[ABridges[I].SourcePassIndex].AdapterKind <> wpakPattern3D) or
+              (FPasses[ABridges[I].SourcePassIndex].Visibility <> wppvPrivate) then
+            raise EWfcPipelineModel.CreateFmt(
+              'pattern3d bridge %d requires a private pattern3d source', [I]);
+          if (FPasses[ABridges[I].TargetPassIndex].AdapterKind <> wpakEmpty) or
+              (FPasses[ABridges[I].TargetPassIndex].Visibility <> wppvPublic) or
+              (FPasses[ABridges[I].TargetPassIndex].Mode <> gpmOverlay) then
+            raise EWfcPipelineModel.CreateFmt(
+              'pattern3d bridge %d requires an empty public overlay target', [I]);
+          for J := 0 to FPattern3DResources[
+              FPasses[ABridges[I].SourcePassIndex].ResourceIndex].PaletteCount - 1 do
+            if WfcPattern3DTokenUsesReservedKeySyntax(FPattern3DResources[
+                FPasses[ABridges[I].SourcePassIndex].ResourceIndex].PaletteTokenAt(J)) then
+              raise EWfcPipelineModel.CreateFmt(
+                'pattern3d bridge %d palette token %d uses the reserved latent-key syntax', [I, J]);
+          { A palette token need not occur at every footprint offset. A wrapped
+            output may use only a feasible subset, or be contradictory. }
+          AssignVocabulary(ABridges[I].TargetPassIndex,
+            FPattern3DResources[FPasses[ABridges[I].SourcePassIndex].ResourceIndex].CopyPalette,
+            Format('pattern3d bridge %d', [I]));
         end;
     end;
     FBridges[I] := ABridges[I];
@@ -1584,6 +2411,24 @@ begin
         ARequirements[I].ConsumerToken) < 0 then
       raise EWfcPipelineModel.CreateFmt(
         'requirement %d consumer token is outside its public vocabulary', [I]);
+    if ARequirements[I].Kind = wprqMapped then
+    begin
+      LGeometry := WfcPipelineMappedQueryGeometry(ARequirements[I].MappedQuery);
+      LPreviousTokenIndex := -1;
+      for K := 0 to High(ARequirements[I].MappedQuery.AllowedProviderTokens) do
+      begin
+        LProviderTokenIndex := TokenIndex(FVocabularies[ARequirements[I].ProviderPassIndex],
+          ARequirements[I].MappedQuery.AllowedProviderTokens[K]);
+        if LProviderTokenIndex <= LPreviousTokenIndex then
+          raise EWfcPipelineModel.Create('mapped allowed tokens must be present in strict provider-vocabulary order');
+        LPreviousTokenIndex := LProviderTokenIndex;
+      end;
+      if (FPasses[ARequirements[I].ConsumerPassIndex].AdapterKind = wpakEmpty) and
+          (not BridgeTargetsPass(ARequirements[I].ConsumerPassIndex)) then
+        raise EWfcPipelineModel.CreateFmt('mapped requirement %d consumer has no materialized rule definition',[I]);
+      FRequirements[I] := CloneRequirement(ARequirements[I]);
+      Continue;
+    end;
     LTermCount := CheckedLength(Length(ARequirements[I].Terms),
       Format('requirement %d term count', [I]),
       WFC_PIPELINE_MAX_REQUIREMENT_TERM_COUNT);
@@ -1595,6 +2440,11 @@ begin
         'any requirement %d must contain at least one term', [I]);
     if ARequirements[I].Kind = wprqCount then
     begin
+      if FHasPattern3D or HasPassMapping then
+      begin
+        RequireQuotaInteger(ARequirements[I].MinimumCount, 'requirement minimum');
+        RequireQuotaInteger(ARequirements[I].MaximumCount, 'requirement maximum');
+      end;
       if LTermCount = 0 then
         raise EWfcPipelineModel.CreateFmt(
           'count requirement %d must contain at least one term', [I]);
@@ -1611,12 +2461,18 @@ begin
 
     for J := 0 to LTermCount - 1 do
     begin
-      if (ARank = 1) and
+      if FHasPattern3D or HasPassMapping then
+      begin
+        RequirePattern3DSignedInteger(ARequirements[I].Terms[J].OffsetX, 'requirement offset X');
+        RequirePattern3DSignedInteger(ARequirements[I].Terms[J].OffsetY, 'requirement offset Y');
+        RequirePattern3DSignedInteger(ARequirements[I].Terms[J].OffsetZ, 'requirement offset Z');
+      end;
+      if (PassRank(ARequirements[I].ConsumerPassIndex) = 1) and
           ((ARequirements[I].Terms[J].OffsetY <> 0) or
            (ARequirements[I].Terms[J].OffsetZ <> 0)) then
         raise EWfcPipelineModel.CreateFmt(
           'requirement %d term %d uses an inactive rank-1 axis', [I, J]);
-      if (ARank = 2) and
+      if (PassRank(ARequirements[I].ConsumerPassIndex) = 2) and
           (ARequirements[I].Terms[J].OffsetZ <> 0) then
         raise EWfcPipelineModel.CreateFmt(
           'requirement %d term %d uses an inactive rank-2 axis', [I, J]);
@@ -1681,7 +2537,89 @@ begin
     FRequirements[I] := CloneRequirement(ARequirements[I]);
   end;
 
+  { Resolve quotas only after bridges and transform aliases have their final
+    statically known public vocabulary. Private latent state keys never leak
+    into the portable quota surface. No dependency is introduced by a quota. }
+  SetLength(FValueQuotas, LQuotaCount);
+  for I := 0 to LQuotaCount - 1 do
+  begin
+    ValidateIndex(AValueQuotas[I].PassIndex, LPassCount,
+      Format('value-quota %d owner', [I]));
+    J := AValueQuotas[I].PassIndex;
+    if FPasses[J].Visibility <> wppvPublic then
+      raise EWfcPipelineModel.CreateFmt(
+        'value-quota %d owner must be public', [I]);
+    if Length(FVocabularies[J]) = 0 then
+      raise EWfcPipelineModel.CreateFmt(
+        'value-quota %d owner has no statically known public vocabulary', [I]);
+    for K := 0 to I - 1 do
+      if (AValueQuotas[K].PassIndex = J) and
+          (AValueQuotas[K].LabelText = AValueQuotas[I].LabelText) then
+        raise EWfcPipelineModel.CreateFmt(
+          'value-quota %d duplicates the pass/label key of quota %d', [I, K]);
+    LPreviousTokenIndex := -1;
+    for K := 0 to Length(AValueQuotas[I].Values) - 1 do
+    begin
+      LProviderTokenIndex := TokenIndex(FVocabularies[J], AValueQuotas[I].Values[K]);
+      if LProviderTokenIndex < 0 then
+        raise EWfcPipelineModel.CreateFmt(
+          'value-quota %d token %d is outside the public vocabulary', [I, K]);
+      if LProviderTokenIndex <= LPreviousTokenIndex then
+        raise EWfcPipelineModel.CreateFmt(
+          'value-quota %d tokens must use strict public-vocabulary order', [I]);
+      LPreviousTokenIndex := LProviderTokenIndex;
+    end;
+    FValueQuotas[I] := CloneValueQuota(AValueQuotas[I]);
+  end;
+
+  SetLength(FConnectivities, LConnectivityCount);
+  for I := 0 to LConnectivityCount - 1 do
+  begin
+    ValidateIndex(AConnectivities[I].PassIndex, LPassCount,
+      Format('connectivity %d owner', [I]));
+    J := AConnectivities[I].PassIndex;
+    if FPasses[J].Visibility <> wppvPublic then
+      raise EWfcPipelineModel.CreateFmt('connectivity %d owner must be public', [I]);
+    if Length(FVocabularies[J]) = 0 then
+      raise EWfcPipelineModel.CreateFmt(
+        'connectivity %d owner has no statically known public vocabulary', [I]);
+    for K := 0 to I - 1 do
+      if (AConnectivities[K].PassIndex = J) and
+          (AConnectivities[K].LabelText = AConnectivities[I].LabelText) then
+        raise EWfcPipelineModel.CreateFmt(
+          'connectivity %d duplicates the pass/label key of connectivity %d', [I, K]);
+    LPreviousTokenIndex := -1;
+    for K := 0 to Length(AConnectivities[I].Values) - 1 do
+    begin
+      LProviderTokenIndex := TokenIndex(FVocabularies[J], AConnectivities[I].Values[K].Value);
+      if LProviderTokenIndex < 0 then
+        raise EWfcPipelineModel.CreateFmt(
+          'connectivity %d profile %d is outside the public vocabulary', [I, K]);
+      if LProviderTokenIndex <= LPreviousTokenIndex then
+        raise EWfcPipelineModel.CreateFmt(
+          'connectivity %d profiles must use strict public-vocabulary order', [I]);
+      LPreviousTokenIndex := LProviderTokenIndex;
+    end;
+    FConnectivities[I] := CloneConnectivity(AConnectivities[I]);
+  end;
+
   FSignature := CalculateSignature(Self);
+end;
+
+function TWfcPipelineModel.GetHasPassMapping: Boolean;
+begin Result := FPassMappingVersion <> 0; end;
+
+function TWfcPipelineModel.PassTopologyAt(const AIndex: Integer): TWfcPipelinePassTopology;
+begin
+  RequireQuotaInteger(AIndex,'pass topology index');
+  ValidatePassIndex(AIndex); Result := FPassTopologies[AIndex];
+end;
+
+function TWfcPipelineModel.CopyPassTopologies: TWfcPipelinePassTopologies;
+var I: Integer;
+begin
+  Result := nil; SetLength(Result,PassCount);
+  for I := 0 to PassCount-1 do Result[I] := FPassTopologies[I];
 end;
 
 function TWfcPipelineModel.GetResourceCount: Integer;
@@ -1707,6 +2645,28 @@ end;
 function TWfcPipelineModel.GetRequirementCount: Integer;
 begin
   Result := Length(FRequirements);
+end;
+
+function TWfcPipelineModel.GetValueQuotaCount: Integer;
+begin
+  Result := Length(FValueQuotas);
+end;
+
+function TWfcPipelineModel.GetValueQuotaVersion: Integer;
+begin
+  if ValueQuotaCount = 0 then Result := 0
+  else Result := WFC_PIPELINE_VALUE_QUOTA_VERSION;
+end;
+
+function TWfcPipelineModel.GetConnectivityCount: Integer;
+begin
+  Result := Length(FConnectivities);
+end;
+
+function TWfcPipelineModel.GetConnectivityVersion: Integer;
+begin
+  if ConnectivityCount = 0 then Result := 0
+  else Result := WFC_PIPELINE_CONNECTIVITY_VERSION;
 end;
 
 procedure TWfcPipelineModel.ValidateResourceIndex(const AIndex: Integer);
@@ -1742,6 +2702,26 @@ begin
   if (AIndex < 0) or (AIndex >= RequirementCount) then
     raise ERangeError.CreateFmt(
       'pipeline requirement index out of bounds [%d]', [AIndex]);
+end;
+
+procedure TWfcPipelineModel.ValidateValueQuotaIndex(const AIndex: Integer);
+begin
+  if not ((AIndex >= 0) and (AIndex < ValueQuotaCount)) then
+    raise ERangeError.Create('pipeline value-quota index out of bounds');
+  {$IFDEF PAS2JS}
+  if AIndex <> Trunc(AIndex) then
+    raise ERangeError.Create('pipeline value-quota index must be an exact integer');
+  {$ENDIF}
+end;
+
+procedure TWfcPipelineModel.ValidateConnectivityIndex(const AIndex: Integer);
+begin
+  if not ((AIndex >= 0) and (AIndex < ConnectivityCount)) then
+    raise ERangeError.Create('pipeline connectivity index out of bounds');
+  {$IFDEF PAS2JS}
+  if AIndex <> Trunc(AIndex) then
+    raise ERangeError.Create('pipeline connectivity index must be an exact integer');
+  {$ENDIF}
 end;
 
 function TWfcPipelineModel.CopyMetadata: TWfcPipelineMetadata;
@@ -1787,6 +2767,18 @@ function TWfcPipelineModel.RequirementAt(
 begin
   ValidateRequirementIndex(AIndex);
   Result := CloneRequirement(FRequirements[AIndex]);
+end;
+
+function TWfcPipelineModel.ValueQuotaAt(const AIndex: Integer): TWfcPipelineValueQuota;
+begin
+  ValidateValueQuotaIndex(AIndex);
+  Result := CloneValueQuota(FValueQuotas[AIndex]);
+end;
+
+function TWfcPipelineModel.ConnectivityAt(const AIndex: Integer): TWfcPipelineConnectivity;
+begin
+  ValidateConnectivityIndex(AIndex);
+  Result := CloneConnectivity(FConnectivities[AIndex]);
 end;
 
 function TWfcPipelineModel.CopyResources: TWfcPipelineResources;
@@ -1837,6 +2829,25 @@ begin
   SetLength(Result, RequirementCount);
   for I := 0 to RequirementCount - 1 do
     Result[I] := CloneRequirement(FRequirements[I]);
+end;
+
+function TWfcPipelineModel.CopyValueQuotas: TWfcPipelineValueQuotas;
+var I: Integer;
+begin
+  Result := nil;
+  SetLength(Result, ValueQuotaCount);
+  for I := 0 to ValueQuotaCount - 1 do
+    Result[I] := CloneValueQuota(FValueQuotas[I]);
+end;
+
+function TWfcPipelineModel.CopyConnectivities: TWfcPipelineConnectivities;
+var
+  I: Integer;
+begin
+  Result := nil;
+  SetLength(Result, ConnectivityCount);
+  for I := 0 to ConnectivityCount - 1 do
+    Result[I] := CloneConnectivity(FConnectivities[I]);
 end;
 
 function TWfcPipelineModel.CopyPublicVocabulary(
@@ -1909,6 +2920,16 @@ begin
     raise EWfcPipelineModel.CreateFmt(
       'resource %d is not a sequence resource', [AIndex]);
   Result := FSequenceResources[AIndex];
+end;
+
+function TWfcPipelineModel.BorrowPattern3DResource(
+  const AIndex: Integer): TWfcOverlappingModel3D;
+begin
+  RequireQuotaInteger(AIndex, 'pattern3d resource index');
+  ValidateResourceIndex(AIndex);
+  if FResources[AIndex].Kind <> wprkPattern3D then
+    raise EWfcPipelineModel.CreateFmt('resource %d is not a pattern3d resource', [AIndex]);
+  Result := FPattern3DResources[AIndex];
 end;
 
 end.

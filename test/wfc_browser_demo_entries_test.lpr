@@ -29,15 +29,18 @@ program wfc_browser_demo_entries_test;
 uses SysUtils, JS, Web, wfc_browser_test_host;
 
 const
-  DEMO_COUNT = 10;
-  PAGE_TIMEOUT_MS = 15000;
+  DEMO_COUNT = 12;
+  DEFAULT_PAGE_TIMEOUT_MS = 15000;
+  ENSEMBLE_PAGE_TIMEOUT_MS = 30000;
   POLL_INTERVAL_MS = 25;
 
 type
   TExpectation = record Name, Value: String; end;
   TExpectations = array of TExpectation;
   TDemo = record
-    Name, Bundle, Stylesheet: String;
+    Name, Bundle, Stylesheet, Query: String;
+    OrdinaryStartup: Boolean;
+    TimeoutMs: Integer;
     Expectations: TExpectations;
   end;
   TDemoEntries = class
@@ -103,12 +106,36 @@ begin
   FDemos[8].Bundle := 'BrowserConnectedRoutes.js'; FDemos[8].Stylesheet := 'connectedroutes.css';
   FDemos[9].Name := 'terraces';
   FDemos[9].Bundle := 'BrowserTerraces.js'; FDemos[9].Stylesheet := 'terraces.css';
+  FDemos[10].Name := 'mapped';
+  FDemos[10].Bundle := 'BrowserMappedWorld.js'; FDemos[10].Stylesheet := 'mappedworld.css';
+  FDemos[11].Name := 'workspace';
+  FDemos[11].Bundle := 'BrowserPipelineWorkspace.js'; FDemos[11].Stylesheet := 'workspace.css';
+  FDemos[11].OrdinaryStartup := True;
 
   for I := 0 to DEMO_COUNT - 1 do
   begin
-    Expect(I, 'data-self-test', 'passed');
-    if I <> 7 then Expect(I, 'data-state', 'solved');
+    FDemos[I].TimeoutMs := DEFAULT_PAGE_TIMEOUT_MS;
+    if not FDemos[I].OrdinaryStartup then
+    begin
+      FDemos[I].Query := '?selftest=1';
+      Expect(I, 'data-self-test', 'passed');
+      if I <> 7 then Expect(I, 'data-state', 'solved');
+    end;
   end;
+  { Workspace starts empty on its ordinary URL. These are startup/resource
+    checks, not a solver self-test. pipeline_workspace_ui_test separately
+    drives its real visible controls through the complete async workflow. }
+  Expect(11, 'data-demo-entry-pipeline-workspace', 'true');
+  Expect(11, 'data-state', 'ready');
+  Expect(11, 'data-publication-revision', '0');
+  Expect(11, 'data-workspace-current', 'false');
+  Expect(11, 'data-has-baseline', 'false');
+  { This one entry runs finite/developed generation, WAVE, and all awaited
+    MIDI plan/save/cancel/failure/release fixtures together. Measured complete
+    runs exceed fifteen seconds even while every fixture keeps progressing.
+    Keep all expectations and the host's independent sixty-second deadline;
+    this is a test-work allowance, not a generation performance threshold. }
+  FDemos[6].TimeoutMs := ENSEMBLE_PAGE_TIMEOUT_MS;
   { Preserve the six standalone hosted marker maps, not just their generic
     success flags. These requests load actual staged HTML/CSS/compiled entry
     scripts; no synthetic controller fixture or extra rtl.run call is injected. }
@@ -125,6 +152,16 @@ begin
   Expect(3, 'data-recipe-signature', 'DBCBA621');
   Expect(3, 'data-result-signature', '947C4AFD');
   Expect(3, 'data-cell-count', '16');
+  Expect(3, 'data-quota-edit', 'passed');
+  Expect(3, 'data-quota-replay', 'passed');
+  Expect(3, 'data-quota-contradiction', 'passed');
+  Expect(3, 'data-quota-invalidation', 'passed');
+  Expect(3, 'data-quota-volume', 'passed');
+  Expect(3, 'data-connectivity-edit', 'passed');
+  Expect(3, 'data-connectivity-replay', 'passed');
+  Expect(3, 'data-connectivity-contradiction', 'passed');
+  Expect(3, 'data-connectivity-invalidation', 'passed');
+  Expect(3, 'data-connectivity-volume', 'passed');
   Expect(3, 'data-source-invalidation', 'passed');
   Expect(3, 'data-run-invalidation', 'passed');
   Expect(3, 'data-contradiction', 'passed');
@@ -135,6 +172,12 @@ begin
   Expect(3, 'data-volume-contradiction', 'passed');
   Expect(3, 'data-volume-recovery', 'passed');
   Expect(3, 'data-import-race', 'passed');
+  Expect(3, 'data-circular-sequence', 'passed');
+  Expect(3, 'data-overlapping-volume', 'passed');
+  Expect(3, 'data-overlapping-volume-view', 'passed');
+  Expect(3, 'data-overlapping-volume-recovery', 'passed');
+  Expect(3, 'data-volume-view-isolation', 'passed');
+  Expect(3, 'data-volume-layout', 'passed');
   Expect(4, 'data-seed', '0');
   Expect(4, 'data-composition-signature', '216F6EBB');
   Expect(4, 'data-result-status', 'solved');
@@ -176,6 +219,7 @@ begin
   Expect(6, 'data-stream-release', 'passed');
   Expect(6, 'data-midi-stream-self-test', 'passed');
   Expect(6, 'data-midi-stream-release', 'passed');
+  Expect(6, 'data-http-stream-self-test', 'passed');
   Expect(6, 'data-composition-signature', '573E2010');
   Expect(6, 'data-score-signature', '33123E67');
   Expect(6, 'data-midi-signature', '07361333');
@@ -201,12 +245,27 @@ begin
   Expect(8, 'data-circulation', 'passed');
   Expect(8, 'data-circulation-repair', 'passed');
   Expect(8, 'data-invalidation', 'passed');
+  Expect(8, 'data-portable-artifacts', 'passed');
   Expect(9, 'data-signature', '1:6D695B99:2D23CF62');
   Expect(9, 'data-view-signature', 'C3D25917');
   Expect(9, 'data-selective', 'passed');
   Expect(9, 'data-invalidation', 'passed');
   Expect(9, 'data-recovery', 'passed');
   Expect(9, 'data-new-session', 'passed');
+  Expect(10, 'data-baseline', 'passed');
+  Expect(10, 'data-housing-failure', 'passed');
+  Expect(10, 'data-upstream-repair', 'passed');
+  Expect(10, 'data-point-counterexample', 'passed');
+  Expect(10, 'data-scope-guard', 'passed');
+  Expect(10, 'data-invalidation', 'passed');
+  Expect(10, 'data-sandbox', 'passed');
+  Expect(10, 'data-region', 'passed');
+  Expect(10, 'data-lock-lifecycle', 'passed');
+  Expect(10, 'data-edit-error-isolation', 'passed');
+  Expect(10, 'data-queued-error-lifecycle', 'passed');
+  Expect(10, 'data-preset-input-isolation', 'passed');
+  Expect(10, 'data-model-valid', 'true');
+  Expect(10, 'data-physical-safe', 'true');
 end;
 
 constructor TDemoEntries.Create;
@@ -226,7 +285,7 @@ begin
     provisional generic marker on the first task; only our dedicated marker
     can certify completion of all awaited real pages. }
   document.body.setAttribute('data-self-test', 'pending');
-  WriteLn('Real browser demo entries: ten sequential staged index pages');
+  WriteLn('Real browser demo entries: ', DEMO_COUNT, ' sequential staged index pages');
   OpenNext;
 end;
 
@@ -244,8 +303,10 @@ begin
   try
     FLastMismatch := 'page has not loaded'; FPolls := 0;
     FExpectedUrl := TJSURL.new('demo-entries/' + FDemos[FIndex].Name +
-      '/index.html?selftest=1', window.location.href).href;
+      '/index.html' + FDemos[FIndex].Query, window.location.href).href;
     document.body.setAttribute('data-demo-entries-current', FDemos[FIndex].Name);
+    document.body.setAttribute('data-demo-entries-page-timeout-ms',
+      IntToStr(FDemos[FIndex].TimeoutMs));
     document.body.setAttribute('data-demo-entry-' + FDemos[FIndex].Name, 'pending');
     FFrame := TJSHTMLIFrameElement(document.createElement('iframe'));
     FFrame.width := '1280'; FFrame.height := '900';
@@ -317,6 +378,14 @@ const ErrorNames: array[0..4] of String = ('data-self-test-message',
 var I: Integer; Actual: String;
 begin
   Result := 1; AMessage := '';
+  if FDemos[FIndex].OrdinaryStartup then
+  begin
+    if ABody.hasAttribute('data-self-test') then
+    begin AMessage := 'ordinary workspace startup must not claim a self-test'; Exit(-1); end;
+    if (ABody.getAttribute('data-state') = 'error') or
+      (ABody.getAttribute('data-operation-result') = 'interrupted') then
+    begin AMessage := 'ordinary workspace startup reported an application error'; Exit(-1); end;
+  end;
   for I := 0 to High(ErrorNames) do
   begin
     if not ABody.hasAttribute(ErrorNames[I]) then Continue;
@@ -364,9 +433,13 @@ begin
         else FLastMismatch := 'document has not completed loading';
       end;
     end;
-    if (window.performance.now - FStartedAt >= PAGE_TIMEOUT_MS) or
-      (FPolls >= PAGE_TIMEOUT_MS div POLL_INTERVAL_MS) then
-    begin CompletePage(False, 'page deadline exceeded: ' + FLastMismatch); Exit; end;
+    if (window.performance.now - FStartedAt >= FDemos[FIndex].TimeoutMs) or
+      (FPolls >= FDemos[FIndex].TimeoutMs div POLL_INTERVAL_MS) then
+    begin
+      CompletePage(False, 'page deadline exceeded (' +
+        IntToStr(FDemos[FIndex].TimeoutMs) + ' ms): ' + FLastMismatch);
+      Exit;
+    end;
     window.setTimeout(@Poll, POLL_INTERVAL_MS);
   except
     CompletePage(False, ErrorText(JSExceptValue));
@@ -376,7 +449,8 @@ end;
 procedure TDemoEntries.CompletePage(const ASuccess: Boolean; const AMessage: String);
 var Message: String;
 begin
-  Message := FDemos[FIndex].Name + '/index.html?selftest=1: ' + Copy(AMessage, 1, 1000);
+  Message := FDemos[FIndex].Name + '/index.html' + FDemos[FIndex].Query +
+    ': ' + Copy(AMessage, 1, 1000);
   if ASuccess then
   begin
     Inc(FPassed); WriteLn('[PASS] ', Message);

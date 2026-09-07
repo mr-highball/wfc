@@ -1,7 +1,9 @@
 # passes
 
-A pass is a named stage of one graph. Each pass has the same shape, but keeps
-its own values, rules, entries, entry domains, planes, and callbacks. Passes
+A pass is a named stage of one graph. Passes share a shape by default, but keep
+their own values, rules, entries, entry domains, planes, and callbacks. The
+opt-in [mapped-pass API](mapped-passes.md) also supports differently sized
+world-space layouts. Passes
 form an acyclic dependency graph. Both `Run` and `TrySolve` execute a stable topological plan;
 the default legacy mode retains the original creation-order chain and
 immediately-previous-pass constraints.
@@ -129,9 +131,14 @@ solved.
 
 ## shared graph settings
 
-All passes share one shape and coordinate system. `Reshape` applies the new
+By default, all passes share one shape and coordinate system. `Reshape` applies the new
 width, height, and depth to every existing pass. A pass created later receives
 the current dimensions.
+
+`ConfigurePassLayouts` is the explicit alternative for different dimensions,
+origins, pitches, and wrapping per pass. `PassLayout` follows pass selection;
+root `Dimension` remains the pass-zero default, while direct pass graphs expose
+their own dimensions. See [mapped passes](mapped-passes.md) before mixing grids.
 
 `WrapNeighbors` and `Mode` are also pipeline-wide. Changing either setting on
 the root or through a `PassGraph` applies it to every pass. Changing wrapping
@@ -143,7 +150,7 @@ must be compatible with itself in each wrapped direction that returns to the
 entry. Required self-support is candidate-specific: one candidate's required
 self-rule cannot make another required-only candidate eligible.
 
-This shared shape is what makes a coordinate such as `(3, 4, 0)` refer to the
+Under the default uniform layout, a coordinate such as `(3, 4, 0)` refers to the
 same location throughout the pipeline, even though each pass has a different
 entry object there.
 
@@ -167,7 +174,7 @@ the pass currently selected by the coordinator.
 
 Pass-local operations such as `AddValue`, entry access, allowed-value domains,
 rules, planes, and callbacks operate on that pass. Pipeline operations such as
-`Run`, `Reshape`, `SwitchToPass`, `WrapNeighbors`, and `Mode` forward to the root. `Reset` is the
+`Run`, `Reshape`, `ConfigurePassLayouts`, `SwitchToPass`, `WrapNeighbors`, and `Mode` forward to the root. `Reset` is the
 exception: call it on the root graph. Calling it through `PassGraph` raises
 `EInvalidOperation` rather than destroying the receiver during its own method
 call. Root `Reset` preserves the first pass's callbacks, the pipeline `Seed`,

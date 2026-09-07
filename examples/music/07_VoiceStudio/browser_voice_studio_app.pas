@@ -156,6 +156,16 @@ begin
     raise EVoiceStudioStream.Create('browser self-test: ' + AMessage);
 end;
 
+procedure MarkVoiceSelfTestPhase(const APhase: String);
+begin
+  document.body.setAttribute('data-voice-self-test-phase', APhase);
+  { This is the browser clock, including Chromium virtual time when enabled;
+    it records phase timing, not independent wall-clock completion evidence. }
+  document.body.setAttribute('data-voice-self-test-elapsed-ms',
+    IntToStr(TJSDate.now - StrToInt64Def(document.body.getAttribute(
+      'data-voice-self-test-start-ms'), TJSDate.now)));
+end;
+
 procedure AppendBytes(var ADestination: TWfcMidiBytes;
   const ASource: TJSUint8Array); overload;
 var
@@ -1260,6 +1270,7 @@ var
   LOldPicker: JSValue;
   LStateAtRelease: String;
 begin
+  MarkVoiceSelfTestPhase('wave-' + AKind);
   LAbortCalls := 0;
   LCloseCalls := 0;
   LOpenCalls := 0;
@@ -1430,6 +1441,7 @@ var
   LOpenResolve: TJSPromiseResolver;
   LPlannedBytes: TWfcMidiStreamCount;
 begin
+  MarkVoiceSelfTestPhase('midi');
   FSeconds.value := '8';
   ClearMidiPlan;
   SetBusy(False);
@@ -1605,12 +1617,15 @@ begin
   document.body.setAttribute('data-self-test', 'pending');
   document.body.setAttribute('data-voice-stream-self-test', 'pending');
   document.body.setAttribute('data-voice-stream-release', 'pending');
+  document.body.setAttribute('data-voice-self-test-start-ms',
+    IntToStr(TJSDate.now));
   LReleaseController := nil;
   try
     try
       BrowserAssert(Pos('--segment-cells 5 --backtracks 1024 ' +
         '--pass-backtracks 64', FFallback.textContent) > 0,
         'native fallback preserves all captured search allowances');
+      MarkVoiceSelfTestPhase('stream-file');
       await(CheckStreamFileFixtures);
       await(CheckWaveFixture('saved'));
       await(CheckWaveFixture('cancel'));
@@ -1622,6 +1637,11 @@ begin
       LReleaseController := TVoiceStudioBrowserApplication.Create;
       try
         LReleaseController.Run;
+        { The temporary controller shares this test document; its initialization
+          must not relabel an already-running asynchronous self-test. }
+        document.body.setAttribute('data-self-test', 'pending');
+        document.body.setAttribute('data-voice-stream-self-test', 'pending');
+        document.body.setAttribute('data-voice-stream-release', 'pending');
         Inc(LReleaseController.FAsyncCount);
         try
           await(LReleaseController.CheckWaveFixture('release-close'));
@@ -1647,6 +1667,7 @@ begin
       document.body.setAttribute('data-voice-stream-self-test', 'passed');
       document.body.setAttribute('data-self-test', 'passed');
       document.body.setAttribute('data-voice-stream-helper', 'passed');
+      MarkVoiceSelfTestPhase('complete');
       RefreshPlan;
       ClearOutput;
       SetStatus('ready',

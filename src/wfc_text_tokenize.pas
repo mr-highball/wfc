@@ -66,11 +66,13 @@ function TokenizeWfcTextDocuments(const ADocuments: TWfcTextDocuments;
   TWfcSequenceSamples; overload;
 
 function LearnWfcTextModel(const ADocuments: TWfcTextDocuments;
-  const AOrder: Integer; const AKind: TWfcTextTokenizerKind):
+  const AOrder: Integer; const AKind: TWfcTextTokenizerKind;
+  const ABoundary: TWfcModelBoundary = wmbOpen):
   TWfcSequenceModel; overload;
 
 function LearnWfcTextModel(const ADocuments: TWfcTextDocuments;
-  const AOrder: Integer; const ATokenizer: TWfcTextTokenizeCallback):
+  const AOrder: Integer; const ATokenizer: TWfcTextTokenizeCallback;
+  const ABoundary: TWfcModelBoundary = wmbOpen):
   TWfcSequenceModel; overload;
 
 implementation
@@ -244,23 +246,25 @@ begin
 end;
 
 function LearnWfcTextModel(const ADocuments: TWfcTextDocuments;
-  const AOrder: Integer; const AKind: TWfcTextTokenizerKind):
+  const AOrder: Integer; const AKind: TWfcTextTokenizerKind;
+  const ABoundary: TWfcModelBoundary):
   TWfcSequenceModel;
 var
   LSamples: TWfcSequenceSamples;
 begin
   LSamples := TokenizeWfcTextDocuments(ADocuments, AKind);
-  Result := LearnSequenceModelCorpus(LSamples, AOrder);
+  Result := LearnSequenceModelCorpus(LSamples, AOrder, ABoundary);
 end;
 
 function LearnWfcTextModel(const ADocuments: TWfcTextDocuments;
-  const AOrder: Integer; const ATokenizer: TWfcTextTokenizeCallback):
+  const AOrder: Integer; const ATokenizer: TWfcTextTokenizeCallback;
+  const ABoundary: TWfcModelBoundary):
   TWfcSequenceModel;
 var
   LSamples: TWfcSequenceSamples;
 begin
   LSamples := TokenizeWfcTextDocuments(ADocuments, ATokenizer);
-  Result := LearnSequenceModelCorpus(LSamples, AOrder);
+  Result := LearnSequenceModelCorpus(LSamples, AOrder, ABoundary);
 end;
 
 end.

@@ -33,13 +33,16 @@ function TrainingStudioOutputIsValid(const APreset, AWidth, AHeight: Integer;
   const ATokens: TWfcModelTokens): Boolean;
 function TrainingStudioVolumeOutputIsValid(const AWidth, AHeight,
   ADepth: Integer; const ATokens: TWfcModelTokens): Boolean;
+function TrainingStudioLatticeOutputIsValid(const AWidth, AHeight,
+  ADepth: Integer; const ATokens: TWfcModelTokens): Boolean;
 procedure RunTrainingStudioDemo;
 
 implementation
 
 uses
   SysUtils, wfc, wfc_text_codec, wfc_text_tokenize,
-  wfc_training_workspace, wfc_pipeline_result, training_studio_presets;
+  wfc_training, wfc_training_workspace, wfc_pipeline_result, training_studio_presets,
+  training_studio_connectivity;
 
 function TrainingStudioOutputIsValid(const APreset, AWidth, AHeight: Integer;
   const ATokens: TWfcModelTokens): Boolean;
@@ -78,7 +81,9 @@ begin
   begin
     LText := DetokenizeWfcText(ATokens, wttkUnicodeScalar);
     Result := (LText = 'a cat.') or (LText = 'a bat.');
-  end;
+  end
+  else if APreset = TRAINING_STUDIO_CIRCULAR_PRESET then
+    Result := TrainingStudioCircularOutputIsValid(ATokens);
 end;
 
 function TrainingStudioVolumeOutputIsValid(const AWidth, AHeight,
@@ -110,6 +115,33 @@ begin
   Result := True;
 end;
 
+function TrainingStudioLatticeOutputIsValid(const AWidth, AHeight,
+  ADepth: Integer; const ATokens: TWfcModelTokens): Boolean;
+var I,Z,Plane,LeafCount,StoneCount,AirCount: Integer;
+begin
+  Result:=False;
+  if (AWidth<1) or (AHeight<1) or (ADepth<1) then Exit;
+  if AWidth>High(Integer) div AHeight then Exit;
+  Plane:=AWidth*AHeight;
+  if Plane>High(Integer) div ADepth then Exit;
+  if Length(ATokens)<>Plane*ADepth then Exit;
+  LeafCount:=0; StoneCount:=0; AirCount:=0;
+  { A small independent public-domain check in addition to the recipe's
+    complete footprint validator: planted cells need stone below and air
+    above. This is authored symbolism, not a physical simulation. }
+  for I:=0 to High(ATokens) do
+    if ATokens[I]='stone' then Inc(StoneCount)
+    else if ATokens[I]='air' then Inc(AirCount)
+    else if ATokens[I]='leaf' then
+    begin
+      Inc(LeafCount); Z:=I div Plane;
+      if (ATokens[((Z+ADepth-1) mod ADepth)*Plane+I mod Plane]<>'stone') or
+        (ATokens[((Z+1) mod ADepth)*Plane+I mod Plane]<>'air') then Exit;
+    end
+    else Exit;
+  Result:=(LeafCount>0) and (StoneCount>0) and (AirCount>0);
+end;
+
 procedure RunOne(const APreset: Integer; const ASeed: TGraphSeed);
 var
   LWorkspace: TWfcTrainingWorkspace;
@@ -127,11 +159,15 @@ begin
     LOptions.Seed := ASeed;
     LDepth := TrainingStudioPresetDepth(APreset);
     if LWorkspace.Rank = 3 then
-      LWorkspace.ConfigureVolumeRun(LOptions, LDepth, nil, nil)
-    else LWorkspace.ConfigureRun(LOptions, nil, nil);
+      LWorkspace.ConfigureVolumeRun(LOptions, LDepth,
+        TrainingStudioPresetLocks(APreset,LWorkspace.PublicPassIndex), nil)
+    else LWorkspace.ConfigureRun(LOptions,
+      TrainingStudioPresetLocks(APreset, LWorkspace.PublicPassIndex), nil);
     LWorkspace.Solve;
     LTokens := LWorkspace.OutputTokens;
-    if LWorkspace.Rank = 3 then
+    if APreset=TRAINING_STUDIO_PATTERN3D_PRESET then
+      LValid:=TrainingStudioLatticeOutputIsValid(LOptions.Width,LOptions.Height,LDepth,LTokens)
+    else if LWorkspace.Rank = 3 then
       LValid := TrainingStudioVolumeOutputIsValid(LOptions.Width,
         LOptions.Height, LDepth, LTokens)
     else LValid := TrainingStudioOutputIsValid(APreset, LOptions.Width,
@@ -144,6 +180,9 @@ begin
       ' result=', LWorkspace.ResultSignatureText);
     WriteLn('samples=', LWorkspace.SampleCount, ' source-tokens=',
       LWorkspace.SourceTokenCount, ' model-items=', LWorkspace.ModelItemCount);
+    if APreset = TRAINING_STUDIO_CIRCULAR_PRESET then
+      WriteLn('source-boundary=circular output-boundary=wrap public-locks=3',
+        ' first-phrase=rise-fall second-phrase=rise-rest');
     for I := 0 to Length(LTokens) - 1 do
     begin
       if (LDepth > 1) and (I mod (LOptions.Width * LOptions.Height) = 0) then
@@ -157,19 +196,98 @@ begin
   end;
 end;
 
+procedure RunQuotaDemo;
+var
+  W: TWfcTrainingWorkspace;
+  O: TWfcTrainingSolveOptions;
+  Q: TWfcTrainingValueQuotas;
+  Tokens: TWfcModelTokens;
+  Source, Recipe, Solved: String;
+  I, Count: Integer;
+begin
+  W := TWfcTrainingWorkspace.Create(InteractiveWfcTrainingWorkspaceLimits);
+  try
+    W.SetSourceText(TrainingStudioPresetText(3));
+    W.Train;
+    Source := W.SourceText;
+    Recipe := W.RecipeText;
+    SetLength(Tokens, 1);
+    Tokens[0] := 'red';
+    SetLength(Q, 1);
+    Q[0] := MakeWfcTrainingValueQuota('one-red', Tokens, 1, 1);
+    W.ReplaceValueQuotas(Q);
+    if (Pos('wfclearn=3'#10, W.SourceText) <> 1) or
+        (Pos('wfcpipeline=2'#10, W.RecipeText) <> 1) then
+      raise Exception.Create('quota authoring did not persist versioned source and recipe');
+    O := TrainingStudioPresetOptions(3);
+    W.ConfigureRun(O, nil, nil);
+    W.Solve;
+    Tokens := W.OutputTokens;
+    Count := 0;
+    for I := 0 to High(Tokens) do if Tokens[I] = 'red' then Inc(Count);
+    if (W.ResultStatus <> wprsSolved) or (Count <> 1) or
+        (not TrainingStudioOutputIsValid(3, O.Width, O.Height, Tokens)) then
+      raise Exception.Create('independent authored quota demonstration failed');
+    Solved := W.ResultText;
+    WriteLn('quota-demo label=one-red minimum=1 maximum=1 observed=', Count);
+    WriteLn('seed=', O.Seed, ' source=', W.TrainingSignatureText,
+      ' recipe=', W.RecipeSignatureText, ' result=', W.ResultSignatureText);
+    for I := 0 to High(Tokens) do
+    begin
+      if I <> 0 then Write(' ');
+      Write(WfcTextEncodeToken(Tokens[I], 'quota demo'));
+    end;
+    WriteLn;
+    W.Train;
+    W.ConfigureRun(O, nil, nil);
+    W.Solve;
+    if W.ResultText <> Solved then
+      raise Exception.Create('persisted quota source did not replay after retraining');
+    Q[0].MinimumCount := 4;
+    Q[0].MaximumCount := 4;
+    W.ReplaceValueQuotas(Q);
+    W.ConfigureRun(O, nil, nil);
+    W.Solve;
+    if (W.ResultStatus <> wprsContradiction) or (Length(W.OutputTokens) <> 0) then
+      raise Exception.Create('impossible quota did not produce a clean contradiction');
+    WriteLn('impossible-quota=contradiction public-cells=0');
+    W.ReplaceValueQuotas(nil);
+    if (W.SourceText <> Source) or (W.RecipeText <> Recipe) then
+      raise Exception.Create('removing the last quota changed legacy source identity');
+    WriteLn('quota-source-replay=passed legacy-restore=passed');
+  finally W.Free; end;
+end;
+
 procedure RunTrainingStudioDemo;
 var
   LPreset: Integer;
   LSeed: TGraphSeed;
   I: Integer;
 begin
+  if (ParamCount >= 1) and
+      ((ParamStr(1) = '--connectivity-demo') or (ParamStr(1) = '--connectivity-selftest')) then
+  begin
+    if ParamCount <> 1 then
+      raise Exception.Create('usage: TrainingStudio --connectivity-demo | --connectivity-selftest');
+    if ParamStr(1) = '--connectivity-demo' then RunTrainingStudioConnectivityDemo;
+    WriteLn('Training Studio connectivity checks: ', TrainingStudioConnectivitySelfTest);
+    Exit;
+  end;
+  if (ParamCount >= 1) and
+      ((ParamStr(1) = '--quota-demo') or (ParamStr(1) = '--quota-selftest')) then
+  begin
+    if ParamCount <> 1 then
+      raise Exception.Create('usage: TrainingStudio --quota-demo | --quota-selftest');
+    RunQuotaDemo;
+    Exit;
+  end;
   if (ParamCount = 1) and (ParamStr(1) = '--selftest') then
   begin
     for I := 0 to TRAINING_STUDIO_PRESET_COUNT - 1 do RunOne(I, 0);
     Exit;
   end;
   if ParamCount > 2 then
-    raise Exception.Create('usage: TrainingStudio [preset 0..5] [decimal seed] | --selftest');
+    raise Exception.Create('usage: TrainingStudio [preset 0..7] [decimal seed] | --selftest | --quota-demo | --quota-selftest | --connectivity-demo | --connectivity-selftest');
   LPreset := 2;
   LSeed := 0;
   if ParamCount >= 1 then

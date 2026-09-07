@@ -28,7 +28,7 @@ program wfc_learn_app_test;
 uses
   {$IFDEF PAS2JS}wfc_browser_test_host,{$ENDIF}
   SysUtils,
-  wfc_learn_app;
+  wfc, wfc_learn_app, wfc_pipeline_model, wfc_pipeline_text;
 
 const
   ADJACENCY_1D_TEXT =
@@ -116,6 +116,31 @@ const
     'token=0,0,A'#10 +
     'token=0,1,B'#10 +
     'token=0,2,A'#10 +
+    'end'#10;
+
+  CONNECTIVITY_TEXT =
+    'wfclearn=4'#10 +
+    'name=connected-training'#10 +
+    'license=MIT'#10 +
+    'source=project-authored'#10 +
+    'kind=adjacency1d'#10 +
+    'boundary=open'#10 +
+    'symmetry=none'#10 +
+    'footprint=0,0'#10 +
+    'order=0'#10 +
+    'samples=1'#10 +
+    'sample=0,4,1,1,route-sample'#10 +
+    'token=0,0,A'#10 +
+    'token=0,1,A'#10 +
+    'token=0,2,B'#10 +
+    'token=0,3,A'#10 +
+    'value-quota-version=0'#10 +
+    'value-quotas=0'#10 +
+    'connectivity-version=1'#10 +
+    'connectivities=1'#10 +
+    'connectivity=0,route,0,0,0,true,1,1'#10 +
+    'terminal=0,0,3,0,0'#10 +
+    'profile=0,0,A,10,false'#10 +
     'end'#10;
 
 var
@@ -250,7 +275,7 @@ begin
   LCommand.Kind := wlckVersion;
   LStatus := WfcLearnExecuteText(LCommand, 'ignored', LOutput, LError);
   Check((LStatus = WFC_LEARN_EXIT_SUCCESS) and (LError = '') and
-    (LOutput = 'wfc-learn 2 (wfclearn=1,2)'#10),
+    (LOutput = 'wfc-learn 3 (wfclearn=1,2,3,4,5,6)'#10),
     'version identifies the CLI and training-text contracts');
 end;
 
@@ -360,6 +385,76 @@ begin
     'empty input is an invalid-training error rather than usage error');
 end;
 
+procedure TestConnectivityExecution;
+var
+  LCommand: TWfcLearnCommand;
+  LOutput, LError, LWithQuota, LMalformed: String;
+  LStatus: Integer;
+  LRecipe: TWfcPipelineModel;
+  LConnectivity: TWfcPipelineConnectivity;
+begin
+  Check((Pos('wfclearn=4', WfcLearnHelpText) > 0) and
+    (Pos('wfcpipeline=3', WfcLearnHelpText) > 0) and
+    (Pos('value quotas or connectivity', WfcLearnHelpText) > 0),
+    'help advertises source connectivity, recipe version and model-only loss prevention');
+  LCommand := Default(TWfcLearnCommand);
+  LCommand.Kind := wlckLearn; LCommand.OutputMode := wlomRecipe;
+  LStatus := WfcLearnExecuteText(LCommand, CONNECTIVITY_TEXT, LOutput, LError);
+  Check((LStatus = WFC_LEARN_EXIT_SUCCESS) and (LError = '') and
+    (Pos('wfcpipeline=3'#10, LOutput) = 1),
+    'canonical version-four source emits a connectivity recipe');
+  if LStatus = WFC_LEARN_EXIT_SUCCESS then
+  begin
+    LRecipe := DecodeWfcPipelineModelText(LOutput);
+    try
+      Check((LRecipe.ConnectivityCount = 1) and (LRecipe.ValueQuotaCount = 0) and
+        (LRecipe.Rank = 1) and (not LRecipe.WrapNeighbors),
+        'CLI recipe retains connectivity without manufacturing quotas or wrapping');
+      LConnectivity := LRecipe.ConnectivityAt(0);
+      Check((LConnectivity.PassIndex = 0) and (LConnectivity.LabelText = 'route') and
+        (LConnectivity.Root.X = 0) and LConnectivity.RequireAllParticipants and
+        (Length(LConnectivity.RequiredPositions) = 1) and
+        (LConnectivity.RequiredPositions[0].X = 3) and
+        (Length(LConnectivity.Values) = 1) and (LConnectivity.Values[0].Value = 'A') and
+        (LConnectivity.Values[0].Openings = [gdEast, gdWest]) and
+        (not LConnectivity.Values[0].RequiredByValue),
+        'CLI recipe preserves public owner, root, terminal and participant profile');
+      Check(LRecipe.Signature = $7CF59ABD,
+        'CLI connectivity recipe keeps the native/browser canonical fixture signature');
+      Check(EncodeWfcPipelineModelText(LRecipe) = LOutput,
+        'CLI connectivity output is exact canonical recipe text');
+    finally LRecipe.Free; end;
+  end;
+  LCommand.OutputMode := wlomQuiet;
+  LStatus := WfcLearnExecuteText(LCommand, CONNECTIVITY_TEXT, LOutput, LError);
+  Check((LStatus = 0) and (LOutput = '') and (LError = ''),
+    'quiet connectivity training compiles without either output stream');
+  LCommand.OutputMode := wlomModel;
+  LStatus := WfcLearnExecuteText(LCommand, CONNECTIVITY_TEXT, LOutput, LError);
+  Check((LStatus = WFC_LEARN_EXIT_INVALID_TRAINING) and (LOutput = '') and
+    (Pos('wfc-learn: invalid training: ', LError) = 1),
+    'model-only output cannot silently discard connectivity');
+  LWithQuota := StringReplace(CONNECTIVITY_TEXT,
+    'value-quota-version=0'#10'value-quotas=0'#10,
+    'value-quota-version=1'#10'value-quotas=1'#10 +
+    'value-quota=0,density,3,4,1'#10'quota-token=0,0,A'#10, []);
+  LStatus := WfcLearnExecuteText(LCommand, LWithQuota, LOutput, LError);
+  Check((LStatus = WFC_LEARN_EXIT_INVALID_TRAINING) and (LOutput = '') and
+    (Pos('wfc-learn: invalid training: ', LError) = 1),
+    'model-only output rejects combined quota and connectivity policies');
+  LCommand.OutputMode := wlomRecipe;
+  LStatus := WfcLearnExecuteText(LCommand, LWithQuota, LOutput, LError);
+  Check((LStatus = 0) and (LError = '') and (Pos('wfcpipeline=3'#10, LOutput) = 1) and
+    (Pos('value-quotas=1'#10, LOutput) > 0) and (Pos('connectivities=1'#10, LOutput) > 0),
+    'recipe output preserves both authored policies');
+  LMalformed := StringReplace(CONNECTIVITY_TEXT, 'terminal=0,0,3,0,0',
+    'terminal=0,1,3,0,0', []);
+  LStatus := WfcLearnExecuteText(LCommand, LMalformed, LOutput, LError);
+  Check((LStatus = 1) and (LOutput = '') and
+    (Pos('wfc-learn: invalid training: ', LError) = 1),
+    'malformed connectivity child ordinals fail without output');
+end;
+
 procedure TestStatusAndFailureContracts;
 begin
   Check((WFC_LEARN_EXIT_SUCCESS = 0) and
@@ -379,7 +474,7 @@ begin
   Check(WfcLearnFormatFailure(wlfkIo, '') =
     'wfc-learn: I/O error: unspecified failure'#10,
     'empty host failures retain an actionable class');
-  Check((WFC_LEARN_CLI_VERSION = 2) and
+  Check((WFC_LEARN_CLI_VERSION = 3) and
     (WFC_LEARN_MAX_INPUT_LENGTH = 8388608),
     'the CLI and bounded training-input contracts are public');
 end;
@@ -390,6 +485,7 @@ begin
   TestCommandParsing;
   TestHelpAndVersion;
   TestTrainingExecution;
+  TestConnectivityExecution;
   TestStatusAndFailureContracts;
   WriteLn('==========================================');
   WriteLn('Checks: ', GCheckCount, '  Failures: ', GFailureCount);
