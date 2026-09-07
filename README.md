@@ -35,6 +35,7 @@ and explicit exit gates.
 | Assemble independently authored or learned pipelines | [Immutable fragment composition](docs/pipeline-composition.md) |
 | Edit a bound pipeline and authorize repair | [Preparation and input replacement](docs/pipeline-preparation.md), [prepared sessions](docs/pipeline-sessions.md) |
 | Save edit history and restore a live workspace | [Workspace journals, exact replay, atomic authoring and CLI](docs/pipeline-workspaces.md) |
+| Edit arbitrary supported pipelines interactively | [Pipeline Workspace](examples/passes/08_PipelineWorkspace/README.md), [native artifact-generating host](examples/passes/08_PipelineWorkspace/NATIVE.md) |
 | Check or inspect saved work | [Artifact-family validation, inspection, and exact replay](docs/artifact-tools.md) |
 | Extend or evaluate the system | [Roadmap](ROADMAP.md), [research records](docs/research/README.md) |
 
@@ -118,8 +119,15 @@ ownership and scoped reuse distinct from fresh invocation results. The
 [workspace layer](docs/pipeline-workspaces.md) adds complete ordered journals,
 explicit epochs, exact replay and atomic edit/repair publication through shared
 Pascal APIs and an included FPC CLI. Imported journals remain unverified claims
-until their complete actual evidence replays. A general interactive editor and
-migration of the Mapped World/Ensemble Studio interfaces remain separate work.
+until their complete actual evidence replays. The separate
+[Pipeline Workspace editor](examples/passes/08_PipelineWorkspace/README.md)
+uses those APIs for complete recipe/run import, cell inputs, explicit scoped
+repair, journal restore/save and caller-defined mapped epochs. Its shared
+native host starts from real mixed-resolution or learned-sequence presets and
+exports canonical artifacts plus an exact selected-pass SVG. View windows do
+not limit composition size; format capacities, resources and solver feasibility
+still apply. The fixed Mapped World study and Ensemble Studio interfaces have
+not been migrated or replaced.
 
 Ordinary solving follows `prepare → solve → validate → commit`. A failed
 reference transaction restores its previous entries and random streams.
@@ -138,6 +146,7 @@ The native and browser hosts share Pascal generation and validation code.
 | --- | --- | --- |
 | 2D worlds | Typed terrain, biome, foliage; settlement and repair examples | [2D Pass Workbench](examples/2D/02_BrowserWorld/README.md) |
 | Mixed-resolution worlds | Coarse terrain, fine foliage, inset housing; footprint inspection, scoped repair, shared SVG | [Mapped World](examples/passes/07_MappedWorld/README.md) |
+| Generic pipeline editing | [Native preset/import host](examples/passes/08_PipelineWorkspace/NATIVE.md): user layouts, canonical recipe/run/journal, exact slice SVG; existing CLI continues history | [Pipeline Workspace](examples/passes/08_PipelineWorkspace/README.md): drafts, cell inputs, scoped repair, epochs and verified restore |
 | Learned 3D terrain | Learned volume → socket/support structure → spatial foliage; exact SVG | [Learned Terraces](examples/3D/04_LearnedTerraces/README.md) |
 | 3D buildings | Validated multi-floor geometry and deterministic SVG | [Building 3D](examples/3D/03_BrowserBuilding/README.md) |
 | Text | Structure → lexical → punctuation composition | [Text Pass Workbench](examples/text/03_PassComposition/README.md) |

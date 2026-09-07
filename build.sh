@@ -461,6 +461,23 @@ esac
 "$mapped_world_process_test_executable" "$mapped_world_runtime_executable" \
   "$compiler_binary_output_directory" || exit $?
 
+# The shared suites exercise the actual portable owner, presets, and view.
+# pipeline_workspace_ui_test is browser-only, not part of this native list.
+compiler_pipeline_workspace_demo_directory="$compiler_source_directory/../examples/passes/08_PipelineWorkspace"
+for pipeline_workspace_test_name in pipeline_workspace_workbench_test pipeline_workspace_view_test pipeline_workspace_presets_test; do
+  printf "Building and running '%s'.\n" "$pipeline_workspace_test_name"
+  "$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
+    "-Fu$compiler_source_directory" "-Fu$compiler_tools_directory" \
+    "-Fu$compiler_source_directory/../test" "-Fu$compiler_pipeline_workspace_demo_directory" \
+    "-FU$compiler_unit_output_directory" "-FE$compiler_binary_output_directory" \
+    "$compiler_source_directory/../test/$pipeline_workspace_test_name.lpr" || exit $?
+  pipeline_workspace_test_executable="$binary_output_directory/$pipeline_workspace_test_name"
+  case "$host_system" in
+    CYGWIN*|MINGW*|MSYS*) pipeline_workspace_test_executable="${pipeline_workspace_test_executable}.exe" ;;
+  esac
+  "$pipeline_workspace_test_executable" || exit $?
+done
+
 compiler_restart_demo_directory="$compiler_source_directory/../examples/passes/05_DeterministicRestarts"
 for restart_test_name in wfc_restart_test wfc_timing_test wfc_restart_demo_test; do
   printf "Building the restart suite '%s'.\n" "$restart_test_name"
@@ -1126,6 +1143,32 @@ esac
   "$compiler_binary_output_directory/wfc_workspace$artifact_tool_suffix" \
   "$compiler_binary_output_directory/wfc_workspace_cli_fixture$artifact_tool_suffix" \
   "$workspace_process_directory" || exit $?
+
+# The real workspace CLI is now built. The harness checks expected child
+# exit10 itself and must still return success to this maintained gate.
+printf 'Building and running Pipeline Workspace native demo conformance.\n'
+for pipeline_workspace_source in \
+  "$compiler_pipeline_workspace_demo_directory/PipelineWorkspace.lpr" \
+  "$compiler_source_directory/../test/pipeline_workspace_native_fixture.lpr" \
+  "$compiler_source_directory/../test/pipeline_workspace_native_process_test.lpr"
+do
+  "$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
+    "-Fu$compiler_source_directory" "-Fu$compiler_tools_directory" \
+    "-Fu$compiler_source_directory/../test" "-Fu$compiler_pipeline_workspace_demo_directory" \
+    "-FU$compiler_unit_output_directory" "-FE$compiler_binary_output_directory" \
+    "$pipeline_workspace_source" || exit $?
+done
+"$binary_output_directory/PipelineWorkspace$artifact_tool_suffix" --help || exit $?
+pipeline_workspace_process_parent=$(mktemp -d "$binary_output_directory/pipeline-workspace-process.XXXXXXXX") || exit $?
+pipeline_workspace_process_directory="$pipeline_workspace_process_parent/fixtures"
+case "$host_system" in
+  CYGWIN*|MINGW*|MSYS*) pipeline_workspace_process_directory=$(cygpath -m "$pipeline_workspace_process_directory") || exit $? ;;
+esac
+"$binary_output_directory/pipeline_workspace_native_process_test$artifact_tool_suffix" \
+  "$compiler_binary_output_directory/PipelineWorkspace$artifact_tool_suffix" \
+  "$compiler_binary_output_directory/wfc_workspace$artifact_tool_suffix" \
+  "$compiler_binary_output_directory/pipeline_workspace_native_fixture$artifact_tool_suffix" \
+  "$pipeline_workspace_process_directory" || exit $?
 
 printf "Building the dependency-free tiled-world example.\n"
 "$compiler" "$@" \

@@ -270,20 +270,36 @@ jobs:
         run: |
           PAS2JS="$PAS2JS_ROOT/bin/x86_64-linux/pas2js" bash ./build-browser-voices.sh
 
-      - name: Verify Connected Routes and Mapped World in the real demo-entry matrix
+      - name: Verify spatial demos and Pipeline Workspace in the real entry matrix
         shell: bash
         run: |
-          # The maintained runner above loads all eleven actual index pages.
+          # The maintained runner above loads all twelve actual index pages.
           # Require its connectivity-specific repair/rollback checks as well
           # as a compiled standalone bundle; a synthetic fixture is not enough.
           PAS2JS="$PAS2JS_ROOT/bin/x86_64-linux/pas2js" bash ./build-browser-connectivity.sh
           ./build/native/bin/wfc_browser_check \
             --dom build/browser/tests/results/wfc_browser_demo_entries_test.dom \
             --expect 'data-demo-entries-self-test=passed' \
-            --expect 'data-demo-entries-count=11' \
+            --expect 'data-demo-entries-count=12' \
+            --expect 'data-demo-entry-workspace=passed' \
             --expect 'data-demo-entry-mapped=passed' \
             --expect 'data-demo-entry-connectivity=passed' \
             --expect 'data-demo-entry-terraces=passed'
+          # Workspace ordinary startup does not solve or claim a self-test.
+          # Its separate real-entry UI fixture must finish every async stage.
+          ./build/native/bin/wfc_browser_check \
+            --dom build/browser/tests/results/pipeline_workspace_ui_test.dom \
+            --expect 'data-self-test=passed' \
+            --expect 'data-workspace-ui-self-test=passed' \
+            --expect 'data-workspace-ui-stage-count=14' \
+            --expect 'data-workspace-ui-current=complete'
+          for stage in startup cancelled-queue preset-drafts initial-once \
+            draft-isolation seed-epochs cell-inputs failed-repair private-scope \
+            view-window geometry journal-claims file-import restored-history; do
+            ./build/native/bin/wfc_browser_check \
+              --dom build/browser/tests/results/pipeline_workspace_ui_test.dom \
+              --expect "data-workspace-ui-$stage=passed"
+          done
 
       - name: Build and self-test browser text passes
         shell: bash

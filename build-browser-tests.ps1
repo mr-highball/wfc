@@ -14,7 +14,7 @@ $outputRoot = Join-Path $repositoryRoot 'build/browser/tests'
 $units = Join-Path $outputRoot 'units'
 $web = Join-Path $outputRoot 'www'
 New-Item -ItemType Directory -Force -Path $units, $web | Out-Null
-$unitPaths = @('src','tools','examples/2D/common','examples/3D/common',
+$unitPaths = @('src','tools','test','examples/2D/common','examples/3D/common',
   'examples/music/01_simple_A_major','examples/music/02_simple_song_riffs',
   'examples/2D/05_LearnedPatternWorld','examples/learning/05_TrainingStudio',
   'examples/music/05_MusicStudio','examples/passes/04_NeighborhoodCounts',
@@ -23,11 +23,13 @@ $unitPaths = @('src','tools','examples/2D/common','examples/3D/common',
   'examples/text/03_PassComposition',
   'examples/passes/06_ConnectedRoutes',
   'examples/passes/07_MappedWorld',
+  'examples/passes/08_PipelineWorkspace',
   'examples/music/06_EnsembleStudio','examples/music/07_VoiceStudio') | ForEach-Object {
     '-Fu' + (Join-Path $repositoryRoot $_)
   }
 foreach ($source in Get-ChildItem -LiteralPath (Join-Path $repositoryRoot 'test') -Filter '*_test.lpr') {
   if ($source.BaseName -eq 'wfc_pipeline_prepare_threads_test') { continue }
+  if ($source.BaseName -in @('pipeline_workspace_native_fixture','pipeline_workspace_native_process_test')) { continue }
   if ($source.BaseName -in @('wfc_workspace_cli_process_test','wfc_workspace_cli_fixture')) { continue }
   if ($source.BaseName -in @('wfc_package_check_process_test','wfc_artifact_cli_process_test','wfc_ensemble_http_process_test','wfc_pipeline_mapped_process_test')) { continue }
   if ($source.BaseName -in @('wfc_browser_dom_test','wfc_browser_args_test','wfc_browser_socket_test','wfc_browser_websocket_test','wfc_browser_cdp_test','wfc_browser_capture_test','wfc_serve_test','wfc_music_render_process_test','wfc_music_ensemble_render_process_test','wfc_music_ensemble_midi_render_process_test','wfc_music_voices_render_process_test','wfc_connectivity_process_test','wfc_mapped_world_process_test','wfc_music_studies_process_test')) { continue }
@@ -51,7 +53,8 @@ $entryDemos = @(
   @('voices', 'build-browser-voices', 'BrowserVoiceStudio.js', 'voicestudio.css'),
   @('connectivity', 'build-browser-connectivity', 'BrowserConnectedRoutes.js', 'connectedroutes.css'),
   @('terraces', 'build-browser-terraces', 'BrowserTerraces.js', 'terraces.css'),
-  @('mapped', 'build-browser-mapped', 'BrowserMappedWorld.js', 'mappedworld.css')
+  @('mapped', 'build-browser-mapped', 'BrowserMappedWorld.js', 'mappedworld.css'),
+  @('workspace', 'build-browser-workspace', 'BrowserPipelineWorkspace.js', 'workspace.css')
 )
 foreach ($demo in $entryDemos) {
   & (Join-Path $repositoryRoot ($demo[1] + '.ps1')) -Compiler $Compiler
@@ -70,4 +73,4 @@ New-Item -ItemType Directory -Force -Path $captureFixture | Out-Null
 & $Compiler -B -Tbrowser -Mdelphi -Jc '-Jirtl.js' "-FU$units" "-FE$captureFixture" (Join-Path $repositoryRoot 'test/browser_capture/fixture.lpr')
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 Copy-Item -LiteralPath (Join-Path $repositoryRoot 'test/browser_capture/index.html') -Destination $captureFixture -Force
-Write-Host "Pascal browser conformance, capture fixture, and eleven actual demo entries staged in '$web'."
+Write-Host "Pascal browser conformance, capture fixture, and twelve actual demo entries staged in '$web'."

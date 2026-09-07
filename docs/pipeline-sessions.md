@@ -208,9 +208,12 @@ boundary; see [atomic workspace authoring](pipeline-workspaces.md#atomic-authori
 
 The [workspace APIs](pipeline-workspaces.md) separately provide complete
 session-evidence encoding, ordered journals, exact replay, atomic authoring
-and native file commands. They do not turn this session into an arbitrary
-workspace editor or migrate existing demos. Existing recipe/run/result formats
-and fresh result validation stay unchanged.
+and native file commands. The separate
+[Pipeline Workspace demo](../examples/passes/08_PipelineWorkspace/README.md)
+uses those APIs for a generic browser editor and native artifact workflow;
+it does not add UI responsibilities to this session type or migrate existing
+demos. Existing recipe/run/result formats and fresh result validation stay
+unchanged.
 A saved fresh invocation cannot represent selective reuse, currentness or
 accepted lock/clear history; do not export these outcomes as result2 by discarding
 that distinction. Workspace journals preserve accepted operation order,

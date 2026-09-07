@@ -27,8 +27,18 @@ The original A-major and manually authored riff studies are also plain FPC
 console programs, with owned MIDI and streaming WAVE export. No submodule,
 external media library, or engine package is needed. The 2D world, three-pass text workbench,
 Building 3D, Training Studio, Music Studio, Ensemble Studio, Voice Studio,
-Neighborhood Counts, Connected Routes, Learned Terraces, and Mapped World have
+Neighborhood Counts, Connected Routes, Learned Terraces, Mapped World, and Pipeline Workspace have
 separate pas2js browser entry points described below.
+
+For the generic [Pipeline Workspace](../examples/passes/08_PipelineWorkspace/README.md)
+alone, run `build-workspace.ps1` and `build-browser-workspace.ps1`, or
+`bash ./build-workspace.sh` and `bash ./build-browser-workspace.sh`. The native
+output under `build/workspace/native/bin` includes `PipelineWorkspace`,
+`wfc_workspace`, and the FPC `wfc_serve`. Browser assets are staged under
+`build/browser/workspace/www`. Compiler overrides use `FPC`/`PAS2JS` or the
+PowerShell `Compiler` parameter. Builds do not start a server. The example
+guide covers hosting, and its [native guide](../examples/passes/08_PipelineWorkspace/NATIVE.md)
+covers canonical exports and subsequent journal operations.
 
 FPC 3.2.2 is the supported stable compiler. The current FPC development
 compiler is also exercised as a compatibility canary.
@@ -130,6 +140,8 @@ Both scripts rebuild with assertions and range, overflow, and I/O checks, run
 `wfc_pipeline_session_test`, `wfc_pipeline_session_oracle_test`,
 `wfc_pipeline_session_evidence_test`, `wfc_workspace_context_test`,
 `wfc_workspace_journal_test`, `wfc_workspace_replay_test`,
+`pipeline_workspace_workbench_test`, `pipeline_workspace_view_test`,
+`pipeline_workspace_presets_test`,
 `wfc_regeneration_scope_test`,
 `wfc_token_lookup_test`, `wfc_validate_app_test`, `wfc_run_app_test`,
 `wfc_training_test`, `wfc_training_text_test`, `wfc_learn_app_test`,
@@ -168,6 +180,17 @@ user-selected note counts and exact fractional-second WAVE timing,
 deterministic MIDI/WAVE files, format errors, and no-overwrite publication.
 See the [A-major](../examples/music/01_simple_A_major/README.md) and
 [riff](../examples/music/02_simple_song_riffs/README.md) usage guides.
+
+The native `pipeline_workspace_native_process_test` launches the actual
+Pipeline Workspace host, independent artifact/replay verifier, and existing
+workspace CLI. It covers requested unlike layouts, an independently sized
+view, exact import/export, normal unsolved histories, and no-overwrite refusals.
+The browser-only `pipeline_workspace_ui_test` instead drives the real staged
+workspace page: explicit generation, edits, permissions, resize refusal,
+file import and complete journal restore. Its dedicated asynchronous completion
+and stage markers are required in addition to the ordinary harness marker.
+The ordinary workspace entry starts without an epoch or hidden solve; startup
+resource checks and the interaction workflow are separate tests.
 A checked process suite also runs both native pipeline tools against the
 canonical files in `test/fixtures/pipeline-cli` and
 `examples/2D/05_LearnedPatternWorld/pipeline`: file and standard-input paths,

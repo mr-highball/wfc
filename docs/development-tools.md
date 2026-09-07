@@ -54,8 +54,9 @@ in a new journal, not that an arbitrary tool failure should be ignored.
 commands, complete independently constructed histories, refusal/failed-outcome
 statuses, explicit scopes, limits and new-file preservation. The process suite
 stays native; the four context/evidence/journal/replay conformance groups run
-under both FPC and pas2js through the existing browser tooling. This does not
-migrate any demo's UI to a workspace editor.
+under both FPC and pas2js through the existing browser tooling. The separate
+[Pipeline Workspace editor](../examples/passes/08_PipelineWorkspace/README.md)
+uses the same APIs without replacing the older domain-specific demos.
 
 To run the process suite alone after building, supply exactly these three
 positional arguments (append `.exe` to the executable names on Windows):
@@ -69,6 +70,48 @@ retained there in `fixture with spaces` and `logs`. The maintained fixture
 currently exercises 38 real child-process cases with 334 harness checks,
 including two independently compared histories. The suite handles the expected
 exit10 cases individually and still fails on an unexpected child status.
+
+## Build a complete Pipeline Workspace example
+
+The standalone scripts build the native host, existing workspace CLI and FPC
+static server without running a solve or starting a service:
+
+```powershell
+.\build-workspace.ps1 -Compiler 'C:/path/to/fpc.exe'
+.\build-browser-workspace.ps1 -Compiler 'C:/path/to/pas2js.exe'
+.\build\workspace\native\bin\wfc_serve.exe --root build/browser/workspace/www --port 8768
+```
+
+```bash
+FPC=/path/to/fpc bash ./build-workspace.sh
+PAS2JS=/path/to/pas2js bash ./build-browser-workspace.sh
+./build/workspace/native/bin/wfc_serve --root build/browser/workspace/www --port 8768
+```
+
+Open `http://127.0.0.1:8768/`. Startup is empty and does not solve. Stage a
+preset or import complete definition files, inspect, begin an explicit epoch,
+then execute its initial attempt. The [example guide](../examples/passes/08_PipelineWorkspace/README.md)
+explains cell inputs, scope previews, mapped geometry changes, exact journal
+restore/save, and current versus historical views. Preview replays prior
+history; only inspection is graph-free. The [native guide](../examples/passes/08_PipelineWorkspace/NATIVE.md)
+shows preset/import exports and continuation through `wfc_workspace` without
+requiring a test fixture. Composition extents and SVG viewing windows are
+independent; caller policy bounds are logical allowances, not peak heap limits.
+
+The normal `build.ps1` / `build.sh` gate also builds `PipelineWorkspace` into
+`build/native/bin`, runs all three shared controller/preset/view suites, and
+invokes the real native host process matrix. To run that matrix alone, use
+exactly four positional arguments (append `.exe` on Windows):
+
+```text
+build/native/bin/pipeline_workspace_native_process_test build/native/bin/PipelineWorkspace build/native/bin/wfc_workspace build/native/bin/pipeline_workspace_native_fixture build/pipeline-workspace-check
+```
+
+The final directory must not exist and its parent must exist. The 37 real
+child cases include independent decoding/replay, larger signed layouts,
+64 sequence cells with a 32-cell view, normal unsolved exit10, strict refusals
+and no-overwrite preservation. The fixture/process programs are native-only;
+the shared suites and separate actual UI workflow run in browser conformance.
 
 ## Serve a browser demo
 
@@ -102,6 +145,8 @@ authentication gateway, upload service, or general application backend.
 | Neighborhood Counts | `build-browser-counts` | `build/browser/counts/www` |
 | Learned Terraces | `build-browser-terraces` | `build/browser/terraces/www` |
 | Connected Routes | `build-browser-connectivity` | `build/browser/connectivity/www` |
+| Mapped World | `build-browser-mapped` | `build/browser/mapped/www` |
+| Pipeline Workspace | `build-browser-workspace` | `build/browser/workspace/www` |
 
 Use the `.ps1` entry on Windows or the `.sh` entry in a POSIX shell. Pass
 `-Compiler 'C:/path/to/pas2js.exe'` to PowerShell, or set `PAS2JS` for the shell
@@ -204,9 +249,11 @@ the localhost instance remains available for browsers supporting that API.
 
 ## Check browser evidence
 
-Every maintained browser demo exposes an event-driven `?selftest=1` route.
-The browser must execute the compiled Pascal before the resulting DOM is
-checked; merely fetching the original HTML proves nothing about generation.
+The domain demos expose event-driven `?selftest=1` routes. Pipeline Workspace
+instead has an ordinary empty startup and a separate real-entry UI program
+that drives its visible controls. Neither its startup nor a fetched HTML file
+claims successful generation. The browser must execute the compiled Pascal
+before the resulting DOM is checked.
 
 `wfc_browser_capture` waits for the requested terminal markers in an owned
 headless browser and publishes its rendered DOM. `wfc_browser_check` then
@@ -319,8 +366,10 @@ Staging compiles `test/*_test.lpr` for `-Tbrowser`, embeds the matching RTL, and
 uses the FPC checker to create harnesses under `build/browser/tests/www`.
 It also rebuilds all registered demos and copies their three named public assets
 into `demo-entries` below that root. `wfc_browser_demo_entries_test` loads the
-actual `index.html?selftest=1` pages in sequential same-origin frames and checks
-their rendered contracts. This catches entry-point/bootstrap problems that
+eleven `index.html?selftest=1` pages plus the ordinary workspace `index.html`
+in sequential same-origin frames and checks their distinct rendered contracts.
+Workspace startup must be ready with publication0, no baseline/current output
+and no fabricated self-test claim. This catches entry-point/bootstrap problems that
 controller-only fixtures cannot. The named main stylesheet must also have
 loaded, parsed CSS rules; a resource request alone is not proof of success
 on browsers that omit HTTP status from resource timing entries. No external
@@ -337,6 +386,16 @@ and capture/browser logs remain in unique run directories under
 `build/browser/tests/results`. A fixed `<test>.dom` convenience copy is cleared
 before each attempt and published only after the fresh capture passes the
 independent checker; it is not a substitute for a successful runner exit.
+
+`pipeline_workspace_ui_test` separately loads the same staged workspace entry
+and drives the full asynchronous editing workflow. Both maintained runners
+require `data-workspace-ui-self-test=passed`, stage-count14, current=complete,
+and every one of its fourteen stage markers, not a provisional synchronous
+harness success. The stages cover startup, queue cancellation, preset drafts,
+initial-once behavior, draft isolation, seed epochs, cell inputs, failed repair,
+private-provider scope, view windows, geometry, unverified journal claims,
+file import and restored history. The ordinary application does not run this
+workflow on behalf of a user. Functional DOM checks do not imply visual review.
 
 The ensemble stream demo test also requires its application-owned
 `data-stream-self-test=passed` and `data-stream-release=passed` markers. Its fake writable-file transactions are

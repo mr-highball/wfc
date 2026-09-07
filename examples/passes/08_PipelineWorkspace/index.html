@@ -1,0 +1,164 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: MIT; Copyright (c) 2021 mr-highball -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="An FPC and pas2js editor for portable constraint-driven pipelines, complete edit histories, and explicit scoped repair.">
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="workspace.css">
+  <title>WFC · Pipeline Workspace</title>
+</head>
+<body data-state="loading" data-demo-entry-pipeline-workspace="true" data-workspace-current="false" data-has-baseline="false">
+  <a class="skip" href="#workbench">Skip to editor</a>
+  <header class="shell hero">
+    <p class="eyebrow">WFC / PASS LAB 08</p>
+    <h1>Pipeline Workspace<span>Definitions. Decisions. History.</span></h1>
+    <p class="lede">Author a constraint model, change its inputs, and choose exactly which passes may repair it. Every accepted operation stays in the saved history.</p>
+    <p class="fine">MIT · Project-owned Pascal · Native-compatible artifacts · No accounts, uploads, or external runtime packages</p>
+  </header>
+  <main id="workbench" class="shell">
+    <section class="status-panel" aria-labelledby="live-heading">
+      <div><p class="eyebrow">LIVE WORKSPACE</p><h2 id="live-heading">No epoch yet</h2></div>
+      <div class="metrics"><span>Publication <strong id="publication">—</strong></span><span>Session revision <strong id="session-revision">—</strong></span><span>Actions <strong id="action-count">0</strong></span><span>Baseline <strong id="baseline-state">none</strong></span></div>
+      <p id="status" role="status" aria-live="polite">Loading compiled Pascal application…</p>
+      <pre id="error" role="alert" hidden></pre>
+      <button type="button" data-action="cancel" id="cancel-operation" disabled>Cancel pending work / file read</button>
+      <p class="fine">Generation and replay are synchronous CPU work once started. Search budgets count work, not seconds. A running solver cannot be interrupted by this button.</p>
+    </section>
+
+    <div class="editor-layout">
+      <div class="author-column">
+        <section class="panel" aria-labelledby="draft-heading">
+          <p class="eyebrow">01 / DEFINITION DRAFTS — NOT LIVE INPUTS</p>
+          <h2 id="draft-heading">Start from a model, or bring your own</h2>
+          <p>These documents remain drafts until <em>Begin epoch</em> or <em>Apply run</em>. Loading, inspecting, and editing a draft never changes the live workspace.</p>
+          <div class="actions"><button type="button" data-action="preset-landscape">Stage landscape defaults</button><button type="button" data-action="preset-sequence">Stage learned-sequence defaults</button></div>
+          <details>
+            <summary>Preset priming settings</summary>
+            <p>Landscape: terrain → foliage → housing with full-cell coverage clauses. Learned: a real inline step/turn/rest corpus → private states → public projection → alias, plus an unrelated grid. These are examples, not feasibility guarantees.</p>
+            <div class="fields weights">
+              <label>Land weight<input id="weight-land" value="32" inputmode="numeric"></label>
+              <label>Water weight<input id="weight-water" value="1" inputmode="numeric"></label>
+              <label>Clear weight<input id="weight-clear" value="32" inputmode="numeric"></label>
+              <label>Tree weight<input id="weight-tree" value="1" inputmode="numeric"></label>
+              <label>House weight<input id="weight-house" value="8" inputmode="numeric"></label>
+              <label>Vacant weight<input id="weight-vacant" value="1" inputmode="numeric"></label>
+              <label>Sequence order<input id="sequence-order" value="2" inputmode="numeric"></label>
+              <label>Source boundary<select id="sequence-boundary"><option value="open">open</option><option value="wrap">wrap</option></select></label>
+              <label>Sequence extent<select id="sequence-extent"><option value="whole">whole</option><option value="prefix">prefix</option><option value="suffix">suffix</option><option value="fragment">fragment</option><option value="wrap">wrap</option></select></label>
+            </div>
+            <p class="fine">Inline corpus: “step step turn step rest”; “step turn step rest”; “rest step step turn rest”. Source boundary and graph wrap are independent choices and must satisfy the model contract. Preset staging/rebuilding authors new drafts with no cell input rows; it does not copy edits from the live workspace.</p>
+            <button type="button" data-action="preset-rebuild" id="preset-rebuild" disabled>Rebuild selected preset drafts using the geometry below</button>
+          </details>
+          <label class="document-label" for="recipe-draft">Canonical recipe draft</label>
+          <textarea id="recipe-draft" class="code document" spellcheck="false" aria-describedby="draft-status" placeholder="wfcpipeline=…"></textarea>
+          <label class="file-label">Load recipe file<input id="recipe-file" type="file" accept=".wfc,.txt,text/plain"></label>
+          <label class="document-label" for="run-draft">Canonical run draft — complete locks, domains, and options</label>
+          <textarea id="run-draft" class="code document" spellcheck="false" aria-describedby="draft-status" placeholder="wfcpipeline-run=…"></textarea>
+          <label class="file-label">Load run file<input id="run-file" type="file" accept=".wfc,.txt,text/plain"></label>
+          <p id="draft-status" class="notice">No inspected definition. File imports require exact printable ASCII and LF bytes; no BOM, CRLF conversion, or automatic final newline.</p>
+          <div class="actions"><button type="button" data-action="inspect-definition">Inspect drafts — no graph</button><button type="button" class="primary" data-action="begin">Begin explicit epoch</button><button type="button" data-action="copy-live" id="copy-live" disabled>Replace drafts with live recipe / run</button></div>
+          <pre id="definition-report" class="report" aria-live="polite">Graph-free definition inspection appears here.</pre>
+          <div class="downloads"><a id="recipe-download" aria-disabled="true">Download inspected recipe</a><a id="run-download" aria-disabled="true">Download inspected run</a></div>
+        </section>
+
+        <section class="panel" aria-labelledby="run-heading">
+          <p class="eyebrow">02 / INVOCATION AND INITIAL SOLVE</p>
+          <h2 id="run-heading">Make changes explicit</h2>
+          <div class="fields">
+            <label>Seed<input id="seed" value="7" inputmode="numeric"></label>
+            <label>Strategy<select id="strategy"><option value="negotiated">negotiated</option><option value="one-way">one-way</option></select></label>
+            <label>Local backtracks<input id="backtracks" value="128" inputmode="numeric"></label>
+            <label>Pass backtracks<input id="pass-backtracks" value="16" inputmode="numeric"></label>
+            <label class="check"><input id="capture-trace" type="checkbox">Capture complete trace</label>
+          </div>
+          <p>Stage these options into the run draft while retaining its complete inputs and extents. Applying a seed, format, or layout change to an existing epoch is rejected; begin a new epoch instead. One-way strategy requires zero pass backtracks.</p>
+          <div class="actions"><button type="button" data-action="stage-options">Stage options into run draft</button><button type="button" data-action="apply-run" id="apply-run" disabled>Apply complete run draft</button><button type="button" class="primary" data-action="initial" id="initial" disabled>Execute initial solve once</button></div>
+          <p id="initial-note" class="notice">Begin an epoch first. Edits before the initial solve are allowed.</p>
+        </section>
+
+        <section class="panel" aria-labelledby="geometry-heading">
+          <p class="eyebrow">03 / INDEPENDENT PASS GEOMETRY</p>
+          <h2 id="geometry-heading">Different grids, one declared model</h2>
+          <p>Each row supplies rank, local cell extents, world origin, positive world pitch, and wrap. Counts are not presentation limits. Linked projection and alias layouts must still match their source.</p>
+          <p id="geometry-status" class="notice">Inspect a definition or stage a preset to populate rows.</p>
+          <div class="actions"><button type="button" data-action="live-geometry" id="live-geometry" disabled>Load live geometry into this form</button><button type="button" data-action="mapped-epoch" id="mapped-epoch" disabled>Begin mapped epoch from edited live geometry</button></div>
+          <p class="fine">The mapped-epoch action preserves the live recipe, resource provenance, all input rows, and live solve budgets; only this table and Seed change. Shrinking across an input or breaking a bridge refuses the entire action. It never clips or resamples.</p>
+          <div class="table-scroll"><table class="geometry"><thead><tr><th>Pass</th><th>Rank</th><th>Cells X / Y / Z</th><th>Origin X / Y / Z</th><th>Pitch X / Y / Z</th><th>Wrap</th></tr></thead><tbody id="geometry-rows"></tbody></table></div>
+        </section>
+
+        <section class="panel" aria-labelledby="journal-heading">
+          <p class="eyebrow">04 / COMPLETE SAVED HISTORY</p>
+          <h2 id="journal-heading">Inspection is not verification</h2>
+          <label for="journal-draft">Canonical journal draft</label>
+          <textarea id="journal-draft" class="code document" spellcheck="false" placeholder="wfc-workspace-journal=1"></textarea>
+          <label class="file-label">Load journal file<input id="journal-file" type="file" accept=".journal,.wfc,.txt,text/plain"></label>
+          <div class="actions"><button type="button" data-action="inspect-journal">Inspect claims — no graph</button><button type="button" data-action="restore">Replay and atomically restore</button><button type="button" data-action="copy-journal" id="copy-journal" disabled>Replace journal draft with live history</button></div>
+          <p id="journal-status" class="notice">A valid envelope contains unverified claims. Restore runs the actual history and compares complete evidence before replacing the live owner.</p>
+          <pre id="journal-report" class="report">No journal inspected.</pre>
+          <div class="actions"><button type="button" data-action="save-journal" id="save-journal" disabled>Prepare live journal download</button><a id="journal-download" aria-disabled="true">Download live verified journal</a></div>
+          <p class="fine">A successfully recorded unsolved attempt is valid history. Replaying it can restore a noncurrent workspace with a historical baseline. This is not a result2 file or an output-to-lock conversion.</p>
+        </section>
+      </div>
+
+      <aside class="live-column">
+        <section class="panel" aria-labelledby="view-heading">
+          <p class="eyebrow">LIVE / LOCAL GRID DIAGNOSTIC</p><h2 id="view-heading">Inspect the actual workspace</h2>
+          <div class="fields">
+            <label>Public pass<select id="view-pass" disabled></select></label>
+            <label>State<select id="view-state"><option value="current">Current owned state</option><option value="baseline">Historical successful baseline</option></select></label>
+            <label>Start X<input id="view-x" value="0" inputmode="numeric"></label>
+            <label>Start Y<input id="view-y" value="0" inputmode="numeric"></label>
+            <label>Local Z<input id="view-z" value="0" inputmode="numeric"></label>
+            <label>Window width<input id="view-width" value="16" inputmode="numeric"></label>
+            <label>Window height<input id="view-height" value="12" inputmode="numeric"></label>
+            <label>Pixels / cell<input id="view-pixels" value="24" inputmode="numeric"></label>
+            <label>Rendered-cell allowance<input id="view-cells" value="4096" inputmode="numeric"></label>
+            <label>SVG-byte allowance<input id="view-bytes" value="4194304" inputmode="numeric"></label>
+          </div>
+          <div class="actions"><button type="button" data-action="render" id="render" disabled>Render exact window</button><a id="svg-download" aria-disabled="true">Download diagnostic SVG</a></div>
+          <p id="view-status" class="notice">A viewport is not a resized composition. Out-of-bounds windows reject. No independent physical-safety claim is made.</p>
+          <div id="map-output" class="map" aria-live="polite"></div>
+          <pre id="pass-report" class="report">No public pass selected.</pre>
+        </section>
+
+        <section class="panel" aria-labelledby="cell-heading">
+          <p class="eyebrow">LIVE / ACCEPTED CELL INPUTS</p><h2 id="cell-heading">Lock, constrain, or clear</h2>
+          <p>Targets use the selected public pass and local coordinates. Click a displayed cell or enter a coordinate. Each successful button press is a separate edit, including clear-absent and no-op calls.</p>
+          <div class="fields">
+            <label>Cell X<input id="cell-x" value="0" inputmode="numeric"></label><label>Cell Y<input id="cell-y" value="0" inputmode="numeric"></label><label>Cell Z<input id="cell-z" value="0" inputmode="numeric"></label>
+          </div>
+          <label>Lock token, canonical percent text<select id="cell-token" disabled></select></label>
+          <div class="actions"><button type="button" data-action="set-lock" id="set-lock" disabled>Set / replace lock</button><button type="button" data-action="clear-lock" id="clear-lock" disabled>Clear lock</button></div>
+          <fieldset><legend>Allowed domain — public vocabulary order</legend><div id="domain-tokens" class="token-list"></div></fieldset>
+          <p class="fine">No selected tokens means an explicit empty domain, normally contradictory. Clear domain means no domain row. A lock excluded by its domain is rejected before publication.</p>
+          <div class="actions"><button type="button" data-action="set-domain" id="set-domain" disabled>Set exact selected domain</button><button type="button" data-action="clear-domain" id="clear-domain" disabled>Clear domain row</button></div>
+          <button type="button" data-action="inspect-cell" id="inspect-cell" disabled>Inspect this cell’s actual inputs</button>
+          <pre id="cell-report" class="report">Cell inputs are not generated output.</pre>
+        </section>
+
+        <section class="panel" aria-labelledby="repair-heading">
+          <p class="eyebrow">LIVE / EXPLICIT REPAIR PERMISSION</p><h2 id="repair-heading">Choose the passes that may change</h2>
+          <p>Repair uses the complete <strong>currently applied run</strong>, not an unapplied draft. A public alias does not automatically authorize its private provider. Select those provider roots explicitly when the preview requires them. Preview replays prior history under the current policy, but does not execute or publish the newly requested repair.</p>
+          <fieldset><legend>Requested roots, in pass order</legend><div id="repair-roots" class="root-list"></div></fieldset>
+          <div class="actions"><button type="button" data-action="preview-repair" id="preview-repair" disabled>Preview required / missing scope</button><button type="button" class="primary" data-action="repair" id="repair" disabled>Execute exactly this preview</button></div>
+          <pre id="scope-report" class="report">No current repair preview.</pre>
+          <details><summary>Last actual operation / full canonical evidence</summary><pre id="outcome-report" class="report">No operation yet.</pre><pre id="outcome-evidence" class="code report">No evidence.</pre></details>
+        </section>
+      </aside>
+    </div>
+
+    <section class="panel" aria-labelledby="policy-heading">
+      <p class="eyebrow">HOST POLICY / CALLER-ADJUSTABLE ALLOWANCES</p><h2 id="policy-heading">Bound work explicitly, not composition length</h2>
+      <p>All values are positive Integer allowances. They limit retained logical inventories or encoded outputs, not exact peak memory, elapsed time, or musical duration. Large histories require full replay and may need several limits raised together. Existing versioned format and compiler capacities still apply.</p>
+      <div id="policy-fields" class="fields policy-fields"></div>
+      <p class="fine">Everything runs in this browser using compiled Pascal and project-owned codecs/solvers. Files are selected locally and remain local; no autosave, background upload, hidden seed search, history compaction, or automatic retry.</p>
+    </section>
+  </main>
+  <footer class="shell">WFC · MIT · A generic workspace editor, not a claim that every constraint model is satisfiable.</footer>
+  <noscript>This editor requires the JavaScript compiled from the included Pascal sources.</noscript>
+  <script src="BrowserPipelineWorkspace.js"></script>
+  <script>rtl.run();</script>
+</body>
+</html>

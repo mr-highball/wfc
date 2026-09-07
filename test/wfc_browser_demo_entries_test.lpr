@@ -29,7 +29,7 @@ program wfc_browser_demo_entries_test;
 uses SysUtils, JS, Web, wfc_browser_test_host;
 
 const
-  DEMO_COUNT = 11;
+  DEMO_COUNT = 12;
   DEFAULT_PAGE_TIMEOUT_MS = 15000;
   ENSEMBLE_PAGE_TIMEOUT_MS = 30000;
   POLL_INTERVAL_MS = 25;
@@ -38,7 +38,8 @@ type
   TExpectation = record Name, Value: String; end;
   TExpectations = array of TExpectation;
   TDemo = record
-    Name, Bundle, Stylesheet: String;
+    Name, Bundle, Stylesheet, Query: String;
+    OrdinaryStartup: Boolean;
     TimeoutMs: Integer;
     Expectations: TExpectations;
   end;
@@ -107,13 +108,28 @@ begin
   FDemos[9].Bundle := 'BrowserTerraces.js'; FDemos[9].Stylesheet := 'terraces.css';
   FDemos[10].Name := 'mapped';
   FDemos[10].Bundle := 'BrowserMappedWorld.js'; FDemos[10].Stylesheet := 'mappedworld.css';
+  FDemos[11].Name := 'workspace';
+  FDemos[11].Bundle := 'BrowserPipelineWorkspace.js'; FDemos[11].Stylesheet := 'workspace.css';
+  FDemos[11].OrdinaryStartup := True;
 
   for I := 0 to DEMO_COUNT - 1 do
   begin
     FDemos[I].TimeoutMs := DEFAULT_PAGE_TIMEOUT_MS;
-    Expect(I, 'data-self-test', 'passed');
-    if I <> 7 then Expect(I, 'data-state', 'solved');
+    if not FDemos[I].OrdinaryStartup then
+    begin
+      FDemos[I].Query := '?selftest=1';
+      Expect(I, 'data-self-test', 'passed');
+      if I <> 7 then Expect(I, 'data-state', 'solved');
+    end;
   end;
+  { Workspace starts empty on its ordinary URL. These are startup/resource
+    checks, not a solver self-test. pipeline_workspace_ui_test separately
+    drives its real visible controls through the complete async workflow. }
+  Expect(11, 'data-demo-entry-pipeline-workspace', 'true');
+  Expect(11, 'data-state', 'ready');
+  Expect(11, 'data-publication-revision', '0');
+  Expect(11, 'data-workspace-current', 'false');
+  Expect(11, 'data-has-baseline', 'false');
   { This one entry runs finite/developed generation, WAVE, and all awaited
     MIDI plan/save/cancel/failure/release fixtures together. Measured complete
     runs exceed fifteen seconds even while every fixture keeps progressing.
@@ -269,7 +285,7 @@ begin
     provisional generic marker on the first task; only our dedicated marker
     can certify completion of all awaited real pages. }
   document.body.setAttribute('data-self-test', 'pending');
-  WriteLn('Real browser demo entries: eleven sequential staged index pages');
+  WriteLn('Real browser demo entries: ', DEMO_COUNT, ' sequential staged index pages');
   OpenNext;
 end;
 
@@ -287,7 +303,7 @@ begin
   try
     FLastMismatch := 'page has not loaded'; FPolls := 0;
     FExpectedUrl := TJSURL.new('demo-entries/' + FDemos[FIndex].Name +
-      '/index.html?selftest=1', window.location.href).href;
+      '/index.html' + FDemos[FIndex].Query, window.location.href).href;
     document.body.setAttribute('data-demo-entries-current', FDemos[FIndex].Name);
     document.body.setAttribute('data-demo-entries-page-timeout-ms',
       IntToStr(FDemos[FIndex].TimeoutMs));
@@ -362,6 +378,14 @@ const ErrorNames: array[0..4] of String = ('data-self-test-message',
 var I: Integer; Actual: String;
 begin
   Result := 1; AMessage := '';
+  if FDemos[FIndex].OrdinaryStartup then
+  begin
+    if ABody.hasAttribute('data-self-test') then
+    begin AMessage := 'ordinary workspace startup must not claim a self-test'; Exit(-1); end;
+    if (ABody.getAttribute('data-state') = 'error') or
+      (ABody.getAttribute('data-operation-result') = 'interrupted') then
+    begin AMessage := 'ordinary workspace startup reported an application error'; Exit(-1); end;
+  end;
   for I := 0 to High(ErrorNames) do
   begin
     if not ABody.hasAttribute(ErrorNames[I]) then Continue;
@@ -425,7 +449,8 @@ end;
 procedure TDemoEntries.CompletePage(const ASuccess: Boolean; const AMessage: String);
 var Message: String;
 begin
-  Message := FDemos[FIndex].Name + '/index.html?selftest=1: ' + Copy(AMessage, 1, 1000);
+  Message := FDemos[FIndex].Name + '/index.html' + FDemos[FIndex].Query +
+    ': ' + Copy(AMessage, 1, 1000);
   if ASuccess then
   begin
     Inc(FPassed); WriteLn('[PASS] ', Message);

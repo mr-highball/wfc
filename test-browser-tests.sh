@@ -75,6 +75,7 @@ else
   name="${source##*/}"
   name="${name%.lpr}"
   case "$name" in wfc_pipeline_prepare_threads_test) continue ;; esac
+  case "$name" in pipeline_workspace_native_fixture|pipeline_workspace_native_process_test) continue ;; esac
   case "$name" in wfc_workspace_cli_process_test|wfc_workspace_cli_fixture) continue ;; esac
   case "$name" in wfc_package_check_process_test|wfc_artifact_cli_process_test|wfc_ensemble_http_process_test|wfc_mapped_world_process_test|wfc_pipeline_mapped_process_test) continue ;; esac
   if [[ -n "${WFC_BROWSER_TEST:-}" && "$name" != "$WFC_BROWSER_TEST" ]]; then continue; fi
@@ -212,7 +213,19 @@ for name in "${sources[@]}"; do
   fi
   if [[ "$name" == wfc_browser_demo_entries_test ]]; then
     expectations+=(--expect data-demo-entries-self-test=passed)
-    expectations+=(--expect data-demo-entries-count=11)
+    expectations+=(--expect data-demo-entries-count=12)
+  fi
+  if [[ "$standalone" == false && "$name" == pipeline_workspace_ui_test ]]; then
+    # Generic harness completion can precede queued UI work. Require the real
+    # asynchronous terminal contract and all fourteen independent stage markers.
+    expectations+=(--expect data-workspace-ui-self-test=passed)
+    expectations+=(--expect data-workspace-ui-stage-count=14)
+    expectations+=(--expect data-workspace-ui-current=complete)
+    for stage in startup cancelled-queue preset-drafts initial-once \
+      draft-isolation seed-epochs cell-inputs failed-repair private-scope \
+      view-window geometry journal-claims file-import restored-history; do
+      expectations+=(--expect "data-workspace-ui-$stage=passed")
+    done
   fi
   if [[ "$name" == wfc_music_ensemble_stream_demo_test ]]; then
     # Awaited file transactions have their own application completion signal.

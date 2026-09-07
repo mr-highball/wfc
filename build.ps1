@@ -444,6 +444,27 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
   $mappedWorldDemoExecutable $binaryOutputDirectory
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+# These suites share the actual portable owner, not a second controller.
+# pipeline_workspace_ui_test is browser-only and is not in this native list.
+$pipelineWorkspaceDemoDirectory = Join-Path $repositoryRoot `
+  'examples/passes/08_PipelineWorkspace'
+foreach ($pipelineWorkspaceTestName in @(
+    'pipeline_workspace_workbench_test', 'pipeline_workspace_view_test',
+    'pipeline_workspace_presets_test')) {
+  Write-Host "Building and running '$pipelineWorkspaceTestName'."
+  & $Compiler @CompilerOptions -B -Mdelphi -Sa -Cr -Co -Ci `
+    "-Fu$sourceDirectory" "-Fu$toolsDirectory" "-Fu$repositoryRoot/test" `
+    "-Fu$pipelineWorkspaceDemoDirectory" `
+    "-FU$unitOutputDirectory" "-FE$binaryOutputDirectory" `
+    (Join-Path $repositoryRoot "test/$pipelineWorkspaceTestName.lpr")
+  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+  $pipelineWorkspaceTestExecutable = if ($env:OS -eq 'Windows_NT') {
+    "$pipelineWorkspaceTestName.exe"
+  } else { $pipelineWorkspaceTestName }
+  & (Join-Path $binaryOutputDirectory $pipelineWorkspaceTestExecutable)
+  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+}
+
 $restartDemoDirectory = Join-Path $repositoryRoot `
   'examples/passes/05_DeterministicRestarts'
 foreach ($restartTestName in @(
@@ -1248,6 +1269,32 @@ $workspaceProcessDirectory = Join-Path $binaryOutputDirectory `
   (Join-Path $binaryOutputDirectory "wfc_workspace$toolExecutableSuffix") `
   (Join-Path $binaryOutputDirectory "wfc_workspace_cli_fixture$toolExecutableSuffix") `
   $workspaceProcessDirectory
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+# The fixture continues exported histories through the real workspace CLI.
+# Expected unsolved child exit10 is checked inside the successful harness.
+Write-Host 'Building and running Pipeline Workspace native demo conformance.'
+foreach ($pipelineWorkspaceSource in @(
+    (Join-Path $pipelineWorkspaceDemoDirectory 'PipelineWorkspace.lpr'),
+    (Join-Path $repositoryRoot 'test/pipeline_workspace_native_fixture.lpr'),
+    (Join-Path $repositoryRoot 'test/pipeline_workspace_native_process_test.lpr'))) {
+  & $Compiler @CompilerOptions -B -Mdelphi -Sa -Cr -Co -Ci `
+    "-Fu$sourceDirectory" "-Fu$toolsDirectory" "-Fu$repositoryRoot/test" `
+    "-Fu$pipelineWorkspaceDemoDirectory" `
+    "-FU$unitOutputDirectory" "-FE$binaryOutputDirectory" $pipelineWorkspaceSource
+  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+}
+$pipelineWorkspaceExecutable = Join-Path $binaryOutputDirectory `
+  "PipelineWorkspace$toolExecutableSuffix"
+& $pipelineWorkspaceExecutable --help
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+$pipelineWorkspaceProcessDirectory = Join-Path $binaryOutputDirectory `
+  ('pipeline-workspace-process-' + [Guid]::NewGuid().ToString('N'))
+& (Join-Path $binaryOutputDirectory "pipeline_workspace_native_process_test$toolExecutableSuffix") `
+  $pipelineWorkspaceExecutable `
+  (Join-Path $binaryOutputDirectory "wfc_workspace$toolExecutableSuffix") `
+  (Join-Path $binaryOutputDirectory "pipeline_workspace_native_fixture$toolExecutableSuffix") `
+  $pipelineWorkspaceProcessDirectory
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 $learnerToolExecutable = Join-Path $binaryOutputDirectory `

@@ -31,6 +31,8 @@ $nativeOnly += 'wfc_pipeline_mapped_process_test'
 $nativeOnly += 'wfc_pipeline_prepare_threads_test'
 $nativeOnly += 'wfc_workspace_cli_process_test'
 $nativeOnly += 'wfc_workspace_cli_fixture'
+$nativeOnly += 'pipeline_workspace_native_fixture'
+$nativeOnly += 'pipeline_workspace_native_process_test'
 if ($standalone) {
   if (-not $WebRoot -or -not $Page -or $TestName) {
     throw 'Standalone mode requires -WebRoot and -Page and excludes -TestName.'
@@ -171,7 +173,18 @@ try {
         $expectations = @('data-self-test=passed') + $expectations
       }
       if ($caseName -eq 'wfc_browser_demo_entries_test') {
-        $expectations += @('data-demo-entries-self-test=passed', 'data-demo-entries-count=11')
+        $expectations += @('data-demo-entries-self-test=passed', 'data-demo-entries-count=12')
+      }
+      if (-not $standalone -and $caseName -ceq 'pipeline_workspace_ui_test') {
+        # The synchronous harness can finish while real queued UI work remains.
+        # Require the dedicated terminal marker and every actual workflow stage.
+        $expectations += @('data-workspace-ui-self-test=passed',
+          'data-workspace-ui-stage-count=14', 'data-workspace-ui-current=complete')
+        foreach ($stage in @('startup','cancelled-queue','preset-drafts','initial-once',
+            'draft-isolation','seed-epochs','cell-inputs','failed-repair','private-scope',
+            'view-window','geometry','journal-claims','file-import','restored-history')) {
+          $expectations += "data-workspace-ui-$stage=passed"
+        }
       }
       if ($caseName -eq 'wfc_music_ensemble_stream_demo_test') {
         $expectations += @('data-stream-self-test=passed', 'data-stream-release=passed',

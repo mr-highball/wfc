@@ -215,6 +215,13 @@ The repository already contains the beginnings of the ecosystem:
   repair permission, cumulative pending requirements, separate historical/current
   output and complete actual detached solver reports. This is an in-memory API,
   not a saved journal, general workspace editor or live atomic-publication layer;
+- [workspace journals and exact replay](docs/pipeline-workspaces.md), with
+  complete accepted-operation history, unverified imported claims, actual
+  replay comparison and atomic live publication. The separate
+  [Pipeline Workspace](examples/passes/08_PipelineWorkspace/README.md) adds
+  editable canonical drafts, caller-defined pass geometry, cell inputs,
+  explicit repair roots, saved-history restore and native/browser diagnostic
+  views, with included FPC export and hosting tools;
 - [saved-artifact validation and inspection](docs/artifact-tools.md) across
   rules, cardinal/pattern/sequence models, training sources, recipes, bound
   runs, and bound results; explicit exact-byte result replay, terminal-safe
@@ -605,9 +612,14 @@ now supplies checked definition assembly and explicit index/name remapping.
 Reusable [preparation](docs/pipeline-preparation.md) and
 [prepared sessions](docs/pipeline-sessions.md) now supply input replacement,
 explicit repair permission and detached outcomes for one bound immutable recipe.
-The editable multi-resource composition workspace, saved operation/outcome
-formats, atomic candidate replay/publication, workbench import/export,
-broader topology controls and more
+The [workspace layer](docs/pipeline-workspaces.md) now retains complete
+operation/outcome histories and supports exact candidate replay with atomic
+publication. The generic [Pipeline Workspace editor](examples/passes/08_PipelineWorkspace/README.md)
+adds imported multi-resource definitions, explicit per-pass geometry epochs,
+cell inputs, repair permission previews, and journal import/export. It preserves
+linked-layout guards and refuses incompatible shrinkage rather than resampling
+or clipping. Interactive graph composition beyond canonical document authoring,
+history compaction/acceleration, migration of older demo interfaces, and more
 targeted repair strategies remain open. Existing 2D versions and bytes remain unchanged. The
 [research record](docs/research/mapped-world-footprints-v1.md) records focused
 native/browser evidence separately from full integration gates.

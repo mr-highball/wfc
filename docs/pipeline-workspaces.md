@@ -7,8 +7,14 @@ importing generated values as locks or restarting only the final invocation.
 The five units are shared MIT Pascal for native FPC and pas2js; the included
 native `wfc_workspace` tool needs no additional runtime or server.
 
-This is a library and command-line workflow. The Mapped World and Ensemble
-Studio browser interfaces have not been migrated to this workspace owner.
+The [Pipeline Workspace example](../examples/passes/08_PipelineWorkspace/README.md)
+provides a shared native/pas2js workbench over these APIs, with complete
+recipe/run import, cell input edits, explicit repair roots, mapped geometry
+epochs, journal download and verified restore. Its
+[native host](../examples/passes/08_PipelineWorkspace/NATIVE.md) builds real
+presets or imports definitions and exports a complete initial history for the
+existing CLI to continue. The separate Mapped World and Ensemble Studio
+browser interfaces have not been migrated to this workspace owner.
 Existing [recipe/run/result formats](pipeline-artifacts.md) and the generic
 [artifact-family tools](artifact-tools.md) keep their existing contracts.
 
@@ -480,7 +486,13 @@ evidence gate compared 53 complete documents. These are functional/portability
 checks, not browser visual review, universal solver success, or evidence that
 every later full build/hosted CI job has already passed.
 
-General interactive workspace UIs, demo migrations, history compaction,
+The generic example's viewing window is independent of pass extents. It shows
+local-grid diagnostics, not a universal physical-safety certificate; current
+output and historical baselines stay explicitly distinct. A repair preview
+replays prior history before inspecting permission: it does not execute or
+publish the newly requested repair, but it is not a graph-free operation.
+
+Migration of the older domain-specific demos, history compaction,
 checkpoint acceleration and concurrent editors remain separate work. This
 format deliberately preserves every accepted operation rather than pretending
 that a saved final recipe/run can reconstruct edit ownership and selective reuse.
