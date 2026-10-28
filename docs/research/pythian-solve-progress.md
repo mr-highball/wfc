@@ -44,3 +44,10 @@ Observer exceptions propagate before accepted publication; callback bodies canno
 mutate/reenter the graph or consume its randomness. Rollback/destruction never
 invoke the work observer. No upstream branch merge or full downstream operation
 acceptance follows merely from these local results.
+Published CI52 stopped in the static package checker before solver execution:
+`wfc_package.pas` interface uses order must match Lazarus source-item order. The
+new unit was appended to the Lazarus inventory but prepended to interface uses.
+Align the interface order, retaining the complete inventory and dependency
+implementation. The actual native manifest checker now verifies97 source units
+in all three definitions. Preserve the original CI52 failure; solver results are
+not established by that failed run. Await validation of the repaired commit.

@@ -8,7 +8,7 @@ unit wfc_package;
 interface
 
 uses
-  wfc_solve_progress, wfc_solver_reference, wfc, wfc_trace, wfc_model, wfc_learn, wfc_model_text,
+  wfc_solver_reference, wfc, wfc_trace, wfc_model, wfc_learn, wfc_model_text,
   wfc_world2d, wfc_world2d_validate, wfc_text_codec, wfc_pattern2d,
   wfc_pattern2d_learn, wfc_pattern2d_text, wfc_world2d_settlement,
   wfc_world2d_settlement_validate, wfc_sequence, wfc_sequence_learn,
@@ -36,7 +36,8 @@ uses
   wfc_pipeline_mapping, wfc_pipeline_compose, wfc_pipeline_prepare,
   wfc_pipeline_session, wfc_pipeline_session_evidence,
   wfc_pipeline_workspace_context, wfc_pipeline_workspace_journal,
-  wfc_pipeline_workspace_journal_text, wfc_pipeline_workspace_replay;
+  wfc_pipeline_workspace_journal_text, wfc_pipeline_workspace_replay,
+  wfc_solve_progress;
 
 implementation
 
