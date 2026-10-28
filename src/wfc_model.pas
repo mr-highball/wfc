@@ -29,7 +29,8 @@ interface
 
 uses
   SysUtils,
-  wfc;
+  wfc,
+  wfc_preparation;
 
 type
   EWfcModel = class(Exception);
@@ -101,27 +102,31 @@ type
       const ASymmetry: TWfcModelSymmetry;
       const ADirections: TWfcModelDirections;
       const ATokens: TWfcModelTokens;
-      const AWeights, ARelations: TWfcModelIntegerArray);
+      const AWeights, ARelations: TWfcModelIntegerArray;
+      const AWork: TWfcPreparationWork);
   public
     constructor Create(const ARank, ASampleWidth, ASampleHeight: Integer;
       const ABoundary: TWfcModelBoundary;
       const ASymmetry: TWfcModelSymmetry;
       const ADirections: TWfcModelDirections;
       const ATokens: TWfcModelTokens;
-      const AWeights, ARelations: TWfcModelIntegerArray); overload;
+      const AWeights, ARelations: TWfcModelIntegerArray;
+      const AObserver: TWfcPreparationObserver = nil); overload;
     constructor Create(const ARank: Integer;
       const ASampleShapes: TWfcModelSampleShapes;
       const ABoundary: TWfcModelBoundary;
       const ASymmetry: TWfcModelSymmetry;
       const ADirections: TWfcModelDirections;
       const ATokens: TWfcModelTokens;
-      const AWeights, ARelations: TWfcModelIntegerArray); overload;
+      const AWeights, ARelations: TWfcModelIntegerArray;
+      const AObserver: TWfcPreparationObserver = nil); overload;
     constructor Create(const ARank, ASampleWidth, ASampleHeight,
       ASampleDepth: Integer; const ABoundary: TWfcModelBoundary;
       const ASymmetry: TWfcModelSymmetry;
       const ADirections: TWfcModelDirections;
       const ATokens: TWfcModelTokens;
-      const AWeights, ARelations: TWfcModelIntegerArray); overload;
+      const AWeights, ARelations: TWfcModelIntegerArray;
+      const AObserver: TWfcPreparationObserver = nil); overload;
 
     function SampleShapeAt(
       const ASampleIndex: Integer): TWfcModelSampleShape;
@@ -195,7 +200,10 @@ function WfcModelTokenIsValid(const AToken: TWfcModelToken): Boolean;
 function WfcModelDefinitionMatchesGraph(const AModel: TWfcModel;
   const AGraph: TGraph): Boolean;
 
-procedure ApplyModelToGraph(const AModel: TWfcModel; const AGraph: TGraph);
+{ A caller-owned construction pass can be partially changed on failure; build
+  in a private candidate and dispose it on abort. No new atomicity is implied. }
+procedure ApplyModelToGraph(const AModel: TWfcModel; const AGraph: TGraph;
+  const AObserver: TWfcPreparationObserver = nil);
 
 implementation
 
@@ -740,9 +748,11 @@ constructor TWfcModel.Create(const ARank, ASampleWidth,
   ASampleHeight: Integer; const ABoundary: TWfcModelBoundary;
   const ASymmetry: TWfcModelSymmetry;
   const ADirections: TWfcModelDirections; const ATokens: TWfcModelTokens;
-  const AWeights, ARelations: TWfcModelIntegerArray);
+  const AWeights, ARelations: TWfcModelIntegerArray;
+  const AObserver: TWfcPreparationObserver);
 var
   LSampleShapes: TWfcModelSampleShapes;
+  LWork: TWfcPreparationWork;
 begin
   inherited Create;
   if ARank = 3 then
@@ -750,8 +760,15 @@ begin
   SetLength(LSampleShapes, 1);
   LSampleShapes[0] := MakeWfcModelSampleShape(ASampleWidth,
     ASampleHeight);
-  Initialize(ARank, LSampleShapes, ABoundary, ASymmetry, ADirections,
-    ATokens, AWeights, ARelations);
+  LWork := TWfcPreparationWork.Create(AObserver, 'model_construct_visits');
+  try
+    LWork.Checkpoint;
+    Initialize(ARank, LSampleShapes, ABoundary, ASymmetry, ADirections,
+      ATokens, AWeights, ARelations, LWork);
+    LWork.Finish;
+  finally
+    LWork.Free;
+  end;
 end;
 
 constructor TWfcModel.Create(const ARank: Integer;
@@ -759,27 +776,47 @@ constructor TWfcModel.Create(const ARank: Integer;
   const ABoundary: TWfcModelBoundary;
   const ASymmetry: TWfcModelSymmetry;
   const ADirections: TWfcModelDirections; const ATokens: TWfcModelTokens;
-  const AWeights, ARelations: TWfcModelIntegerArray);
+  const AWeights, ARelations: TWfcModelIntegerArray;
+  const AObserver: TWfcPreparationObserver);
+var
+  LWork: TWfcPreparationWork;
 begin
   inherited Create;
-  Initialize(ARank, ASampleShapes, ABoundary, ASymmetry, ADirections,
-    ATokens, AWeights, ARelations);
+  LWork := TWfcPreparationWork.Create(AObserver, 'model_construct_visits');
+  try
+    LWork.Checkpoint;
+    Initialize(ARank, ASampleShapes, ABoundary, ASymmetry, ADirections,
+      ATokens, AWeights, ARelations, LWork);
+    LWork.Finish;
+  finally
+    LWork.Free;
+  end;
 end;
 
 constructor TWfcModel.Create(const ARank, ASampleWidth, ASampleHeight,
   ASampleDepth: Integer; const ABoundary: TWfcModelBoundary;
   const ASymmetry: TWfcModelSymmetry;
   const ADirections: TWfcModelDirections; const ATokens: TWfcModelTokens;
-  const AWeights, ARelations: TWfcModelIntegerArray);
-var LShapes: TWfcModelSampleShapes;
+  const AWeights, ARelations: TWfcModelIntegerArray;
+  const AObserver: TWfcPreparationObserver);
+var
+  LShapes: TWfcModelSampleShapes;
+  LWork: TWfcPreparationWork;
 begin
   inherited Create;
   if (ARank <> 3) and (ASampleDepth <> 1) then
     raise EWfcModel.Create('rank-1/2 model depth must be one');
   SetLength(LShapes, 1);
   LShapes[0] := MakeWfcModelSampleShape(ASampleWidth, ASampleHeight, ASampleDepth);
-  Initialize(ARank, LShapes, ABoundary, ASymmetry, ADirections,
-    ATokens, AWeights, ARelations);
+  LWork := TWfcPreparationWork.Create(AObserver, 'model_construct_visits');
+  try
+    LWork.Checkpoint;
+    Initialize(ARank, LShapes, ABoundary, ASymmetry, ADirections,
+      ATokens, AWeights, ARelations, LWork);
+    LWork.Finish;
+  finally
+    LWork.Free;
+  end;
 end;
 
 procedure TWfcModel.Initialize(const ARank: Integer;
@@ -787,7 +824,8 @@ procedure TWfcModel.Initialize(const ARank: Integer;
   const ABoundary: TWfcModelBoundary;
   const ASymmetry: TWfcModelSymmetry;
   const ADirections: TWfcModelDirections; const ATokens: TWfcModelTokens;
-  const AWeights, ARelations: TWfcModelIntegerArray);
+  const AWeights, ARelations: TWfcModelIntegerArray;
+  const AWork: TWfcPreparationWork);
 var
   D: TWfcModelDirection;
   I: Integer;
@@ -821,6 +859,7 @@ begin
   LTotalSampleCells := 0;
   for LShapeIndex := 0 to LSampleCount - 1 do
   begin
+    AWork.Visit;
     LSampleCells := CheckedSampleCellCount(
       ASampleShapes[LShapeIndex], LShapeIndex, ARank);
     if LTotalSampleCells > WFC_MODEL_MAX_TOTAL_SAMPLE_CELL_COUNT -
@@ -861,27 +900,35 @@ begin
 
   for I := 0 to Pred(LValueCount) do
   begin
+    AWork.Visit;
     if not TokenIsValidUtf8(ATokens[I]) then
       raise EWfcModel.CreateFmt(
         'model token must be nonempty, well-formed UTF-8 [%d]', [I]);
     for J := 0 to Pred(I) do
+    begin
+      AWork.Visit;
       if ATokens[I] = ATokens[J] then
         raise EWfcModel.CreateFmt('model tokens must be unique [%d, %d]',
           [J, I]);
+    end;
     if AWeights[I] < 1 then
       raise EWfcModel.CreateFmt('model weight must be positive [%d]', [I]);
   end;
 
   for I := 0 to Pred(LExpectedRelations) do
+  begin
+    AWork.Visit;
     if ARelations[I] < 0 then
       raise EWfcModel.CreateFmt(
         'model relation count must be nonnegative [%d]', [I]);
+  end;
 
   for D := Low(TWfcModelDirection) to
     TWfcModelDirection(WfcModelStoredDirectionCount(ARank) - 1) do
     for I := 0 to Pred(LValueCount) do
       for J := 0 to Pred(LValueCount) do
       begin
+        AWork.Visit;
         if (not (D in ADirections)) and
             (ARelations[((Ord(D) * LValueCount) + I) *
               LValueCount + J] <> 0) then
@@ -902,6 +949,8 @@ begin
   FRank := ARank;
   SetLength(FSampleShapes, LSampleCount);
   for I := 0 to LSampleCount - 1 do
+  begin
+    AWork.Visit;
     if ARank = 3 then
       FSampleShapes[I] := ASampleShapes[I]
     else
@@ -909,6 +958,7 @@ begin
       //Do not inspect that new field for legacy ranks; normalize owned data.
       FSampleShapes[I] := MakeWfcModelSampleShape(ASampleShapes[I].Width,
         ASampleShapes[I].Height);
+  end;
   FBoundary := ABoundary;
   FSymmetry := ASymmetry;
   FDirections := ADirections;
@@ -917,13 +967,17 @@ begin
   SetLength(FWeights, LValueCount);
   for I := 0 to Pred(LValueCount) do
   begin
+    AWork.Visit;
     FTokens[I] := ATokens[I];
     FWeights[I] := AWeights[I];
   end;
 
   SetLength(FRelations, LExpectedRelations);
   for I := 0 to Pred(LExpectedRelations) do
+  begin
     FRelations[I] := ARelations[I];
+    AWork.Visit;
+  end;
 end;
 
 function TWfcModel.SampleShapeAt(
@@ -1149,7 +1203,8 @@ begin
     LBase.Symmetry, LBase.Directions, LTokens, LWeights, LRelations);
 end;
 
-procedure ApplyModelToGraph(const AModel: TWfcModel; const AGraph: TGraph);
+procedure ApplyModelToGraph(const AModel: TWfcModel; const AGraph: TGraph;
+  const AObserver: TWfcPreparationObserver);
 type
   TGraphRuleMatrix = array of TGraphRules;
   TGraphDirectionArray = array of TGraphDirection;
@@ -1169,6 +1224,7 @@ var
   LRules: TGraphRuleMatrix;
   LSlot: Integer;
   LTargetCount: Integer;
+  LWork: TWfcPreparationWork;
 
   function RuleSlotIndex(const AValue: Integer;
     const ADirection: TGraphDirection): Integer;
@@ -1202,107 +1258,142 @@ begin
     raise EWfcModel.Create(
       'target graph pass must be empty before applying a model');
 
-  //Preflight all conversion and representability checks before mutating the
-  //target pass. TGraphValue can use a host code page on native builds, so
-  //distinct UTF-8 model tokens must remain distinct after conversion.
-  SetLength(LGraphValues, AModel.ValueCount);
-  for I := 0 to Pred(AModel.ValueCount) do
-  begin
-    LGraphValues[I] := ModelTokenToGraphValue(AModel.TokenAt(I));
-    if Length(LGraphValues[I]) = 0 then
-      raise EWfcModel.CreateFmt(
-        'model token converts to an empty graph value [%d]', [I]);
-    if GraphValueToModelToken(LGraphValues[I]) <> AModel.TokenAt(I) then
-      raise EWfcModel.CreateFmt(
-        'model token cannot be represented by the target graph string type [%d]',
-        [I]);
-    for J := 0 to Pred(I) do
-      if LGraphValues[I] = LGraphValues[J] then
+  LWork := TWfcPreparationWork.Create(AObserver, 'model_apply_visits');
+  try
+    LWork.Checkpoint;
+    //Preflight all conversion and representability checks before mutating the
+    //target pass. TGraphValue can use a host code page on native builds, so
+    //distinct UTF-8 model tokens must remain distinct after conversion.
+    SetLength(LGraphValues, AModel.ValueCount);
+    for I := 0 to Pred(AModel.ValueCount) do
+    begin
+      LWork.Visit;
+      LGraphValues[I] := ModelTokenToGraphValue(AModel.TokenAt(I));
+      if Length(LGraphValues[I]) = 0 then
         raise EWfcModel.CreateFmt(
-          'model token conversion is not unique [%d, %d]', [J, I]);
-  end;
-
-  //Build the complete public rule arrays before mutating the target graph.
-  //Calling NewRule once per dense edge makes every call run inverse-rule
-  //fixed-point synchronization over the model built so far. TWfcModel has
-  //already proved that every relation is reciprocal, and imported rules are
-  //never required, so that repeated closure is unnecessary here. Discover
-  //slots in the same edge order as the fluent builder to preserve observable
-  //TGraphRuleGroup.Rules ordering as well as solver semantics.
-  SetLength(LRuleCount, AModel.ValueCount);
-  SetLength(LRuleDirections, AModel.ValueCount);
-  SetLength(LDenyAllDirections, AModel.ValueCount);
-  SetLength(LRuleSlots, AModel.ValueCount *
-    (Ord(High(TGraphDirection)) + 1));
-  for I := 0 to High(LRuleSlots) do
-    LRuleSlots[I] := -1;
-
-  for D := Low(TWfcModelDirection) to High(TWfcModelDirection) do
-    if D in AModel.Directions then
-    begin
-      LGraphDirection := ModelDirectionToGraphDirection(D);
-      for I := 0 to Pred(AModel.ValueCount) do
-        for J := 0 to Pred(AModel.ValueCount) do
-          if AModel.RelationCount(D, I, J) > 0 then
-          begin
-            EnsureRuleSlot(I, LGraphDirection);
-            EnsureRuleSlot(J, InverseOfDir(LGraphDirection));
-          end;
-    end;
-
-  SetLength(LRules, AModel.ValueCount);
-  for I := 0 to Pred(AModel.ValueCount) do
-  begin
-    SetLength(LRules[I], LRuleCount[I]);
-    for J := 0 to Pred(LRuleCount[I]) do
-    begin
-      LRules[I][J].Key := LRuleDirections[I][J];
-      LRules[I][J].Info := False;
-      SetLength(LRules[I][J].Value, 0);
-    end;
-  end;
-
-  for D := Low(TWfcModelDirection) to High(TWfcModelDirection) do
-    if D in AModel.Directions then
-    begin
-      LGraphDirection := ModelDirectionToGraphDirection(D);
-      for I := 0 to Pred(AModel.ValueCount) do
+          'model token converts to an empty graph value [%d]', [I]);
+      if GraphValueToModelToken(LGraphValues[I]) <> AModel.TokenAt(I) then
+        raise EWfcModel.CreateFmt(
+          'model token cannot be represented by the target graph string type [%d]',
+          [I]);
+      for J := 0 to Pred(I) do
       begin
-        LTargetCount := 0;
-        for J := 0 to Pred(AModel.ValueCount) do
-          if AModel.RelationCount(D, I, J) > 0 then
-            Inc(LTargetCount);
-        if LTargetCount = 0 then
-          Include(LDenyAllDirections[I], LGraphDirection)
-        else
-        begin
-          LSlot := LRuleSlots[RuleSlotIndex(I, LGraphDirection)];
-          SetLength(LRules[I][LSlot].Value, LTargetCount);
-          LTargetCount := 0;
-          for J := 0 to Pred(AModel.ValueCount) do
-            if AModel.RelationCount(D, I, J) > 0 then
-            begin
-              LRules[I][LSlot].Value[LTargetCount] := LGraphValues[J];
-              Inc(LTargetCount);
-            end;
-        end;
+        LWork.Visit;
+        if LGraphValues[I] = LGraphValues[J] then
+          raise EWfcModel.CreateFmt(
+            'model token conversion is not unique [%d, %d]', [J, I]);
       end;
     end;
 
-  for I := 0 to Pred(AModel.ValueCount) do
-    AGraph.AddValue(LGraphValues[I], AModel.WeightAt(I));
+    //Build the complete public rule arrays before mutating the target graph.
+    //Calling NewRule once per dense edge makes every call run inverse-rule
+    //fixed-point synchronization over the model built so far. TWfcModel has
+    //already proved that every relation is reciprocal, and imported rules are
+    //never required, so that repeated closure is unnecessary here. Discover
+    //slots in the same edge order as the fluent builder to preserve observable
+    //TGraphRuleGroup.Rules ordering as well as solver semantics.
+    SetLength(LRuleCount, AModel.ValueCount);
+    SetLength(LRuleDirections, AModel.ValueCount);
+    SetLength(LDenyAllDirections, AModel.ValueCount);
+    SetLength(LRuleSlots, AModel.ValueCount *
+      (Ord(High(TGraphDirection)) + 1));
+    for I := 0 to High(LRuleSlots) do
+    begin
+      LWork.Visit;
+      LRuleSlots[I] := -1;
+    end;
 
-  for I := 0 to Pred(AModel.ValueCount) do
-    AGraph.Rules[LGraphValues[I]].Rules := LRules[I];
+    for D := Low(TWfcModelDirection) to High(TWfcModelDirection) do
+      if D in AModel.Directions then
+      begin
+        LGraphDirection := ModelDirectionToGraphDirection(D);
+        for I := 0 to Pred(AModel.ValueCount) do
+          for J := 0 to Pred(AModel.ValueCount) do
+          begin
+            LWork.Visit;
+            if AModel.RelationCount(D, I, J) > 0 then
+            begin
+              EnsureRuleSlot(I, LGraphDirection);
+              EnsureRuleSlot(J, InverseOfDir(LGraphDirection));
+            end;
+          end;
+      end;
 
-  //An absent direction remains the graph's historical wildcard. Active model
-  //directions are finite: a source row with no learned targets therefore
-  //denies every present neighbor in that direction. Install these only after
-  //the finite rule arrays so nonempty models retain their exact public rule
-  //ordering.
-  for I := 0 to Pred(AModel.ValueCount) do
-    if LDenyAllDirections[I] <> [] then
-      AGraph.Rules[LGraphValues[I]].DenyAll(LDenyAllDirections[I]);
+    SetLength(LRules, AModel.ValueCount);
+    for I := 0 to Pred(AModel.ValueCount) do
+    begin
+      LWork.Visit;
+      SetLength(LRules[I], LRuleCount[I]);
+      for J := 0 to Pred(LRuleCount[I]) do
+      begin
+        LWork.Visit;
+        LRules[I][J].Key := LRuleDirections[I][J];
+        LRules[I][J].Info := False;
+        SetLength(LRules[I][J].Value, 0);
+      end;
+    end;
+
+    for D := Low(TWfcModelDirection) to High(TWfcModelDirection) do
+      if D in AModel.Directions then
+      begin
+        LGraphDirection := ModelDirectionToGraphDirection(D);
+        for I := 0 to Pred(AModel.ValueCount) do
+        begin
+          LWork.Visit;
+          LTargetCount := 0;
+          for J := 0 to Pred(AModel.ValueCount) do
+          begin
+            LWork.Visit;
+            if AModel.RelationCount(D, I, J) > 0 then
+              Inc(LTargetCount);
+          end;
+          if LTargetCount = 0 then
+            Include(LDenyAllDirections[I], LGraphDirection)
+          else
+          begin
+            LSlot := LRuleSlots[RuleSlotIndex(I, LGraphDirection)];
+            SetLength(LRules[I][LSlot].Value, LTargetCount);
+            LTargetCount := 0;
+            for J := 0 to Pred(AModel.ValueCount) do
+            begin
+              LWork.Visit;
+              if AModel.RelationCount(D, I, J) > 0 then
+              begin
+                LRules[I][LSlot].Value[LTargetCount] := LGraphValues[J];
+                Inc(LTargetCount);
+              end;
+            end;
+          end;
+        end;
+      end;
+
+    for I := 0 to Pred(AModel.ValueCount) do
+    begin
+      AGraph.AddValue(LGraphValues[I], AModel.WeightAt(I));
+      LWork.Visit;
+    end;
+
+    for I := 0 to Pred(AModel.ValueCount) do
+    begin
+      AGraph.Rules[LGraphValues[I]].Rules := LRules[I];
+      LWork.Visit;
+    end;
+
+    //An absent direction remains the graph's historical wildcard. Active model
+    //directions are finite: a source row with no learned targets therefore
+    //denies every present neighbor in that direction. Install these only after
+    //the finite rule arrays so nonempty models retain their exact public rule
+    //ordering.
+    for I := 0 to Pred(AModel.ValueCount) do
+    begin
+      LWork.Visit;
+      if LDenyAllDirections[I] <> [] then
+        AGraph.Rules[LGraphValues[I]].DenyAll(LDenyAllDirections[I]);
+    end;
+    LWork.Finish;
+  finally
+    LWork.Free;
+  end;
 end;
 
 end.

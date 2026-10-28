@@ -28,6 +28,7 @@ and explicit exit gates.
 | Require connected roads or circulation | [Rooted port connectivity](docs/connectivity.md), [training-source authoring](docs/training-connectivity.md) |
 | Require exact or bounded output quantities | [Whole-pass value quotas](docs/value-quotas.md), [portable quota recipes](docs/pipeline-value-quotas.md) |
 | Build and run locally | [Build guide](docs/building.md), [FPC development tools](docs/development-tools.md) |
+| Observe or cancel model and voice preparation | [Call-scoped preparation progress](docs/preparation-progress.md) |
 | Try an interactive demo | [Demo table below](#demos), [complete examples index](examples/README.md) |
 | Learn models from examples | [Learning](docs/learning.md), [training documents and CLI](docs/training.md) |
 | Learn cyclic text, rhythms or event patterns | [Circular sequence training](docs/sequences.md#circular-source-training), [Training Studio](docs/training-studio.md) |

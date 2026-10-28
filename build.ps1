@@ -2100,6 +2100,7 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 $voicesDemoDirectory = Join-Path $repositoryRoot 'examples/music/07_VoiceStudio'
 foreach ($voicesTestName in @(
     'wfc_sequence_partial_projection_test', 'wfc_music_voices_graph_test',
+    'wfc_music_voices_preparation_test',
     'wfc_music_voices_training_test', 'wfc_music_voices_stream_test',
     'wfc_music_voices_demo_test')) {
   Write-Host "Building and running '$voicesTestName'."

@@ -1747,7 +1747,7 @@ esac
   "$compiler_binary_output_directory" || exit $?
 
 compiler_voices_demo_directory="$compiler_source_directory/../examples/music/07_VoiceStudio"
-for voices_test_name in wfc_sequence_partial_projection_test wfc_music_voices_graph_test wfc_music_voices_training_test wfc_music_voices_stream_test wfc_music_voices_demo_test; do
+for voices_test_name in wfc_sequence_partial_projection_test wfc_music_voices_graph_test wfc_music_voices_preparation_test wfc_music_voices_training_test wfc_music_voices_stream_test wfc_music_voices_demo_test; do
   printf "Building and running '%s'.\n" "$voices_test_name"
   "$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
     "-Fu$compiler_source_directory" "-Fu$compiler_voices_demo_directory" \

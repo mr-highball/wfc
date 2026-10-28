@@ -29,7 +29,8 @@ interface
 
 uses
   SysUtils,
-  wfc_model;
+  wfc_model,
+  wfc_preparation;
 
 const
   WFC_SEQUENCE_MODEL_VERSION = 1;
@@ -67,6 +68,20 @@ type
   end;
   TWfcSequencePreparationObserver = procedure(
     const AProgress: TWfcSequencePreparationProgress) of object;
+
+  { Reuses exact sequence rows/cells through the general preparation receiver;
+    nested counts remain separate from this call's own marked visits. }
+  TWfcSequencePreparationBridge = class(TWfcPreparationWork)
+  private
+    FSequencePassIndex: Integer;
+    procedure ObserveSequence(const AProgress: TWfcSequencePreparationProgress);
+  public
+    constructor Create(const AObserver: TWfcPreparationObserver;
+      const AStage: String; const APassIndex: Integer = -1);
+    procedure Forward(const AProgress: TWfcPreparationProgress); override;
+    function SequenceObserver: TWfcSequencePreparationObserver;
+    property SequencePassIndex: Integer read FSequencePassIndex write FSequencePassIndex;
+  end;
 
   TWfcSequenceHistoryKind = (
     wshBos,
@@ -200,7 +215,8 @@ type
       const AObserver: TWfcSequencePreparationObserver = nil): TWfcModelTokens;
 
     function CreateGraphModel(
-      const AStateKeys: TWfcModelTokens): TWfcModel;
+      const AStateKeys: TWfcModelTokens;
+      const AObserver: TWfcPreparationObserver = nil): TWfcModel;
 
     property Order: Integer read FOrder;
     property Boundary: TWfcModelBoundary read FBoundary;
@@ -230,10 +246,77 @@ procedure ValidateSequenceTokenConstraints(
   const AModel: TWfcSequenceModel; const ALength: Integer;
   const AConstraints: TWfcSequenceTokenConstraints;
   const AObserver: TWfcSequencePreparationObserver = nil);
+function SequencePreparationObserver(const ABridge: TWfcSequencePreparationBridge):
+  TWfcSequencePreparationObserver;
+
 procedure ReportSequencePreparation(const AObserver: TWfcSequencePreparationObserver;
   const APhase: TWfcSequencePreparationPhase; const ADone, ATotal: Integer);
 
 implementation
+
+function SequencePreparationObserver(const ABridge: TWfcSequencePreparationBridge):
+  TWfcSequencePreparationObserver;
+begin
+  Result := nil;
+  if ABridge <> nil then
+  begin
+    Result := ABridge.SequenceObserver();
+  end;
+end;
+
+constructor TWfcSequencePreparationBridge.Create(const AObserver: TWfcPreparationObserver;
+  const AStage: String; const APassIndex: Integer);
+begin
+  inherited Create(AObserver, AStage, APassIndex);
+  FSequencePassIndex := APassIndex;
+end;
+
+procedure TWfcSequencePreparationBridge.Forward(const AProgress: TWfcPreparationProgress);
+var
+  LProgress: TWfcPreparationProgress;
+begin
+  LProgress := AProgress;
+  if (LProgress.PassIndex = -1) and (LProgress.Stage <> Stage) then
+  begin
+    LProgress.PassIndex := FSequencePassIndex;
+  end;
+  inherited Forward(LProgress);
+end;
+
+procedure TWfcSequencePreparationBridge.ObserveSequence(
+  const AProgress: TWfcSequencePreparationProgress);
+var
+  LStage: String;
+begin
+  case AProgress.Phase of
+    wspValidateConstraints: LStage := 'sequence_constraint_rows';
+    wspValidateGraphModel: LStage := 'sequence_model_rows';
+    wspSnapshotDomains: LStage := 'sequence_snapshot_cells';
+    wspIntersectDomains: LStage := 'sequence_mask_rows';
+    wspLearnTokenRows: LStage := 'sequence_learn_token_rows';
+    wspLearnStateRows: LStage := 'sequence_learn_state_rows';
+    wspModelBuildVisits: LStage := 'sequence_model_build_visits';
+    wspCaptureSequenceCells: LStage := 'sequence_capture_cells';
+    wspValidatePathStates: LStage := 'sequence_path_states';
+    wspValidatePathTransitions: LStage := 'sequence_path_transitions';
+    wspValidateEntryCells: LStage := 'sequence_entry_cells';
+    wspValidateProjectionStates: LStage := 'sequence_projection_states';
+    wspProjectStateTokens: LStage := 'sequence_project_tokens';
+    wspCaptureReady: LStage := 'sequence_capture_ready';
+  else
+    raise EWfcSequence.Create('Unknown sequence preparation phase');
+  end;
+  Report(LStage, AProgress.Done, AProgress.Total, FSequencePassIndex);
+end;
+
+function TWfcSequencePreparationBridge.SequenceObserver: TWfcSequencePreparationObserver;
+begin
+  Result := nil;
+  if Assigned(Observer()) then
+  begin
+    Result := ObserveSequence;
+  end;
+end;
 
 type
   TBooleanArray = array of Boolean;
@@ -1149,47 +1232,72 @@ begin
 end;
 
 function TWfcSequenceModel.CreateGraphModel(
-  const AStateKeys: TWfcModelTokens): TWfcModel;
+  const AStateKeys: TWfcModelTokens;
+  const AObserver: TWfcPreparationObserver): TWfcModel;
 var
   I: Integer;
   J: Integer;
   LRelations: TWfcModelIntegerArray;
   LSampleShapes: TWfcModelSampleShapes;
   LWeights: TWfcModelIntegerArray;
+  LWork: TWfcPreparationWork;
+  LCandidate: TWfcModel;
 begin
-  if Length(AStateKeys) <> StateCount then
-    raise EWfcSequence.CreateFmt(
-      'sequence graph-key count must match state count [%d <> %d]',
-      [Length(AStateKeys), StateCount]);
-  for I := 0 to StateCount - 1 do
-  begin
-    if not WfcModelTokenIsValid(AStateKeys[I]) then
+  LCandidate := nil;
+  LWork := TWfcPreparationWork.Create(AObserver, 'sequence_graph_model_visits');
+  try
+    LWork.Checkpoint;
+    if Length(AStateKeys) <> StateCount then
       raise EWfcSequence.CreateFmt(
-        'sequence graph key must be nonempty, well-formed UTF-8 [%d]',
-        [I]);
-    for J := 0 to I - 1 do
-      if AStateKeys[I] = AStateKeys[J] then
+        'sequence graph-key count must match state count [%d <> %d]',
+        [Length(AStateKeys), StateCount]);
+    for I := 0 to StateCount - 1 do
+    begin
+      LWork.Visit;
+      if not WfcModelTokenIsValid(AStateKeys[I]) then
         raise EWfcSequence.CreateFmt(
-          'sequence graph keys must be unique [%d, %d]', [J, I]);
-  end;
-
-  SetLength(LSampleShapes, SampleCount);
-  for I := 0 to SampleCount - 1 do
-    LSampleShapes[I] := MakeWfcModelSampleShape(
-      FSampleLengths[I], 1);
-  LWeights := CopyStateCounts;
-  SetLength(LRelations, CheckedGraphRelationLength(StateCount));
-  for I := 0 to StateCount - 1 do
-    for J := 0 to StateCount - 1 do
-      if StatesCompatible(I, J) then
+          'sequence graph key must be nonempty, well-formed UTF-8 [%d]',
+          [I]);
+      for J := 0 to I - 1 do
       begin
-        LRelations[GraphRelationIndex(wmdEast, I, J,
-          StateCount)] := 1;
-        LRelations[GraphRelationIndex(wmdWest, J, I,
-          StateCount)] := 1;
+        LWork.Visit;
+        if AStateKeys[I] = AStateKeys[J] then
+          raise EWfcSequence.CreateFmt(
+            'sequence graph keys must be unique [%d, %d]', [J, I]);
       end;
-  Result := TWfcModel.Create(1, LSampleShapes, FBoundary, wmsNone,
-    [wmdEast, wmdWest], AStateKeys, LWeights, LRelations);
+    end;
+
+    SetLength(LSampleShapes, SampleCount);
+    for I := 0 to SampleCount - 1 do
+    begin
+      LSampleShapes[I] := MakeWfcModelSampleShape(
+        FSampleLengths[I], 1);
+      LWork.Visit;
+    end;
+    LWeights := CopyStateCounts;
+    SetLength(LRelations, CheckedGraphRelationLength(StateCount));
+    for I := 0 to StateCount - 1 do
+      for J := 0 to StateCount - 1 do
+      begin
+        LWork.Visit;
+        if StatesCompatible(I, J) then
+        begin
+          LRelations[GraphRelationIndex(wmdEast, I, J,
+            StateCount)] := 1;
+          LRelations[GraphRelationIndex(wmdWest, J, I,
+            StateCount)] := 1;
+        end;
+      end;
+    LCandidate := TWfcModel.Create(1, LSampleShapes, FBoundary, wmsNone,
+      [wmdEast, wmdWest], AStateKeys, LWeights, LRelations,
+      PreparationObserver(LWork));
+    LWork.Finish;
+    Result := LCandidate;
+    LCandidate := nil;
+  finally
+    LCandidate.Free;
+    LWork.Free;
+  end;
 end;
 
 end.

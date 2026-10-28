@@ -849,6 +849,7 @@ type
     FPassIndex : Integer;
     FInitializingPass: Boolean;
     FRunning: Boolean;
+    FValidatingCommit: Boolean;
     FSeed: TGraphSeed;
     FSeedInitialized: Boolean;
     FRandomState: TRandomState;
@@ -957,6 +958,7 @@ type
     function GetRuleGroup(const AValue : TGraphValue): TParentedGraphRuleGroup;
     function GetRuleGroups: TGraphRuleGroups;
     function GetRunning: Boolean;
+    function GetValidatingCommit: Boolean;
     function GetSelectionCallback: TValueSelectionCallback;
     function GetSeed: TGraphSeed;
     function GetTotalPassCount: Integer;
@@ -1070,6 +1072,9 @@ type
     //True while the root pipeline is executing. PassGraph instances forward
     //this state so adapters can reject multi-step imports before any mutation.
     property Running: Boolean read GetRunning;
+    { Read-only proof is permitted by domain adapters during this exact hook.
+      Existing Running-based mutation/reentry guards remain active throughout. }
+    property ValidatingCommit: Boolean read GetValidatingCommit;
     property TraceSink: TGraphTraceSink read GetTraceSink write SetTraceSink;
 
     (*
@@ -4952,6 +4957,14 @@ begin
     Result := FRunning;
 end;
 
+function TGraph.GetValidatingCommit: Boolean;
+begin
+  if Assigned(FPassRoot) then
+    Result := FPassRoot.FValidatingCommit
+  else
+    Result := FValidatingCommit;
+end;
+
 function TGraph.GetTraceSink: TGraphTraceSink;
 begin
   if Assigned(FPassRoot) then
@@ -8399,8 +8412,13 @@ var
         end;
       end;
 
-      Result := DoValidateCommit(AFinalValidationPass,
-        AFinalValidationEntry);
+      FValidatingCommit := True;
+      try
+        Result := DoValidateCommit(AFinalValidationPass,
+          AFinalValidationEntry);
+      finally
+        FValidatingCommit := False;
+      end;
       if not Result then
         Exit;
 

@@ -27,7 +27,8 @@ unit wfc_music_ensemble_graph;
 
 interface
 
-uses SysUtils, wfc, wfc_sequence, wfc_sequence_graph, wfc_music_ensemble;
+uses SysUtils, wfc, wfc_sequence, wfc_sequence_graph, wfc_music_ensemble,
+  wfc_preparation;
 
 const
   WFC_MUSIC_ENSEMBLE_GRAPH_VERSION = 1;
@@ -37,11 +38,11 @@ type
   TWfcMusicEnsembleHarmonyMode = (wmehmExact, wmehmAllowed);
 
 procedure ValidateWfcMusicEnsembleModel(const AModel: TWfcSequenceModel;
-  const AVoiceCount: Integer);
+  const AVoiceCount: Integer; const AObserver: TWfcPreparationObserver = nil);
 procedure ValidateWfcMusicEnsembleRhythmModel(const AModel: TWfcSequenceModel;
-  const AVoiceCount: Integer);
+  const AVoiceCount: Integer; const AObserver: TWfcPreparationObserver = nil);
 procedure ValidateWfcMusicEnsembleHarmonyModel(const AModel: TWfcSequenceModel;
-  const AStepsPerOctave: Integer);
+  const AStepsPerOctave: Integer; const AObserver: TWfcPreparationObserver = nil);
 function BuildWfcMusicEnsembleRhythmProjectionRules(
   const AEnsembleModel, ARhythmModel: TWfcSequenceModel):
   TWfcSequenceProjectionRules;
@@ -68,87 +69,118 @@ begin
 end;
 
 procedure ValidateWfcMusicEnsembleModel(const AModel: TWfcSequenceModel;
-  const AVoiceCount: Integer);
+  const AVoiceCount: Integer; const AObserver: TWfcPreparationObserver);
 var
   I, J, LPrevious, LCurrent, LPair: Integer;
   LFrames: TWfcMusicEnsembleFrames;
   LCanStart: array of Boolean;
   LCheckedPairs: array of Boolean;
+  LWork: TWfcPreparationWork;
 begin
   NeedModel(AModel);
   if AVoiceCount < 1 then
     raise EArgumentException.Create('ensemble voice count must be positive');
-  SetLength(LFrames, AModel.PublicTokenCount);
-  SetLength(LCanStart, AModel.PublicTokenCount);
-  //Several latent histories can emit the same public frame. Check every
-  //structural edge, but prove a public continuation pair only once. The
-  //sequence model already bounds its public vocabulary; no new music cap.
-  SetLength(LCheckedPairs, AModel.PublicTokenCount * AModel.PublicTokenCount);
-  for I := 0 to High(LFrames) do
-  begin
-    LFrames[I] := DecodeWfcMusicEnsembleFrame(AModel.PublicTokenAt(I));
-    if Length(LFrames[I].Voices) <> AVoiceCount then
-      raise EWfcMusicEnsembleGraph.CreateFmt(
-        'ensemble token %d has the wrong voice count', [I]);
-    LCanStart[I] := WfcMusicEnsembleFrameCanStart(LFrames[I]);
-  end;
-  for I := 0 to AModel.StateCount - 1 do
-  begin
-    LPrevious := AModel.StateEmittedTokenIndexAt(I);
-    if (AModel.StartCountAt(I) > 0) and not LCanStart[LPrevious] then
-      raise EWfcMusicEnsembleGraph.CreateFmt(
-        'ensemble observed start state %d begins with a hold', [I]);
-    for J := 0 to AModel.StateCount - 1 do
-      if AModel.StatesCompatible(I, J) then
+  LWork := TWfcPreparationWork.Create(AObserver, 'ensemble_model_visits');
+  try
+    LWork.Checkpoint;
+    SetLength(LFrames, AModel.PublicTokenCount);
+    SetLength(LCanStart, AModel.PublicTokenCount);
+    //Several latent histories can emit the same public frame. Check every
+    //structural edge, but prove a public continuation pair only once. The
+    //sequence model already bounds its public vocabulary; no new music cap.
+    SetLength(LCheckedPairs, AModel.PublicTokenCount * AModel.PublicTokenCount);
+    for I := 0 to High(LFrames) do
+    begin
+      LWork.Visit;
+      LFrames[I] := DecodeWfcMusicEnsembleFrame(AModel.PublicTokenAt(I));
+      if Length(LFrames[I].Voices) <> AVoiceCount then
+        raise EWfcMusicEnsembleGraph.CreateFmt(
+          'ensemble token %d has the wrong voice count', [I]);
+      LCanStart[I] := WfcMusicEnsembleFrameCanStart(LFrames[I]);
+    end;
+    for I := 0 to AModel.StateCount - 1 do
+    begin
+      LWork.Visit;
+      LPrevious := AModel.StateEmittedTokenIndexAt(I);
+      if (AModel.StartCountAt(I) > 0) and not LCanStart[LPrevious] then
+        raise EWfcMusicEnsembleGraph.CreateFmt(
+          'ensemble observed start state %d begins with a hold', [I]);
+      for J := 0 to AModel.StateCount - 1 do
       begin
-        LCurrent := AModel.StateEmittedTokenIndexAt(J);
-        LPair := LPrevious * AModel.PublicTokenCount + LCurrent;
-        if not LCheckedPairs[LPair] then
+        LWork.Visit;
+        if AModel.StatesCompatible(I, J) then
         begin
-          if not WfcMusicEnsembleFrameCanFollow(LFrames[LPrevious],
-            LFrames[LCurrent]) then
-            raise EWfcMusicEnsembleGraph.CreateFmt(
-              'ensemble structural edge %d -> %d has invalid hold continuation; increase context or repair the corpus',
-              [I, J]);
-          LCheckedPairs[LPair] := True;
+          LCurrent := AModel.StateEmittedTokenIndexAt(J);
+          LPair := LPrevious * AModel.PublicTokenCount + LCurrent;
+          if not LCheckedPairs[LPair] then
+          begin
+            if not WfcMusicEnsembleFrameCanFollow(LFrames[LPrevious],
+              LFrames[LCurrent]) then
+              raise EWfcMusicEnsembleGraph.CreateFmt(
+                'ensemble structural edge %d -> %d has invalid hold continuation; increase context or repair the corpus',
+                [I, J]);
+            LCheckedPairs[LPair] := True;
+          end;
         end;
       end;
+    end;
+    LWork.Finish;
+  finally
+    LWork.Free;
   end;
 end;
 
 procedure ValidateWfcMusicEnsembleRhythmModel(const AModel: TWfcSequenceModel;
-  const AVoiceCount: Integer);
+  const AVoiceCount: Integer; const AObserver: TWfcPreparationObserver);
 var
   I: Integer;
   LFrame: TWfcMusicRhythmFrame;
+  LWork: TWfcPreparationWork;
 begin
   NeedModel(AModel);
   if AVoiceCount < 1 then
     raise EArgumentException.Create('ensemble voice count must be positive');
-  for I := 0 to AModel.PublicTokenCount - 1 do
-  begin
-    LFrame := DecodeWfcMusicRhythmFrame(AModel.PublicTokenAt(I));
-    if Length(LFrame.Actions) <> AVoiceCount then
-      raise EWfcMusicEnsembleGraph.CreateFmt(
-        'ensemble rhythm token %d has the wrong voice count', [I]);
+  LWork := TWfcPreparationWork.Create(AObserver, 'ensemble_rhythm_rows');
+  try
+    LWork.Checkpoint;
+    for I := 0 to AModel.PublicTokenCount - 1 do
+    begin
+      LWork.Visit;
+      LFrame := DecodeWfcMusicRhythmFrame(AModel.PublicTokenAt(I));
+      if Length(LFrame.Actions) <> AVoiceCount then
+        raise EWfcMusicEnsembleGraph.CreateFmt(
+          'ensemble rhythm token %d has the wrong voice count', [I]);
+    end;
+    LWork.Finish;
+  finally
+    LWork.Free;
   end;
 end;
 
 procedure ValidateWfcMusicEnsembleHarmonyModel(const AModel: TWfcSequenceModel;
-  const AStepsPerOctave: Integer);
+  const AStepsPerOctave: Integer; const AObserver: TWfcPreparationObserver);
 var
   I: Integer;
   LSet: TWfcMusicPitchClassSet;
+  LWork: TWfcPreparationWork;
 begin
   NeedModel(AModel);
   if AStepsPerOctave < 1 then
     raise EArgumentException.Create('ensemble pitchclass steps must be positive');
-  for I := 0 to AModel.PublicTokenCount - 1 do
-  begin
-    LSet := DecodeWfcMusicPitchClassSet(AModel.PublicTokenAt(I));
-    if LSet.StepsPerOctave <> AStepsPerOctave then
-      raise EWfcMusicEnsembleGraph.CreateFmt(
-        'ensemble harmony token %d uses another pitchclass system', [I]);
+  LWork := TWfcPreparationWork.Create(AObserver, 'ensemble_harmony_rows');
+  try
+    LWork.Checkpoint;
+    for I := 0 to AModel.PublicTokenCount - 1 do
+    begin
+      LWork.Visit;
+      LSet := DecodeWfcMusicPitchClassSet(AModel.PublicTokenAt(I));
+      if LSet.StepsPerOctave <> AStepsPerOctave then
+        raise EWfcMusicEnsembleGraph.CreateFmt(
+          'ensemble harmony token %d uses another pitchclass system', [I]);
+    end;
+    LWork.Finish;
+  finally
+    LWork.Free;
   end;
 end;
 

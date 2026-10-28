@@ -37,7 +37,7 @@ uses
   wfc_pipeline_session, wfc_pipeline_session_evidence,
   wfc_pipeline_workspace_context, wfc_pipeline_workspace_journal,
   wfc_pipeline_workspace_journal_text, wfc_pipeline_workspace_replay,
-  wfc_solve_progress;
+  wfc_solve_progress, wfc_preparation;
 
 implementation
 

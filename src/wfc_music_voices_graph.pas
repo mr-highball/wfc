@@ -28,7 +28,7 @@ unit wfc_music_voices_graph;
 interface
 
 uses SysUtils, wfc, wfc_model, wfc_sequence, wfc_sequence_graph,
-  wfc_music_ensemble, wfc_music_ensemble_graph;
+  wfc_music_ensemble, wfc_music_ensemble_graph, wfc_preparation;
 
 const WFC_MUSIC_VOICES_GRAPH_VERSION = 1;
 
@@ -93,16 +93,17 @@ type
     Issue: TWfcMusicVoicesValidationIssue;
   end;
 
-function CopyWfcMusicVoicesGraphConfig(const AConfig: TWfcMusicVoicesGraphConfig):
-  TWfcMusicVoicesGraphConfig;
-procedure ValidateWfcMusicVoicesGraphConfig(const AConfig: TWfcMusicVoicesGraphConfig);
+function CopyWfcMusicVoicesGraphConfig(const AConfig: TWfcMusicVoicesGraphConfig;
+  const AObserver: TWfcPreparationObserver = nil): TWfcMusicVoicesGraphConfig;
+procedure ValidateWfcMusicVoicesGraphConfig(const AConfig: TWfcMusicVoicesGraphConfig;
+  const AObserver: TWfcPreparationObserver = nil);
 function WfcMusicVoicesModelCount(const AConfig: TWfcMusicVoicesGraphConfig): Integer;
 function WfcMusicVoicesModelAt(const AConfig: TWfcMusicVoicesGraphConfig;
   const AModelIndex: Integer): TWfcSequenceModel;
 function WfcMusicVoicesPassLabel(const AModelIndex: Integer): String;
 function WfcMusicVoicesCoveragePassLabel(const APitchClass: Integer): String;
-function WfcMusicVoicesCoverageClasses(const AConfig: TWfcMusicVoicesGraphConfig):
-  TWfcMusicPitchClasses;
+function WfcMusicVoicesCoverageClasses(const AConfig: TWfcMusicVoicesGraphConfig;
+  const AObserver: TWfcPreparationObserver = nil): TWfcMusicPitchClasses;
 
 { Fresh caller-owned bounded graph. Every pass is CellCount x 1 x 1, open.
   All semantic construction failures dispose the complete private graph.
@@ -111,21 +112,26 @@ function WfcMusicVoicesCoverageClasses(const AConfig: TWfcMusicVoicesGraphConfig
   an allocation indexed by every possible tuning step. }
 function BuildWfcMusicVoicesSegmentGraph(const AConfig: TWfcMusicVoicesGraphConfig;
   const ACellCount: Integer; const ASeed: TGraphSeed;
-  const ABoundaries: TWfcMusicVoicesBoundaries): TGraph;
+  const ABoundaries: TWfcMusicVoicesBoundaries;
+  const AObserver: TWfcPreparationObserver = nil;
+  const AGraphClass: TGraphClass = nil): TGraph;
 
 { Independent proof: expected layout, model identities, exact original segment
   boundaries, latent paths/emissions, caller domains/locks, temporal holds,
   range/pairs, rhythm, harmonic union and graph/record witnesses are checked.
   This does not trust the graph's editable cross-pass requirement registry.
-  Capture returns an entirely empty generated record on failure. }
+  Ordinary False returns an entirely empty generated record. A propagated
+  exception, including observer cancellation, preserves the caller's record. }
 function CaptureSolvedWfcMusicVoices(const AConfig: TWfcMusicVoicesGraphConfig;
   const AGraph: TGraph; const ABoundaries: TWfcMusicVoicesBoundaries;
-  out AGenerated: TWfcMusicVoicesGenerated;
-  out AReport: TWfcMusicVoicesValidationReport): Boolean;
+  var AGenerated: TWfcMusicVoicesGenerated;
+  out AReport: TWfcMusicVoicesValidationReport;
+  const AObserver: TWfcPreparationObserver = nil): Boolean;
 function ValidateWfcMusicVoicesGenerated(const AConfig: TWfcMusicVoicesGraphConfig;
   const AGraph: TGraph; const ABoundaries: TWfcMusicVoicesBoundaries;
   const AGenerated: TWfcMusicVoicesGenerated;
-  out AReport: TWfcMusicVoicesValidationReport): Boolean;
+  out AReport: TWfcMusicVoicesValidationReport;
+  const AObserver: TWfcPreparationObserver = nil): Boolean;
 
 implementation
 
@@ -184,61 +190,103 @@ begin
   Result := 'coverage.' + IntToStr(APitchClass);
 end;
 
-function CopyWfcMusicVoicesGraphConfig(const AConfig: TWfcMusicVoicesGraphConfig):
-  TWfcMusicVoicesGraphConfig;
-var I: Integer;
+function CopyWfcMusicVoicesGraphConfig(const AConfig: TWfcMusicVoicesGraphConfig;
+  const AObserver: TWfcPreparationObserver): TWfcMusicVoicesGraphConfig;
+var
+  I: Integer;
+  LCandidate: TWfcMusicVoicesGraphConfig;
+  LWork: TWfcPreparationWork;
 begin
-  CheckInteger(Length(AConfig.Voices), 0, High(Integer), 'voice count');
-  CheckInteger(Length(AConfig.PairConstraints), 0, High(Integer), 'pair count');
-  Result := AConfig;
-  Result.Voices := nil; Result.PairConstraints := nil;
-  SetLength(Result.Voices, Length(AConfig.Voices));
-  for I := 0 to High(Result.Voices) do Result.Voices[I] := AConfig.Voices[I];
-  SetLength(Result.PairConstraints, Length(AConfig.PairConstraints));
-  for I := 0 to High(Result.PairConstraints) do
-    Result.PairConstraints[I] := AConfig.PairConstraints[I];
-end;
-
-procedure ValidateWfcMusicVoicesGraphConfig(const AConfig: TWfcMusicVoicesGraphConfig);
-var I, J, N: Integer; P: TWfcMusicVoicePairConstraint;
-begin
-  N := WfcMusicVoicesModelCount(AConfig) - 2;
-  CheckInteger(AConfig.StepsPerOctave, 1, High(Integer), 'steps per octave');
-  CheckInteger(Ord(AConfig.HarmonyMode), Ord(Low(TWfcMusicEnsembleHarmonyMode)),
-    Ord(High(TWfcMusicEnsembleHarmonyMode)), 'harmony mode');
-  ValidateWfcMusicEnsembleHarmonyModel(AConfig.HarmonyModel, AConfig.StepsPerOctave);
-  ValidateWfcMusicEnsembleRhythmModel(AConfig.RhythmModel, N);
-  for I := 0 to N - 1 do
-  begin
-    CheckInteger(AConfig.Voices[I].MinPitch, 0, High(Integer), 'minimum pitch');
-    CheckInteger(AConfig.Voices[I].MaxPitch, AConfig.Voices[I].MinPitch,
-      High(Integer), 'maximum pitch');
-    ValidateWfcMusicEnsembleModel(AConfig.Voices[I].Model, 1);
-  end;
-  CheckInteger(Length(AConfig.PairConstraints), 0, High(Integer), 'pair count');
-  for I := 0 to High(AConfig.PairConstraints) do
-  begin
-    P := AConfig.PairConstraints[I];
-    CheckInteger(P.LowerVoice, 0, N - 1, 'lower voice');
-    CheckInteger(P.UpperVoice, P.LowerVoice + 1, N - 1, 'upper voice');
-    CheckInteger(P.MinGap, Low(Integer), High(Integer), 'minimum gap');
-    CheckInteger(P.MaxGap, P.MinGap, High(Integer), 'maximum gap');
-    CheckInteger(Ord(P.RestPolicy), Ord(Low(TWfcMusicVoicePairRestPolicy)),
-      Ord(High(TWfcMusicVoicePairRestPolicy)), 'pair rest policy');
-    for J := 0 to I - 1 do
-      if (P.LowerVoice = AConfig.PairConstraints[J].LowerVoice) and
-        (P.UpperVoice = AConfig.PairConstraints[J].UpperVoice) then
-        VoiceError('duplicate voice pair; intersect its gap bounds explicitly');
+  LWork := TWfcPreparationWork.Create(AObserver, 'voice_config_copy_visits');
+  try
+    LWork.Checkpoint;
+    CheckInteger(Length(AConfig.Voices), 0, High(Integer), 'voice count');
+    CheckInteger(Length(AConfig.PairConstraints), 0, High(Integer), 'pair count');
+    LCandidate := AConfig;
+    LCandidate.Voices := nil; LCandidate.PairConstraints := nil;
+    SetLength(LCandidate.Voices, Length(AConfig.Voices));
+    for I := 0 to High(LCandidate.Voices) do
+    begin
+      LCandidate.Voices[I] := AConfig.Voices[I];
+      LWork.Visit;
+    end;
+    SetLength(LCandidate.PairConstraints, Length(AConfig.PairConstraints));
+    for I := 0 to High(LCandidate.PairConstraints) do
+    begin
+      LCandidate.PairConstraints[I] := AConfig.PairConstraints[I];
+      LWork.Visit;
+    end;
+    LWork.Finish;
+    Result := LCandidate;
+  finally
+    LWork.Free;
   end;
 end;
 
-procedure SortClasses(var A: TWfcMusicPitchClasses);
+procedure ValidateWfcMusicVoicesGraphConfig(const AConfig: TWfcMusicVoicesGraphConfig;
+  const AObserver: TWfcPreparationObserver);
+var
+  I, J, N: Integer;
+  P: TWfcMusicVoicePairConstraint;
+  LWork: TWfcSequencePreparationBridge;
+begin
+  LWork := TWfcSequencePreparationBridge.Create(AObserver, 'voice_config_visits');
+  try
+    LWork.Checkpoint;
+    N := WfcMusicVoicesModelCount(AConfig) - 2;
+    CheckInteger(AConfig.StepsPerOctave, 1, High(Integer), 'steps per octave');
+    CheckInteger(Ord(AConfig.HarmonyMode), Ord(Low(TWfcMusicEnsembleHarmonyMode)),
+      Ord(High(TWfcMusicEnsembleHarmonyMode)), 'harmony mode');
+    LWork.SequencePassIndex := 0;
+    ValidateWfcMusicEnsembleHarmonyModel(AConfig.HarmonyModel, AConfig.StepsPerOctave,
+      PreparationObserver(LWork));
+    LWork.SequencePassIndex := 1;
+    ValidateWfcMusicEnsembleRhythmModel(AConfig.RhythmModel, N,
+      PreparationObserver(LWork));
+    for I := 0 to N - 1 do
+    begin
+      LWork.Visit;
+      CheckInteger(AConfig.Voices[I].MinPitch, 0, High(Integer), 'minimum pitch');
+      CheckInteger(AConfig.Voices[I].MaxPitch, AConfig.Voices[I].MinPitch,
+        High(Integer), 'maximum pitch');
+      LWork.SequencePassIndex := I + 2;
+      ValidateWfcMusicEnsembleModel(AConfig.Voices[I].Model, 1,
+        PreparationObserver(LWork));
+    end;
+    CheckInteger(Length(AConfig.PairConstraints), 0, High(Integer), 'pair count');
+    for I := 0 to High(AConfig.PairConstraints) do
+    begin
+      LWork.Visit;
+      P := AConfig.PairConstraints[I];
+      CheckInteger(P.LowerVoice, 0, N - 1, 'lower voice');
+      CheckInteger(P.UpperVoice, P.LowerVoice + 1, N - 1, 'upper voice');
+      CheckInteger(P.MinGap, Low(Integer), High(Integer), 'minimum gap');
+      CheckInteger(P.MaxGap, P.MinGap, High(Integer), 'maximum gap');
+      CheckInteger(Ord(P.RestPolicy), Ord(Low(TWfcMusicVoicePairRestPolicy)),
+        Ord(High(TWfcMusicVoicePairRestPolicy)), 'pair rest policy');
+      for J := 0 to I - 1 do
+      begin
+        LWork.Visit;
+        if (P.LowerVoice = AConfig.PairConstraints[J].LowerVoice) and
+          (P.UpperVoice = AConfig.PairConstraints[J].UpperVoice) then
+          VoiceError('duplicate voice pair; intersect its gap bounds explicitly');
+      end;
+    end;
+    LWork.Finish;
+  finally
+    LWork.Free;
+  end;
+end;
+
+procedure SortClasses(var A: TWfcMusicPitchClasses;
+  const AWork: TWfcPreparationWork = nil);
 var Start, Finish, Swap: Integer;
   procedure Sift(Root, Last: Integer);
   var Child, Temp: Integer;
   begin
     while Root <= (Last - 1) div 2 do
     begin
+      PreparationVisit(AWork);
       Child := Root * 2 + 1;
       if Child > Last then Exit;
       if (Child < Last) and (A[Child] < A[Child + 1]) then Inc(Child);
@@ -252,61 +300,112 @@ begin
   for Start := (Length(A) div 2) - 1 downto 0 do Sift(Start, High(A));
   for Finish := High(A) downto 1 do
   begin
+    PreparationVisit(AWork);
     Swap := A[0]; A[0] := A[Finish]; A[Finish] := Swap;
     if Finish > 1 then Sift(0, Finish - 1);
   end;
 end;
 
-function WfcMusicVoicesCoverageClasses(const AConfig: TWfcMusicVoicesGraphConfig):
-  TWfcMusicPitchClasses;
-var I, J, Count, Used: Integer; Sets: TWfcMusicPitchClassSets;
+function WfcMusicVoicesCoverageClasses(const AConfig: TWfcMusicVoicesGraphConfig;
+  const AObserver: TWfcPreparationObserver): TWfcMusicPitchClasses;
+var
+  I, J, Count, Used: Integer;
+  Sets: TWfcMusicPitchClassSets;
+  LCandidate: TWfcMusicPitchClasses;
+  LWork: TWfcSequencePreparationBridge;
 begin
-  Result := nil;
-  CheckInteger(Ord(AConfig.HarmonyMode), Ord(Low(TWfcMusicEnsembleHarmonyMode)),
-    Ord(High(TWfcMusicEnsembleHarmonyMode)), 'harmony mode');
-  if AConfig.HarmonyMode = wmehmAllowed then Exit;
-  CheckInteger(AConfig.StepsPerOctave, 1, High(Integer), 'steps per octave');
-  ValidateWfcMusicEnsembleHarmonyModel(AConfig.HarmonyModel, AConfig.StepsPerOctave);
-  SetLength(Sets, AConfig.HarmonyModel.PublicTokenCount);
-  Count := 0;
-  for I := 0 to High(Sets) do
-  begin
-    Sets[I] := DecodeWfcMusicPitchClassSet(AConfig.HarmonyModel.PublicTokenAt(I));
-    if Length(Sets[I].PitchClasses) > High(Integer) - Count then
-      VoiceError('coverage vocabulary exceeds Integer indexing');
-    Inc(Count, Length(Sets[I].PitchClasses));
+  LCandidate := nil;
+  LWork := TWfcSequencePreparationBridge.Create(AObserver, 'voice_coverage_visits');
+  try
+    LWork.Checkpoint;
+    CheckInteger(Ord(AConfig.HarmonyMode), Ord(Low(TWfcMusicEnsembleHarmonyMode)),
+      Ord(High(TWfcMusicEnsembleHarmonyMode)), 'harmony mode');
+    if AConfig.HarmonyMode = wmehmAllowed then
+    begin
+      LWork.Finish;
+      Result := LCandidate;
+      Exit;
+    end;
+    CheckInteger(AConfig.StepsPerOctave, 1, High(Integer), 'steps per octave');
+    LWork.SequencePassIndex := 0;
+    ValidateWfcMusicEnsembleHarmonyModel(AConfig.HarmonyModel, AConfig.StepsPerOctave,
+      PreparationObserver(LWork));
+    SetLength(Sets, AConfig.HarmonyModel.PublicTokenCount);
+    Count := 0;
+    for I := 0 to High(Sets) do
+    begin
+      LWork.Visit;
+      Sets[I] := DecodeWfcMusicPitchClassSet(AConfig.HarmonyModel.PublicTokenAt(I));
+      if Length(Sets[I].PitchClasses) > High(Integer) - Count then
+        VoiceError('coverage vocabulary exceeds Integer indexing');
+      Inc(Count, Length(Sets[I].PitchClasses));
+    end;
+    SetLength(LCandidate, Count); Count := 0;
+    for I := 0 to High(Sets) do
+      for J := 0 to High(Sets[I].PitchClasses) do
+      begin
+        LWork.Visit;
+        LCandidate[Count] := Sets[I].PitchClasses[J];
+        Inc(Count);
+      end;
+    SortClasses(LCandidate, LWork);
+    Used := 0;
+    for I := 0 to High(LCandidate) do
+    begin
+      LWork.Visit;
+      if (Used = 0) or (LCandidate[I] <> LCandidate[Used - 1]) then
+      begin
+        LCandidate[Used] := LCandidate[I];
+        Inc(Used);
+      end;
+    end;
+    SetLength(LCandidate, Used);
+    LWork.Finish;
+    Result := LCandidate;
+  finally
+    LWork.Free;
   end;
-  SetLength(Result, Count); Count := 0;
-  for I := 0 to High(Sets) do
-    for J := 0 to High(Sets[I].PitchClasses) do
-    begin Result[Count] := Sets[I].PitchClasses[J]; Inc(Count); end;
-  SortClasses(Result);
-  Used := 0;
-  for I := 0 to High(Result) do
-    if (Used = 0) or (Result[I] <> Result[Used - 1]) then
-    begin Result[Used] := Result[I]; Inc(Used); end;
-  SetLength(Result, Used);
 end;
 
-function PrepareMusic(const C: TWfcMusicVoicesGraphConfig): TPreparedMusic;
-var I, J: Integer;
+function PrepareMusic(const C: TWfcMusicVoicesGraphConfig;
+  const AObserver: TWfcPreparationObserver = nil): TPreparedMusic;
+var
+  I, J: Integer;
+  LWork: TWfcSequencePreparationBridge;
 begin
-  ValidateWfcMusicVoicesGraphConfig(C);
-  Result := Default(TPreparedMusic);
-  SetLength(Result.Harmony, C.HarmonyModel.PublicTokenCount);
-  for I := 0 to High(Result.Harmony) do
-    Result.Harmony[I] := DecodeWfcMusicPitchClassSet(C.HarmonyModel.PublicTokenAt(I));
-  SetLength(Result.Rhythm, C.RhythmModel.PublicTokenCount);
-  for I := 0 to High(Result.Rhythm) do
-    Result.Rhythm[I] := DecodeWfcMusicRhythmFrame(C.RhythmModel.PublicTokenAt(I));
-  SetLength(Result.Voices, Length(C.Voices));
-  for I := 0 to High(Result.Voices) do
-  begin
-    SetLength(Result.Voices[I], C.Voices[I].Model.PublicTokenCount);
-    for J := 0 to High(Result.Voices[I]) do
-      Result.Voices[I][J] := DecodeWfcMusicEnsembleFrame(C.Voices[I].Model.PublicTokenAt(J));
+  LWork := TWfcSequencePreparationBridge.Create(AObserver, 'voice_prepare_visits');
+  try
+    LWork.Checkpoint;
+    ValidateWfcMusicVoicesGraphConfig(C, PreparationObserver(LWork));
+    Result := Default(TPreparedMusic);
+    SetLength(Result.Harmony, C.HarmonyModel.PublicTokenCount);
+    for I := 0 to High(Result.Harmony) do
+    begin
+      LWork.Visit;
+      Result.Harmony[I] := DecodeWfcMusicPitchClassSet(C.HarmonyModel.PublicTokenAt(I));
+    end;
+    SetLength(Result.Rhythm, C.RhythmModel.PublicTokenCount);
+    for I := 0 to High(Result.Rhythm) do
+    begin
+      LWork.Visit;
+      Result.Rhythm[I] := DecodeWfcMusicRhythmFrame(C.RhythmModel.PublicTokenAt(I));
+    end;
+    SetLength(Result.Voices, Length(C.Voices));
+    for I := 0 to High(Result.Voices) do
+    begin
+      LWork.Visit;
+      SetLength(Result.Voices[I], C.Voices[I].Model.PublicTokenCount);
+      for J := 0 to High(Result.Voices[I]) do
+      begin
+        LWork.Visit;
+        Result.Voices[I][J] := DecodeWfcMusicEnsembleFrame(C.Voices[I].Model.PublicTokenAt(J));
+      end;
+    end;
+    Result.Classes := WfcMusicVoicesCoverageClasses(C, PreparationObserver(LWork));
+    LWork.Finish;
+  finally
+    LWork.Free;
   end;
-  Result.Classes := WfcMusicVoicesCoverageClasses(C);
 end;
 
 function ContainsClass(const S: TWfcMusicPitchClassSet; const C: Integer): Boolean;
@@ -354,47 +453,65 @@ begin
 end;
 
 function VoiceBindings(const C: TWfcMusicVoicesGraphConfig;
-  const P: TPreparedMusic; const VoiceIndex: Integer): TWfcSequenceProjectionBindings;
+  const P: TPreparedMusic; const VoiceIndex: Integer;
+  const AWork: TWfcPreparationWork = nil): TWfcSequenceProjectionBindings;
 var I, J, K, B: Integer; Rules: TWfcSequenceProjectionRules;
   Allowed: TWfcModelTokens; Actual: TWfcMusicPitchClassSet;
 begin
   Result := nil; B := 2;
   for I := 0 to High(C.PairConstraints) do
+  begin
+    PreparationVisit(AWork);
     if C.PairConstraints[I].UpperVoice = VoiceIndex then Inc(B);
+  end;
   SetLength(Result, B);
   SetLength(Rules, C.Voices[VoiceIndex].Model.PublicTokenCount);
   for I := 0 to High(Rules) do
   begin
+    PreparationVisit(AWork);
     Allowed := nil;
     Actual := ProjectWfcMusicEnsembleFrameToPitchClassSet(P.Voices[VoiceIndex][I], C.StepsPerOctave);
     if InRange(P.Voices[VoiceIndex][I].Voices[0], C.Voices[VoiceIndex]) then
       for J := 0 to High(P.Harmony) do
+      begin
+        PreparationVisit(AWork);
         if WfcMusicPitchClassSetIsSubset(Actual, P.Harmony[J]) then
           AppendToken(Allowed, C.HarmonyModel.PublicTokenAt(J));
+      end;
     Rules[I] := MakeWfcSequenceProjectionRule(C.Voices[VoiceIndex].Model.PublicTokenAt(I), Allowed);
   end;
   Result[0] := MakeWfcSequenceProjectionBinding(C.HarmonyModel, WfcMusicVoicesPassLabel(0), Rules);
   for I := 0 to High(Rules) do
   begin
+    PreparationVisit(AWork);
     Allowed := nil;
     for J := 0 to High(P.Rhythm) do
+    begin
+      PreparationVisit(AWork);
       if P.Rhythm[J].Actions[VoiceIndex] = P.Voices[VoiceIndex][I].Voices[0].Action then
         AppendToken(Allowed, C.RhythmModel.PublicTokenAt(J));
+    end;
     Rules[I] := MakeWfcSequenceProjectionRule(C.Voices[VoiceIndex].Model.PublicTokenAt(I), Allowed);
   end;
   Result[1] := MakeWfcSequenceProjectionBinding(C.RhythmModel, WfcMusicVoicesPassLabel(1), Rules);
   B := 2;
   for K := 0 to High(C.PairConstraints) do
+  begin
+    PreparationVisit(AWork);
     if C.PairConstraints[K].UpperVoice = VoiceIndex then
     begin
       J := C.PairConstraints[K].LowerVoice;
       for I := 0 to High(Rules) do
       begin
+        PreparationVisit(AWork);
         Allowed := nil;
         for J := 0 to High(P.Voices[C.PairConstraints[K].LowerVoice]) do
+        begin
+          PreparationVisit(AWork);
           if PairAllows(P.Voices[C.PairConstraints[K].LowerVoice][J].Voices[0],
             P.Voices[VoiceIndex][I].Voices[0], C.PairConstraints[K]) then
             AppendToken(Allowed, C.Voices[C.PairConstraints[K].LowerVoice].Model.PublicTokenAt(J));
+        end;
         Rules[I] := MakeWfcSequenceProjectionRule(C.Voices[VoiceIndex].Model.PublicTokenAt(I), Allowed);
       end;
       J := C.PairConstraints[K].LowerVoice;
@@ -402,15 +519,17 @@ begin
         WfcMusicVoicesPassLabel(J + 2), Rules);
       Inc(B);
     end;
+  end;
 end;
 
 procedure ValidateBoundaries(const C: TWfcMusicVoicesGraphConfig;
-  const B: TWfcMusicVoicesBoundaries);
+  const B: TWfcMusicVoicesBoundaries; const AWork: TWfcPreparationWork = nil);
 var I: Integer; M: TWfcSequenceModel;
 begin
   if Length(B) <> WfcMusicVoicesModelCount(C) then VoiceError('boundary vector differs from models');
   for I := 0 to High(B) do
   begin
+    PreparationVisit(AWork);
     M := WfcMusicVoicesModelAt(C, I);
     {$IFDEF PAS2JS}
     if ((B[I].HasPrevious <> True) and (B[I].HasPrevious <> False)) or
@@ -430,78 +549,110 @@ end;
 
 function BuildWfcMusicVoicesSegmentGraph(const AConfig: TWfcMusicVoicesGraphConfig;
   const ACellCount: Integer; const ASeed: TGraphSeed;
-  const ABoundaries: TWfcMusicVoicesBoundaries): TGraph;
+  const ABoundaries: TWfcMusicVoicesBoundaries;
+  const AObserver: TWfcPreparationObserver; const AGraphClass: TGraphClass): TGraph;
 var P: TPreparedMusic; I, J, K, N, C, Earlier, TokenIndex: Integer;
   Allowed, Present, Absent: TWfcModelTokens;
   Bindings: TWfcSequenceProjectionBindings; Value: TGraphValue;
+  LWork: TWfcSequencePreparationBridge;
 begin
   Result := nil;
-  CheckInteger(ACellCount, 1, High(Integer), 'cell count');
-  {$IFDEF PAS2JS}
-  if (ASeed < 0) or (ASeed > Cardinal($FFFFFFFF)) or (ASeed <> Trunc(ASeed)) then
-    VoiceError('seed must be an exact unsigned 32-bit integer');
-  {$ENDIF}
-  P := PrepareMusic(AConfig);
-  ValidateBoundaries(AConfig, ABoundaries);
-  N := WfcMusicVoicesModelCount(AConfig);
-  if Length(P.Classes) > High(Integer) - N then VoiceError('pass count exceeds Integer indexing');
-  if N + Length(P.Classes) > High(Integer) div ACellCount then
-    VoiceError('total graph entries exceed Integer indexing');
-  Result := TGraph.Create;
+  LWork := TWfcSequencePreparationBridge.Create(AObserver, 'voice_build_visits');
   try
-    Result.Seed := ASeed; Result.Reshape(ACellCount, 1, 1); Result.WrapNeighbors := False;
-    for I := 0 to N - 1 do
-    begin
-      if I = 0 then Result.CurrentPass := WfcMusicVoicesPassLabel(I)
-      else Result.SwitchToPass(WfcMusicVoicesPassLabel(I));
-      Result.PassMode := gpmOverlay; Result.ClearDependencies;
-      ApplySequenceModelSegmentToGraph(WfcMusicVoicesModelAt(AConfig, I), Result, ABoundaries[I]);
-    end;
-    for I := 0 to High(AConfig.Voices) do
-    begin
-      Result.SwitchToPass(WfcMusicVoicesPassLabel(I + 2));
-      Bindings := VoiceBindings(AConfig, P, I);
-      RequireSequencePartialProjectionMapsFromPasses(AConfig.Voices[I].Model, Result, Bindings);
-    end;
-    for K := 0 to High(P.Classes) do
-    begin
-      C := P.Classes[K]; Present := nil; Absent := nil;
-      for J := 0 to High(P.Harmony) do
-        if ContainsClass(P.Harmony[J], C) then AppendToken(Present, AConfig.HarmonyModel.PublicTokenAt(J))
-        else AppendToken(Absent, AConfig.HarmonyModel.PublicTokenAt(J));
-      Result.SwitchToPass(WfcMusicVoicesCoveragePassLabel(C));
-      Result.PassMode := gpmOverlay; Result.ClearDependencies;
-      Value := SupplierValue(-1); Result.AddValue(Value);
-      RequirePartialProjectedSequenceFromPass(AConfig.HarmonyModel, Result, Value,
-        WfcMusicVoicesPassLabel(0), Absent);
+    LWork.Checkpoint;
+    CheckInteger(ACellCount, 1, High(Integer), 'cell count');
+    {$IFDEF PAS2JS}
+    if (ASeed < 0) or (ASeed > Cardinal($FFFFFFFF)) or (ASeed <> Trunc(ASeed)) then
+      VoiceError('seed must be an exact unsigned 32-bit integer');
+    {$ENDIF}
+    P := PrepareMusic(AConfig, PreparationObserver(LWork));
+    ValidateBoundaries(AConfig, ABoundaries, LWork);
+    N := WfcMusicVoicesModelCount(AConfig);
+    if Length(P.Classes) > High(Integer) - N then VoiceError('pass count exceeds Integer indexing');
+    if N + Length(P.Classes) > High(Integer) div ACellCount then
+      VoiceError('total graph entries exceed Integer indexing');
+    if AGraphClass = nil then
+      Result := TGraph.Create
+    else
+      Result := AGraphClass.Create;
+    try
+      Result.Seed := ASeed; Result.Reshape(ACellCount, 1, 1); Result.WrapNeighbors := False;
+      for I := 0 to N - 1 do
+      begin
+        LWork.Visit;
+        LWork.SequencePassIndex := I;
+        if I = 0 then Result.CurrentPass := WfcMusicVoicesPassLabel(I)
+        else Result.SwitchToPass(WfcMusicVoicesPassLabel(I));
+        Result.PassMode := gpmOverlay; Result.ClearDependencies;
+        ApplySequenceModelSegmentToGraph(WfcMusicVoicesModelAt(AConfig, I), Result,
+          ABoundaries[I], PreparationObserver(LWork));
+      end;
       for I := 0 to High(AConfig.Voices) do
       begin
-        Value := SupplierValue(I); Result.AddValue(Value);
-        RequirePartialProjectedSequenceFromPass(AConfig.HarmonyModel, Result, Value,
-          WfcMusicVoicesPassLabel(0), Present);
-        Allowed := nil;
-        for J := 0 to High(P.Voices[I]) do
-          if VoiceContains(P.Voices[I][J].Voices[0], C, AConfig.StepsPerOctave) then
-            AppendToken(Allowed, AConfig.Voices[I].Model.PublicTokenAt(J));
-        RequirePartialProjectedSequenceFromPass(AConfig.Voices[I].Model, Result, Value,
-          WfcMusicVoicesPassLabel(I + 2), Allowed);
-        { One proof for each musical assignment: a later supplier is legal only
-          when every earlier voice omits this class. Empty negative relations
-          explicitly forbid it; they must never become no-op requirements. }
-        for Earlier := 0 to I - 1 do
+        LWork.Visit;
+        LWork.SequencePassIndex := I + 2;
+        Result.SwitchToPass(WfcMusicVoicesPassLabel(I + 2));
+        Bindings := VoiceBindings(AConfig, P, I, LWork);
+        RequireSequencePartialProjectionMapsFromPasses(AConfig.Voices[I].Model, Result,
+          Bindings, PreparationObserver(LWork));
+      end;
+      for K := 0 to High(P.Classes) do
+      begin
+        LWork.Visit;
+        LWork.SequencePassIndex := N + K;
+        C := P.Classes[K]; Present := nil; Absent := nil;
+        for J := 0 to High(P.Harmony) do
         begin
+          LWork.Visit;
+          if ContainsClass(P.Harmony[J], C) then AppendToken(Present, AConfig.HarmonyModel.PublicTokenAt(J))
+          else AppendToken(Absent, AConfig.HarmonyModel.PublicTokenAt(J));
+        end;
+        Result.SwitchToPass(WfcMusicVoicesCoveragePassLabel(C));
+        Result.PassMode := gpmOverlay; Result.ClearDependencies;
+        Value := SupplierValue(-1); Result.AddValue(Value);
+        RequirePartialProjectedSequenceFromPass(AConfig.HarmonyModel, Result, Value,
+          WfcMusicVoicesPassLabel(0), Absent, PreparationObserver(LWork));
+        for I := 0 to High(AConfig.Voices) do
+        begin
+          LWork.Visit;
+          Value := SupplierValue(I); Result.AddValue(Value);
+          RequirePartialProjectedSequenceFromPass(AConfig.HarmonyModel, Result, Value,
+            WfcMusicVoicesPassLabel(0), Present, PreparationObserver(LWork));
           Allowed := nil;
-          for TokenIndex := 0 to High(P.Voices[Earlier]) do
-            if not VoiceContains(P.Voices[Earlier][TokenIndex].Voices[0], C,
-              AConfig.StepsPerOctave) then
-              AppendToken(Allowed, AConfig.Voices[Earlier].Model.PublicTokenAt(TokenIndex));
-          RequirePartialProjectedSequenceFromPass(AConfig.Voices[Earlier].Model,
-            Result, Value, WfcMusicVoicesPassLabel(Earlier + 2), Allowed);
+          for J := 0 to High(P.Voices[I]) do
+          begin
+            LWork.Visit;
+            if VoiceContains(P.Voices[I][J].Voices[0], C, AConfig.StepsPerOctave) then
+              AppendToken(Allowed, AConfig.Voices[I].Model.PublicTokenAt(J));
+          end;
+          RequirePartialProjectedSequenceFromPass(AConfig.Voices[I].Model, Result, Value,
+            WfcMusicVoicesPassLabel(I + 2), Allowed, PreparationObserver(LWork));
+          { One proof for each musical assignment: a later supplier is legal only
+            when every earlier voice omits this class. Empty negative relations
+            explicitly forbid it; they must never become no-op requirements. }
+          for Earlier := 0 to I - 1 do
+          begin
+            LWork.Visit;
+            Allowed := nil;
+            for TokenIndex := 0 to High(P.Voices[Earlier]) do
+            begin
+              LWork.Visit;
+              if not VoiceContains(P.Voices[Earlier][TokenIndex].Voices[0], C,
+                AConfig.StepsPerOctave) then
+                AppendToken(Allowed, AConfig.Voices[Earlier].Model.PublicTokenAt(TokenIndex));
+            end;
+            RequirePartialProjectedSequenceFromPass(AConfig.Voices[Earlier].Model,
+              Result, Value, WfcMusicVoicesPassLabel(Earlier + 2), Allowed,
+              PreparationObserver(LWork));
+          end;
         end;
       end;
-    end;
-    Result.SwitchToPass(0);
-  except Result.Free; Result := nil; raise; end;
+      Result.SwitchToPass(0);
+      LWork.Finish;
+    except Result.Free; Result := nil; raise; end;
+  finally
+    LWork.Free;
+  end;
 end;
 
 procedure InitReport(out R: TWfcMusicVoicesValidationReport);
@@ -522,19 +673,21 @@ begin
 end;
 
 function GraphLayout(const C: TWfcMusicVoicesGraphConfig; const G: TGraph;
-  const Classes: TWfcMusicPitchClasses; out Width: Integer): Boolean;
+  const Classes: TWfcMusicPitchClasses; out Width: Integer;
+  const AWork: TWfcPreparationWork = nil): Boolean;
 var I, N: Integer; P: TGraph; LabelText: String;
 begin
   Result := False; Width := 0;
   if G = nil then Exit;
   N := WfcMusicVoicesModelCount(C);
-  if G.Running or G.WrapNeighbors or (G.Dimension.Width < 1) or
+  if (G.Running and not G.ValidatingCommit) or G.WrapNeighbors or (G.Dimension.Width < 1) or
     (G.Dimension.Width > TGraphCoordinate(High(Integer))) or
     (G.Dimension.Height <> 1) or (G.Dimension.Depth <> 1) or
     (G.TotalPassCount <> N + Length(Classes)) then Exit;
   Width := Integer(G.Dimension.Width);
   for I := 0 to G.TotalPassCount - 1 do
   begin
+    PreparationVisit(AWork);
     if I < N then LabelText := WfcMusicVoicesPassLabel(I)
     else LabelText := WfcMusicVoicesCoveragePassLabel(Classes[I - N]);
     P := G.PassGraph[I];
@@ -545,10 +698,11 @@ begin
   Result := True;
 end;
 
-function ValidateWfcMusicVoicesGenerated(const AConfig: TWfcMusicVoicesGraphConfig;
+function ValidateVoicesInternal(const AConfig: TWfcMusicVoicesGraphConfig;
   const AGraph: TGraph; const ABoundaries: TWfcMusicVoicesBoundaries;
   const AGenerated: TWfcMusicVoicesGenerated;
-  out AReport: TWfcMusicVoicesValidationReport): Boolean;
+  out AReport: TWfcMusicVoicesValidationReport;
+  const LWork: TWfcSequencePreparationBridge): Boolean;
 var
   P: TPreparedMusic; I, J, K, Width, N, BadPosition, State, Supplier: Integer;
   M: TWfcSequenceModel; SReport: TWfcSequenceGraphValidationReport;
@@ -558,8 +712,9 @@ var
 begin
   Result := False; InitReport(AReport);
   try
-    P := PrepareMusic(AConfig); ValidateBoundaries(AConfig, ABoundaries);
-    if not GraphLayout(AConfig, AGraph, P.Classes, Width) then
+    P := PrepareMusic(AConfig, PreparationObserver(LWork));
+    ValidateBoundaries(AConfig, ABoundaries, LWork);
+    if not GraphLayout(AConfig, AGraph, P.Classes, Width, LWork) then
       Exit(Invalid(AReport, wmvikGraphShape, 'graph layout, names or modes differ'));
     N := WfcMusicVoicesModelCount(AConfig);
     if (Length(AGenerated.Layers) <> N) or (Length(AGenerated.Frames) <> Width) or
@@ -567,6 +722,8 @@ begin
       Exit(Invalid(AReport, wmvikGraphShape, 'generated vector lengths differ'));
     for I := 0 to N - 1 do
     begin
+      LWork.Visit;
+      LWork.SequencePassIndex := I;
       AReport.Issue.ModelIndex := I;
       M := WfcMusicVoicesModelAt(AConfig, I); G := AGraph.PassGraph[I];
       if not SameBoundary(ABoundaries[I], AGenerated.Layers[I].Boundary) then
@@ -574,19 +731,21 @@ begin
       if (Length(AGenerated.Layers[I].StateIndices) <> Width) or
         (Length(AGenerated.Layers[I].Tokens) <> Width) then
         Exit(Invalid(AReport, wmvikSequence, 'generated layer length differs'));
-      if not CaptureSolvedSequenceSegment(M, G, ABoundaries[I], Captured, SReport) then
+      if not CaptureSolvedSequenceSegment(M, G, ABoundaries[I], Captured, SReport,
+        LWork.SequenceObserver()) then
       begin
         AReport.Issue.SequenceIssue := SReport.Issue;
         Exit(Invalid(AReport, wmvikSequence, 'latent graph capture failed'));
       end;
       if not ValidateSequenceSegmentStatePath(M, AGenerated.Layers[I].StateIndices,
-        ABoundaries[I], SReport) then
+        ABoundaries[I], SReport, LWork.SequenceObserver()) then
       begin
         AReport.Issue.SequenceIssue := SReport.Issue;
         Exit(Invalid(AReport, wmvikSequence, 'latent state path is invalid'));
       end;
       for J := 0 to Width - 1 do
       begin
+        LWork.Visit;
         AReport.Issue.Position := J;
         State := AGenerated.Layers[I].StateIndices[J];
         if (Captured.StateIndices[J] <> State) or
@@ -594,7 +753,7 @@ begin
           Exit(Invalid(AReport, wmvikToken, 'state projection or graph capture differs'));
       end;
       if not SequenceStatesSatisfyEntryConstraints(M, G,
-        AGenerated.Layers[I].StateIndices, BadPosition) then
+        AGenerated.Layers[I].StateIndices, BadPosition, LWork.SequenceObserver()) then
       begin
         AReport.Issue.Position := BadPosition;
         Exit(Invalid(AReport, wmvikEntryConstraint, 'state violates caller domain or lock'));
@@ -604,10 +763,12 @@ begin
     AReport.Issue.ModelIndex := -1;
     for J := 0 to Width - 1 do
     begin
+      LWork.Visit;
       AReport.Issue.Position := J;
       F := Default(TWfcMusicEnsembleFrame); SetLength(F.Voices, Length(AConfig.Voices));
       for I := 0 to High(AConfig.Voices) do
       begin
+        LWork.Visit;
         AReport.Issue.VoiceIndex := I;
         Previous := DecodeWfcMusicEnsembleFrame(AGenerated.Layers[I + 2].Tokens[J]);
         F.Voices[I] := MakeWfcMusicVoiceCell(Previous.Voices[0].Action, Previous.Voices[0].Tones);
@@ -628,6 +789,7 @@ begin
       if not Found then Exit(Invalid(AReport, wmvikHarmony, 'independent harmonic union differs'));
       for I := 0 to High(AConfig.PairConstraints) do
       begin
+        LWork.Visit;
         AReport.Issue.VoiceIndex := AConfig.PairConstraints[I].LowerVoice;
         AReport.Issue.RelatedVoiceIndex := AConfig.PairConstraints[I].UpperVoice;
         if not PairAllows(F.Voices[AReport.Issue.VoiceIndex],
@@ -637,6 +799,7 @@ begin
       AReport.Issue.VoiceIndex := -1; AReport.Issue.RelatedVoiceIndex := -1;
       for K := 0 to High(P.Classes) do
       begin
+        LWork.Visit;
         AReport.Issue.PitchClass := P.Classes[K];
         if (AGenerated.Coverage[K].PitchClass <> P.Classes[K]) or
           (Length(AGenerated.Coverage[K].Suppliers) <> Width) then
@@ -648,15 +811,22 @@ begin
           VoiceContains(F.Voices[Supplier], P.Classes[K], AConfig.StepsPerOctave);
         if not Found then Exit(Invalid(AReport, wmvikWitness, 'selected voice does not witness coverage'));
         for I := 0 to Supplier - 1 do
+        begin
+          LWork.Visit;
           if VoiceContains(F.Voices[I], P.Classes[K], AConfig.StepsPerOctave) then
             Exit(Invalid(AReport, wmvikWitness, 'coverage supplier is not the lowest matching voice'));
+        end;
         G := AGraph.PassGraph[N + K]; Value := SupplierValue(Supplier);
         if G[J, 0, 0].Empty or (G[J, 0, 0].Value <> Value) then
           Exit(Invalid(AReport, wmvikWitness, 'graph witness differs from captured witness'));
         if G.HasAllowedValues(J, 0, 0) then
         begin
           Domain := G.CopyAllowedValues(J, 0, 0); Found := False;
-          for I := 0 to High(Domain) do if Domain[I] = Value then Found := True;
+          for I := 0 to High(Domain) do
+          begin
+            LWork.Visit;
+            if Domain[I] = Value then Found := True;
+          end;
           if not Found then Exit(Invalid(AReport, wmvikEntryConstraint, 'witness violates caller domain'));
         end;
       end;
@@ -668,38 +838,70 @@ begin
     Result := True;
   except
     on E: EOutOfMemory do raise;
-    on E: Exception do Result := Invalid(AReport, wmvikInternal, E.Message);
+    on E: Exception do
+    begin
+      if LWork.ObserverFailed then raise;
+      Result := Invalid(AReport, wmvikInternal, E.Message);
+    end;
   end;
 end;
 
-function CaptureSolvedWfcMusicVoices(const AConfig: TWfcMusicVoicesGraphConfig;
+function ValidateWfcMusicVoicesGenerated(const AConfig: TWfcMusicVoicesGraphConfig;
+  const AGraph: TGraph; const ABoundaries: TWfcMusicVoicesBoundaries;
+  const AGenerated: TWfcMusicVoicesGenerated;
+  out AReport: TWfcMusicVoicesValidationReport;
+  const AObserver: TWfcPreparationObserver): Boolean;
+var
+  LWork: TWfcSequencePreparationBridge;
+begin
+  LWork := TWfcSequencePreparationBridge.Create(AObserver, 'voice_validate_visits');
+  try
+    LWork.Checkpoint;
+    Result := ValidateVoicesInternal(AConfig, AGraph, ABoundaries, AGenerated,
+      AReport, LWork);
+    LWork.Finish;
+  finally
+    LWork.Free;
+  end;
+end;
+
+function CaptureVoicesInternal(const AConfig: TWfcMusicVoicesGraphConfig;
   const AGraph: TGraph; const ABoundaries: TWfcMusicVoicesBoundaries;
   out AGenerated: TWfcMusicVoicesGenerated;
-  out AReport: TWfcMusicVoicesValidationReport): Boolean;
+  out AReport: TWfcMusicVoicesValidationReport;
+  const LWork: TWfcSequencePreparationBridge): Boolean;
 var P: TPreparedMusic; Pending: TWfcMusicVoicesGenerated;
   I, J, K, N, Width: Integer; One: TWfcMusicEnsembleFrame;
   SReport: TWfcSequenceGraphValidationReport; G: TGraph; Found: Boolean;
 begin
   Result := False; AGenerated := Default(TWfcMusicVoicesGenerated); InitReport(AReport);
   try
-    P := PrepareMusic(AConfig); ValidateBoundaries(AConfig, ABoundaries);
-    if not GraphLayout(AConfig, AGraph, P.Classes, Width) then
+    P := PrepareMusic(AConfig, PreparationObserver(LWork));
+    ValidateBoundaries(AConfig, ABoundaries, LWork);
+    if not GraphLayout(AConfig, AGraph, P.Classes, Width, LWork) then
       Exit(Invalid(AReport, wmvikGraphShape, 'graph layout differs'));
     N := WfcMusicVoicesModelCount(AConfig);
     Pending := Default(TWfcMusicVoicesGenerated); SetLength(Pending.Layers, N);
     for I := 0 to N - 1 do
+    begin
+      LWork.Visit;
+      LWork.SequencePassIndex := I;
       if not CaptureSolvedSequenceSegment(WfcMusicVoicesModelAt(AConfig, I),
-        AGraph.PassGraph[I], ABoundaries[I], Pending.Layers[I], SReport) then
+        AGraph.PassGraph[I], ABoundaries[I], Pending.Layers[I], SReport,
+        LWork.SequenceObserver()) then
       begin
         AReport.Issue.ModelIndex := I; AReport.Issue.SequenceIssue := SReport.Issue;
         Exit(Invalid(AReport, wmvikSequence, 'latent capture failed'));
       end;
+    end;
     SetLength(Pending.Frames, Width);
     for J := 0 to Width - 1 do
     begin
+      LWork.Visit;
       SetLength(Pending.Frames[J].Voices, Length(AConfig.Voices));
       for I := 0 to High(AConfig.Voices) do
       begin
+        LWork.Visit;
         One := DecodeWfcMusicEnsembleFrame(Pending.Layers[I + 2].Tokens[J]);
         Pending.Frames[J].Voices[I] := MakeWfcMusicVoiceCell(One.Voices[0].Action, One.Voices[0].Tones);
       end;
@@ -707,16 +909,21 @@ begin
     SetLength(Pending.Coverage, Length(P.Classes));
     for K := 0 to High(P.Classes) do
     begin
+      LWork.Visit;
       Pending.Coverage[K].PitchClass := P.Classes[K];
       SetLength(Pending.Coverage[K].Suppliers, Width);
       G := AGraph.PassGraph[N + K];
       for J := 0 to Width - 1 do
       begin
+        LWork.Visit;
         Found := False;
         if not G[J, 0, 0].Empty then
           for I := -1 to High(AConfig.Voices) do
+          begin
+            LWork.Visit;
             if G[J, 0, 0].Value = SupplierValue(I) then
             begin Pending.Coverage[K].Suppliers[J] := I; Found := True; Break; end;
+          end;
         if not Found then
         begin
           AReport.Issue.Position := J; AReport.Issue.PitchClass := P.Classes[K];
@@ -724,11 +931,46 @@ begin
         end;
       end;
     end;
-    if not ValidateWfcMusicVoicesGenerated(AConfig, AGraph, ABoundaries, Pending, AReport) then Exit;
+    LWork.SequencePassIndex := -1;
+    if not ValidateWfcMusicVoicesGenerated(AConfig, AGraph, ABoundaries, Pending,
+      AReport, PreparationObserver(LWork)) then Exit;
     AGenerated := Pending; Result := True;
   except
     on E: EOutOfMemory do raise;
-    on E: Exception do Result := Invalid(AReport, wmvikInternal, E.Message);
+    on E: Exception do
+    begin
+      if LWork.ObserverFailed then raise;
+      Result := Invalid(AReport, wmvikInternal, E.Message);
+    end;
+  end;
+end;
+
+function CaptureSolvedWfcMusicVoices(const AConfig: TWfcMusicVoicesGraphConfig;
+  const AGraph: TGraph; const ABoundaries: TWfcMusicVoicesBoundaries;
+  var AGenerated: TWfcMusicVoicesGenerated;
+  out AReport: TWfcMusicVoicesValidationReport;
+  const AObserver: TWfcPreparationObserver): Boolean;
+var
+  LWork: TWfcSequencePreparationBridge;
+  LCandidate: TWfcMusicVoicesGenerated;
+begin
+  LWork := TWfcSequencePreparationBridge.Create(AObserver, 'voice_capture_visits');
+  try
+    LWork.Checkpoint;
+    Result := CaptureVoicesInternal(AConfig, AGraph, ABoundaries, LCandidate,
+      AReport, LWork);
+    LWork.Finish;
+    if Result then
+    begin
+      LWork.Report('voice_capture_ready', 1, 1);
+      AGenerated := LCandidate;
+    end
+    else
+    begin
+      AGenerated := Default(TWfcMusicVoicesGenerated);
+    end;
+  finally
+    LWork.Free;
   end;
 end;
 

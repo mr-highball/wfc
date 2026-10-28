@@ -198,6 +198,13 @@ boundaries, model identities, latent paths and emissions, domains/locks,
 rhythm, ranges, pairs, harmonic union, and coverage. Do not bypass capture and
 treat private graph keys as musical tokens.
 
+The finite builder, configuration helpers and independent capture/validation
+accept an optional borrowed `TWfcPreparationObserver`. The builder also accepts
+an optional graph class for callers using the existing `DoValidateCommit` hook.
+See [preparation progress](preparation-progress.md) for measured stages,
+cancellation, private publication and the exact read-only commit scope. The
+stream does not automatically install this observer in subsequent operations.
+
 ## Frontiers, publication, and failure
 
 An initial segment uses observed start states. A continuing segment's first
