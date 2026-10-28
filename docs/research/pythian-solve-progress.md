@@ -51,3 +51,20 @@ Align the interface order, retaining the complete inventory and dependency
 implementation. The actual native manifest checker now verifies97 source units
 in all three definitions. Preserve the original CI52 failure; solver results are
 not established by that failed run. Await validation of the repaired commit.
+The complete five-job CI53 succeeds at29182bb (24m28s), but the final combined
+contract audit finds a separate defect: cancellation at the first work callback
+produces trace events/footer before BeginTrace. The private public-API probe
+reproduces begins0/events1/ends1 with the original cancellation preserved.
+Move diagnostic BeginDelivery before the first work callback. The maintained
+regression now covers healthy and failing trace receivers together with work
+cancellation, preserving original cancellation and diagnostic failure semantics.
+Final local Win32/Win64/actual pas2js each pass44831 checks/58 abort-retries;
+native runs report zero leaks. Full validation of this repair remains pending;
+CI53 alone cannot qualify it. No search or budget policy changed.
+
+Reassess after two nonclosing candidate qualification cycles: the package-order
+rejection and this combined-contract rejection. The next bounded action is only
+the demonstrated lifecycle ordering repair plus its regression and downstream
+pin/consumer verification. Do not widen into another generation experiment or
+reset the counter because the earlier CI was green. Acceptance still requires
+terminal validation of the corrected upstream and downstream sources.

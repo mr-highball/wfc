@@ -8516,9 +8516,11 @@ begin
   FExecutingPassIndex := -1;
   try
    try
+    //Establish diagnostic delivery before any cancellable work callback can
+    //unwind into rollback/footer delivery. Trace receiver failures stay contained.
+    LTraceRecorder.BeginDelivery;
     if Assigned(AObserver) then LWork := TWfcSolveWork.Create(AObserver);
     BeginSolveWork(LWork, wspPrepare, -1);
-    LTraceRecorder.BeginDelivery;
     //Reused-provider events are still the same chronological prefix, but
     //observers now run inside the non-reentrant transaction boundary.
     for I := 0 to Pred(FPasses.Count) do

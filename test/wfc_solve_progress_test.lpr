@@ -49,6 +49,15 @@ type
     StopAfterFirstAttempt:Boolean;
     procedure Observe(const AWork:TWfcSolveProgress);
   end;
+  { Diagnostic lifecycle remains complete when a separate work receiver cancels. }
+  TCheckedSink=class(TGraphTraceSink)
+  public
+    Begins,Events,Ends:Integer;
+    FailBegin:Boolean;
+    procedure BeginTrace(const AHeader:TGraphTraceHeader);override;
+    procedure AppendEvent(const AEvent:TGraphTraceEvent);override;
+    procedure EndTrace(const ADelivery:TGraphTraceDelivery);override;
+  end;
 var Checks,Aborts:Integer;
 procedure Check(const ACondition:Boolean; const AMessage:String);
 begin
@@ -315,6 +324,67 @@ begin
     Obs.Free; A.Free; B.Free;
   end;
 end;
+procedure TCheckedSink.BeginTrace(const AHeader:TGraphTraceHeader);
+begin
+  Check((Begins=0) and (Events=0) and (Ends=0),'Repeated trace header');
+  Inc(Begins);
+  if FailBegin then raise Exception.Create('contained diagnostic failure');
+end;
+procedure TCheckedSink.AppendEvent(const AEvent:TGraphTraceEvent);
+begin
+  Check((Begins=1) and (Ends=0),'Trace event outside header/footer');
+  Inc(Events);
+end;
+procedure TCheckedSink.EndTrace(const ADelivery:TGraphTraceDelivery);
+begin
+  Check((Begins=1) and (Ends=0),'Trace footer without header');
+  Check(ADelivery.Status=gtdsInterrupted,'Cancellation footer not interrupted');
+  Check(ADelivery.DeliveredEventCount=Events,'Trace footer count differs');
+  Inc(Ends);
+end;
+procedure CheckTraceCancellation(const FailBegin:Boolean);
+var G:TGraph; Obs:TObserver; Sink:TCheckedSink; R:TGraphSolveReport;
+    Stopped:Boolean; Before:String;
+begin
+  G:=BuildGraph; Obs:=TObserver.Create; Sink:=TCheckedSink.Create;
+  try
+    Before:=Snapshot(G);
+    Obs.Graph:=G;
+    Obs.StopPhase:=wspPrepare;
+    Obs.StopPoint:=spStart;
+    Sink.FailBegin:=FailBegin;
+    G.TraceSink:=Sink;
+    Stopped:=False;
+    try
+      G.TrySolve(DefaultGraphSolveOptions,R,Obs.Observe);
+    except
+      on E:Exception do
+      begin
+        Check(E=Obs.Marker,'Trace delivery replaced original cancellation');
+        Obs.Marker:=nil;
+        Stopped:=True;
+        Inc(Aborts);
+      end;
+    end;
+    Check(Stopped and (Obs.Calls=1) and not G.Running,'Initial cancellation lost');
+    Check(Snapshot(G)=Before,'Trace/work cancellation published graph state');
+    Check(Sink.Begins=1,'Cancellation skipped trace header');
+    if FailBegin then
+    begin
+      Check((Sink.Events=0) and (Sink.Ends=0) and
+        (R.TraceDelivery.Status=gtdsSinkFailed) and
+        (R.TraceDelivery.FailurePhase=gtdpBegin),'Contained trace failure changed');
+    end
+    else
+    begin
+      Check((Sink.Events=1) and (Sink.Ends=1) and
+        (R.TraceDelivery.Status=gtdsInterrupted),'Interrupted trace lifecycle differs');
+    end;
+  finally
+    G.TraceSink:=nil;
+    G.Free; Obs.Free; Sink.Free;
+  end;
+end;
 var Mode:TMode; Phase:TWfcSolvePhase; Point:TStopPoint;
 begin
   for Mode:=Low(TMode) to High(TMode) do
@@ -331,5 +401,7 @@ begin
   CheckRounds(False,True);
   CheckRounds(True,False);
   CheckRounds(True,True);
+  CheckTraceCancellation(False);
+  CheckTraceCancellation(True);
   WriteLn('PASS checks=',Checks,' original_aborts=',Aborts);
 end.
