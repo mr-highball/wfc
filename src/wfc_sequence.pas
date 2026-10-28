@@ -52,7 +52,9 @@ type
 
   TWfcSequencePreparationPhase = (wspValidateConstraints, wspValidateGraphModel,
     wspSnapshotDomains, wspIntersectDomains, wspLearnTokenRows, wspLearnStateRows,
-    wspModelBuildVisits);
+    wspModelBuildVisits, wspCaptureSequenceCells, wspValidatePathStates,
+    wspValidatePathTransitions, wspValidateEntryCells, wspValidateProjectionStates,
+    wspProjectStateTokens, wspCaptureReady);
   { Units are completed rows/masks/cells or marked model-construction loop visits
     according to Phase. A checkpoint within one row can repeat
     Done. Total=0 means unknown or empty, not a completion percentage.
@@ -194,7 +196,8 @@ type
     function CopyStartStateIndices: TWfcSequenceStateIndices;
     function CopyEndStateIndices: TWfcSequenceStateIndices;
     function ProjectStateIndices(
-      const AStateIndices: TWfcSequenceStateIndices): TWfcModelTokens;
+      const AStateIndices: TWfcSequenceStateIndices;
+      const AObserver: TWfcSequencePreparationObserver = nil): TWfcModelTokens;
 
     function CreateGraphModel(
       const AStateKeys: TWfcModelTokens): TWfcModel;
@@ -1118,19 +1121,31 @@ begin
 end;
 
 function TWfcSequenceModel.ProjectStateIndices(
-  const AStateIndices: TWfcSequenceStateIndices): TWfcModelTokens;
+  const AStateIndices: TWfcSequenceStateIndices;
+  const AObserver: TWfcSequencePreparationObserver): TWfcModelTokens;
 var
   I: Integer;
   LCount: Integer;
+  LTokens: TWfcModelTokens;
 begin
   LCount := CheckedLength(Length(AStateIndices),
     'sequence projection state count');
+  ReportSequencePreparation(AObserver, wspValidateProjectionStates, 0, LCount);
   for I := 0 to LCount - 1 do
+  begin
     ValidateStateIndex(AStateIndices[I]);
-  Result := nil;
-  SetLength(Result, LCount);
+    if ((I + 1) mod 64 = 0) or (I + 1 = LCount) then
+      ReportSequencePreparation(AObserver, wspValidateProjectionStates, I + 1, LCount);
+  end;
+  SetLength(LTokens, LCount);
+  ReportSequencePreparation(AObserver, wspProjectStateTokens, 0, LCount);
   for I := 0 to LCount - 1 do
-    Result[I] := ProjectStateToken(AStateIndices[I]);
+  begin
+    LTokens[I] := ProjectStateToken(AStateIndices[I]);
+    if ((I + 1) mod 64 = 0) or (I + 1 = LCount) then
+      ReportSequencePreparation(AObserver, wspProjectStateTokens, I + 1, LCount);
+  end;
+  Result := LTokens;
 end;
 
 function TWfcSequenceModel.CreateGraphModel(

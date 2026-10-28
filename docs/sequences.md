@@ -252,6 +252,47 @@ The [text pass owner](text.md#pass-composition) uses the same generic bundle to
 make its punctuation surface depend directly on both lexical and structural
 passes.
 
+## Observable sequence capture and validation
+
+Sequence/segment capture, state-path validation and complete entry-domain proof
+accept an optional final `TWfcSequencePreparationObserver`. They reuse the
+primary definition/key/path validators and token projection; they do not add
+a second solver or weaken model identity. `ProjectStateIndices` also accepts
+the same observer for its two actual passes. Observers are synchronous, borrowed
+only during the call and never retained. Do not mutate or reenter the graph,
+model, input path or callback state. Raise to cancel.
+
+| Phase | Actual units |
+| --- | --- |
+| `wspValidateGraphModel` | Existing matching model-state rows, with repeated inner-row checkpoints |
+| `wspCaptureSequenceCells` | Captured cells; state lookup may repeat the current completed-cell count |
+| `wspValidatePathStates` | Validated path state indices |
+| `wspValidatePathTransitions` | Checked adjacent transitions, including a wrap or incoming seam when required |
+| `wspValidateEntryCells` | Complete path positions checked against caller locks/domains |
+| `wspValidateProjectionStates` | State indices checked before projecting tokens |
+| `wspProjectStateTokens` | Projected public-token rows |
+| `wspCaptureReady` | One private validated result, before caller publication |
+
+Capture uses a private candidate and a `var` result slot. Any exception,
+including the final ready callback, preserves the caller's complete prior
+sequence/segment. Ordinary `False` retains its established empty-result and
+issue-report behavior. Validation reports are diagnostic out parameters and may
+show an interrupted prefix; they are not an accepted capture. Direct token
+projection likewise preserves a caller's prior managed result on exception.
+No callback runs after result publication. A successful return is the completion
+signal; phase totals and ready callbacks are not overall success percentages.
+
+These operations do not mutate their graph or model. A domain owner using the
+existing guarded `DoValidateCommit` hook can run its own validation/capture while
+generic graph snapshots are rollback-capable. Observing a later call after the
+solver returns cannot extend that earlier transaction. RTL allocations, string
+operations and bounded accessors remain synchronous; no hard callback latency,
+event-loop yield or timing guarantee is promised. `wfc_sequence_capture_progress_test`
+covers native/pas2js start/interior/final cancellation, exact prior managed output,
+same-graph retry, false-result/report controls, observer lifetime and an admitted
+256-state/1024-cell authored capture. This is engineering evidence, not a domain
+quality claim.
+
 ## Canonical sequence text
 
 `EncodeWfcSequenceText` writes a strict ASCII, LF-only document with a final LF.

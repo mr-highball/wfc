@@ -138,11 +138,13 @@ procedure ApplySequenceModelSegmentToGraph(const AModel: TWfcSequenceModel;
 function ValidateSequenceSegmentStatePath(const AModel: TWfcSequenceModel;
   const AStateIndices: TWfcSequenceStateIndices;
   const ABoundary: TWfcSequenceSegmentBoundary;
-  out AReport: TWfcSequenceGraphValidationReport): Boolean;
+  out AReport: TWfcSequenceGraphValidationReport;
+  const AObserver: TWfcSequencePreparationObserver = nil): Boolean;
 function CaptureSolvedSequenceSegment(const AModel: TWfcSequenceModel;
   const AGraph: TGraph; const ABoundary: TWfcSequenceSegmentBoundary;
-  out ASequence: TWfcGeneratedSequenceSegment;
-  out AReport: TWfcSequenceGraphValidationReport): Boolean;
+  var ASequence: TWfcGeneratedSequenceSegment;
+  out AReport: TWfcSequenceGraphValidationReport;
+  const AObserver: TWfcSequencePreparationObserver = nil): Boolean;
 
 { Applies the latent model to an already shaped, empty, one-dimensional graph
   pass. Open graphs receive observed start/end domains. Wrapped graphs receive
@@ -198,7 +200,8 @@ function SequenceStateSatisfiesEntryConstraints(
 function SequenceStatesSatisfyEntryConstraints(
   const AModel: TWfcSequenceModel; const AGraph: TGraph;
   const AStateIndices: TWfcSequenceStateIndices;
-  out AFalsePosition: Integer): Boolean;
+  out AFalsePosition: Integer;
+  const AObserver: TWfcSequencePreparationObserver = nil): Boolean;
 
 { Makes every latent state require its projected public token from a named
   pass at the same coordinate. The provider pass therefore exposes public
@@ -268,19 +271,31 @@ procedure RequireSequencePartialProjectionMapsFromPasses(
 function ValidateSequenceStatePath(const AModel: TWfcSequenceModel;
   const AStateIndices: TWfcSequenceStateIndices;
   const ABoundary: TWfcModelBoundary;
-  out AReport: TWfcSequenceGraphValidationReport): Boolean; overload;
+  out AReport: TWfcSequenceGraphValidationReport;
+  const AObserver: TWfcSequencePreparationObserver = nil): Boolean; overload;
 function ValidateSequenceStatePath(const AModel: TWfcSequenceModel;
   const AStateIndices: TWfcSequenceStateIndices;
   const AExtent: TWfcSequenceExtent;
-  out AReport: TWfcSequenceGraphValidationReport): Boolean; overload;
+  out AReport: TWfcSequenceGraphValidationReport;
+  const AObserver: TWfcSequencePreparationObserver = nil): Boolean; overload;
 
+{ Read-only capture borrows its observer for this call. Model rows, state lookup,
+  path checks and token projection report actual phase-local work. Callbacks may
+  repeat completed cells during lookup. Do not mutate/reenter graph or model.
+  An exception preserves the complete prior ASequence and propagates unchanged.
+  Ordinary False still publishes an empty sequence with its original issue
+  report. The final ready callback precedes result publication; a ready event
+  alone is not a successful return. Out reports may describe an interrupted
+  prefix. RTL allocation/string comparison and bounded accessors are synchronous. }
 function CaptureSolvedSequence(const AModel: TWfcSequenceModel;
-  const AGraph: TGraph; out ASequence: TWfcGeneratedSequence;
-  out AReport: TWfcSequenceGraphValidationReport): Boolean; overload;
+  const AGraph: TGraph; var ASequence: TWfcGeneratedSequence;
+  out AReport: TWfcSequenceGraphValidationReport;
+  const AObserver: TWfcSequencePreparationObserver = nil): Boolean; overload;
 function CaptureSolvedSequence(const AModel: TWfcSequenceModel;
   const AGraph: TGraph; const AExtent: TWfcSequenceExtent;
-  out ASequence: TWfcGeneratedSequence;
-  out AReport: TWfcSequenceGraphValidationReport): Boolean; overload;
+  var ASequence: TWfcGeneratedSequence;
+  out AReport: TWfcSequenceGraphValidationReport;
+  const AObserver: TWfcSequencePreparationObserver = nil): Boolean; overload;
 
 function DescribeSequenceGraphIssue(
   const AIssue: TWfcSequenceGraphIssue): String;
@@ -1254,7 +1269,8 @@ end;
 function SequenceStatesSatisfyEntryConstraints(
   const AModel: TWfcSequenceModel; const AGraph: TGraph;
   const AStateIndices: TWfcSequenceStateIndices;
-  out AFalsePosition: Integer): Boolean;
+  out AFalsePosition: Integer;
+  const AObserver: TWfcSequencePreparationObserver): Boolean;
 var
   I: Integer;
   LExpected: TGraphValue;
@@ -1265,10 +1281,10 @@ begin
   RequireAssigned(AModel, AGraph);
   if ActiveSequencePass(AGraph) <> AGraph then
     Exit(SequenceStatesSatisfyEntryConstraints(AModel,
-      ActiveSequencePass(AGraph), AStateIndices, AFalsePosition));
+      ActiveSequencePass(AGraph), AStateIndices, AFalsePosition, AObserver));
   ValidateGraphShape(AGraph, 'sequence path constraint validation');
   ValidateAppliedModel(AModel, AGraph,
-    'sequence path constraint validation');
+    'sequence path constraint validation', AObserver);
   LWidth := Integer(AGraph.Dimension.Width);
   if Length(AStateIndices) <> LWidth then
     raise EArgumentException.CreateFmt(
@@ -1276,6 +1292,7 @@ begin
       [Length(AStateIndices), LWidth]);
 
   LSalt := SequenceKeySalt(AModel);
+  ReportSequencePreparation(AObserver, wspValidateEntryCells, 0, LWidth);
   for I := 0 to LWidth - 1 do
   begin
     if (AStateIndices[I] < 0) or
@@ -1290,6 +1307,8 @@ begin
       AFalsePosition := I;
       Exit(False);
     end;
+    if ((I + 1) mod 64 = 0) or (I + 1 = LWidth) then
+      ReportSequencePreparation(AObserver, wspValidateEntryCells, I + 1, LWidth);
   end;
   Result := True;
 end;
@@ -1804,7 +1823,8 @@ end;
 function ValidateSequenceStatePath(const AModel: TWfcSequenceModel;
   const AStateIndices: TWfcSequenceStateIndices;
   const ABoundary: TWfcModelBoundary;
-  out AReport: TWfcSequenceGraphValidationReport): Boolean;
+  out AReport: TWfcSequenceGraphValidationReport;
+  const AObserver: TWfcSequencePreparationObserver): Boolean;
 var
   LBoundaryOrdinal: Integer;
   LExtent: TWfcSequenceExtent;
@@ -1823,19 +1843,21 @@ begin
   else
     LExtent := wseWhole;
   Result := ValidateSequenceStatePath(AModel, AStateIndices,
-    LExtent, AReport);
+    LExtent, AReport, AObserver);
 end;
 
 function ValidateSequenceStatePath(const AModel: TWfcSequenceModel;
   const AStateIndices: TWfcSequenceStateIndices;
   const AExtent: TWfcSequenceExtent;
-  out AReport: TWfcSequenceGraphValidationReport): Boolean;
+  out AReport: TWfcSequenceGraphValidationReport;
+  const AObserver: TWfcSequencePreparationObserver): Boolean;
 var
   I: Integer;
   LCount: Integer;
   LLength: SizeInt;
   LNextPosition: Integer;
   LState: Integer;
+  LTransitionCount: Integer;
 begin
   if not Assigned(AModel) then
     raise EArgumentNilException.Create('sequence model cannot be nil');
@@ -1848,6 +1870,7 @@ begin
   if not SequenceExtentIsValid(AExtent) then
     Exit(InvalidReport(AReport, wsgikGraphShape));
 
+  ReportSequencePreparation(AObserver, wspValidatePathStates, 0, LCount);
   for I := 0 to LCount - 1 do
   begin
     LState := AStateIndices[I];
@@ -1866,6 +1889,8 @@ begin
       AReport.Issue.StateIndex := LState;
       Exit(InvalidReport(AReport, wsgikBoundaryState));
     end;
+    if ((I + 1) mod 64 = 0) or (I + 1 = LCount) then
+      ReportSequencePreparation(AObserver, wspValidatePathStates, I + 1, LCount);
   end;
 
   if (AExtent in [wseWhole, wsePrefix]) and
@@ -1875,6 +1900,10 @@ begin
     AReport.Issue.StateIndex := AStateIndices[0];
     Exit(InvalidReport(AReport, wsgikStartState));
   end;
+  LTransitionCount := LCount - 1;
+  if AExtent = wseWrap then
+    LTransitionCount := LCount;
+  ReportSequencePreparation(AObserver, wspValidatePathTransitions, 0, LTransitionCount);
   for I := 0 to LCount - 1 do
   begin
     LNextPosition := I + 1;
@@ -1895,6 +1924,8 @@ begin
         AStateIndices[LNextPosition];
       Exit(InvalidReport(AReport, wsgikTransition));
     end;
+    if ((I + 1) mod 64 = 0) or (I + 1 = LTransitionCount) then
+      ReportSequencePreparation(AObserver, wspValidatePathTransitions, I + 1, LTransitionCount);
   end;
   if (AExtent in [wseWhole, wseSuffix]) and
       (AModel.EndCountAt(AStateIndices[LCount - 1]) < 1) then
@@ -1911,10 +1942,13 @@ end;
 function ValidateSequenceSegmentStatePath(const AModel: TWfcSequenceModel;
   const AStateIndices: TWfcSequenceStateIndices;
   const ABoundary: TWfcSequenceSegmentBoundary;
-  out AReport: TWfcSequenceGraphValidationReport): Boolean;
+  out AReport: TWfcSequenceGraphValidationReport;
+  const AObserver: TWfcSequencePreparationObserver): Boolean;
 var
   I, LCount, LState: Integer;
   LLength: SizeInt;
+  LTransitionCount: Integer;
+  LDone: Integer;
 begin
   if not Assigned(AModel) then
     raise EArgumentNilException.Create('sequence model cannot be nil');
@@ -1925,6 +1959,7 @@ begin
       not SegmentBoundaryIsValid(AModel, ABoundary) then
     Exit(InvalidReport(AReport, wsgikGraphShape));
   LCount := Integer(LLength);
+  ReportSequencePreparation(AObserver, wspValidatePathStates, 0, LCount);
   for I := 0 to LCount - 1 do
   begin
     LState := AStateIndices[I];
@@ -1935,7 +1970,12 @@ begin
       Exit(InvalidReport(AReport, wsgikStateIndex));
     end;
     CheckedReportIncrement(AReport.CheckedStates);
+    if ((I + 1) mod 64 = 0) or (I + 1 = LCount) then
+      ReportSequencePreparation(AObserver, wspValidatePathStates, I + 1, LCount);
   end;
+  LTransitionCount := LCount - 1 + Ord(ABoundary.HasPrevious);
+  LDone := 0;
+  ReportSequencePreparation(AObserver, wspValidatePathTransitions, 0, LTransitionCount);
   if ABoundary.HasPrevious then
   begin
     CheckedReportIncrement(AReport.CheckedTransitions);
@@ -1948,6 +1988,8 @@ begin
       AReport.Issue.RelatedStateIndex := AStateIndices[0];
       Exit(InvalidReport(AReport, wsgikTransition));
     end;
+    Inc(LDone);
+    ReportSequencePreparation(AObserver, wspValidatePathTransitions, LDone, LTransitionCount);
   end
   else if AModel.StartCountAt(AStateIndices[0]) < 1 then
   begin
@@ -1966,6 +2008,9 @@ begin
       AReport.Issue.RelatedStateIndex := AStateIndices[I];
       Exit(InvalidReport(AReport, wsgikTransition));
     end;
+    Inc(LDone);
+    if (LDone mod 64 = 0) or (LDone = LTransitionCount) then
+      ReportSequencePreparation(AObserver, wspValidatePathTransitions, LDone, LTransitionCount);
   end;
   if ABoundary.RequireObservedEnd and
     (AModel.EndCountAt(AStateIndices[LCount - 1]) < 1) then
@@ -1980,20 +2025,26 @@ begin
 end;
 
 function FindStateValue(const AModel: TWfcSequenceModel;
-  const AValue: TGraphValue): Integer;
+  const AValue: TGraphValue; const APosition, AWidth: Integer;
+  const AObserver: TWfcSequencePreparationObserver): Integer;
 var
   LSalt: Integer;
 begin
   LSalt := SequenceKeySalt(AModel);
   for Result := 0 to AModel.StateCount - 1 do
+  begin
+    if Result mod 64 = 0 then
+      ReportSequencePreparation(AObserver, wspCaptureSequenceCells, APosition, AWidth);
     if SaltedStateGraphValue(LSalt, Result, AModel) = AValue then
       Exit;
+  end;
   Result := -1;
 end;
 
 function CaptureSolvedSequence(const AModel: TWfcSequenceModel;
-  const AGraph: TGraph; out ASequence: TWfcGeneratedSequence;
-  out AReport: TWfcSequenceGraphValidationReport): Boolean;
+  const AGraph: TGraph; var ASequence: TWfcGeneratedSequence;
+  out AReport: TWfcSequenceGraphValidationReport;
+  const AObserver: TWfcSequencePreparationObserver): Boolean;
 var
   LExtent: TWfcSequenceExtent;
 begin
@@ -2002,13 +2053,14 @@ begin
   else
     LExtent := wseWhole;
   Result := CaptureSolvedSequence(AModel, AGraph, LExtent,
-    ASequence, AReport);
+    ASequence, AReport, AObserver);
 end;
 
-function CaptureSolvedSequence(const AModel: TWfcSequenceModel;
+function CaptureSequence(const AModel: TWfcSequenceModel;
   const AGraph: TGraph; const AExtent: TWfcSequenceExtent;
   out ASequence: TWfcGeneratedSequence;
-  out AReport: TWfcSequenceGraphValidationReport): Boolean;
+  out AReport: TWfcSequenceGraphValidationReport;
+  const AObserver: TWfcSequencePreparationObserver): Boolean;
 var
   I: Integer;
   LEntry: TGraphEntry;
@@ -2018,8 +2070,8 @@ var
 begin
   RequireAssigned(AModel, AGraph);
   if ActiveSequencePass(AGraph) <> AGraph then
-    Exit(CaptureSolvedSequence(AModel, ActiveSequencePass(AGraph),
-      AExtent, ASequence, AReport));
+    Exit(CaptureSequence(AModel, ActiveSequencePass(AGraph),
+      AExtent, ASequence, AReport, AObserver));
   ASequence := Default(TWfcGeneratedSequence);
   LSequence := Default(TWfcGeneratedSequence);
   InitializeReport(AReport);
@@ -2028,7 +2080,7 @@ begin
       (AGraph.Dimension.Height <> 1) or
       (AGraph.Dimension.Depth <> 1) then
     Exit(InvalidReport(AReport, wsgikGraphShape));
-  if not AppliedModelMatches(AModel, AGraph) then
+  if not AppliedModelMatches(AModel, AGraph, AObserver) then
     Exit(InvalidReport(AReport, wsgikModelIdentity));
   if (not SequenceExtentIsValid(AExtent)) or
       (AGraph.WrapNeighbors <> (AExtent = wseWrap)) then
@@ -2041,6 +2093,7 @@ begin
     LSequence.Boundary := wmbOpen;
   LSequence.Extent := AExtent;
   SetLength(LSequence.StateIndices, LWidth);
+  ReportSequencePreparation(AObserver, wspCaptureSequenceCells, 0, LWidth);
   for I := 0 to LWidth - 1 do
   begin
     LEntry := AGraph.Entry[TGraphCoordinate(I), 0, 0];
@@ -2049,26 +2102,43 @@ begin
       AReport.Issue.Position := I;
       Exit(InvalidReport(AReport, wsgikEmptyCell));
     end;
-    LState := FindStateValue(AModel, LEntry.Value);
+    LState := FindStateValue(AModel, LEntry.Value, I, LWidth, AObserver);
     if LState < 0 then
     begin
       AReport.Issue.Position := I;
       Exit(InvalidReport(AReport, wsgikUnknownStateKey));
     end;
     LSequence.StateIndices[I] := LState;
+    if ((I + 1) mod 64 = 0) or (I + 1 = LWidth) then
+      ReportSequencePreparation(AObserver, wspCaptureSequenceCells, I + 1, LWidth);
   end;
   if not ValidateSequenceStatePath(AModel, LSequence.StateIndices,
-      AExtent, AReport) then
+      AExtent, AReport, AObserver) then
     Exit(False);
-  LSequence.Tokens := AModel.ProjectStateIndices(LSequence.StateIndices);
+  LSequence.Tokens := AModel.ProjectStateIndices(LSequence.StateIndices, AObserver);
   ASequence := LSequence;
   Result := True;
 end;
 
-function CaptureSolvedSequenceSegment(const AModel: TWfcSequenceModel;
+function CaptureSolvedSequence(const AModel: TWfcSequenceModel;
+  const AGraph: TGraph; const AExtent: TWfcSequenceExtent;
+  var ASequence: TWfcGeneratedSequence;
+  out AReport: TWfcSequenceGraphValidationReport;
+  const AObserver: TWfcSequencePreparationObserver): Boolean;
+var
+  LSequence: TWfcGeneratedSequence;
+begin
+  Result := CaptureSequence(AModel, AGraph, AExtent, LSequence, AReport, AObserver);
+  if Result then
+    ReportSequencePreparation(AObserver, wspCaptureReady, 1, 1);
+  ASequence := LSequence;
+end;
+
+function CaptureSequenceSegment(const AModel: TWfcSequenceModel;
   const AGraph: TGraph; const ABoundary: TWfcSequenceSegmentBoundary;
   out ASequence: TWfcGeneratedSequenceSegment;
-  out AReport: TWfcSequenceGraphValidationReport): Boolean;
+  out AReport: TWfcSequenceGraphValidationReport;
+  const AObserver: TWfcSequencePreparationObserver): Boolean;
 var
   I, LState, LWidth: Integer;
   LEntry: TGraphEntry;
@@ -2076,8 +2146,8 @@ var
 begin
   RequireAssigned(AModel, AGraph);
   if ActiveSequencePass(AGraph) <> AGraph then
-    Exit(CaptureSolvedSequenceSegment(AModel, ActiveSequencePass(AGraph),
-      ABoundary, ASequence, AReport));
+    Exit(CaptureSequenceSegment(AModel, ActiveSequencePass(AGraph),
+      ABoundary, ASequence, AReport, AObserver));
   ASequence := Default(TWfcGeneratedSequenceSegment);
   LSequence := Default(TWfcGeneratedSequenceSegment);
   InitializeReport(AReport);
@@ -2086,10 +2156,11 @@ begin
       (AGraph.Dimension.Height <> 1) or (AGraph.Dimension.Depth <> 1) or
       AGraph.WrapNeighbors or not SegmentBoundaryIsValid(AModel, ABoundary) then
     Exit(InvalidReport(AReport, wsgikGraphShape));
-  if not AppliedModelMatches(AModel, AGraph) then
+  if not AppliedModelMatches(AModel, AGraph, AObserver) then
     Exit(InvalidReport(AReport, wsgikModelIdentity));
   LWidth := Integer(AGraph.Dimension.Width);
   SetLength(LSequence.StateIndices, LWidth);
+  ReportSequencePreparation(AObserver, wspCaptureSequenceCells, 0, LWidth);
   LSequence.Boundary := ABoundary;
   for I := 0 to LWidth - 1 do
   begin
@@ -2099,19 +2170,35 @@ begin
       AReport.Issue.Position := I;
       Exit(InvalidReport(AReport, wsgikEmptyCell));
     end;
-    LState := FindStateValue(AModel, LEntry.Value);
+    LState := FindStateValue(AModel, LEntry.Value, I, LWidth, AObserver);
     if LState < 0 then
     begin
       AReport.Issue.Position := I;
       Exit(InvalidReport(AReport, wsgikUnknownStateKey));
     end;
     LSequence.StateIndices[I] := LState;
+    if ((I + 1) mod 64 = 0) or (I + 1 = LWidth) then
+      ReportSequencePreparation(AObserver, wspCaptureSequenceCells, I + 1, LWidth);
   end;
   if not ValidateSequenceSegmentStatePath(AModel, LSequence.StateIndices,
-      ABoundary, AReport) then Exit(False);
-  LSequence.Tokens := AModel.ProjectStateIndices(LSequence.StateIndices);
+      ABoundary, AReport, AObserver) then Exit(False);
+  LSequence.Tokens := AModel.ProjectStateIndices(LSequence.StateIndices, AObserver);
   ASequence := LSequence;
   Result := True;
+end;
+
+function CaptureSolvedSequenceSegment(const AModel: TWfcSequenceModel;
+  const AGraph: TGraph; const ABoundary: TWfcSequenceSegmentBoundary;
+  var ASequence: TWfcGeneratedSequenceSegment;
+  out AReport: TWfcSequenceGraphValidationReport;
+  const AObserver: TWfcSequencePreparationObserver): Boolean;
+var
+  LSequence: TWfcGeneratedSequenceSegment;
+begin
+  Result := CaptureSequenceSegment(AModel, AGraph, ABoundary, LSequence, AReport, AObserver);
+  if Result then
+    ReportSequencePreparation(AObserver, wspCaptureReady, 1, 1);
+  ASequence := LSequence;
 end;
 
 function DescribeSequenceGraphIssue(

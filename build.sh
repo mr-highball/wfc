@@ -16,6 +16,7 @@ pattern_pass_test_source="$repository_root/test/wfc_pattern2d_passes_test.lpr"
 sequence_test_source="$repository_root/test/wfc_sequence_test.lpr"
 sequence_preparation_test_source="$repository_root/test/wfc_sequence_preparation_test.lpr"
 sequence_learning_progress_test_source="$repository_root/test/wfc_sequence_learning_progress_test.lpr"
+sequence_capture_progress_test_source="$repository_root/test/wfc_sequence_capture_progress_test.lpr"
 text_test_source="$repository_root/test/wfc_text_test.lpr"
 text_pass_test_source="$repository_root/test/wfc_text_passes_test.lpr"
 text_pass_transaction_test_source="$repository_root/test/wfc_text_pass_transaction_test.lpr"
@@ -114,6 +115,7 @@ compiler_pattern_pass_test_source=$pattern_pass_test_source
 compiler_sequence_test_source=$sequence_test_source
 compiler_sequence_preparation_test_source=$sequence_preparation_test_source
 compiler_sequence_learning_progress_test_source=$sequence_learning_progress_test_source
+compiler_sequence_capture_progress_test_source=$sequence_capture_progress_test_source
 compiler_text_test_source=$text_test_source
 compiler_text_pass_test_source=$text_pass_test_source
 compiler_text_pass_transaction_test_source=$text_pass_transaction_test_source
@@ -210,6 +212,7 @@ case "$host_system" in
     compiler_sequence_test_source=$(cygpath -m "$sequence_test_source") || exit $?
     compiler_sequence_preparation_test_source=$(cygpath -m "$sequence_preparation_test_source") || exit $?
     compiler_sequence_learning_progress_test_source=$(cygpath -m "$sequence_learning_progress_test_source") || exit $?
+    compiler_sequence_capture_progress_test_source=$(cygpath -m "$sequence_capture_progress_test_source") || exit $?
     compiler_text_test_source=$(cygpath -m "$text_test_source") || exit $?
     compiler_text_pass_test_source=$(cygpath -m "$text_pass_test_source") || exit $?
     compiler_text_pass_transaction_test_source=$(cygpath -m "$text_pass_transaction_test_source") || exit $?
@@ -638,11 +641,12 @@ esac
 printf "Running '%s'.\n" "$pattern_pass_test_executable"
 "$pattern_pass_test_executable" || exit $?
 
-for sequence_suite in wfc_sequence_test wfc_sequence_preparation_test wfc_sequence_learning_progress_test; do
+for sequence_suite in wfc_sequence_test wfc_sequence_preparation_test wfc_sequence_learning_progress_test wfc_sequence_capture_progress_test; do
   case "$sequence_suite" in
     wfc_sequence_test) sequence_suite_source=$compiler_sequence_test_source ;;
     wfc_sequence_preparation_test) sequence_suite_source=$compiler_sequence_preparation_test_source ;;
-    *) sequence_suite_source=$compiler_sequence_learning_progress_test_source ;;
+    wfc_sequence_learning_progress_test) sequence_suite_source=$compiler_sequence_learning_progress_test_source ;;
+    *) sequence_suite_source=$compiler_sequence_capture_progress_test_source ;;
   esac
   printf "Building '%s'.\n" "$sequence_suite"
   "$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
