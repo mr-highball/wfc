@@ -50,6 +50,20 @@ const
 type
   EWfcSequence = class(EWfcModel);
 
+  TWfcSequencePreparationPhase = (wspValidateConstraints, wspValidateGraphModel,
+    wspSnapshotDomains, wspIntersectDomains);
+  { Units are completed constraint rows, model-state rows, snapshot cells or
+    intersected masks according to Phase. A checkpoint within one row can repeat
+    Done. Borrowed synchronously; do not re-enter or mutate inputs. Raise to abort.
+    No observer is retained and no clock/thread/UI dependency belongs here. }
+  TWfcSequencePreparationProgress = record
+    Phase: TWfcSequencePreparationPhase;
+    Done: Integer;
+    Total: Integer;
+  end;
+  TWfcSequencePreparationObserver = procedure(
+    const AProgress: TWfcSequencePreparationProgress) of object;
+
   TWfcSequenceHistoryKind = (
     wshBos,
     wshToken
@@ -207,12 +221,35 @@ function MakeWfcSequenceTokenConstraint(const APosition: Integer;
   position unsatisfiable. }
 procedure ValidateSequenceTokenConstraints(
   const AModel: TWfcSequenceModel; const ALength: Integer;
-  const AConstraints: TWfcSequenceTokenConstraints);
+  const AConstraints: TWfcSequenceTokenConstraints;
+  const AObserver: TWfcSequencePreparationObserver = nil);
+procedure ReportSequencePreparation(const AObserver: TWfcSequencePreparationObserver;
+  const APhase: TWfcSequencePreparationPhase; const ADone, ATotal: Integer);
 
 implementation
 
 type
   TBooleanArray = array of Boolean;
+
+procedure RequireCircularInteger(const AValue, AMinimum, AMaximum: Integer;
+  const ALabel: String); forward;
+
+procedure ReportSequencePreparation(const AObserver: TWfcSequencePreparationObserver;
+  const APhase: TWfcSequencePreparationPhase; const ADone, ATotal: Integer);
+var
+  LProgress: TWfcSequencePreparationProgress;
+begin
+  if not Assigned(AObserver) then
+    Exit;
+  RequireCircularInteger(Ord(APhase), Ord(Low(TWfcSequencePreparationPhase)),
+    Ord(High(TWfcSequencePreparationPhase)), 'sequence preparation phase');
+  RequireCircularInteger(ATotal, 0, High(Integer), 'sequence preparation total');
+  RequireCircularInteger(ADone, 0, ATotal, 'sequence preparation completion');
+  LProgress.Phase := APhase;
+  LProgress.Done := ADone;
+  LProgress.Total := ATotal;
+  AObserver(LProgress);
+end;
 
 procedure RequireCircularInteger(const AValue, AMinimum, AMaximum: Integer;
   const ALabel: String);
@@ -353,7 +390,8 @@ end;
 
 procedure ValidateSequenceTokenConstraints(
   const AModel: TWfcSequenceModel; const ALength: Integer;
-  const AConstraints: TWfcSequenceTokenConstraints);
+  const AConstraints: TWfcSequenceTokenConstraints;
+  const AObserver: TWfcSequencePreparationObserver);
 var
   I: Integer;
   J: Integer;
@@ -368,6 +406,7 @@ begin
       'sequence constraint length cannot be negative [%d]', [ALength]);
   LConstraintCount := CheckedLength(Length(AConstraints),
     'sequence constraint count');
+  ReportSequencePreparation(AObserver, wspValidateConstraints, 0, LConstraintCount);
   for I := 0 to LConstraintCount - 1 do
   begin
     if (AConstraints[I].Position < 0) or
@@ -379,10 +418,16 @@ begin
       Length(AConstraints[I].AllowedTokens),
       Format('sequence constraint %d token count', [I]));
     for J := 0 to LTokenCount - 1 do
+    begin
+      if Assigned(AObserver) and ((J mod 256) = 0) then
+        ReportSequencePreparation(AObserver, wspValidateConstraints, I, LConstraintCount);
       if AModel.FindPublicToken(
           AConstraints[I].AllowedTokens[J]) < 0 then
         raise EArgumentException.CreateFmt(
           'unknown sequence constraint token [%d, %d]', [I, J]);
+    end;
+    if Assigned(AObserver) and (((I + 1) mod 64 = 0) or (I + 1 = LConstraintCount)) then
+      ReportSequencePreparation(AObserver, wspValidateConstraints, I + 1, LConstraintCount);
   end;
 end;
 

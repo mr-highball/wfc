@@ -163,10 +163,14 @@ procedure IntersectSequenceAllowedTokens(
   const APosition: Integer; const AToken: TWfcModelToken); overload;
 
 { Atomically intersects an ordered set of public-token domains. Repeated
-  positions are intersections, so callers can compose independent masks. }
+  positions are intersections, so callers can compose independent masks.
+  Observer abort (including the final mask) restores original domains. Cleanup
+  does not invoke the observer. Definition validation is shared once per bulk
+  operation; the observer must not mutate inputs or re-enter the graph. }
 procedure IntersectSequenceTokenConstraints(
   const AModel: TWfcSequenceModel; const AGraph: TGraph;
-  const AConstraints: TWfcSequenceTokenConstraints);
+  const AConstraints: TWfcSequenceTokenConstraints;
+  const AObserver: TWfcSequencePreparationObserver = nil);
 
 { Exact-token bulk helpers. Positions are token ordinals, never native byte or
   JavaScript UTF-16 offsets. }
@@ -587,7 +591,7 @@ end;
 
 function StateRulesMatch(const AModel: TWfcSequenceModel;
   const AGroup: TGraphRuleGroup; const AStateIndex,
-  ASalt: Integer): Boolean;
+  ASalt: Integer; const AObserver: TWfcSequencePreparationObserver = nil): Boolean;
 var
   D: TGraphDirection;
   I: Integer;
@@ -604,8 +608,12 @@ begin
     begin
       LExpectedTargetCount := 0;
       for I := 0 to AModel.StateCount - 1 do
+      begin
+        if Assigned(AObserver) and ((I mod 256) = 0) then
+          ReportSequencePreparation(AObserver, wspValidateGraphModel, AStateIndex, AModel.StateCount);
         if StateAllowedInDirection(AModel, AStateIndex, I, D) then
           Inc(LExpectedTargetCount);
+      end;
       if LExpectedTargetCount = 0 then
       begin
         if AGroup.Exists[D] or (not AGroup.Denied[D]) then
@@ -621,6 +629,9 @@ begin
           Exit;
         LTargetIndex := 0;
         for I := 0 to AModel.StateCount - 1 do
+        begin
+          if Assigned(AObserver) and ((I mod 256) = 0) then
+            ReportSequencePreparation(AObserver, wspValidateGraphModel, AStateIndex, AModel.StateCount);
           if StateAllowedInDirection(AModel, AStateIndex, I, D) then
           begin
             if LRule.Value[LTargetIndex] <>
@@ -628,6 +639,7 @@ begin
               Exit;
             Inc(LTargetIndex);
           end;
+        end;
       end;
     end
     else if AGroup.Exists[D] or AGroup.Denied[D] then
@@ -637,7 +649,7 @@ begin
 end;
 
 function AppliedModelMatches(const AModel: TWfcSequenceModel;
-  const AGraph: TGraph): Boolean;
+  const AGraph: TGraph; const AObserver: TWfcSequencePreparationObserver = nil): Boolean;
 var
   I: Integer;
   LActivePass: TGraph;
@@ -647,6 +659,7 @@ var
   LValue: TGraphValue;
 begin
   Result := False;
+  ReportSequencePreparation(AObserver, wspValidateGraphModel, 0, AModel.StateCount);
   if AGraph.RuleGroups.Count <> AModel.StateCount then
     Exit;
   LActivePass := AGraph.PassGraph[AGraph.CurrentPassIndex];
@@ -662,16 +675,19 @@ begin
     if (LParentedGroup.Parent <> LActivePass) or
         (LGroup.Weight <>
           AModel.StateObservationCountAt(I)) or
-        (not StateRulesMatch(AModel, LGroup, I, LSalt)) then
+        (not StateRulesMatch(AModel, LGroup, I, LSalt, AObserver)) then
       Exit;
+    if Assigned(AObserver) and (((I + 1) mod 64 = 0) or (I + 1 = AModel.StateCount)) then
+      ReportSequencePreparation(AObserver, wspValidateGraphModel, I + 1, AModel.StateCount);
   end;
   Result := True;
 end;
 
 procedure ValidateAppliedModel(const AModel: TWfcSequenceModel;
-  const AGraph: TGraph; const AOperation: String);
+  const AGraph: TGraph; const AOperation: String;
+  const AObserver: TWfcSequencePreparationObserver = nil);
 begin
-  if not AppliedModelMatches(AModel, AGraph) then
+  if not AppliedModelMatches(AModel, AGraph, AObserver) then
     raise EWfcSequenceGraph.Create(AOperation +
       ' requires the matching sequence model on the graph pass');
 end;
@@ -960,16 +976,62 @@ begin
       LEndValues);
 end;
 
-procedure IntersectSequenceAllowedTokens(
+procedure IntersectPreflightedSequenceAllowedTokens(
   const AModel: TWfcSequenceModel; const AGraph: TGraph;
-  const APosition: Integer; const ATokens: TWfcModelTokens);
+  const APosition: Integer; const ATokens: TWfcModelTokens;
+  const ASalt: Integer; const AObserver: TWfcSequencePreparationObserver = nil;
+  const ACompleted: Integer = 0; const ATotal: Integer = 0);
 var
   I: Integer;
   J: Integer;
   LAllowed: TGraphValues;
-  LSalt: Integer;
   LTokenCount: Integer;
   LTokenIndices: array of Integer;
+  LVisits: Integer;
+begin
+  LTokenCount := CheckedGraphManagedLength(Length(ATokens),
+    'sequence token-domain token count');
+  SetLength(LTokenIndices, LTokenCount);
+  for I := 0 to LTokenCount - 1 do
+  begin
+    if Assigned(AObserver) and ((I mod 256) = 0) then
+      ReportSequencePreparation(AObserver, wspIntersectDomains, ACompleted, ATotal);
+    LTokenIndices[I] := AModel.FindPublicToken(ATokens[I]);
+    if LTokenIndices[I] < 0 then
+      raise EArgumentException.CreateFmt(
+        'unknown sequence public token [%d]', [I]);
+  end;
+
+  SetLength(LAllowed, 0);
+  LVisits := 0;
+  for I := 0 to AModel.StateCount - 1 do
+    for J := 0 to Length(LTokenIndices) - 1 do
+    begin
+      if Assigned(AObserver) then
+      begin
+        Inc(LVisits);
+        if LVisits = 256 then
+        begin
+          LVisits := 0;
+          ReportSequencePreparation(AObserver, wspIntersectDomains, ACompleted, ATotal);
+        end;
+      end;
+      if AModel.StateEmittedTokenIndexAt(I) = LTokenIndices[J] then
+      begin
+        SetLength(LAllowed, Length(LAllowed) + 1);
+        LAllowed[High(LAllowed)] :=
+          SaltedStateGraphValue(ASalt, I, AModel);
+        Break;
+      end;
+    end;
+  IntersectGraphDomain(AGraph, APosition, LAllowed);
+end;
+
+procedure IntersectSequenceAllowedTokens(
+  const AModel: TWfcSequenceModel; const AGraph: TGraph;
+  const APosition: Integer; const ATokens: TWfcModelTokens);
+var
+  LSalt: Integer;
 begin
   RequireAssigned(AModel, AGraph);
   if ActiveSequencePass(AGraph) <> AGraph then
@@ -989,29 +1051,7 @@ begin
     raise ERangeError.CreateFmt(
       'sequence position is out of bounds [%d]', [APosition]);
   LSalt := SequenceKeySalt(AModel);
-
-  LTokenCount := CheckedGraphManagedLength(Length(ATokens),
-    'sequence token-domain token count');
-  SetLength(LTokenIndices, LTokenCount);
-  for I := 0 to LTokenCount - 1 do
-  begin
-    LTokenIndices[I] := AModel.FindPublicToken(ATokens[I]);
-    if LTokenIndices[I] < 0 then
-      raise EArgumentException.CreateFmt(
-        'unknown sequence public token [%d]', [I]);
-  end;
-
-  SetLength(LAllowed, 0);
-  for I := 0 to AModel.StateCount - 1 do
-    for J := 0 to Length(LTokenIndices) - 1 do
-      if AModel.StateEmittedTokenIndexAt(I) = LTokenIndices[J] then
-      begin
-        SetLength(LAllowed, Length(LAllowed) + 1);
-        LAllowed[High(LAllowed)] :=
-          SaltedStateGraphValue(LSalt, I, AModel);
-        Break;
-      end;
-  IntersectGraphDomain(AGraph, APosition, LAllowed);
+  IntersectPreflightedSequenceAllowedTokens(AModel, AGraph, APosition, ATokens, LSalt);
 end;
 
 procedure IntersectSequenceAllowedTokens(
@@ -1027,35 +1067,39 @@ end;
 
 procedure IntersectSequenceTokenConstraints(
   const AModel: TWfcSequenceModel; const AGraph: TGraph;
-  const AConstraints: TWfcSequenceTokenConstraints);
+  const AConstraints: TWfcSequenceTokenConstraints;
+  const AObserver: TWfcSequencePreparationObserver);
 var
   I: Integer;
   LConstraintCount: Integer;
   LHadDomain: TSequenceBooleanArray;
   LPreviousDomains: TSequenceGraphValueArrays;
   LWidth: Integer;
+  LSalt: Integer;
 begin
   RequireAssigned(AModel, AGraph);
   if ActiveSequencePass(AGraph) <> AGraph then
   begin
     IntersectSequenceTokenConstraints(AModel, ActiveSequencePass(AGraph),
-      AConstraints);
+      AConstraints, AObserver);
     Exit;
   end;
   if AGraph.Running then
     raise EWfcSequenceGraph.Create(
       'sequence token constraints cannot change while the pipeline is running');
   ValidateGraphShape(AGraph, 'sequence token constraints');
-  ValidateAppliedModel(AModel, AGraph, 'sequence token constraints');
+  ValidateAppliedModel(AModel, AGraph, 'sequence token constraints', AObserver);
   LWidth := Integer(AGraph.Dimension.Width);
 
   { Complete preflight keeps malformed bulk requests from changing any cell. }
   LConstraintCount := CheckedGraphManagedLength(Length(AConstraints),
     'sequence constraint count');
-  ValidateSequenceTokenConstraints(AModel, LWidth, AConstraints);
+  ValidateSequenceTokenConstraints(AModel, LWidth, AConstraints, AObserver);
+  LSalt := SequenceKeySalt(AModel);
 
   SetLength(LHadDomain, LWidth);
   SetLength(LPreviousDomains, LWidth);
+  ReportSequencePreparation(AObserver, wspSnapshotDomains, 0, LWidth);
   for I := 0 to LWidth - 1 do
   begin
     LHadDomain[I] := AGraph.HasAllowedValues(
@@ -1063,12 +1107,21 @@ begin
     if LHadDomain[I] then
       LPreviousDomains[I] := AGraph.CopyAllowedValues(
         TGraphCoordinate(I), 0, 0);
+    if Assigned(AObserver) and (((I + 1) mod 64 = 0) or (I + 1 = LWidth)) then
+      ReportSequencePreparation(AObserver, wspSnapshotDomains, I + 1, LWidth);
   end;
 
+  ReportSequencePreparation(AObserver, wspIntersectDomains, 0, LConstraintCount);
   try
     for I := 0 to LConstraintCount - 1 do
-      IntersectSequenceAllowedTokens(AModel, AGraph,
-        AConstraints[I].Position, AConstraints[I].AllowedTokens);
+    begin
+      { Domain intersection cannot change the applied model definition.
+        The complete shared preflight above qualifies every mask once. }
+      IntersectPreflightedSequenceAllowedTokens(AModel, AGraph,
+        AConstraints[I].Position, AConstraints[I].AllowedTokens, LSalt,
+        AObserver, I, LConstraintCount);
+      ReportSequencePreparation(AObserver, wspIntersectDomains, I + 1, LConstraintCount);
+    end;
   except
     for I := 0 to LWidth - 1 do
       if LHadDomain[I] then

@@ -115,6 +115,42 @@ public tokens without replacing an existing endpoint or caller domain.
 `IntersectSequencePrefix`, and `IntersectSequenceSuffix` apply checked bulk
 masks atomically. Repeated positions intersect.
 
+### Observable bulk preparation
+
+`IntersectSequenceTokenConstraints` accepts an optional final
+`TWfcSequencePreparationObserver`. The same observer can be passed to
+`ValidateSequenceTokenConstraints`. It is synchronous and borrowed; do not
+re-enter the operation or mutate its model, graph, masks or observer inputs.
+Raise an exception to cancel. Nothing retains the observer after return.
+
+The progress record carries `Phase`, `Done` and `Total`, with phase-specific
+completed units:
+
+| Phase | Units |
+| --- | --- |
+| `wspValidateGraphModel` | Matching model-state rows |
+| `wspValidateConstraints` | Validated constraint rows |
+| `wspSnapshotDomains` | Snapshot cells |
+| `wspIntersectDomains` | Applied masks, including repeated positions |
+
+Checkpoints within a row may repeat `Done`. Counts describe that phase, not an
+overall percentage or durable publication. Zero total is empty work. The bulk
+entry validates the applied model once, then shares the preflighted intersection
+implementation with the public single-mask API. It does not weaken full mask
+preflight, change the definition/seed or replace existing domains.
+
+An exception at any mask checkpoint, including the last one, restores every
+previous domain and propagates the original exception. Rollback does not invoke
+the observer; cancellation waits for cleanup. RTL allocations/string operations
+and other generic APIs are not made interruptible by this callback, and no
+millisecond latency bound or event-loop yield is promised. Hosts own scheduling.
+Calling without an observer preserves the same domain/replay semantics.
+
+`wfc_sequence_preparation_test` covers native and pas2js execution, ordered and
+duplicate masks, malformed final rows, existing/empty domains, interior/final
+abort/retry and exact 1,024-cell replay. Its authored 256-state/1,024-mask case
+records local native timings as observations, without a portable speed guarantee.
+
 `SequenceStateSatisfiesEntryConstraints` lets a higher-level validator check a
 public state index against the current caller domain and lock without exposing
 or reconstructing its model-qualified private graph key. Generated entry

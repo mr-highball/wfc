@@ -14,6 +14,7 @@ learning_test_source="$repository_root/test/wfc_learn_test.lpr"
 pattern_test_source="$repository_root/test/wfc_pattern2d_test.lpr"
 pattern_pass_test_source="$repository_root/test/wfc_pattern2d_passes_test.lpr"
 sequence_test_source="$repository_root/test/wfc_sequence_test.lpr"
+sequence_preparation_test_source="$repository_root/test/wfc_sequence_preparation_test.lpr"
 text_test_source="$repository_root/test/wfc_text_test.lpr"
 text_pass_test_source="$repository_root/test/wfc_text_passes_test.lpr"
 text_pass_transaction_test_source="$repository_root/test/wfc_text_pass_transaction_test.lpr"
@@ -110,6 +111,7 @@ compiler_learning_test_source=$learning_test_source
 compiler_pattern_test_source=$pattern_test_source
 compiler_pattern_pass_test_source=$pattern_pass_test_source
 compiler_sequence_test_source=$sequence_test_source
+compiler_sequence_preparation_test_source=$sequence_preparation_test_source
 compiler_text_test_source=$text_test_source
 compiler_text_pass_test_source=$text_pass_test_source
 compiler_text_pass_transaction_test_source=$text_pass_transaction_test_source
@@ -204,6 +206,7 @@ case "$host_system" in
     compiler_pattern_test_source=$(cygpath -m "$pattern_test_source") || exit $?
     compiler_pattern_pass_test_source=$(cygpath -m "$pattern_pass_test_source") || exit $?
     compiler_sequence_test_source=$(cygpath -m "$sequence_test_source") || exit $?
+    compiler_sequence_preparation_test_source=$(cygpath -m "$sequence_preparation_test_source") || exit $?
     compiler_text_test_source=$(cygpath -m "$text_test_source") || exit $?
     compiler_text_pass_test_source=$(cygpath -m "$text_pass_test_source") || exit $?
     compiler_text_pass_transaction_test_source=$(cygpath -m "$text_pass_transaction_test_source") || exit $?
@@ -632,26 +635,22 @@ esac
 printf "Running '%s'.\n" "$pattern_pass_test_executable"
 "$pattern_pass_test_executable" || exit $?
 
-printf "Building the sequence-foundation conformance suite.\n"
-"$compiler" "$@" \
-  -B \
-  -Mdelphi \
-  -Sa \
-  -Cr \
-  -Co \
-  -Ci \
-  "-Fu$compiler_source_directory" \
-  "-FU$compiler_unit_output_directory" \
-  "-FE$compiler_binary_output_directory" \
-  "$compiler_sequence_test_source" || exit $?
-
-sequence_test_executable="$binary_output_directory/wfc_sequence_test"
-case "$host_system" in
-  CYGWIN*|MINGW*|MSYS*) sequence_test_executable="${sequence_test_executable}.exe" ;;
-esac
-
-printf "Running '%s'.\n" "$sequence_test_executable"
-"$sequence_test_executable" || exit $?
+for sequence_suite in wfc_sequence_test wfc_sequence_preparation_test; do
+  case "$sequence_suite" in
+    wfc_sequence_test) sequence_suite_source=$compiler_sequence_test_source ;;
+    *) sequence_suite_source=$compiler_sequence_preparation_test_source ;;
+  esac
+  printf "Building '%s'.\n" "$sequence_suite"
+  "$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
+    "-Fu$compiler_source_directory" "-FU$compiler_unit_output_directory" \
+    "-FE$compiler_binary_output_directory" "$sequence_suite_source" || exit $?
+  sequence_test_executable="$binary_output_directory/$sequence_suite"
+  case "$host_system" in
+    CYGWIN*|MINGW*|MSYS*) sequence_test_executable="${sequence_test_executable}.exe" ;;
+  esac
+  printf "Running '%s'.\n" "$sequence_test_executable"
+  "$sequence_test_executable" || exit $?
+done
 
 printf "Building the text-completion conformance suite.\n"
 "$compiler" "$@" \

@@ -743,40 +743,22 @@ if ($patternPassTestExitCode -ne 0) {
   exit $patternPassTestExitCode
 }
 
-$sequenceTestCompilerArguments = @(
-  $CompilerOptions
-  '-B'
-  '-Mdelphi'
-  '-Sa'
-  '-Cr'
-  '-Co'
-  '-Ci'
-  "-Fu$sourceDirectory"
-  "-FU$unitOutputDirectory"
-  "-FE$binaryOutputDirectory"
-  $sequenceTestSource
-)
-
-Write-Host 'Building the sequence-foundation conformance suite.'
-& $Compiler @sequenceTestCompilerArguments
-$sequenceTestCompilerExitCode = $LASTEXITCODE
-if ($sequenceTestCompilerExitCode -ne 0) {
-  exit $sequenceTestCompilerExitCode
-}
-
-$sequenceTestExecutableName = if ($env:OS -eq 'Windows_NT') {
-  'wfc_sequence_test.exe'
-} else {
-  'wfc_sequence_test'
-}
-$sequenceTestExecutable = Join-Path $binaryOutputDirectory `
-  $sequenceTestExecutableName
-
-Write-Host "Running '$sequenceTestExecutable'."
-& $sequenceTestExecutable
-$sequenceTestExitCode = $LASTEXITCODE
-if ($sequenceTestExitCode -ne 0) {
-  exit $sequenceTestExitCode
+foreach ($sequenceSuiteSource in @($sequenceTestSource,
+    (Join-Path $repositoryRoot 'test/wfc_sequence_preparation_test.lpr'))) {
+  $sequenceSuiteName = [IO.Path]::GetFileNameWithoutExtension($sequenceSuiteSource)
+  $sequenceTestCompilerArguments = @($CompilerOptions) + @('-B', '-Mdelphi', '-Sa', '-Cr',
+    '-Co', '-Ci', "-Fu$sourceDirectory", "-FU$unitOutputDirectory",
+    "-FE$binaryOutputDirectory", $sequenceSuiteSource)
+  Write-Host "Building '$sequenceSuiteName'."
+  & $Compiler @sequenceTestCompilerArguments
+  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+  $sequenceTestExecutableName = if ($env:OS -eq 'Windows_NT') {
+    $sequenceSuiteName + '.exe'
+  } else { $sequenceSuiteName }
+  $sequenceTestExecutable = Join-Path $binaryOutputDirectory $sequenceTestExecutableName
+  Write-Host "Running '$sequenceTestExecutable'."
+  & $sequenceTestExecutable
+  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
 
 $textTestCompilerArguments = @(
