@@ -51,10 +51,12 @@ type
   EWfcSequence = class(EWfcModel);
 
   TWfcSequencePreparationPhase = (wspValidateConstraints, wspValidateGraphModel,
-    wspSnapshotDomains, wspIntersectDomains);
-  { Units are completed constraint rows, model-state rows, snapshot cells or
-    intersected masks according to Phase. A checkpoint within one row can repeat
-    Done. Borrowed synchronously; do not re-enter or mutate inputs. Raise to abort.
+    wspSnapshotDomains, wspIntersectDomains, wspLearnTokenRows, wspLearnStateRows,
+    wspModelBuildVisits);
+  { Units are completed rows/masks/cells or marked model-construction loop visits
+    according to Phase. A checkpoint within one row can repeat
+    Done. Total=0 means unknown or empty, not a completion percentage.
+    Borrowed synchronously; do not re-enter or mutate inputs. Raise to abort.
     No observer is retained and no clock/thread/UI dependency belongs here. }
   TWfcSequencePreparationProgress = record
     Phase: TWfcSequencePreparationPhase;
@@ -150,7 +152,8 @@ type
     procedure ValidatePublicTokenIndex(const AIndex: Integer);
     procedure ValidateStateIndex(const AIndex: Integer);
     procedure ValidateHistoryIndex(const AIndex: Integer);
-    procedure ValidateCircularCounts;
+    procedure ValidateCircularCounts(var AVisits: Integer;
+      const AObserver: TWfcSequencePreparationObserver);
   public
     constructor Create(const AOrder: Integer;
       const ASampleLengths: TWfcSequenceSampleLengths;
@@ -158,7 +161,8 @@ type
       const AStates: TWfcSequenceStates;
       const AStateCounts, AStartCounts,
       AEndCounts: TWfcModelIntegerArray;
-      const ABoundary: TWfcModelBoundary = wmbOpen);
+      const ABoundary: TWfcModelBoundary = wmbOpen;
+      const AObserver: TWfcSequencePreparationObserver = nil);
 
     function SampleLengthAt(const ASampleIndex: Integer): Integer;
     function PublicTokenAt(
@@ -244,11 +248,24 @@ begin
   RequireCircularInteger(Ord(APhase), Ord(Low(TWfcSequencePreparationPhase)),
     Ord(High(TWfcSequencePreparationPhase)), 'sequence preparation phase');
   RequireCircularInteger(ATotal, 0, High(Integer), 'sequence preparation total');
-  RequireCircularInteger(ADone, 0, ATotal, 'sequence preparation completion');
+  if ATotal = 0 then
+    RequireCircularInteger(ADone, 0, High(Integer), 'sequence preparation completion')
+  else
+    RequireCircularInteger(ADone, 0, ATotal, 'sequence preparation completion');
   LProgress.Phase := APhase;
   LProgress.Done := ADone;
   LProgress.Total := ATotal;
   AObserver(LProgress);
+end;
+
+procedure VisitModelPreparation(var AVisits: Integer;
+  const AObserver: TWfcSequencePreparationObserver); inline;
+begin
+  if not Assigned(AObserver) then
+    Exit;
+  Inc(AVisits);
+  if (AVisits mod 256) = 0 then
+    ReportSequencePreparation(AObserver, wspModelBuildVisits, AVisits, 0);
 end;
 
 procedure RequireCircularInteger(const AValue, AMinimum, AMaximum: Integer;
@@ -437,7 +454,8 @@ constructor TWfcSequenceModel.Create(const AOrder: Integer;
   const AStates: TWfcSequenceStates;
   const AStateCounts, AStartCounts,
   AEndCounts: TWfcModelIntegerArray;
-  const ABoundary: TWfcModelBoundary);
+  const ABoundary: TWfcModelBoundary;
+  const AObserver: TWfcSequencePreparationObserver);
 var
   I: Integer;
   J: Integer;
@@ -460,6 +478,7 @@ var
   LStateCount: Integer;
   LTokenHistorySeen: Boolean;
   LUsedPublicTokens: TBooleanArray;
+  LVisits: Integer;
 begin
   inherited Create;
   case ABoundary of
@@ -500,10 +519,13 @@ begin
   if LSampleCount = 0 then
     raise EWfcSequence.Create(
       'a sequence model must retain at least one sample');
+  LVisits := 0;
+  ReportSequencePreparation(AObserver, wspModelBuildVisits, 0, 0);
   SetLength(FSampleLengths, LSampleCount);
   LExpectedObservations := 0;
   for I := 0 to LSampleCount - 1 do
   begin
+    VisitModelPreparation(LVisits, AObserver);
     if FBoundary = wmbWrap then
       RequireCircularInteger(ASampleLengths[I], 1, High(Integer),
         'circular sequence sample length');
@@ -527,11 +549,13 @@ begin
     LExpectedDepthObservationCounts[0] := LExpectedObservations
   else for I := 0 to LSampleCount - 1 do
   begin
+    VisitModelPreparation(LVisits, AObserver);
     LPrefixPositionCount := LHistorySize;
     if ASampleLengths[I] < LPrefixPositionCount then
       LPrefixPositionCount := ASampleLengths[I];
     for J := 0 to LPrefixPositionCount - 1 do
     begin
+      VisitModelPreparation(LVisits, AObserver);
       LDepth := LHistorySize - J;
       LExpectedDepthObservationCounts[LDepth] := CheckedAdd(
         LExpectedDepthObservationCounts[LDepth], 1,
@@ -559,14 +583,18 @@ begin
   SetLength(FPublicTokens, LPublicTokenCount);
   for I := 0 to LPublicTokenCount - 1 do
   begin
+    VisitModelPreparation(LVisits, AObserver);
     if not WfcModelTokenIsValid(APublicTokens[I]) then
       raise EWfcSequence.CreateFmt(
         'sequence public token must be nonempty, well-formed UTF-8 [%d]',
         [I]);
     for J := 0 to I - 1 do
+    begin
+      VisitModelPreparation(LVisits, AObserver);
       if APublicTokens[I] = APublicTokens[J] then
         raise EWfcSequence.CreateFmt(
           'sequence public tokens must be unique [%d, %d]', [J, I]);
+    end;
     FPublicTokens[I] := APublicTokens[I];
   end;
 
@@ -597,6 +625,7 @@ begin
   LEndTotal := 0;
   for I := 0 to LStateCount - 1 do
   begin
+    VisitModelPreparation(LVisits, AObserver);
     if FBoundary = wmbWrap then
     begin
       RequireCircularInteger(AStates[I].EmittedTokenIndex, 0,
@@ -625,6 +654,7 @@ begin
     LLeadingBosCount := 0;
     for J := 0 to LHistorySize - 1 do
     begin
+      VisitModelPreparation(LVisits, AObserver);
       case AStates[I].History[J].Kind of
         wshBos:
           begin
@@ -664,9 +694,12 @@ begin
     FStates[I].EmittedTokenIndex := AStates[I].EmittedTokenIndex;
     LUsedPublicTokens[AStates[I].EmittedTokenIndex] := True;
     for J := 0 to I - 1 do
+    begin
+      VisitModelPreparation(LVisits, AObserver);
       if SequenceStatesEqual(FStates[I], FStates[J]) then
         raise EWfcSequence.CreateFmt(
           'sequence states must be structurally unique [%d, %d]', [J, I]);
+    end;
 
     if AStateCounts[I] < 1 then
       raise EWfcSequence.CreateFmt(
@@ -721,11 +754,15 @@ begin
       'sequence end observations do not match sample count [%d <> %d]',
       [LEndTotal, LSampleCount]);
   for I := 0 to LPublicTokenCount - 1 do
+  begin
+    VisitModelPreparation(LVisits, AObserver);
     if not LUsedPublicTokens[I] then
       raise EWfcSequence.CreateFmt(
         'sequence public token is not emitted by any state [%d]', [I]);
+  end;
   for I := 0 to AOrder - 1 do
   begin
+    VisitModelPreparation(LVisits, AObserver);
     if LDepthObservationCounts[I] <>
         LExpectedDepthObservationCounts[I] then
       raise EWfcSequence.CreateFmt(
@@ -743,15 +780,19 @@ begin
     malformed persisted models without inventing observed pair counts. }
   for I := 0 to LStateCount - 1 do
   begin
+    VisitModelPreparation(LVisits, AObserver);
     if FStateCounts[I] > FStartCounts[I] then
     begin
       LHasPredecessor := False;
       for J := 0 to LStateCount - 1 do
+      begin
+        VisitModelPreparation(LVisits, AObserver);
         if StatesCompatible(J, I) then
         begin
           LHasPredecessor := True;
           Break;
         end;
+      end;
       if not LHasPredecessor then
         raise EWfcSequence.CreateFmt(
           'sequence state has non-start observations but no predecessor [%d]',
@@ -761,21 +802,28 @@ begin
     begin
       LHasSuccessor := False;
       for J := 0 to LStateCount - 1 do
+      begin
+        VisitModelPreparation(LVisits, AObserver);
         if StatesCompatible(I, J) then
         begin
           LHasSuccessor := True;
           Break;
         end;
+      end;
       if not LHasSuccessor then
         raise EWfcSequence.CreateFmt(
           'sequence state has non-end observations but no successor [%d]',
           [I]);
     end;
   end;
-  if FBoundary = wmbWrap then ValidateCircularCounts;
+  if FBoundary = wmbWrap then ValidateCircularCounts(LVisits, AObserver);
+  { Last observer call occurs before a successfully constructed object escapes.
+    Constructor exception cleanup releases all private model arrays. }
+  ReportSequencePreparation(AObserver, wspModelBuildVisits, LVisits, LVisits);
 end;
 
-procedure TWfcSequenceModel.ValidateCircularCounts;
+procedure TWfcSequenceModel.ValidateCircularCounts(var AVisits: Integer;
+  const AObserver: TWfcSequencePreparationObserver);
 var
   I, J, H: Integer;
   LSameHistory: Boolean;
@@ -789,14 +837,19 @@ begin
     a partition of the multigraph into their recorded individual lengths. }
   for I := 0 to StateCount - 1 do
   begin
+    VisitModelPreparation(AVisits, AObserver);
     LIncoming := 0;
     LOutgoing := 0;
     for J := 0 to StateCount - 1 do
     begin
+      VisitModelPreparation(AVisits, AObserver);
       LSameHistory := True;
       for H := 0 to HistorySize - 1 do
+      begin
+        VisitModelPreparation(AVisits, AObserver);
         if not HistoryItemsEqual(FStates[I].History[H], FStates[J].History[H]) then
         begin LSameHistory := False; Break; end;
+      end;
       if LSameHistory then
         LOutgoing := CheckedAdd(LOutgoing, FStateCounts[J],
           'circular sequence outgoing context count');

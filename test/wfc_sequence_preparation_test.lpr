@@ -195,7 +195,7 @@ begin
     IntersectSequenceTokenConstraints(LModel, LObserved, LMasks, GObserver.Observe);
     Same(Snapshot(LReference), Snapshot(LGraph));
     Same(Snapshot(LGraph), Snapshot(LObserved));
-    for LPhase := Low(LPhase) to High(LPhase) do
+    for LPhase := wspValidateConstraints to wspIntersectDomains do
       Check(GObserver.Completions[LPhase] = 1, 'A bulk phase was not completed exactly once');
     Check(LGraph.TrySolve(DefaultGraphSolveOptions, LReport), 'Authored masked graph did not solve');
     Check(LObserved.TrySolve(DefaultGraphSolveOptions, LReport), 'Observed graph did not solve');
@@ -207,7 +207,7 @@ begin
     LGraph.ClearAllowedValues(4, 0, 0);
     LGraph.SetAllowedValues(5, 0, 0, []);
     LBefore := Snapshot(LGraph);
-    for LPhase := Low(LPhase) to High(LPhase) do
+    for LPhase := wspValidateConstraints to wspIntersectDomains do
       for LFinal := False to True do
       begin
         GObserver.Reset;
@@ -302,7 +302,7 @@ begin
     {$ifndef PAS2JS}
     WriteLn('Authored 256-state/1024-cell bulk intersection ms=', GetTickCount64 - LStart);
     {$endif}
-    for LPhase := Low(LPhase) to High(LPhase) do
+    for LPhase := wspValidateConstraints to wspIntersectDomains do
       Check(GObserver.Completions[LPhase] = 1, 'Large bulk repeated or missed a whole-phase completion');
     Check(GObserver.Last[wspValidateGraphModel] = 256, 'Model-state row count differs');
     Check((GObserver.Last[wspSnapshotDomains] = 1024) and

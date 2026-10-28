@@ -744,7 +744,8 @@ if ($patternPassTestExitCode -ne 0) {
 }
 
 foreach ($sequenceSuiteSource in @($sequenceTestSource,
-    (Join-Path $repositoryRoot 'test/wfc_sequence_preparation_test.lpr'))) {
+    (Join-Path $repositoryRoot 'test/wfc_sequence_preparation_test.lpr'),
+    (Join-Path $repositoryRoot 'test/wfc_sequence_learning_progress_test.lpr'))) {
   $sequenceSuiteName = [IO.Path]::GetFileNameWithoutExtension($sequenceSuiteSource)
   $sequenceTestCompilerArguments = @($CompilerOptions) + @('-B', '-Mdelphi', '-Sa', '-Cr',
     '-Co', '-Ci', "-Fu$sourceDirectory", "-FU$unitOutputDirectory",

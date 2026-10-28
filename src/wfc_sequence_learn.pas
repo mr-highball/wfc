@@ -46,11 +46,13 @@ function MakeWfcSequenceSample(
 
 function LearnSequenceModelCorpus(const ASamples: TWfcSequenceSamples;
   const AOrder: Integer;
-  const ABoundary: TWfcModelBoundary = wmbOpen): TWfcSequenceModel;
+  const ABoundary: TWfcModelBoundary = wmbOpen;
+  const AObserver: TWfcSequencePreparationObserver = nil): TWfcSequenceModel;
 
 function LearnSequenceModel(const ATokens: TWfcModelTokens;
   const AOrder: Integer;
-  const ABoundary: TWfcModelBoundary = wmbOpen): TWfcSequenceModel;
+  const ABoundary: TWfcModelBoundary = wmbOpen;
+  const AObserver: TWfcSequencePreparationObserver = nil): TWfcSequenceModel;
 
 implementation
 
@@ -108,13 +110,18 @@ begin
 end;
 
 function FindPublicToken(const APublicTokens: TWfcModelTokens;
-  const AToken: TWfcModelToken): Integer;
+  const AToken: TWfcModelToken; const ACompleted: Integer;
+  const AObserver: TWfcSequencePreparationObserver): Integer;
 var
   I: Integer;
 begin
   for I := 0 to Length(APublicTokens) - 1 do
+  begin
+    if Assigned(AObserver) and ((I mod 256) = 255) then
+      ReportSequencePreparation(AObserver, wspLearnTokenRows, ACompleted, 0);
     if APublicTokens[I] = AToken then
       Exit(I);
+  end;
   Result := -1;
 end;
 
@@ -137,13 +144,18 @@ begin
 end;
 
 function FindState(const AStates: TWfcSequenceStates;
-  const AState: TWfcSequenceState): Integer;
+  const AState: TWfcSequenceState; const ACompleted, ATotal: Integer;
+  const AObserver: TWfcSequencePreparationObserver): Integer;
 var
   I: Integer;
 begin
   for I := 0 to Length(AStates) - 1 do
+  begin
+    if Assigned(AObserver) and ((I mod 256) = 255) then
+      ReportSequencePreparation(AObserver, wspLearnStateRows, ACompleted, ATotal);
     if StatesEqual(AStates[I], AState) then
       Exit(I);
+  end;
   Result := -1;
 end;
 
@@ -208,11 +220,13 @@ begin
 end;
 
 function LearnSequenceModelCorpus(const ASamples: TWfcSequenceSamples;
-  const AOrder: Integer; const ABoundary: TWfcModelBoundary): TWfcSequenceModel;
+  const AOrder: Integer; const ABoundary: TWfcModelBoundary;
+  const AObserver: TWfcSequencePreparationObserver): TWfcSequenceModel;
 var
   H: Integer;
   I: Integer;
   LCandidate: TWfcSequenceState;
+  LCompleted: Integer;
   LDistance: Integer;
   LEndCounts: TWfcModelIntegerArray;
   LHistorySize: Integer;
@@ -265,6 +279,8 @@ begin
   SetLength(LValues, LSampleCount);
   SetLength(LPublicTokens, 0);
   LObservationTotal := 0;
+  LCompleted := 0;
+  ReportSequencePreparation(AObserver, wspLearnTokenRows, 0, 0);
   for LSampleIndex := 0 to LSampleCount - 1 do
   begin
     LTokenCount := CheckedLength(
@@ -284,19 +300,25 @@ begin
           'sequence sample token must be nonempty, well-formed UTF-8 [%d, %d]',
           [LSampleIndex, I]);
       LPublicTokenIndex := FindPublicToken(LPublicTokens,
-        ASamples[LSampleIndex].Tokens[I]);
+        ASamples[LSampleIndex].Tokens[I], LCompleted, AObserver);
       if LPublicTokenIndex < 0 then
         AppendPublicToken(ASamples[LSampleIndex].Tokens[I],
           LPublicTokens, LPublicTokenIndex);
       LValues[LSampleIndex][I] := LPublicTokenIndex;
+      Inc(LCompleted);
+      if Assigned(AObserver) and ((LCompleted mod 256) = 0) then
+        ReportSequencePreparation(AObserver, wspLearnTokenRows, LCompleted, 0);
     end;
   end;
+  ReportSequencePreparation(AObserver, wspLearnTokenRows, LCompleted, LCompleted);
 
   SetLength(LStates, 0);
   SetLength(LStateCounts, 0);
   SetLength(LStartCounts, 0);
   SetLength(LEndCounts, 0);
   SetLength(LCandidate.History, LHistorySize);
+  LCompleted := 0;
+  ReportSequencePreparation(AObserver, wspLearnStateRows, 0, LObservationTotal);
   for LSampleIndex := 0 to LSampleCount - 1 do
     for LPosition := 0 to LSampleLengths[LSampleIndex] - 1 do
     begin
@@ -324,7 +346,8 @@ begin
       end;
       LCandidate.EmittedTokenIndex :=
         LValues[LSampleIndex][LPosition];
-      LStateIndex := FindState(LStates, LCandidate);
+      LStateIndex := FindState(LStates, LCandidate, LCompleted,
+        LObservationTotal, AObserver);
       if LStateIndex < 0 then
         AppendState(LCandidate, LStates, LStateCounts,
           LStartCounts, LEndCounts, LStateIndex);
@@ -337,23 +360,32 @@ begin
           (LPosition = LSampleLengths[LSampleIndex] - 1) then
         CheckedIncrement(LEndCounts[LStateIndex],
           'sequence end observation count');
+      Inc(LCompleted);
+      if Assigned(AObserver) and ((LCompleted mod 256) = 0) and
+          (LCompleted < LObservationTotal) then
+        ReportSequencePreparation(AObserver, wspLearnStateRows,
+          LCompleted, LObservationTotal);
     end;
+  ReportSequencePreparation(AObserver, wspLearnStateRows,
+    LCompleted, LObservationTotal);
 
   if LObservationTotal = 0 then
     raise EWfcSequence.Create(
       'a sequence learning corpus must contain observations');
   Result := TWfcSequenceModel.Create(AOrder, LSampleLengths,
-    LPublicTokens, LStates, LStateCounts, LStartCounts, LEndCounts, ABoundary);
+    LPublicTokens, LStates, LStateCounts, LStartCounts, LEndCounts,
+    ABoundary, AObserver);
 end;
 
 function LearnSequenceModel(const ATokens: TWfcModelTokens;
-  const AOrder: Integer; const ABoundary: TWfcModelBoundary): TWfcSequenceModel;
+  const AOrder: Integer; const ABoundary: TWfcModelBoundary;
+  const AObserver: TWfcSequencePreparationObserver): TWfcSequenceModel;
 var
   LSamples: TWfcSequenceSamples;
 begin
   SetLength(LSamples, 1);
   LSamples[0] := MakeWfcSequenceSample(ATokens);
-  Result := LearnSequenceModelCorpus(LSamples, AOrder, ABoundary);
+  Result := LearnSequenceModelCorpus(LSamples, AOrder, ABoundary, AObserver);
 end;
 
 end.

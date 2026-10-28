@@ -115,6 +115,29 @@ public tokens without replacing an existing endpoint or caller domain.
 `IntersectSequencePrefix`, and `IntersectSequenceSuffix` apply checked bulk
 masks atomically. Repeated positions intersect.
 
+### Observable learning
+
+`LearnSequenceModelCorpus`, `LearnSequenceModel`, and `TWfcSequenceModel.Create`
+accept an optional final `TWfcSequencePreparationObserver`. The learner uses the
+same immutable-model constructor and observation contract as direct callers:
+
+| Phase | Completed units | Total |
+| --- | --- | --- |
+| `wspLearnTokenRows` | Validated and indexed source tokens across samples | Unknown until the existing validation pass finishes |
+| `wspLearnStateRows` | Observations added to state/start/end counts | Source token count, now known |
+| `wspModelBuildVisits` | Marked visits in model validation/copy and structural loops | Unknown until construction finishes |
+
+Token/state lookups checkpoint within long rows, so counts can repeat. Ordinary
+row checkpoints occur every 256 completed rows; construction checkpoints occur
+every 256 marked visits. Visits count the instrumented loops, not CPU instructions
+or a percentage of estimated cost. No preflight pass changes error ordering just
+to discover a total. The final known-total construction callback precedes object
+publication. An observer exception escapes unchanged, releases private candidate
+arrays, and returns no partial model. Retrying uses unchanged caller inputs.
+The single-sequence wrapper's initial sample copy, RTL allocations/strings and
+bounded per-pair history comparisons remain synchronous. Observers do not yield
+the event loop or promise a portable latency bound; hosts own scheduling.
+
 ### Observable bulk preparation
 
 `IntersectSequenceTokenConstraints` accepts an optional final
@@ -134,7 +157,8 @@ completed units:
 | `wspIntersectDomains` | Applied masks, including repeated positions |
 
 Checkpoints within a row may repeat `Done`. Counts describe that phase, not an
-overall percentage or durable publication. Zero total is empty work. The bulk
+overall percentage or durable publication. Zero total means unknown or empty work;
+a positive final total identifies completion of nonempty work. The bulk
 entry validates the applied model once, then shares the preflighted intersection
 implementation with the public single-mask API. It does not weaken full mask
 preflight, change the definition/seed or replace existing domains.
@@ -337,6 +361,15 @@ solver/random versions, and the seed described in
 [deterministic generation](determinism.md).
 
 ## Scope and conformance
+
+`wfc_sequence_learning_progress_test` exercises corpus, single-sequence and direct
+model construction: exact nil/observed text, open/wrapped sample isolation,
+validation ordering, and original interior/final exceptions with cleanup and
+retry. Its authored 65,536-row/order-4 corpus has 1,020 public tokens and 1,023
+states. Checked Win32/Win64 and actual pas2js execution each pass 729,932 checks
+with 28 original aborts. Seventeen separately compiled prior-revision model and
+seeded-path artifacts per native target match exactly. These mechanical checks
+and local timings establish no musical-quality or portable speed guarantee.
 
 Neither learning mode performs smoothing or implements a probabilistic
 language model. The library learns hard structural constraints
