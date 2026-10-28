@@ -790,6 +790,7 @@ printf "Running '%s'.\n" "$building_test_executable"
 
 for compiler_trace_suite in \
   "$compiler_source_directory/../test/wfc_decision_index_test.lpr" \
+  "$compiler_source_directory/../test/wfc_solve_progress_test.lpr" \
   "$compiler_trace_reference_test_source" \
   "$compiler_trace_reference_stream_test_source" \
   "$compiler_trace_stream_test_source" \

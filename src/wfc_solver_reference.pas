@@ -27,7 +27,7 @@ unit wfc_solver_reference;
 
 interface
 
-uses wfc_connectivity_reference;
+uses wfc_connectivity_reference, wfc_solve_progress;
 
 (*
   This is the string-free implementation kernel used by wfc.TGraph.TrySolve.
@@ -207,7 +207,8 @@ function SolveReferenceModel(const AModel: TReferenceModel;
   const ATraceSink: TReferenceTraceEventSink;
   const ARandomIndex: TReferenceRandomIndex;
   out AAssignment: TReferenceIntegerArray;
-  out AReport: TReferenceSolveReport): Boolean; overload;
+  out AReport: TReferenceSolveReport;
+  const AWork: TWfcSolveWork = nil): Boolean; overload;
 
 implementation
 
@@ -239,6 +240,7 @@ type
   TReferenceSolver = class
   strict private
     FModel: TReferenceModel;
+    FWork: TWfcSolveWork;
     FMaxBacktracks: Integer;
     FCaptureTrace: Boolean;
     FTraceEnabled: Boolean;
@@ -351,7 +353,8 @@ type
       const AMaxBacktracks: Integer;
       const ACaptureTrace: Boolean;
       const ATraceSink: TReferenceTraceEventSink;
-      const ARandomIndex: TReferenceRandomIndex);
+      const ARandomIndex: TReferenceRandomIndex;
+      const AWork: TWfcSolveWork);
     destructor Destroy; override;
     function Execute(out AAssignment: TReferenceIntegerArray;
       out AReport: TReferenceSolveReport): Boolean;
@@ -415,7 +418,7 @@ begin
   end;
 end;
 
-procedure ValidateModel(const AModel: TReferenceModel);
+procedure ValidateModel(const AModel: TReferenceModel; const AWork: TWfcSolveWork);
 var
   I: Integer;
   J: Integer;
@@ -466,6 +469,7 @@ begin
 
   for I := 0 to High(AModel.InitialFailureKinds) do
   begin
+    VisitSolveWork(AWork);
     if AModel.InitialFailureKinds[I] = rckConnectivity then
       raise EInvalidOperation.Create(
         'connectivity failure classification is reserved for descriptor analysis');
@@ -512,6 +516,7 @@ begin
 
   for I := 0 to High(AModel.ExcludedAssignments) do
   begin
+    VisitSolveWork(AWork);
     RequireLength(Length(AModel.ExcludedAssignments[I]),
       AModel.CellCount, 'ExcludedAssignments[' + IntToStr(I) + ']');
     for J := 0 to High(AModel.ExcludedAssignments[I]) do
@@ -524,6 +529,7 @@ begin
 
     for J := 0 to Pred(I) do
     begin
+      VisitSolveWork(AWork);
       LDuplicate := True;
       for K := 0 to Pred(AModel.CellCount) do
         if AModel.ExcludedAssignments[I][K] <>
@@ -566,6 +572,7 @@ begin
   SetLength(LSeen, AModel.CellCount);
   for I := 0 to High(AModel.CellOrder) do
   begin
+    VisitSolveWork(AWork);
     if (AModel.CellOrder[I] < 0)
       or (AModel.CellOrder[I] >= AModel.CellCount) then
       raise ERangeError.CreateFmt(
@@ -582,10 +589,12 @@ constructor TReferenceSolver.Create(const AModel: TReferenceModel;
   const AMaxBacktracks: Integer;
   const ACaptureTrace: Boolean;
   const ATraceSink: TReferenceTraceEventSink;
-  const ARandomIndex: TReferenceRandomIndex);
+  const ARandomIndex: TReferenceRandomIndex;
+      const AWork: TWfcSolveWork);
 var I: Integer;
 begin
   inherited Create;
+  FWork := AWork;
   FModel := AModel;
   FMaxBacktracks := AMaxBacktracks;
   FCaptureTrace := ACaptureTrace;
@@ -609,12 +618,14 @@ end;
 function TReferenceSolver.DomainIndex(const ACell,
   AValue: Integer): Integer;
 begin
+  VisitSolveWork(FWork);
   Result := (ACell * FModel.ValueCount) + AValue;
 end;
 
 function TReferenceSolver.RelationIndex(const ADirection,
   ACurrentValue, ANeighborValue: Integer): Integer;
 begin
+  VisitSolveWork(FWork);
   Result := ((ADirection * FModel.ValueCount + ACurrentValue)
     * FModel.ValueCount) + ANeighborValue;
 end;
@@ -680,6 +691,7 @@ var
     LRight := B;
     while LRight <> 0 do
     begin
+      VisitSolveWork(FWork);
       LRemainder := LLeft mod LRight;
       LLeft := LRight;
       LRight := LRemainder;
@@ -706,6 +718,7 @@ begin
   LTotal := 0;
   for I := 0 to Pred(FModel.ValueCount) do
   begin
+    VisitSolveWork(FWork);
     if Length(FModel.ValueWeights) = 0 then
       LWeight := 1
     else
@@ -830,6 +843,7 @@ begin
     Exit;
   for LDirection := 0 to Pred(WFC_REFERENCE_DIRECTION_COUNT) do
   begin
+    VisitSolveWork(FWork);
     LNeighbor := FModel.Neighbors[
       (ACell * WFC_REFERENCE_DIRECTION_COUNT) + LDirection];
     if (LNeighbor >= 0) and
@@ -945,6 +959,7 @@ var
 begin
   while FTrailCount > AMark do
   begin
+    VisitSolveWork(FWork);
     Dec(FTrailCount);
     LIndex := FTrail[FTrailCount];
     if FDomains[LIndex] = 0 then
@@ -1016,6 +1031,7 @@ begin
   LTotal := 0;
   for LArc := 0 to High(FModel.Neighbors) do
   begin
+    VisitSolveWork(FWork);
     LNeighbor := FModel.Neighbors[LArc];
     if LNeighbor >= 0 then
     begin
@@ -1034,6 +1050,7 @@ begin
 
   for LArc := 0 to High(FModel.Neighbors) do
   begin
+    VisitSolveWork(FWork);
     LNeighbor := FModel.Neighbors[LArc];
     if LNeighbor >= 0 then
     begin
@@ -1072,6 +1089,7 @@ begin
     SetLength(FLastEntryConstraints, FModel.CellCount);
     for LCell := 0 to Pred(FModel.CellCount) do
     begin
+      VisitSolveWork(FWork);
       FLastEntryChange[LCell] := -1;
       FLastEntryCauseKinds[LCell] := rtckNone;
       FLastEntryConstraints[LCell] := -1;
@@ -1090,9 +1108,11 @@ begin
 
   for LCell := 0 to Pred(FModel.CellCount) do
   begin
+    VisitSolveWork(FWork);
     LTraceDomainCount := FModel.ValueCount;
     for LValue := 0 to Pred(FModel.ValueCount) do
     begin
+      VisitSolveWork(FWork);
       LIndex := DomainIndex(LCell, LValue);
       if (FModel.InitialAllowed[LIndex] <> 0)
         and ((FModel.LockedValues[LCell] < 0)
@@ -1148,6 +1168,7 @@ begin
 
   for LValue := 0 to Pred(FModel.ValueCount) do
   begin
+    VisitSolveWork(FWork);
     if FDomains[DomainIndex(ACell, LValue)] = 0 then
       Continue;
 
@@ -1195,6 +1216,7 @@ begin
 
   for LValue := 0 to Pred(FModel.ValueCount) do
   begin
+    VisitSolveWork(FWork);
     if (FDomains[DomainIndex(ACell, LValue)] = 0)
       or (FModel.RequiredValues[LValue] = 0) then
       Continue;
@@ -1202,6 +1224,7 @@ begin
     LSupported := False;
     for LDirection := 0 to Pred(WFC_REFERENCE_DIRECTION_COUNT) do
     begin
+      VisitSolveWork(FWork);
       LNeighbor := FModel.Neighbors[
         (ACell * WFC_REFERENCE_DIRECTION_COUNT) + LDirection];
       if LNeighbor < 0 then
@@ -1250,6 +1273,7 @@ var I, C, V: Integer;
 begin
   for I := 0 to High(FConnectivity) do
   begin
+    VisitSolveWork(FWork);
     Analyzer := FConnectivity[I];
     Analyzer.Analyze(FDomains, Analysis);
     if Analysis.FailureCell >= 0 then
@@ -1260,6 +1284,7 @@ begin
     end;
     for C := 0 to FModel.CellCount - 1 do
     begin
+      VisitSolveWork(FWork);
       for V := 0 to FModel.ValueCount - 1 do
         if ((Analysis.ForceParticipation[C] <> 0) and
           not Analyzer.Participates(V)) or
@@ -1306,10 +1331,12 @@ var
 begin
   for LConstraint := 0 to High(FModel.ValueQuotas) do
   begin
+    VisitSolveWork(FWork);
     LForced := 0;
     LPossible := 0;
     for LCell := 0 to FModel.CellCount - 1 do
     begin
+      VisitSolveWork(FWork);
       LMatches := ValueQuotaDomainCount(LConstraint, LCell);
       if LMatches > 0 then
       begin
@@ -1332,6 +1359,7 @@ begin
       Continue;
     for LCell := 0 to FModel.CellCount - 1 do
     begin
+      VisitSolveWork(FWork);
       LMatches := ValueQuotaDomainCount(LConstraint, LCell);
       if (LMatches = 0) or (LMatches = FDomainCounts[LCell]) then
         Continue;
@@ -1362,6 +1390,7 @@ begin
       for LIncomingIndex := FIncomingStarts[LChangedCell]
         to Pred(FIncomingStarts[LChangedCell + 1]) do
       begin
+        VisitSolveWork(FWork);
         LArc := FIncomingArcs[LIncomingIndex];
         LSourceCell := LArc div WFC_REFERENCE_DIRECTION_COUNT;
         LDirection := LArc mod WFC_REFERENCE_DIRECTION_COUNT;
@@ -1399,6 +1428,7 @@ begin
   LCell := FDecisionHeap[LPosition];
   while LPosition > 0 do
   begin
+    VisitSolveWork(FWork);
     LParent := (LPosition - 1) div 2;
     if not DecisionPrecedes(LCell, FDecisionHeap[LParent]) then Break;
     FDecisionHeap[LPosition] := FDecisionHeap[LParent];
@@ -1419,6 +1449,7 @@ begin
   //in range even at the checked integer capacity of the cell array.
   while LPosition < FDecisionHeapCount div 2 do
   begin
+    VisitSolveWork(FWork);
     LChild := LPosition * 2 + 1;
     if (LChild + 1 < FDecisionHeapCount) and
       DecisionPrecedes(FDecisionHeap[LChild + 1], FDecisionHeap[LChild]) then
@@ -1458,6 +1489,7 @@ begin
   FDecisionDirtyCount := 0;
   for I := 0 to FModel.CellCount - 1 do
   begin
+    VisitSolveWork(FWork);
     LCell := FModel.CellOrder[I];
     FDecisionRanks[LCell] := I;
     FDecisionPositions[LCell] := -1;
@@ -1494,6 +1526,7 @@ var
 begin
   for I := 0 to FDecisionDirtyCount - 1 do
   begin
+    VisitSolveWork(FWork);
     LCell := FDecisionDirtyCells[I];
     FDecisionDirty[LCell] := 0;
     LPosition := FDecisionPositions[LCell];
@@ -1624,6 +1657,7 @@ begin
   LStart := -1;
   for I := 0 to Pred(LCount) do
   begin
+    VisitSolveWork(FWork);
     LValue := LValues[I];
     if LTicket < FValueWeights[LValue] then
     begin
@@ -1657,6 +1691,7 @@ var
 begin
   while FFrameCount > 0 do
   begin
+    VisitSolveWork(FWork);
     if FReport.Backtracks >= FMaxBacktracks then
       Exit(rrLimit);
     IncrementCounter(FReport.Backtracks);
@@ -1691,6 +1726,7 @@ begin
   SetLength(AAssignment, FModel.CellCount);
   for LCell := 0 to Pred(FModel.CellCount) do
   begin
+    VisitSolveWork(FWork);
     AAssignment[LCell] := -1;
     for LValue := 0 to Pred(FModel.ValueCount) do
       if FDomains[DomainIndex(LCell, LValue)] <> 0 then
@@ -1726,6 +1762,7 @@ begin
 
   for LOrderIndex := 0 to Pred(FModel.CellCount) do
   begin
+    VisitSolveWork(FWork);
     LCell := FModel.CellOrder[LOrderIndex];
     LValue := AAssignment[LCell];
     if (LValue < 0) or (LValue >= FModel.ValueCount)
@@ -1741,6 +1778,7 @@ begin
 
     for LDirection := 0 to Pred(WFC_REFERENCE_DIRECTION_COUNT) do
     begin
+      VisitSolveWork(FWork);
       LNeighbor := FModel.Neighbors[
         (LCell * WFC_REFERENCE_DIRECTION_COUNT) + LDirection];
       if LNeighbor < 0 then
@@ -1764,6 +1802,7 @@ begin
       LSupported := False;
       for LDirection := 0 to Pred(WFC_REFERENCE_DIRECTION_COUNT) do
       begin
+        VisitSolveWork(FWork);
         LNeighbor := FModel.Neighbors[
           (LCell * WFC_REFERENCE_DIRECTION_COUNT) + LDirection];
         if LNeighbor < 0 then
@@ -1800,6 +1839,7 @@ begin
   //forced/possible counts or its current-domain bookkeeping.
   for LConstraint := 0 to High(FModel.ValueQuotas) do
   begin
+    VisitSolveWork(FWork);
     LQuotaCount := 0;
     for LCell := 0 to High(AAssignment) do
       if ValueQuotaContains(LConstraint, AAssignment[LCell]) then
@@ -1831,6 +1871,7 @@ begin
 
   for I := 0 to High(FModel.ExcludedAssignments) do
   begin
+    VisitSolveWork(FWork);
     LMatches := True;
     for J := 0 to Pred(FModel.CellCount) do
       if FModel.ExcludedAssignments[I][J] <> AAssignment[J] then
@@ -1880,6 +1921,7 @@ begin
   //graph with no incoming adjacency arcs.
   for I := 0 to Pred(FModel.CellCount) do
   begin
+    VisitSolveWork(FWork);
     LCell := FModel.CellOrder[I];
     if not ReviseRequired(LCell) then
     begin
@@ -1892,6 +1934,7 @@ begin
 
   while True do
   begin
+    VisitSolveWork(FWork);
     if not Propagate then
     begin
       LRecovery := Recover;
@@ -2026,16 +2069,17 @@ function SolveReferenceModel(const AModel: TReferenceModel;
   const ATraceSink: TReferenceTraceEventSink;
   const ARandomIndex: TReferenceRandomIndex;
   out AAssignment: TReferenceIntegerArray;
-  out AReport: TReferenceSolveReport): Boolean;
+  out AReport: TReferenceSolveReport;
+  const AWork: TWfcSolveWork): Boolean;
 var
   LSolver: TReferenceSolver;
 begin
   if AMaxBacktracks < 0 then
     raise ERangeError.CreateFmt(
       'maximum backtracks cannot be negative [%d]', [AMaxBacktracks]);
-  ValidateModel(AModel);
+  ValidateModel(AModel, AWork);
   LSolver := TReferenceSolver.Create(AModel, AMaxBacktracks,
-    ACaptureTrace, ATraceSink, ARandomIndex);
+    ACaptureTrace, ATraceSink, ARandomIndex, AWork);
   try
     Result := LSolver.Execute(AAssignment, AReport);
   finally

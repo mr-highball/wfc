@@ -34,6 +34,7 @@ $selectiveNegotiationTestSource = Join-Path $repositoryRoot `
 $voxelTestSource = Join-Path $repositoryRoot 'test/wfc_voxel3d_test.lpr'
 $buildingTestSource = Join-Path $repositoryRoot 'test/wfc_building3d_test.lpr'
 $traceTestSources = @(
+  (Join-Path $repositoryRoot 'test/wfc_solve_progress_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_decision_index_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_trace_reference_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_trace_reference_stream_test.lpr')

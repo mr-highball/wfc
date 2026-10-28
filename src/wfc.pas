@@ -34,7 +34,8 @@ uses
   Classes,
   SysUtils,
   Generics.Collections,
-  wfc_lattice;
+  wfc_lattice,
+  wfc_solve_progress;
 
 type
 
@@ -921,22 +922,26 @@ type
       const AOptions: TGraphNegotiationOptions;
       const ADirty: TPassSelection; const AOperation: String;
       const AEffectiveSeed: TGraphSeed;
-      out AReport: TGraphNegotiationReport): Boolean;
+      out AReport: TGraphNegotiationReport;
+      const AObserver: TWfcSolveObserver = nil): Boolean;
     function TryRestartInternal(const AOptions: TGraphNegotiationOptions;
       const ARestarts: TGraphRestartOptions;
       const AStrategy: TGraphRestartStrategy;
-      out AReport: TGraphRestartReport): Boolean;
+      out AReport: TGraphRestartReport;
+      const AObserver: TWfcSolveObserver = nil): Boolean;
     function ReadRestartClock(out AValue: Double): Boolean;
     function TrySolveInternal(const AOptions: TGraphSolveOptions;
       const ADirty: TPassSelection;
-      out AReport: TGraphSolveReport): Boolean;
+      out AReport: TGraphSolveReport;
+      const AObserver: TWfcSolveObserver = nil): Boolean;
     function TrySolveAttempt(const AOptions: TGraphSolveOptions;
       const ADirty: TPassSelection;
       const AExclusions: TPassAssignmentExclusions;
       const AEffectiveSeed: TGraphSeed;
       out ACompletedChoices: TPassSelection;
       out AAssignments: TValueIndexMatrix;
-      out AReport: TGraphSolveReport): Boolean;
+      out AReport: TGraphSolveReport;
+      const AObserver: TWfcSolveObserver = nil): Boolean;
     procedure BuildStorage(const AWidth, AHeight, ADepth: TGraphCoordinate;
       const AWrap: Boolean; out AEntries: TGraphEntries; out APlanes: TPlanes);
     procedure ClearGeneratedValues;
@@ -1222,9 +1227,16 @@ type
       solver. Results are staged and committed only after every pass validates;
       a reported contradiction or limit leaves graph entries unchanged.
       Legacy selection and invalid-state callbacks are not invoked.
+      Optional AObserver (wfc_solve_progress) is borrowed for this call and
+      reports phase-local owned visits, not solution percentages. Its original
+      exception aborts before graph acceptance, including the final commit
+      checkpoint. It is never called during rollback. These rules also apply
+      to negotiated, restarted and selective solve methods below. Observer
+      code must not mutate/reenter the graph or draw from its random streams.
     *)
     function TrySolve(const AOptions: TGraphSolveOptions;
-      out AReport: TGraphSolveReport): Boolean;
+      out AReport: TGraphSolveReport;
+      const AObserver: TWfcSolveObserver = nil): Boolean;
 
     (*
       solves the complete pipeline with bounded chronological backtracking
@@ -1233,7 +1245,8 @@ type
       Attempts are transactional and the first complete success commits once.
     *)
     function TrySolveNegotiated(const AOptions: TGraphNegotiationOptions;
-      out AReport: TGraphNegotiationReport): Boolean;
+      out AReport: TGraphNegotiationReport;
+      const AObserver: TWfcSolveObserver = nil): Boolean;
 
     //Restarts only a local solver backtrack limit, never a contradiction or
     //pass-negotiation limit. Public Seed stays the base seed; effective seeds
@@ -1242,11 +1255,13 @@ type
     //whole-policy replay retains that base and has no such restriction.
     function TrySolveRestarted(const AOptions: TGraphSolveOptions;
       const ARestarts: TGraphRestartOptions;
-      out AReport: TGraphRestartReport): Boolean;
+      out AReport: TGraphRestartReport;
+      const AObserver: TWfcSolveObserver = nil): Boolean;
     function TrySolveNegotiatedRestarted(
       const AOptions: TGraphNegotiationOptions;
       const ARestarts: TGraphRestartOptions;
-      out AReport: TGraphRestartReport): Boolean;
+      out AReport: TGraphRestartReport;
+      const AObserver: TWfcSolveObserver = nil): Boolean;
 
     (*
       resolves the exact selective-regeneration scope without solving or
@@ -1260,10 +1275,12 @@ type
 
     function TryRegenerateFrom(const APass: String;
       const AOptions: TGraphSolveOptions;
-      out AReport: TGraphSolveReport): Boolean; overload;
+      out AReport: TGraphSolveReport;
+      const AObserver: TWfcSolveObserver = nil): Boolean; overload;
     function TryRegenerateFrom(const APasses: TGraphPassLabels;
       const AOptions: TGraphSolveOptions;
-      out AReport: TGraphSolveReport): Boolean; overload;
+      out AReport: TGraphSolveReport;
+      const AObserver: TWfcSolveObserver = nil): Boolean; overload;
 
     (*
       negotiates only within the exact descendant closure of the named roots.
@@ -1273,10 +1290,12 @@ type
     *)
     function TryRegenerateNegotiatedFrom(const APass: String;
       const AOptions: TGraphNegotiationOptions;
-      out AReport: TGraphSelectiveNegotiationReport): Boolean; overload;
+      out AReport: TGraphSelectiveNegotiationReport;
+      const AObserver: TWfcSolveObserver = nil): Boolean; overload;
     function TryRegenerateNegotiatedFrom(const APasses: TGraphPassLabels;
       const AOptions: TGraphNegotiationOptions;
-      out AReport: TGraphSelectiveNegotiationReport): Boolean; overload;
+      out AReport: TGraphSelectiveNegotiationReport;
+      const AObserver: TWfcSolveObserver = nil): Boolean; overload;
 
     (*
       once all values and rules have been apply, this will
@@ -6738,13 +6757,14 @@ begin
 end;
 
 function TGraph.TrySolve(const AOptions: TGraphSolveOptions;
-  out AReport: TGraphSolveReport): Boolean;
+  out AReport: TGraphSolveReport;
+  const AObserver: TWfcSolveObserver): Boolean;
 var
   I: Integer;
   LDirty: TPassSelection;
 begin
   if Assigned(FPassRoot) then
-    Exit(FPassRoot.TrySolve(AOptions, AReport));
+    Exit(FPassRoot.TrySolve(AOptions, AReport, AObserver));
   if AOptions.MaxBacktracks < 0 then
     raise ERangeError.CreateFmt(
       'TrySolve::maximum backtracks cannot be negative [%d]',
@@ -6753,18 +6773,19 @@ begin
   SetLength(LDirty, FPasses.Count);
   for I := 0 to High(LDirty) do
     LDirty[I] := 1;
-  Result := TrySolveInternal(AOptions, LDirty, AReport);
+  Result := TrySolveInternal(AOptions, LDirty, AReport, AObserver);
 end;
 
 function TGraph.TrySolveNegotiated(
   const AOptions: TGraphNegotiationOptions;
-  out AReport: TGraphNegotiationReport): Boolean;
+  out AReport: TGraphNegotiationReport;
+  const AObserver: TWfcSolveObserver): Boolean;
 var
   I: Integer;
   LDirty: TPassSelection;
 begin
   if Assigned(FPassRoot) then
-    Exit(FPassRoot.TrySolveNegotiated(AOptions, AReport));
+    Exit(FPassRoot.TrySolveNegotiated(AOptions, AReport, AObserver));
   ValidateNegotiationOptions(AOptions, 'TrySolveNegotiated');
   EnsureInitialPass;
 
@@ -6772,36 +6793,39 @@ begin
   for I := 0 to High(LDirty) do
     LDirty[I] := 1;
   Result := TryNegotiateInternal(AOptions, LDirty,
-    'TrySolveNegotiated', Seed, AReport);
+    'TrySolveNegotiated', Seed, AReport, AObserver);
 end;
 
 function TGraph.TrySolveRestarted(const AOptions: TGraphSolveOptions;
   const ARestarts: TGraphRestartOptions;
-  out AReport: TGraphRestartReport): Boolean;
+  out AReport: TGraphRestartReport;
+  const AObserver: TWfcSolveObserver): Boolean;
 var
   LOptions: TGraphNegotiationOptions;
 begin
   if Assigned(FPassRoot) then
-    Exit(FPassRoot.TrySolveRestarted(AOptions, ARestarts, AReport));
+    Exit(FPassRoot.TrySolveRestarted(AOptions, ARestarts, AReport, AObserver));
   LOptions := Default(TGraphNegotiationOptions);
   LOptions.SolveOptions := AOptions;
-  Result := TryRestartInternal(LOptions, ARestarts, grstOneWay, AReport);
+  Result := TryRestartInternal(LOptions, ARestarts, grstOneWay, AReport, AObserver);
 end;
 
 function TGraph.TrySolveNegotiatedRestarted(
   const AOptions: TGraphNegotiationOptions;
   const ARestarts: TGraphRestartOptions;
-  out AReport: TGraphRestartReport): Boolean;
+  out AReport: TGraphRestartReport;
+  const AObserver: TWfcSolveObserver): Boolean;
 begin
   if Assigned(FPassRoot) then
-    Exit(FPassRoot.TrySolveNegotiatedRestarted(AOptions, ARestarts, AReport));
-  Result := TryRestartInternal(AOptions, ARestarts, grstNegotiated, AReport);
+    Exit(FPassRoot.TrySolveNegotiatedRestarted(AOptions, ARestarts, AReport, AObserver));
+  Result := TryRestartInternal(AOptions, ARestarts, grstNegotiated, AReport, AObserver);
 end;
 
 function TGraph.TryRestartInternal(const AOptions: TGraphNegotiationOptions;
   const ARestarts: TGraphRestartOptions;
   const AStrategy: TGraphRestartStrategy;
-  out AReport: TGraphRestartReport): Boolean;
+  out AReport: TGraphRestartReport;
+  const AObserver: TWfcSolveObserver): Boolean;
 var
   I, LIndex, LBudget: Integer;
   LOptions: TGraphNegotiationOptions;
@@ -6862,14 +6886,14 @@ begin
     begin
       Result := TryNegotiateInternal(LOptions, LDirty,
         'TrySolveNegotiatedRestarted', AReport.Attempts[LIndex].Seed,
-        AReport.Attempts[LIndex].NegotiationReport);
+        AReport.Attempts[LIndex].NegotiationReport, AObserver);
       AReport.Attempts[LIndex].SolveReport :=
         AReport.Attempts[LIndex].NegotiationReport.FinalReport;
     end
     else
       Result := TrySolveAttempt(LOptions.SolveOptions, LDirty,
         LExclusions, AReport.Attempts[LIndex].Seed, LCompletedChoices,
-        LAssignments, AReport.Attempts[LIndex].SolveReport);
+        LAssignments, AReport.Attempts[LIndex].SolveReport, AObserver);
     AReport.FinalReport := AReport.Attempts[LIndex].SolveReport;
     if ARestarts.MeasureTime then
     begin
@@ -6917,7 +6941,8 @@ function TGraph.TryNegotiateInternal(
   const AOptions: TGraphNegotiationOptions;
   const ADirty: TPassSelection; const AOperation: String;
   const AEffectiveSeed: TGraphSeed;
-  out AReport: TGraphNegotiationReport): Boolean;
+  out AReport: TGraphNegotiationReport;
+  const AObserver: TWfcSolveObserver): Boolean;
 var
   I, J: Integer;
   LAssignments: TValueIndexMatrix;
@@ -6982,7 +7007,7 @@ begin
   begin
     Result := TrySolveAttempt(AOptions.SolveOptions, ADirty,
       LExclusions, AEffectiveSeed, LCompletedChoices, LAssignments,
-      LSolveReport);
+      LSolveReport, AObserver);
     AReport.FinalReport := LSolveReport;
     if Result then
     begin
@@ -7101,23 +7126,25 @@ end;
 
 function TGraph.TryRegenerateFrom(const APass: String;
   const AOptions: TGraphSolveOptions;
-  out AReport: TGraphSolveReport): Boolean;
+  out AReport: TGraphSolveReport;
+  const AObserver: TWfcSolveObserver): Boolean;
 var
   LPasses: TGraphPassLabels;
 begin
   SetLength(LPasses, 1);
   LPasses[0] := APass;
-  Result := TryRegenerateFrom(LPasses, AOptions, AReport);
+  Result := TryRegenerateFrom(LPasses, AOptions, AReport, AObserver);
 end;
 
 function TGraph.TryRegenerateFrom(const APasses: TGraphPassLabels;
   const AOptions: TGraphSolveOptions;
-  out AReport: TGraphSolveReport): Boolean;
+  out AReport: TGraphSolveReport;
+  const AObserver: TWfcSolveObserver): Boolean;
 var
   LDirty: TPassSelection;
 begin
   if Assigned(FPassRoot) then
-    Exit(FPassRoot.TryRegenerateFrom(APasses, AOptions, AReport));
+    Exit(FPassRoot.TryRegenerateFrom(APasses, AOptions, AReport, AObserver));
   if AOptions.MaxBacktracks < 0 then
     raise ERangeError.CreateFmt(
       'TryRegenerateFrom::maximum backtracks cannot be negative [%d]',
@@ -7127,24 +7154,26 @@ begin
       'TryRegenerateFrom::at least one pass is required');
   EnsureInitialPass;
   BuildDescendantPassSelection(APasses, 'TryRegenerateFrom', LDirty);
-  Result := TrySolveInternal(AOptions, LDirty, AReport);
+  Result := TrySolveInternal(AOptions, LDirty, AReport, AObserver);
 end;
 
 function TGraph.TryRegenerateNegotiatedFrom(const APass: String;
   const AOptions: TGraphNegotiationOptions;
-  out AReport: TGraphSelectiveNegotiationReport): Boolean;
+  out AReport: TGraphSelectiveNegotiationReport;
+  const AObserver: TWfcSolveObserver): Boolean;
 var
   LPasses: TGraphPassLabels;
 begin
   SetLength(LPasses, 1);
   LPasses[0] := APass;
-  Result := TryRegenerateNegotiatedFrom(LPasses, AOptions, AReport);
+  Result := TryRegenerateNegotiatedFrom(LPasses, AOptions, AReport, AObserver);
 end;
 
 function TGraph.TryRegenerateNegotiatedFrom(
   const APasses: TGraphPassLabels;
   const AOptions: TGraphNegotiationOptions;
-  out AReport: TGraphSelectiveNegotiationReport): Boolean;
+  out AReport: TGraphSelectiveNegotiationReport;
+  const AObserver: TWfcSolveObserver): Boolean;
 var
   LActivePassIndices: TGraphPassIndices;
   LDirty: TPassSelection;
@@ -7152,7 +7181,7 @@ var
 begin
   if Assigned(FPassRoot) then
     Exit(FPassRoot.TryRegenerateNegotiatedFrom(
-      APasses, AOptions, AReport));
+      APasses, AOptions, AReport, AObserver));
   ValidateNegotiationOptions(AOptions,
     'TryRegenerateNegotiatedFrom');
   if Length(APasses) = 0 then
@@ -7172,7 +7201,7 @@ begin
   AReport.RequestedRootIndices := LRequestedRootIndices;
   AReport.ActivePassIndices := LActivePassIndices;
   Result := TryNegotiateInternal(AOptions, LDirty,
-    'TryRegenerateNegotiatedFrom', Seed, AReport.Search);
+    'TryRegenerateNegotiatedFrom', Seed, AReport.Search, AObserver);
   AReport.TranscriptHash :=
     CalculateGraphSelectiveNegotiationTranscriptHash(
       AOptions, AReport);
@@ -7180,7 +7209,8 @@ end;
 
 function TGraph.TrySolveInternal(const AOptions: TGraphSolveOptions;
   const ADirty: TPassSelection;
-  out AReport: TGraphSolveReport): Boolean;
+  out AReport: TGraphSolveReport;
+  const AObserver: TWfcSolveObserver): Boolean;
 var
   LAssignments: TValueIndexMatrix;
   LCompletedChoices: TPassSelection;
@@ -7188,7 +7218,7 @@ var
 begin
   LExclusions := nil;
   Result := TrySolveAttempt(AOptions, ADirty, LExclusions, Seed,
-    LCompletedChoices, LAssignments, AReport);
+    LCompletedChoices, LAssignments, AReport, AObserver);
 end;
 
 function TGraph.TrySolveAttempt(const AOptions: TGraphSolveOptions;
@@ -7197,7 +7227,8 @@ function TGraph.TrySolveAttempt(const AOptions: TGraphSolveOptions;
   const AEffectiveSeed: TGraphSeed;
   out ACompletedChoices: TPassSelection;
   out AAssignments: TValueIndexMatrix;
-  out AReport: TGraphSolveReport): Boolean;
+  out AReport: TGraphSolveReport;
+  const AObserver: TWfcSolveObserver): Boolean;
 type
   TRandomStateArray = array of TRandomState;
   TEntryState = record
@@ -7213,6 +7244,7 @@ type
 var
   LAssignment: TReferenceIntegerArray;
   LCommitted: Boolean;
+  LWork: TWfcSolveWork;
   LDefinitionlessFailureFromSource: Boolean;
   LDefinitionlessSourcePass: Integer;
   LEntryIndex: Integer;
@@ -7356,6 +7388,7 @@ var
 
     for I := 0 to High(AGraph.FValues) do
     begin
+      VisitSolveWork(LWork);
       if AGraph.FValues[I] = TGraphValue.Empty then
         raise EInvalidOperation.CreateFmt(
           'TrySolve::pass %d contains the reserved empty value',
@@ -7380,6 +7413,7 @@ var
       LSeenDirections := [];
       for J := 0 to High(LGroup.Rules) do
       begin
+        VisitSolveWork(LWork);
         LRule := LGroup.Rules[J];
         LDirectionOrdinal := Ord(LRule.Key);
         if (LDirectionOrdinal < Ord(Low(TGraphDirection)))
@@ -7461,6 +7495,7 @@ var
       end;
     for C := 0 to High(AGraph.FValueQuotas) do
     begin
+      VisitSolveWork(LWork);
       LConstraint := AGraph.FValueQuotas[C];
       CheckGraphValueQuotaBounds(LConstraint.MinimumCount,
         LConstraint.MaximumCount);
@@ -7506,6 +7541,7 @@ var
     for I := 0 to Pred(AGraph.FEntries.Count) do
       for LDirection := Low(TGraphDirection) to High(TGraphDirection) do
       begin
+        VisitSolveWork(LWork);
         LNeighbor := AGraph.FEntries[I][LDirection];
         if not Assigned(LNeighbor) then Continue;
         LNext := LNeighbor.Index;
@@ -7524,11 +7560,13 @@ var
       LValueIndices[I] := FindValueIndex(AGraph, AValues[I]);
     for C := 0 to High(AGraph.FConnectivity) do
     begin
+      VisitSolveWork(LWork);
       LConstraint := AGraph.FConnectivity[C];
       LRoot := AGraph.CoordToIndex(LConstraint.Root.X,
         LConstraint.Root.Y, LConstraint.Root.Z);
       for I := 0 to High(AValues) do
       begin
+        VisitSolveWork(LWork);
         LReached[I] := 0;
         LRequired[I] := 0;
         LProfiles[I] := -1;
@@ -7556,10 +7594,12 @@ var
       end;
       while LHead < LTail do
       begin
+        VisitSolveWork(LWork);
         LCell := LQueue[LHead];
         Inc(LHead);
         for LDirection := Low(TGraphDirection) to High(TGraphDirection) do
         begin
+          VisitSolveWork(LWork);
           if not (LDirection in LConstraint.Values[LProfiles[LCell]].Openings) then
             Continue;
           LNeighbor := AGraph.FEntries[LCell][LDirection];
@@ -7609,6 +7649,7 @@ var
       for LZ := 0 to Integer(AGraph.FDimension.Depth) - 1 do
         for I := 0 to Pred(LPlaneSize) do
         begin
+          VisitSolveWork(LWork);
           AOrder[LOrderIndex] := (LZ * LPlaneSize) + I;
           Inc(LOrderIndex);
         end
@@ -7616,6 +7657,7 @@ var
       for LZ := Integer(AGraph.FDimension.Depth) - 1 downto 0 do
         for I := 0 to Pred(LPlaneSize) do
         begin
+          VisitSolveWork(LWork);
           AOrder[LOrderIndex] := (LZ * LPlaneSize) + I;
           Inc(LOrderIndex);
         end
@@ -7784,6 +7826,7 @@ var
     SetLength(AModel.Connectivity, Length(AGraph.FConnectivity));
     for LConnectivityIndex := 0 to High(AGraph.FConnectivity) do
     begin
+      VisitSolveWork(LWork);
       LConnectivity := AGraph.FConnectivity[LConnectivityIndex];
       with AModel.Connectivity[LConnectivityIndex] do
       begin
@@ -7797,6 +7840,7 @@ var
         SetLength(Profiles, Length(LConnectivity.Values));
         for LProfileIndex := 0 to High(Profiles) do
         begin
+          VisitSolveWork(LWork);
           Profiles[LProfileIndex].ValueIndex := FindValueIndex(AGraph,
             LConnectivity.Values[LProfileIndex].Value);
           Profiles[LProfileIndex].RequiredByValue :=
@@ -7813,6 +7857,7 @@ var
     SetLength(AModel.ValueQuotas, Length(AGraph.FValueQuotas));
     for LQuotaIndex := 0 to High(AGraph.FValueQuotas) do
     begin
+      VisitSolveWork(LWork);
       LQuota := AGraph.FValueQuotas[LQuotaIndex];
       with AModel.ValueQuotas[LQuotaIndex] do
       begin
@@ -7827,11 +7872,13 @@ var
 
     for LCell := 0 to Pred(AModel.CellCount) do
     begin
+      VisitSolveWork(LWork);
       AModel.LockedValues[LCell] := -1;
       AModel.InitialFailureKinds[LCell] := rckEmptyDomain;
       ARequirementFailurePass[LCell] := -1;
       for LDirection := Low(TGraphDirection) to High(TGraphDirection) do
       begin
+        VisitSolveWork(LWork);
         LNeighbor := AGraph.FEntries[LCell][LDirection];
         LIndex := (LCell * WFC_REFERENCE_DIRECTION_COUNT)
           + Ord(LDirection);
@@ -7853,6 +7900,7 @@ var
 
     for LValue := 0 to Pred(AModel.ValueCount) do
     begin
+      VisitSolveWork(LWork);
       LGroup := AGraph.FRuleGroups[AGraph.FValues[LValue]];
       AModel.ValueWeights[LValue] := LGroup.Weight;
       if LGroup.HasRequired then
@@ -7873,6 +7921,7 @@ var
       end;
       for LRequirementIndex := 0 to High(LGroup.FPassRequirements) do
       begin
+        VisitSolveWork(LWork);
         LSourcePassIndex :=
           LGroup.FPassRequirements[LRequirementIndex].PassIndex;
         if (LSourcePassIndex < 0)
@@ -7901,6 +7950,7 @@ var
       for LValue := 0 to Pred(AModel.ValueCount) do
         for LNeighborValue := 0 to Pred(AModel.ValueCount) do
         begin
+          VisitSolveWork(LWork);
           LAllowedForward := RuleAllows(AGraph, LNeighborValue,
             LDirection, LValue, LDirectRequired);
           LAllowedReverse := RuleAllows(AGraph, LValue,
@@ -7916,6 +7966,7 @@ var
 
     for LCell := 0 to Pred(AModel.CellCount) do
     begin
+      VisitSolveWork(LWork);
       LLockValue := -1;
       if (not AGraph.FEntries[LCell].Empty)
         and (not AGraph.FEntries[LCell].Generated) then
@@ -7945,6 +7996,7 @@ var
       LFailureNamed := False;
       for LValue := 0 to Pred(AModel.ValueCount) do
       begin
+        VisitSolveWork(LWork);
         LTraceIndex := (LCell * AModel.ValueCount) + LValue;
         LValueFailurePass := -1;
         LAllowed := (LLockValue < 0) or (LLockValue = LValue);
@@ -7994,6 +8046,7 @@ var
           for LRequirementIndex := 0 to
             High(LGroup.FPassRequirements) do
           begin
+            VisitSolveWork(LWork);
             LSourcePassIndex :=
               LGroup.FPassRequirements[LRequirementIndex].PassIndex;
             if LHasPreviousValues and IsMergedPreviousZero(
@@ -8297,6 +8350,7 @@ var
     try
       for K := 0 to High(LExecutionPlan) do
       begin
+        VisitSolveWork(LWork);
         I := LExecutionPlan[K];
         FExecutingPassIndex := I;
         FCurPassIndex := I;
@@ -8308,6 +8362,7 @@ var
           Continue;
         for J := 0 to Pred(FPasses[I].FEntries.Count) do
         begin
+          VisitSolveWork(LWork);
           //A preceding hook may have switched the root selection. Reassert
           //the pass identity for every setter, matching the solving contract.
           FExecutingPassIndex := I;
@@ -8328,6 +8383,7 @@ var
 
       for K := 0 to High(LExecutionPlan) do
       begin
+        VisitSolveWork(LWork);
         I := LExecutionPlan[K];
         if not ValidateStagedConnectivity(FPasses[I], LStaged[I],
           LConstraint, AFinalValidationEntry) then
@@ -8355,6 +8411,7 @@ var
       for I := 0 to Pred(FPasses.Count) do
         for J := 0 to Pred(FPasses[I].FEntries.Count) do
         begin
+          VisitSolveWork(LWork);
           if not MatchesExpectedState(I, J) then
             raise EInvalidOperation.CreateFmt(
               'TrySolve::commit hook mutated pass %d entry %d', [I, J]);
@@ -8371,6 +8428,7 @@ var
       //candidate merely because its values and neighbor links stayed equal.
       for I := 0 to Pred(FPasses.Count) do
       begin
+        VisitSolveWork(LWork);
         if not ValidateStagedConnectivity(FPasses[I], LStaged[I],
           LConstraint, AFinalValidationEntry) then
           raise EInvalidOperation.CreateFmt(
@@ -8383,6 +8441,7 @@ var
             [LConstraint, I, AFinalValidationEntry]);
       end;
       Result := True;
+      FinishSolveWork(LWork);
     except
       RestoreEntries;
       raise;
@@ -8392,6 +8451,9 @@ var
 var
   I, LExecutionCount: Integer;
 begin
+  //Retained-provider preflight also reaches shared validation helpers before
+  //the guarded observer lifetime starts. Keep that early scope explicitly nil.
+  LWork := nil;
   if FInitializingPass then
     raise EInvalidOperation.Create(
       'TrySolve::cannot solve during pass initialization');
@@ -8449,10 +8511,13 @@ begin
   LTraceRecorder := TGraphTraceRecorder.Create(AOptions.CaptureTrace,
     FTraceSink, AReport);
   LTraceInterrupted := False;
+  LWork := nil;
   FRunning := True;
   FExecutingPassIndex := -1;
   try
    try
+    if Assigned(AObserver) then LWork := TWfcSolveWork.Create(AObserver);
+    BeginSolveWork(LWork, wspPrepare, -1);
     LTraceRecorder.BeginDelivery;
     //Reused-provider events are still the same chronological prefix, but
     //observers now run inside the non-reentrant transaction boundary.
@@ -8542,6 +8607,8 @@ begin
         Continue;
       end;
 
+      FinishSolveWork(LWork);
+      BeginSolveWork(LWork, wspPrepare, LPassIndex);
       if not BuildReferenceModel(LGraph, LStaged, LModel,
         LInvalidLockEntry, LRequirementFailurePass,
         LRequirementFailureNamed, LInitialTraceCauses,
@@ -8583,9 +8650,11 @@ begin
       LReferenceSink := nil;
       if LTraceRecorder.Enabled then
         LReferenceSink := LTraceRecorder.ReceiveReferenceEvent;
+      FinishSolveWork(LWork);
+      BeginSolveWork(LWork, wspSearch, LPassIndex);
       if not SolveReferenceModel(LModel, AOptions.MaxBacktracks,
         False, LReferenceSink, LGraph.RandomIndex,
-        LAssignment, LReferenceReport) then
+        LAssignment, LReferenceReport, LWork) then
       begin
         CopyPassReport(LPassIndex, LReferenceReport);
         SetReferenceFailure(LPassIndex, LReferenceReport);
@@ -8595,6 +8664,8 @@ begin
         AppendTraceEvent(LTraceEvent);
         Exit(False);
       end;
+      FinishSolveWork(LWork);
+      BeginSolveWork(LWork, wspPrepare, LPassIndex);
       CopyPassReport(LPassIndex, LReferenceReport);
       AReport.Passes[LPassIndex].Disposition := gpdSolved;
 
@@ -8631,6 +8702,8 @@ begin
     ReserveTerminalTraceSlot;
     LFinalValidationPass := -1;
     LFinalValidationEntry := -1;
+    FinishSolveWork(LWork);
+    BeginSolveWork(LWork, wspCommit, -1);
     LFinalValidationValid := CommitStagedEntries(
       LFinalValidationPass, LFinalValidationEntry);
     if not LFinalValidationValid then
@@ -8734,6 +8807,7 @@ begin
       FCurPass := PassLabelFromIndex(LSavedPassIndex);
       FRunning := False;
       LTraceRecorder.Free;
+      LWork.Free;
     end;
   end;
 end;

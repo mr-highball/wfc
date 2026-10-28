@@ -544,3 +544,40 @@ form, canvas, WebAudio player, or other UI can read the same pass results. For
 cross-target examples and tests, assign an explicit `Seed`, route any
 randomness used by custom callbacks through `AGraph.RandomIndex`, and compare
 pass values in stable pass/index order.
+
+## Solve progress and cancellation
+
+All public `TrySolve`, negotiated/restarted solve and selective regeneration
+entry points accept an optional last `TWfcSolveObserver` argument from
+`wfc_solve_progress`. The callback is synchronous and borrowed for that call;
+the graph and accepted results do not retain it. A nil observer allocates no work
+scope and preserves ordinary search, budget, random-stream and trace behavior.
+
+`wspPrepare`, `wspSearch` and `wspCommit` report actual instrumented owned visits.
+PassIndex -1 denotes pipeline work. Counts restart for each pass/phase/attempt;
+Total is meaningful only when KnownTotal is true. Intermediate checkpoints occur
+every256 counted visits, with start/final checkpoints. These are work counts, not
+an estimated solution percentage or maximum time between callbacks. Search
+includes numeric model validation, domain initialization, propagation, weighted
+decisions, backtracking and final assignment checks. Preparation covers owned
+model-build loops; commit covers guarded application and validation of staged
+entries. Allocation/copying, dictionary/RTL operations, graph planning, callback
+bodies, and connectivity-analyzer interiors retain synchronous boundaries. Counts
+do not certify those interiors. Work counts reject values above2^53-1 rather
+than lose integer accuracy in a browser.
+
+Raise an exception from the work observer to cancel. Its original exception
+propagates; rollback restores accepted values/generated flags, topology, pass
+selection and random streams before returning control. No work callback runs
+during rollback/destruction, or after the final successful commit checkpoint.
+The final callback executes inside the existing commit rollback guard: rejecting
+a fully staged candidate cannot leave it accepted. Do not mutate/reenter/destroy
+the graph or draw its randomness from the callback. Caller side effects in
+custom graph hooks are not undone.
+
+Diagnostic `TraceSink` remains separate: its receiver exceptions are contained
+and recorded as delivery failures. It must not be used as cancellation. The
+maintained `wfc_solve_progress_test` exercises all six public solve families,
+start/interior/final aborts in every phase, exact trace/state replay, original
+exceptions and retry. Native build entry points execute it; browser test
+compilation discovers it with the other portable conformance programs.
