@@ -42,16 +42,139 @@ type
     procedure Observe(const AWork: TWfcSequencePreparationProgress);
   end;
 
+  { Big Boss: exercises each actual primary constructor checkpoint while the
+    caller still owns an unchanged immutable source and no published clone. }
+  TCloneObserver = class
+    Calls: Integer;
+    AbortAt: Integer;
+    Last: Integer;
+    Interior: Boolean;
+    Final: Boolean;
+    Marker: Exception;
+    Source: TWfcSequenceModel;
+    procedure Observe(const AWork: TWfcSequencePreparationProgress);
+    procedure Reset(const ASource: TWfcSequenceModel; const AAbortAt: Integer);
+  end;
+
 var
   GChecks: Integer;
   GAborts: Integer;
   GObserver: TObserver;
+  GCloneAborts: Integer;
 
 procedure Check(const AValue: Boolean; const AMessage: String);
 begin
   Inc(GChecks);
   if not AValue then
     raise Exception.Create(AMessage);
+end;
+
+procedure TCloneObserver.Reset(const ASource: TWfcSequenceModel; const AAbortAt: Integer);
+begin
+  Calls := 0;
+  AbortAt := AAbortAt;
+  Last := 0;
+  Interior := False;
+  Final := False;
+  Marker := nil;
+  Source := ASource;
+end;
+
+procedure TCloneObserver.Observe(const AWork: TWfcSequencePreparationProgress);
+begin
+  Inc(Calls);
+  Check(AWork.Phase = wspModelBuildVisits, 'Clone uses primary model construction');
+  Check((AWork.Done >= Last) and (AWork.Done - Last <= 256) and
+    ((AWork.Total = 0) or (AWork.Done <= AWork.Total)), 'Clone callback cadence and bounds');
+  Check((Source.SampleCount > 0) and (Source.PublicTokenCount > 0),
+    'Source remains readable during independent clone construction');
+  Last := AWork.Done;
+  Interior := Interior or ((AWork.Done > 0) and (AWork.Total = 0));
+  Final := (AWork.Total > 0) and (AWork.Done = AWork.Total);
+  if Calls = AbortAt then
+  begin
+    Marker := Exception.Create('Original immutable clone cancellation');
+    raise Marker;
+  end;
+end;
+
+procedure TestClones;
+const
+  COrders: array[0..2] of Integer = (1, 4, 17);
+var
+  LSamples: TWfcSequenceSamples;
+  LSource: TWfcSequenceModel;
+  LCopy: TWfcSequenceModel;
+  LObserver: TCloneObserver;
+  LText: String;
+  LBoundary: TWfcModelBoundary;
+  LOrder: Integer;
+  LCalls: Integer;
+  I: Integer;
+  J: Integer;
+  LAborted: Boolean;
+begin
+  SetLength(LSamples, 2);
+  SetLength(LSamples[0].Tokens, 64);
+  SetLength(LSamples[1].Tokens, 9);
+  for I := 0 to 63 do
+    LSamples[0].Tokens[I] := 'literal token #|' + IntToStr(I);
+  {$ifdef PAS2JS}
+  LSamples[0].Tokens[0] := #$03BB + #$D83C#$DFB5;
+  {$else}
+  LSamples[0].Tokens[0] := #$CE#$BB#$F0#$9F#$8E#$B5;
+  {$endif}
+  LSamples[0].Tokens[1] := ' quoted " token '#9' with spaces ';
+  for I := 0 to 8 do
+    LSamples[1].Tokens[I] := LSamples[0].Tokens[(I * 7) mod 64];
+  LObserver := TCloneObserver.Create;
+  try
+    for LBoundary := Low(TWfcModelBoundary) to High(TWfcModelBoundary) do
+      for J := 0 to High(COrders) do
+      begin
+        LOrder := COrders[J];
+        LSource := LearnSequenceModelCorpus(LSamples, LOrder, LBoundary);
+        LCopy := nil;
+        try
+          LText := EncodeWfcSequenceText(LSource);
+          LObserver.Reset(LSource, 0);
+          LCopy := LSource.Clone(LObserver.Observe);
+          Check((LCopy <> LSource) and (EncodeWfcSequenceText(LCopy) = LText),
+            'Observed clone preserves exact literal source model');
+          Check(LObserver.Interior and LObserver.Final, 'Clone has real interior/final work');
+          LCalls := LObserver.Calls;
+          FreeAndNil(LCopy);
+          for I := 1 to LCalls do
+          begin
+            LObserver.Reset(LSource, I);
+            LAborted := False;
+            try
+              LCopy := LSource.Clone(LObserver.Observe);
+            except
+              on E: Exception do
+              begin
+                LAborted := True;
+                Check(E = LObserver.Marker, 'Clone preserves original callback exception');
+              end;
+            end;
+            Check(LAborted and (LCopy = nil) and (LObserver.Calls = I),
+              'Failed clone publishes nothing at every checkpoint');
+            Check(EncodeWfcSequenceText(LSource) = LText, 'Clone failure preserves complete source');
+            Inc(GCloneAborts);
+          end;
+          LCopy := LSource.Clone;
+          Check(EncodeWfcSequenceText(LCopy) = LText, 'Nil-observer exact retry');
+          FreeAndNil(LSource);
+          Check(EncodeWfcSequenceText(LCopy) = LText, 'Clone survives independent source destruction');
+          WriteLn('Clone order=', LOrder, ' boundary=', Ord(LBoundary), ' checkpoints=', LCalls);
+        finally
+          LCopy.Free;
+          LSource.Free;
+        end;
+      end;
+  finally
+    LObserver.Free;
+  end;
 end;
 
 procedure TObserver.Reset;
@@ -336,6 +459,13 @@ begin
     for I := 0 to High(LTokens) do
       Check(LTokens[I] = 'pythian.context.tempo.v1.' +
         IntToStr(500000 + (I mod 1020)), 'Large source mutated');
+    FreeAndNil(LObserved);
+    GObserver.Reset;
+    LObserved := LModel.Clone(GObserver.Observe);
+    Check(EncodeWfcSequenceText(LObserved) = EncodeWfcSequenceText(LModel),
+      'Clone preserves the full admitted 1023-state/1020-token model');
+    Check(GObserver.Finals[wspModelBuildVisits] = 1,
+      'Large clone completes primary observed construction');
   finally
     LObserved.Free;
     LModel.Free;
@@ -349,8 +479,10 @@ begin
     TestLearning(wmbOpen);
     TestLearning(wmbWrap);
     TestLarge;
+    TestClones;
     WriteLn('Sequence learning progress: ', GChecks, ' checks; ', GAborts,
-      ' original interior/final aborts; ', GObserver.Calls, ' callbacks');
+      ' original interior/final aborts; ', GObserver.Calls, ' callbacks; ',
+      GCloneAborts, ' original clone aborts');
   finally
     GObserver.Free;
   end;

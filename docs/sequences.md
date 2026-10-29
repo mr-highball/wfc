@@ -11,6 +11,19 @@ arrays. The specialized [text foundation](text.md) adds a project-owned,
 lossless Unicode-scalar tokenizer plus a portable caller-defined tokenizer
 contract; MIDI and other media remain separate domain policies.
 
+## immutable model copies
+
+`Model.Clone` returns a separate caller-owned `TWfcSequenceModel` with the same
+ordered samples, public tokens, state histories, counts and open/wrapped boundary.
+It reuses primary construction directly; copying does not serialize and parse
+model text. Source and clone can be freed independently.
+
+Pass an optional `TWfcSequencePreparationObserver` to observe or cancel the
+actual constructor work. The observer is borrowed for the call, and an exception
+aborts without returning a partial model or changing the source. See
+[preparation progress](preparation-progress.md#immutable-sequence-model-cloning)
+for stage units, lifetime and synchronous boundaries.
+
 ## learning contract
 
 `LearnSequenceModel` learns one nonempty sequence. `LearnSequenceModelCorpus`

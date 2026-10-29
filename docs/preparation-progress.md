@@ -55,6 +55,23 @@ builder supports it; their call sites must explicitly forward a receiver.
 
 ## Cancellation and ownership
 
+### Immutable sequence-model cloning
+
+`TWfcSequenceModel.Clone(Observer)` returns an independent caller-owned model
+through the same primary observed constructor used by ordinary creation. The
+observer is optional and borrowed only for that call. It reports existing
+`wspModelBuildVisits` start/interior/final checkpoints; no new copy algorithm,
+text serialization or duplicated validator is involved. Ordered sample lengths,
+literal public tokens, histories, counts, open/wrapped boundary and model version
+are preserved. Source and clone can be freed independently.
+
+Raise from the observer to abort. No clone is returned, private constructor data
+is released, the original exception propagates and the immutable source remains
+usable for retry. Do not free or mutate the source or re-enter cloning from the
+callback. Allocation, string/reference operations and individual RTL copies
+remain synchronous between the existing checkpoints; observation does not yield
+a browser event loop or promise a maximum elapsed-time interval.
+
 The observer is borrowed for one call. It must not mutate borrowed inputs,
 reenter the operation or retain private construction state. Raise an exception
 to abort. The original observer exception propagates unchanged through the

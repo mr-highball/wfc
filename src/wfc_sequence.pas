@@ -181,6 +181,14 @@ type
       const ABoundary: TWfcModelBoundary = wmbOpen;
       const AObserver: TWfcSequencePreparationObserver = nil);
 
+    { Big Boss: returns an independent caller-owned immutable model using this
+      type's primary observed constructor. Preserves ordered source metadata,
+      literal tokens, histories, counts and boundary without text serialization.
+      The observer is borrowed for this call; raise to abort before publication.
+      Source and clone may be freed independently. Do not mutate/free the source
+      or re-enter cloning from its callback. RTL allocation remains synchronous. }
+    function Clone(const AObserver: TWfcSequencePreparationObserver = nil): TWfcSequenceModel;
+
     function SampleLengthAt(const ASampleIndex: Integer): Integer;
     function PublicTokenAt(
       const APublicTokenIndex: Integer): TWfcModelToken;
@@ -954,6 +962,13 @@ function TWfcSequenceModel.GetModelVersion: Integer;
 begin
   if FBoundary = wmbWrap then Result := WFC_SEQUENCE_WRAPPED_MODEL_VERSION
   else Result := WFC_SEQUENCE_MODEL_VERSION;
+end;
+
+function TWfcSequenceModel.Clone(
+  const AObserver: TWfcSequencePreparationObserver): TWfcSequenceModel;
+begin
+  Result := TWfcSequenceModel.Create(FOrder, FSampleLengths, FPublicTokens, FStates,
+    FStateCounts, FStartCounts, FEndCounts, FBoundary, AObserver);
 end;
 
 function TWfcSequenceModel.GetHistorySize: Integer;
