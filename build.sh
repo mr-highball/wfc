@@ -99,10 +99,14 @@ building_example_directory="$repository_root/examples/3D/02_MultiPassBuilding"
 building_common_directory="$repository_root/examples/3D/common"
 building_svg_source="$repository_root/examples/3D/03_BrowserBuilding/Building3DSvg.lpr"
 world_common_directory="$repository_root/examples/2D/common"
-unit_output_directory="$repository_root/build/native/units"
+unit_output_root="$repository_root/build/native/units"
 binary_output_directory="$repository_root/build/native/bin"
 
-mkdir -p -- "$unit_output_directory" "$binary_output_directory" || exit $?
+mkdir -p -- "$unit_output_root" "$binary_output_directory" || exit $?
+# Big Boss: every invocation starts without earlier compiler/flag/target units.
+# Consumers within this immutable source run share FPC's checked units instead
+# of forcing all dependencies to compile again for every program.
+unit_output_directory=$(mktemp -d "$unit_output_root/run.XXXXXXXX") || exit $?
 
 compiler_source_directory=$source_directory
 compiler_tools_directory=$tools_directory
@@ -309,7 +313,7 @@ for package_check_source in \
   "$compiler_source_directory/../test/wfc_package_check_test.lpr" \
   "$compiler_source_directory/../test/wfc_package_check_process_test.lpr"
 do
-  "$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
+  "$compiler" "$@" -Mdelphi -Sa -Cr -Co -Ci \
     "-Fu$compiler_tools_directory" "-FU$compiler_unit_output_directory" \
     "-FE$compiler_binary_output_directory" "$package_check_source" || exit $?
 done
@@ -321,7 +325,6 @@ done
   "$compiler_binary_output_directory/wfc_package_check$package_check_suffix" || exit $?
 
 "$compiler" "$@" \
-  -B \
   -Mdelphi \
   -Sa \
   -Cr \
@@ -349,7 +352,7 @@ for study_source in \
   "$compiler_source_directory/../test/wfc_music_studies_process_test.lpr"
 do
   printf "Building native music study source '%s'.\n" "$study_source"
-  "$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
+  "$compiler" "$@" -Mdelphi -Sa -Cr -Co -Ci \
     "-Fu$compiler_source_directory" "-Fu$compiler_tools_directory" \
     "-Fu$compiler_music_study_directory/common" \
     "-Fu$compiler_music_study_directory/01_simple_A_major" \
@@ -367,7 +370,7 @@ case "$host_system" in CYGWIN*|MINGW*|MSYS*) study_suffix='.exe' ;; esac
 
 for count_test_name in wfc_pass_count_test wfc_pipeline_count_test wfc_count_demo_test; do
   printf "Building the count-constraint suite '%s'.\n" "$count_test_name"
-  "$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
+  "$compiler" "$@" -Mdelphi -Sa -Cr -Co -Ci \
     "-Fu$compiler_source_directory" "-Fu$compiler_count_demo_directory" \
     "-FU$compiler_unit_output_directory" "-FE$compiler_binary_output_directory" \
     "$compiler_source_directory/../test/$count_test_name.lpr" || exit $?
@@ -379,7 +382,7 @@ for count_test_name in wfc_pass_count_test wfc_pipeline_count_test wfc_count_dem
   "$count_test_executable" || exit $?
 done
 printf 'Building and checking Neighborhood Counts.\n'
-"$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
+"$compiler" "$@" -Mdelphi -Sa -Cr -Co -Ci \
   "-Fu$compiler_source_directory" "-Fu$compiler_count_demo_directory" \
   "-FU$compiler_unit_output_directory" "-FE$compiler_binary_output_directory" \
   "$compiler_count_demo_directory/NeighborhoodCounts.lpr" || exit $?
@@ -392,7 +395,7 @@ esac
 compiler_connectivity_demo_directory="$compiler_source_directory/../examples/passes/06_ConnectedRoutes"
 for connectivity_test_name in wfc_connectivity_reference_test wfc_connectivity_test wfc_connectivity_trace_test wfc_connectivity_demo_test wfc_value_quota_reference_test wfc_value_quota_test wfc_value_quota_trace_test; do
   printf "Building and running '%s'.\n" "$connectivity_test_name"
-  "$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
+  "$compiler" "$@" -Mdelphi -Sa -Cr -Co -Ci \
     "-Fu$compiler_source_directory" "-Fu$compiler_tools_directory" \
     "-Fu$compiler_connectivity_demo_directory" \
     "-FU$compiler_unit_output_directory" "-FE$compiler_binary_output_directory" \
@@ -409,7 +412,7 @@ for connectivity_source in \
   "$compiler_connectivity_demo_directory/ConnectedRoutes.lpr" \
   "$compiler_source_directory/../test/wfc_connectivity_process_test.lpr"
 do
-  "$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
+  "$compiler" "$@" -Mdelphi -Sa -Cr -Co -Ci \
     "-Fu$compiler_source_directory" "-Fu$compiler_tools_directory" \
     "-Fu$compiler_connectivity_demo_directory" \
     "-FU$compiler_unit_output_directory" "-FE$compiler_binary_output_directory" \
@@ -433,7 +436,7 @@ esac
 compiler_mapped_world_demo_directory="$compiler_source_directory/../examples/passes/07_MappedWorld"
 for mapped_world_test_name in wfc_mapped_world_test wfc_mapped_world_geometry_test; do
   printf "Building and running '%s'.\n" "$mapped_world_test_name"
-  "$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
+  "$compiler" "$@" -Mdelphi -Sa -Cr -Co -Ci \
     "-Fu$compiler_source_directory" "-Fu$compiler_tools_directory" \
     "-Fu$compiler_mapped_world_demo_directory" \
     "-FU$compiler_unit_output_directory" "-FE$compiler_binary_output_directory" \
@@ -450,7 +453,7 @@ for mapped_world_source in \
   "$compiler_mapped_world_demo_directory/MappedWorld.lpr" \
   "$compiler_source_directory/../test/wfc_mapped_world_process_test.lpr"
 do
-  "$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
+  "$compiler" "$@" -Mdelphi -Sa -Cr -Co -Ci \
     "-Fu$compiler_source_directory" "-Fu$compiler_tools_directory" \
     "-Fu$compiler_mapped_world_demo_directory" \
     "-FU$compiler_unit_output_directory" "-FE$compiler_binary_output_directory" \
@@ -475,7 +478,7 @@ esac
 compiler_pipeline_workspace_demo_directory="$compiler_source_directory/../examples/passes/08_PipelineWorkspace"
 for pipeline_workspace_test_name in pipeline_workspace_workbench_test pipeline_workspace_view_test pipeline_workspace_presets_test; do
   printf "Building and running '%s'.\n" "$pipeline_workspace_test_name"
-  "$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
+  "$compiler" "$@" -Mdelphi -Sa -Cr -Co -Ci \
     "-Fu$compiler_source_directory" "-Fu$compiler_tools_directory" \
     "-Fu$compiler_source_directory/../test" "-Fu$compiler_pipeline_workspace_demo_directory" \
     "-FU$compiler_unit_output_directory" "-FE$compiler_binary_output_directory" \
@@ -490,7 +493,7 @@ done
 compiler_restart_demo_directory="$compiler_source_directory/../examples/passes/05_DeterministicRestarts"
 for restart_test_name in wfc_restart_test wfc_timing_test wfc_restart_demo_test; do
   printf "Building the restart suite '%s'.\n" "$restart_test_name"
-  "$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
+  "$compiler" "$@" -Mdelphi -Sa -Cr -Co -Ci \
     "-Fu$compiler_source_directory" "-Fu$compiler_restart_demo_directory" \
     "-FU$compiler_unit_output_directory" "-FE$compiler_binary_output_directory" \
     "$compiler_source_directory/../test/$restart_test_name.lpr" || exit $?
@@ -502,7 +505,7 @@ for restart_test_name in wfc_restart_test wfc_timing_test wfc_restart_demo_test;
   "$restart_test_executable" || exit $?
 done
 printf 'Building and checking Deterministic Restarts.\n'
-"$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
+"$compiler" "$@" -Mdelphi -Sa -Cr -Co -Ci \
   "-Fu$compiler_source_directory" "-Fu$compiler_restart_demo_directory" \
   "-FU$compiler_unit_output_directory" "-FE$compiler_binary_output_directory" \
   "$compiler_restart_demo_directory/RestartPolicies.lpr" || exit $?
@@ -515,7 +518,7 @@ esac
 compiler_ensemble_demo_directory="$compiler_source_directory/../examples/music/06_EnsembleStudio"
 for ensemble_test_name in wfc_music_ensemble_test wfc_music_ensemble_graph_test wfc_music_ensemble_passes_test wfc_music_ensemble_training_test wfc_music_ensemble_demo_test wfc_sequence_segment_test wfc_music_ensemble_stream_test wfc_music_ensemble_audio_test wfc_music_ensemble_stream_demo_test wfc_midi_stream_test wfc_music_ensemble_midi_test wfc_music_ensemble_midi_stream_demo_test wfc_music_form_test wfc_ensemble_profiles_test wfc_music_ensemble_plan_hooks_test wfc_ensemble_development_test wfc_ensemble_developed_midi_test wfc_ensemble_http_test; do
   printf "Building and running '%s'.\n" "$ensemble_test_name"
-  "$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
+  "$compiler" "$@" -Mdelphi -Sa -Cr -Co -Ci \
     "-Fu$compiler_source_directory" "-Fu$compiler_ensemble_demo_directory" "-Fu$compiler_source_directory/../tools" \
     "-FU$compiler_unit_output_directory" "-FE$compiler_binary_output_directory" \
     "$compiler_source_directory/../test/$ensemble_test_name.lpr" || exit $?
@@ -526,7 +529,7 @@ for ensemble_test_name in wfc_music_ensemble_test wfc_music_ensemble_graph_test 
   "$ensemble_test_executable" || exit $?
 done
 printf 'Building and checking Ensemble Studio.\n'
-"$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
+"$compiler" "$@" -Mdelphi -Sa -Cr -Co -Ci \
   "-Fu$compiler_source_directory" "-Fu$compiler_ensemble_demo_directory" \
   "-FU$compiler_unit_output_directory" "-FE$compiler_binary_output_directory" \
   "$compiler_ensemble_demo_directory/EnsembleStudio.lpr" || exit $?
@@ -538,7 +541,6 @@ esac
 
 printf "Building the 2D ecosystem conformance suite.\n"
 "$compiler" "$@" \
-  -B \
   -Mdelphi \
   -Sa \
   -Cr \
@@ -559,7 +561,6 @@ printf "Running '%s'.\n" "$world_test_executable"
 
 printf "Building the selective-settlement conformance suite.\n"
 "$compiler" "$@" \
-  -B \
   -Mdelphi \
   -Sa \
   -Cr \
@@ -580,7 +581,6 @@ printf "Running '%s'.\n" "$settlement_test_executable"
 
 printf "Building the model-learning conformance suite.\n"
 "$compiler" "$@" \
-  -B \
   -Mdelphi \
   -Sa \
   -Cr \
@@ -601,7 +601,6 @@ printf "Running '%s'.\n" "$learning_test_executable"
 
 printf "Building the overlapping-pattern conformance suite.\n"
 "$compiler" "$@" \
-  -B \
   -Mdelphi \
   -Sa \
   -Cr \
@@ -622,7 +621,6 @@ printf "Running '%s'.\n" "$pattern_test_executable"
 
 printf "Building the pattern-projected-pass conformance suite.\n"
 "$compiler" "$@" \
-  -B \
   -Mdelphi \
   -Sa \
   -Cr \
@@ -649,7 +647,7 @@ for sequence_suite in wfc_sequence_test wfc_sequence_preparation_test wfc_sequen
     *) sequence_suite_source=$compiler_sequence_capture_progress_test_source ;;
   esac
   printf "Building '%s'.\n" "$sequence_suite"
-  "$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
+  "$compiler" "$@" -Mdelphi -Sa -Cr -Co -Ci \
     "-Fu$compiler_source_directory" "-FU$compiler_unit_output_directory" \
     "-FE$compiler_binary_output_directory" "$sequence_suite_source" || exit $?
   sequence_test_executable="$binary_output_directory/$sequence_suite"
@@ -662,7 +660,6 @@ done
 
 printf "Building the text-completion conformance suite.\n"
 "$compiler" "$@" \
-  -B \
   -Mdelphi \
   -Sa \
   -Cr \
@@ -687,7 +684,6 @@ for compiler_text_pass_suite in \
 do
   printf "Building the multi-pass text suite '%s'.\n" "$compiler_text_pass_suite"
   "$compiler" "$@" \
-    -B \
     -Mdelphi \
     -Sa \
     -Cr \
@@ -710,7 +706,6 @@ done
 
 printf "Building the bounded pass-negotiation conformance suite.\n"
 "$compiler" "$@" \
-  -B \
   -Mdelphi \
   -Sa \
   -Cr \
@@ -731,7 +726,6 @@ printf "Running '%s'.\n" "$negotiation_test_executable"
 
 printf "Building the selective pass-negotiation conformance suite.\n"
 "$compiler" "$@" \
-  -B \
   -Mdelphi \
   -Sa \
   -Cr \
@@ -752,7 +746,6 @@ printf "Running '%s'.\n" "$selective_negotiation_test_executable"
 
 printf "Building the voxel-3D foundation conformance suite.\n"
 "$compiler" "$@" \
-  -B \
   -Mdelphi \
   -Sa \
   -Cr \
@@ -773,7 +766,6 @@ printf "Running '%s'.\n" "$voxel_test_executable"
 
 printf "Building the multi-pass Building 3D conformance suite.\n"
 "$compiler" "$@" \
-  -B \
   -Mdelphi \
   -Sa \
   -Cr \
@@ -807,7 +799,6 @@ do
   trace_suite_name=$(basename "$compiler_trace_suite" .lpr)
   printf "Building the causal-trace conformance suite '%s'.\n" "$trace_suite_name"
   "$compiler" "$@" \
-    -B \
     -Mdelphi \
     -Sa \
     -Cr \
@@ -836,7 +827,6 @@ do
   printf "Building the 3D presentation conformance suite '%s'.\n" \
     "$viewer_suite_name"
   "$compiler" "$@" \
-    -B \
     -Mdelphi \
     -Sa \
     -Cr \
@@ -874,7 +864,6 @@ do
   music_suite_name=$(basename -- "$compiler_music_suite" .lpr)
   printf "Building the music conformance suite '%s'.\n" "$music_suite_name"
   "$compiler" "$@" \
-    -B \
     -Mdelphi \
     -Sa \
     -Cr \
@@ -990,7 +979,6 @@ do
   printf "Building the portable-artifact suite '%s'.\n" \
     "$artifact_suite_name"
   "$compiler" "$@" \
-    -B \
     -Mdelphi \
     -Sa \
     -Cr \
@@ -1049,7 +1037,6 @@ do
   esac
   printf "Building the portable command-line host '%s'.\n" "$tool_name"
   "$compiler" "$@" \
-    -B \
     -Mdelphi \
     -Sa \
     -Cr \
@@ -1073,7 +1060,7 @@ do
 done
 
 printf 'Building and running FPC asset-check process conformance.\n'
-"$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
+"$compiler" "$@" -Mdelphi -Sa -Cr -Co -Ci \
   "-Fu$compiler_source_directory" "-Fu$compiler_tools_directory" \
   "-Fu$compiler_source_directory/../test" \
   "-FU$compiler_unit_output_directory" "-FE$compiler_binary_output_directory" \
@@ -1128,7 +1115,7 @@ bash "$repository_root/test/wfc_learn_cli_process_test.sh" \
   "$runner_tool_executable" || exit $?
 
 printf 'Building and running FPC artifact-family process conformance.\n'
-"$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
+"$compiler" "$@" -Mdelphi -Sa -Cr -Co -Ci \
   "-Fu$compiler_source_directory" "-Fu$compiler_tools_directory" \
   "-FU$compiler_unit_output_directory" "-FE$compiler_binary_output_directory" \
   "$compiler_source_directory/../test/wfc_artifact_cli_process_test.lpr" || exit $?
@@ -1142,7 +1129,7 @@ esac
   "$compiler_source_directory/.." || exit $?
 
 printf 'Building and running FPC mapped-pipeline process conformance.\n'
-"$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
+"$compiler" "$@" -Mdelphi -Sa -Cr -Co -Ci \
   "-Fu$compiler_source_directory" "-Fu$compiler_tools_directory" \
   "-Fu$compiler_source_directory/../test" \
   "-FU$compiler_unit_output_directory" "-FE$compiler_binary_output_directory" \
@@ -1160,7 +1147,7 @@ esac
 
 printf 'Building and running FPC workspace CLI process conformance.\n'
 for workspace_process_source in wfc_workspace_cli_fixture.lpr wfc_workspace_cli_process_test.lpr; do
-  "$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
+  "$compiler" "$@" -Mdelphi -Sa -Cr -Co -Ci \
     "-Fu$compiler_source_directory" "-Fu$compiler_tools_directory" \
     "-Fu$compiler_source_directory/../test" \
     "-FU$compiler_unit_output_directory" "-FE$compiler_binary_output_directory" \
@@ -1184,7 +1171,7 @@ for pipeline_workspace_source in \
   "$compiler_source_directory/../test/pipeline_workspace_native_fixture.lpr" \
   "$compiler_source_directory/../test/pipeline_workspace_native_process_test.lpr"
 do
-  "$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
+  "$compiler" "$@" -Mdelphi -Sa -Cr -Co -Ci \
     "-Fu$compiler_source_directory" "-Fu$compiler_tools_directory" \
     "-Fu$compiler_source_directory/../test" "-Fu$compiler_pipeline_workspace_demo_directory" \
     "-FU$compiler_unit_output_directory" "-FE$compiler_binary_output_directory" \
@@ -1204,7 +1191,6 @@ esac
 
 printf "Building the dependency-free tiled-world example.\n"
 "$compiler" "$@" \
-  -B \
   -Mdelphi \
   -Sa \
   -Cr \
@@ -1225,7 +1211,6 @@ printf "Smoke testing '%s' with seed 0.\n" "$example_executable"
 
 printf "Building the portable multi-pass 2D example.\n"
 "$compiler" "$@" \
-  -B \
   -Mdelphi \
   -Sa \
   -Cr \
@@ -1250,7 +1235,6 @@ printf "Smoke testing '%s' with its default seed.\n" "$world_example_executable"
 
 printf "Building the portable selective-settlement example.\n"
 "$compiler" "$@" \
-  -B \
   -Mdelphi \
   -Sa \
   -Cr \
@@ -1275,7 +1259,6 @@ printf "Smoke testing '%s' with its default seed.\n" "$settlement_example_execut
 
 printf "Building the dependency-free negotiated-repair example.\n"
 "$compiler" "$@" \
-  -B \
   -Mdelphi \
   -Sa \
   -Cr \
@@ -1297,7 +1280,6 @@ printf "Smoke testing '%s'.\n" "$negotiated_repair_example_executable"
 
 printf "Building the dependency-free learned-pattern-world example.\n"
 "$compiler" "$@" \
-  -B \
   -Mdelphi \
   -Sa \
   -Cr \
@@ -1319,7 +1301,6 @@ printf "Smoke testing '%s' with seed 0.\n" "$learned_pattern_world_example_execu
 
 printf "Building the portable learned-tiles example.\n"
 "$compiler" "$@" \
-  -B \
   -Mdelphi \
   -Sa \
   -Cr \
@@ -1340,7 +1321,6 @@ printf "Smoke testing '%s' with seed 0.\n" "$learning_example_executable"
 
 printf "Building the portable learned-corpus example.\n"
 "$compiler" "$@" \
-  -B \
   -Mdelphi \
   -Sa \
   -Cr \
@@ -1361,7 +1341,6 @@ printf "Smoke testing '%s' with seed 0.\n" "$corpus_example_executable"
 
 printf "Building the portable overlapping-pattern example.\n"
 "$compiler" "$@" \
-  -B \
   -Mdelphi \
   -Sa \
   -Cr \
@@ -1382,7 +1361,6 @@ printf "Smoke testing '%s' with seed 0.\n" "$pattern_example_executable"
 
 printf "Building the portable learned-sequence example.\n"
 "$compiler" "$@" \
-  -B \
   -Mdelphi \
   -Sa \
   -Cr \
@@ -1403,7 +1381,6 @@ printf "Smoke testing '%s' with seed 0.\n" "$sequence_example_executable"
 
 printf "Building the portable text constraint-completion example.\n"
 "$compiler" "$@" \
-  -B \
   -Mdelphi \
   -Sa \
   -Cr \
@@ -1425,7 +1402,6 @@ printf "Smoke testing '%s' with seed 0.\n" "$text_completion_example_executable"
 
 printf "Building the dependency-free multi-pass text example.\n"
 "$compiler" "$@" \
-  -B \
   -Mdelphi \
   -Sa \
   -Cr \
@@ -1447,7 +1423,6 @@ printf "Smoke testing '%s' with seed 0.\n" "$text_pass_example_executable"
 
 printf "Building the dependency-free pass-composed music example.\n"
 "$compiler" "$@" \
-  -B \
   -Mdelphi \
   -Sa \
   -Cr \
@@ -1468,7 +1443,6 @@ printf "Smoke testing '%s' with seed 0.\n" "$music_example_executable"
 
 printf "Building the negotiated music-variation example.\n"
 "$compiler" "$@" \
-  -B \
   -Mdelphi \
   -Sa \
   -Cr \
@@ -1490,7 +1464,6 @@ printf "Smoke testing '%s' with seed 0.\n" "$music_variation_example_executable"
 
 printf "Building the dependency-free spatial-pass example.\n"
 "$compiler" "$@" \
-  -B \
   -Mdelphi \
   -Sa \
   -Cr \
@@ -1511,7 +1484,6 @@ printf "Smoke testing '%s' with seed 0.\n" "$spatial_example_executable"
 
 printf "Building the dependency-free causal-trace inspector example.\n"
 "$compiler" "$@" \
-  -B \
   -Mdelphi \
   -Sa \
   -Cr \
@@ -1533,7 +1505,6 @@ printf "Smoke testing '%s' with seed 0.\n" "$trace_example_executable"
 
 printf "Building the dependency-free pass-negotiation example.\n"
 "$compiler" "$@" \
-  -B \
   -Mdelphi \
   -Sa \
   -Cr \
@@ -1555,7 +1526,6 @@ printf "Smoke testing '%s'.\n" "$negotiation_example_executable"
 
 printf "Building the dependency-free multi-pass Building 3D example.\n"
 "$compiler" "$@" \
-  -B \
   -Mdelphi \
   -Sa \
   -Cr \
@@ -1578,7 +1548,6 @@ printf "Smoke testing '%s' with seed 0.\n" "$building_example_executable"
 
 printf "Building the dependency-free Building 3D SVG example.\n"
 "$compiler" "$@" \
-  -B \
   -Mdelphi \
   -Sa \
   -Cr \
@@ -1605,7 +1574,7 @@ printf "Smoke testing '%s' with seed 0.\n" "$building_svg_executable"
 "$building_svg_executable" 0 "$building_svg_runtime_output" >/dev/null || exit $?
 
 printf 'Building and checking Training Studio presets and authored constraints.\n'
-"$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
+"$compiler" "$@" -Mdelphi -Sa -Cr -Co -Ci \
   "-Fu$compiler_source_directory" "-Fu$compiler_training_studio_directory" \
   "-FU$compiler_unit_output_directory" "-FE$compiler_binary_output_directory" \
   "$compiler_training_studio_directory/TrainingStudio.lpr" || exit $?
@@ -1618,7 +1587,7 @@ esac
 "$training_studio_executable" --connectivity-selftest || exit $?
 
 printf 'Building and checking the native overlapping-volume SVG export.\n'
-"$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
+"$compiler" "$@" -Mdelphi -Sa -Cr -Co -Ci \
   "-Fu$compiler_source_directory" "-Fu$compiler_tools_directory" \
   "-Fu$compiler_training_studio_directory" \
   "-FU$compiler_unit_output_directory" "-FE$compiler_binary_output_directory" \
@@ -1630,7 +1599,7 @@ esac
 "$training_volume_executable" --seed 0 >/dev/null || exit $?
 
 printf 'Building and checking Music Studio.\n'
-"$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
+"$compiler" "$@" -Mdelphi -Sa -Cr -Co -Ci \
   "-Fu$compiler_source_directory" "-Fu$compiler_music_studio_directory" \
   "-FU$compiler_unit_output_directory" "-FE$compiler_binary_output_directory" \
   "$compiler_music_studio_directory/MusicStudio.lpr" || exit $?
@@ -1641,7 +1610,7 @@ esac
 "$music_studio_executable" --selftest || exit $?
 
 printf 'Building and checking the Music Studio form matrix.\n'
-"$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
+"$compiler" "$@" -Mdelphi -Sa -Cr -Co -Ci \
   "-Fu$compiler_source_directory" "-Fu$compiler_music_studio_directory" \
   "-FU$compiler_unit_output_directory" "-FE$compiler_binary_output_directory" \
   "$compiler_music_studio_directory/MusicStudioFormProbe.lpr" || exit $?
@@ -1664,7 +1633,7 @@ for render_source in \
   "$compiler_music_studio_directory/MusicStudioRender.lpr" \
   "$compiler_source_directory/../test/wfc_music_render_process_test.lpr"
 do
-  "$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
+  "$compiler" "$@" -Mdelphi -Sa -Cr -Co -Ci \
     "-Fu$compiler_source_directory" "-Fu$compiler_music_studio_directory" \
     "-FU$compiler_unit_output_directory" "-FE$compiler_binary_output_directory" \
     "$render_source" || exit $?
@@ -1685,7 +1654,7 @@ for render_source in \
   "$compiler_ensemble_demo_directory/EnsembleStudioRender.lpr" \
   "$compiler_source_directory/../test/wfc_music_ensemble_render_process_test.lpr"
 do
-  "$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
+  "$compiler" "$@" -Mdelphi -Sa -Cr -Co -Ci \
     "-Fu$compiler_source_directory" "-Fu$compiler_ensemble_demo_directory" \
     "-Fu$compiler_tools_directory" \
     "-FU$compiler_unit_output_directory" "-FE$compiler_binary_output_directory" \
@@ -1707,7 +1676,7 @@ for serve_source in \
   "$compiler_ensemble_demo_directory/EnsembleStudioServe.lpr" \
   "$compiler_source_directory/../test/wfc_ensemble_http_process_test.lpr"
 do
-  "$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
+  "$compiler" "$@" -Mdelphi -Sa -Cr -Co -Ci \
     "-Fu$compiler_source_directory" "-Fu$compiler_ensemble_demo_directory" \
     "-Fu$compiler_tools_directory" \
     "-FU$compiler_unit_output_directory" "-FE$compiler_binary_output_directory" \
@@ -1729,7 +1698,7 @@ for render_source in \
   "$compiler_ensemble_demo_directory/EnsembleStudioMidiRender.lpr" \
   "$compiler_source_directory/../test/wfc_music_ensemble_midi_render_process_test.lpr"
 do
-  "$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
+  "$compiler" "$@" -Mdelphi -Sa -Cr -Co -Ci \
     "-Fu$compiler_source_directory" "-Fu$compiler_ensemble_demo_directory" \
     "-Fu$compiler_tools_directory" \
     "-FU$compiler_unit_output_directory" "-FE$compiler_binary_output_directory" \
@@ -1749,7 +1718,7 @@ esac
 compiler_voices_demo_directory="$compiler_source_directory/../examples/music/07_VoiceStudio"
 for voices_test_name in wfc_sequence_partial_projection_test wfc_music_voices_graph_test wfc_music_voices_preparation_test wfc_music_voices_training_test wfc_music_voices_stream_test wfc_music_voices_demo_test; do
   printf "Building and running '%s'.\n" "$voices_test_name"
-  "$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
+  "$compiler" "$@" -Mdelphi -Sa -Cr -Co -Ci \
     "-Fu$compiler_source_directory" "-Fu$compiler_voices_demo_directory" \
     "-Fu$compiler_tools_directory" \
     "-FU$compiler_unit_output_directory" "-FE$compiler_binary_output_directory" \
@@ -1765,7 +1734,7 @@ for render_source in \
   "$compiler_voices_demo_directory/VoiceStudioRender.lpr" \
   "$compiler_source_directory/../test/wfc_music_voices_render_process_test.lpr"
 do
-  "$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
+  "$compiler" "$@" -Mdelphi -Sa -Cr -Co -Ci \
     "-Fu$compiler_source_directory" "-Fu$compiler_voices_demo_directory" \
     "-Fu$compiler_tools_directory" \
     "-FU$compiler_unit_output_directory" "-FE$compiler_binary_output_directory" \
@@ -1783,7 +1752,7 @@ esac
   "$compiler_binary_output_directory" || exit $?
 
 printf 'Building and checking the learned-volume terrace SVG demo.\n'
-"$compiler" "$@" -B -Mdelphi -Sa -Cr -Co -Ci \
+"$compiler" "$@" -Mdelphi -Sa -Cr -Co -Ci \
   "-Fu$compiler_source_directory" "-FU$compiler_unit_output_directory" \
   "-FE$compiler_binary_output_directory" \
   "$compiler_source_directory/../examples/3D/04_LearnedTerraces/LearnedTerraces.lpr" || exit $?

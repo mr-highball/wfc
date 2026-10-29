@@ -206,6 +206,11 @@ Both scripts preserve nonzero failure exits and place build output under
 artifact codecs, native tools, and console demonstrations. Portable
 conformance sources also compile and execute in real browsers.
 
+The shell gate starts a fresh unit directory for each invocation, then reuses
+FPC's checked units across its consumer programs. Earlier runs or compiler
+profiles cannot supply cached units. Existing program compilations and runtime
+checks remain; assertions, range/overflow/I/O checks and CI's time limit are unchanged.
+
 For example, build and host Music Studio using the included FPC server:
 
 ```powershell

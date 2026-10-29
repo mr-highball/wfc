@@ -95,7 +95,13 @@ From the repository root, use the entry point for your shell:
 ./build.sh
 ```
 
-Both scripts rebuild with assertions and range, overflow, and I/O checks, run
+The shell gate creates a fresh `build/native/units/run.*` directory per
+invocation and shares its checked units across consumers in that run. It does
+not load unit output from earlier runs or other compiler/target/flag profiles.
+FPC still compiles every program, checks source dependencies and propagates
+failures. Caller-supplied compiler arguments are forwarded as before.
+
+Both scripts build with assertions and range, overflow, and I/O checks, run
 `wfc_test`, `wfc_lattice_test`, `wfc_mapped_passes_test`,
 `wfc_world2d_test`, `wfc_world2d_settlement_test`,
 `wfc_learn_test`, `wfc_pattern2d_test`, `wfc_pattern2d_passes_test`,
