@@ -91,6 +91,7 @@ $artifactTestSources = @(
   (Join-Path $repositoryRoot 'test/wfc_workspace_journal_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_workspace_replay_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_regeneration_scope_test.lpr')
+  (Join-Path $repositoryRoot 'test/wfc_assignments_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_lattice_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_mapped_passes_test.lpr')
   (Join-Path $repositoryRoot 'test/wfc_pass_bridge_layout_test.lpr')

@@ -42,6 +42,23 @@ type
   //user defined value
   TGraphValue = String;
   TGraphValues = TArray<TGraphValue>;
+  { Detached assignment data, not a graph recipe or proof of its constraints. }
+  TGraphAssignmentCell = record
+    Value: TGraphValue;
+    Empty: Boolean;
+    Generated: Boolean;
+  end;
+  TGraphAssignmentCells = array of TGraphAssignmentCell;
+  TGraphAssignmentPass = record
+    LabelText: String;
+    Layout: TWfcLatticeLayout;
+    Cells: TGraphAssignmentCells;
+  end;
+  TGraphAssignmentPasses = array of TGraphAssignmentPass;
+  TGraphAssignmentSnapshot = record
+    Version: Integer;
+    Passes: TGraphAssignmentPasses;
+  end;
   //Positive relative frequency used by the reference solver. Integer weights
   //keep model identity and native/pas2js replay independent of host floats.
   TGraphWeight = Integer;
@@ -861,6 +878,10 @@ type
     FValueQuotas: TGraphValueQuotaConstraints;
     FTraceSink: TGraphTraceSink;
 
+    function StageAssignments(const ASource: TGraphAssignmentSnapshot;
+      const AFromGraph: Boolean; const AMaximumEntries, AMaximumTextUnits: Integer;
+      const AObserver: TWfcSolveObserver): TGraphAssignmentSnapshot;
+
     function GetTraceSink: TGraphTraceSink;
     procedure SetTraceSink(const AValue: TGraphTraceSink);
 
@@ -1069,8 +1090,8 @@ type
     *)
     property Seed : TGraphSeed read GetSeed write SetSeed;
 
-    //True while the root pipeline is executing. PassGraph instances forward
-    //this state so adapters can reject multi-step imports before any mutation.
+    //True while the root pipeline executes or captures/restores assignments.
+    //PassGraph instances forward this state so adapters can reject reentry.
     property Running: Boolean read GetRunning;
     { Read-only proof is permitted by domain adapters during this exact hook.
       Existing Running-based mutation/reentry guards remain active throughout. }
@@ -1277,6 +1298,24 @@ type
     *)
     procedure ResolveRegenerationScope(const ARequestedRoots: TGraphPassLabels;
       out ACanonicalRoots, AActivePasses: TGraphPassIndices);
+
+    { Capture/restore assignment ownership without running the solver. The caller
+      supplies the same configured graph, rules, domains and seed; this is not a
+      complete recipe, RNG checkpoint or independent validity certificate.
+      Restore requires all target entries empty, and validates version1, matching
+      pass labels/layouts, known values and target domains before publication.
+      Limits bound aggregate cells and in-process string units (including labels).
+      The borrowed observer receives preparation/commit visits, never search;
+      it must not mutate inputs/graph, draw randomness or destroy either owner.
+      Exceptions before publication preserve target assignments. No setter hooks
+      run while restoring validated ownership. Both APIs forward to the root. }
+    function CaptureAssignments(const AMaximumEntries: Integer = 1000000;
+      const AMaximumTextUnits: Integer = 16777216;
+      const AObserver: TWfcSolveObserver = nil): TGraphAssignmentSnapshot;
+    procedure RestoreAssignments(const ASnapshot: TGraphAssignmentSnapshot;
+      const AMaximumEntries: Integer = 1000000;
+      const AMaximumTextUnits: Integer = 16777216;
+      const AObserver: TWfcSolveObserver = nil);
 
     function TryRegenerateFrom(const APass: String;
       const AOptions: TGraphSolveOptions;
@@ -3731,9 +3770,9 @@ end;
 procedure TGraphEntry.RestoreValueState(const AValue: TGraphValue;
   const AEmpty, AGenerated: Boolean);
 begin
-  //Used only to roll back an exception raised while atomically committing a
-  //fully solved pipeline. Hooks are intentionally bypassed during rollback;
-  //their external side effects cannot be made transactional by this unit.
+  //Used by transaction rollback and validated assignment restoration. Hooks
+  //are intentionally bypassed; their external side effects cannot be made
+  //transactional by this unit.
   FVal := AValue;
   FEmpty := AEmpty;
   FGenerated := AGenerated;
@@ -7135,6 +7174,149 @@ begin
   EnsureInitialPass;
   BuildDescendantPassSelection(ARequestedRoots, 'ResolveRegenerationScope',
     ACanonicalRoots, AActivePasses, LDirty);
+end;
+
+function TGraph.StageAssignments(const ASource: TGraphAssignmentSnapshot;
+  const AFromGraph: Boolean; const AMaximumEntries, AMaximumTextUnits: Integer;
+  const AObserver: TWfcSolveObserver): TGraphAssignmentSnapshot;
+var
+  LPass: Integer;
+  LCell: Integer;
+  LEntries: Integer;
+  LTextUnits: Integer;
+  LGraph: TGraph;
+  LValue: TGraphAssignmentCell;
+  LWork: TWfcSolveWork;
+  procedure ChargeText(const AText: String);
+  begin
+    if Length(AText) > AMaximumTextUnits - LTextUnits then
+      raise ERangeError.Create('Graph assignment text budget exceeded');
+    Inc(LTextUnits, Length(AText));
+  end;
+begin
+  Result := Default(TGraphAssignmentSnapshot);
+  if (AMaximumEntries < 1) or (AMaximumEntries <> Trunc(AMaximumEntries)) or
+    (AMaximumTextUnits < 1) or (AMaximumTextUnits <> Trunc(AMaximumTextUnits)) then
+    raise EArgumentException.Create('Graph assignment budgets must be positive whole numbers');
+  if (FPasses.Count = 0) or (FPasses.Count > AMaximumEntries) then
+    raise EArgumentException.Create('Graph assignment capture requires configured bounded passes');
+  if not AFromGraph and ((ASource.Version <> 1) or
+    (Length(ASource.Passes) <> FPasses.Count)) then
+    raise EArgumentException.Create('Graph assignment snapshot version or pass count differs');
+  LEntries := 0;
+  for LPass := 0 to FPasses.Count - 1 do
+  begin
+    LGraph := FPasses[LPass];
+    if (LGraph.FEntries.Count < 1) or
+      (LGraph.FEntries.Count > AMaximumEntries - LEntries) then
+      raise ERangeError.Create('Graph assignment entry budget exceeded');
+    Inc(LEntries, LGraph.FEntries.Count);
+    if not AFromGraph then
+    begin
+      if (ASource.Passes[LPass].LabelText <> PassLabelFromIndex(LPass)) or
+        not SameWfcLatticeLayout(ASource.Passes[LPass].Layout, LGraph.FLayout) or
+        (Length(ASource.Passes[LPass].Cells) <> LGraph.FEntries.Count) then
+        raise EArgumentException.Create('Graph assignment pass label, layout or cell count differs');
+      for LCell := 0 to LGraph.FEntries.Count - 1 do
+        if not LGraph.FEntries[LCell].Empty then
+          raise EInvalidOperation.Create('Graph assignment restoration requires a fresh empty target');
+    end;
+  end;
+  Result.Version := 1;
+  SetLength(Result.Passes, FPasses.Count);
+  LTextUnits := 0;
+  LWork := nil;
+  try
+    if Assigned(AObserver) then LWork := TWfcSolveWork.Create(AObserver);
+    BeginSolveWork(LWork, wspPrepare, -1);
+    for LPass := 0 to FPasses.Count - 1 do
+    begin
+      LGraph := FPasses[LPass];
+      ChargeText(PassLabelFromIndex(LPass));
+      Result.Passes[LPass].LabelText := PassLabelFromIndex(LPass);
+      Result.Passes[LPass].Layout := LGraph.FLayout;
+      SetLength(Result.Passes[LPass].Cells, LGraph.FEntries.Count);
+      for LCell := 0 to LGraph.FEntries.Count - 1 do
+      begin
+        LValue := Default(TGraphAssignmentCell);
+        if AFromGraph then
+        begin
+          LValue.Value := LGraph.FEntries[LCell].Value;
+          LValue.Empty := LGraph.FEntries[LCell].Empty;
+          LValue.Generated := LGraph.FEntries[LCell].Generated;
+        end
+        else
+          LValue := ASource.Passes[LPass].Cells[LCell];
+        if LValue.Empty then
+        begin
+          if LValue.Generated or (LValue.Value <> TGraphValue.Empty) then
+            raise EArgumentException.Create('Empty graph assignments cannot carry values or generated ownership');
+        end
+        else
+        begin
+          if not ContainsGraphValue(LGraph.FValues, LValue.Value) then
+            raise EArgumentException.Create('Graph assignment uses an unknown value');
+          if LGraph.FEntries[LCell].FHasAllowedValues and not
+            ContainsGraphValue(LGraph.FEntries[LCell].FAllowedValues, LValue.Value) then
+            raise EArgumentException.Create('Graph assignment violates the target entry domain');
+        end;
+        ChargeText(LValue.Value);
+        Result.Passes[LPass].Cells[LCell] := LValue;
+        VisitSolveWork(LWork);
+      end;
+    end;
+    FinishSolveWork(LWork);
+    BeginSolveWork(LWork, wspCommit, -1);
+    FinishSolveWork(LWork);
+  finally
+    LWork.Free;
+  end;
+end;
+
+function TGraph.CaptureAssignments(const AMaximumEntries, AMaximumTextUnits: Integer;
+  const AObserver: TWfcSolveObserver): TGraphAssignmentSnapshot;
+begin
+  if FPassRoot <> nil then
+    Exit(FPassRoot.CaptureAssignments(AMaximumEntries, AMaximumTextUnits, AObserver));
+  if FRunning then
+    raise EInvalidOperation.Create('Graph assignment capture cannot reenter an active graph');
+  FRunning := True;
+  try
+    Result := StageAssignments(Default(TGraphAssignmentSnapshot), True,
+      AMaximumEntries, AMaximumTextUnits, AObserver);
+  finally
+    FRunning := False;
+  end;
+end;
+
+procedure TGraph.RestoreAssignments(const ASnapshot: TGraphAssignmentSnapshot;
+  const AMaximumEntries, AMaximumTextUnits: Integer; const AObserver: TWfcSolveObserver);
+var
+  LStaged: TGraphAssignmentSnapshot;
+  LPass: Integer;
+  LCell: Integer;
+begin
+  if FPassRoot <> nil then
+  begin
+    FPassRoot.RestoreAssignments(ASnapshot, AMaximumEntries, AMaximumTextUnits, AObserver);
+    Exit;
+  end;
+  if FRunning then
+    raise EInvalidOperation.Create('Graph assignment restoration cannot reenter an active graph');
+  FRunning := True;
+  try
+    LStaged := StageAssignments(ASnapshot, False, AMaximumEntries, AMaximumTextUnits, AObserver);
+    { Publication uses the same non-hooking ownership assignment as transaction
+      rollback. All allocation, validation and observer calls have finished. }
+    for LPass := 0 to FPasses.Count - 1 do
+      for LCell := 0 to FPasses[LPass].FEntries.Count - 1 do
+        FPasses[LPass].FEntries[LCell].RestoreValueState(
+          LStaged.Passes[LPass].Cells[LCell].Value,
+          LStaged.Passes[LPass].Cells[LCell].Empty,
+          LStaged.Passes[LPass].Cells[LCell].Generated);
+  finally
+    FRunning := False;
+  end;
 end;
 
 function TGraph.TryRegenerateFrom(const APass: String;

@@ -36,6 +36,7 @@ and explicit exit gates.
 | Assemble independently authored or learned pipelines | [Immutable fragment composition](docs/pipeline-composition.md) |
 | Edit a bound pipeline and authorize repair | [Preparation and input replacement](docs/pipeline-preparation.md), [prepared sessions](docs/pipeline-sessions.md) |
 | Save edit history and restore a live workspace | [Workspace journals, exact replay, atomic authoring and CLI](docs/pipeline-workspaces.md) |
+| Restore accepted assignments without solving | [Assignment ownership snapshots](docs/assignment-snapshots.md) |
 | Edit arbitrary supported pipelines interactively | [Pipeline Workspace](examples/passes/08_PipelineWorkspace/README.md), [native artifact-generating host](examples/passes/08_PipelineWorkspace/NATIVE.md) |
 | Check or inspect saved work | [Artifact-family validation, inspection, and exact replay](docs/artifact-tools.md) |
 | Check source-distribution assets and review status | [Asset inventory and native checker](docs/assets.md) |

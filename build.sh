@@ -947,6 +947,7 @@ for compiler_artifact_suite in \
   "$compiler_source_directory/../test/wfc_workspace_journal_test.lpr" \
   "$compiler_source_directory/../test/wfc_workspace_replay_test.lpr" \
   "$compiler_source_directory/../test/wfc_regeneration_scope_test.lpr" \
+  "$compiler_source_directory/../test/wfc_assignments_test.lpr" \
   "$compiler_source_directory/../test/wfc_lattice_test.lpr" \
   "$compiler_source_directory/../test/wfc_mapped_passes_test.lpr" \
   "$compiler_source_directory/../test/wfc_pass_bridge_layout_test.lpr" \

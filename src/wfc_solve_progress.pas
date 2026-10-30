@@ -40,8 +40,9 @@ type
     Total: Int64;
     KnownTotal: Boolean;
   end;
-  { Borrowed synchronously for one public solve call. Exceptions abort its
+  { Borrowed synchronously for one public solve or assignment call. Exceptions abort its
     transaction; do not reenter/mutate/destroy the graph or draw its randomness.
+    Assignment capture/restore reports structural preparation/commit, never search.
     This is separate from diagnostic tracing, whose receiver failures are contained. }
   TWfcSolveObserver = procedure(const AProgress: TWfcSolveProgress) of object;
   { Shared graph/kernel visit accounting. Internal call-scoped helper; destruction
