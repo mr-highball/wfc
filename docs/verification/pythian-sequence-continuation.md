@@ -41,3 +41,12 @@ the original PCM goldens7230FCDD/8701A89B. The demo now passes430/430 with clean
 heap, partial projections29/29, and the actual browser music-workbench consumer
 compiles with matched pas2js/RTL. Original CI/focused failure evidence remains;
 the complete replacement run must pass before downstream acceptance.
+
+CI61 (`41187701193`) passes the complete actual browser gate. Its Linux native
+and trunk runs reach the separate MIDI process fixture and stop at one remaining
+literal segment-signature expectation. Update that reported metadata to45E2E4C6;
+the actual MIDI process consumer now passes56/56 locally. No MIDI event, PCM hash,
+seam count or solver assertion is removed. Keep the version1 research report as
+history and update only the current ensemble-stream guide's canonical signature.
+Pythian's complete native hour job now succeeds with the retained exact provider
+and seed; broader downstream review/publication still belongs to Pythian.

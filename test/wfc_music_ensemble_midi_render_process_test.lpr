@@ -318,7 +318,7 @@ begin
   Check((Pos('Planned bytes: 310', LText) > 0) and
     (Pos('events: 67', LText) > 0) and
     (Pos('held seams: 5', LText) > 0) and
-    (Pos('Last segment signature: 433EDED7', LText) > 0),
+    (Pos('Last segment signature: 45E2E4C6', LText) > 0),
     'host reports exact plan, continuation, and trace metadata');
   VerifyContinuedMidi(ABase + '/continued.mid');
   Invoke(AExecutable,

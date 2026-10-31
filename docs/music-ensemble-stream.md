@@ -384,7 +384,8 @@ truncate indices to 32 bits. Independent seed fixtures for base seed 123 are:
 | 9007199254740991 | `$B6CDD64E` |
 
 The stream conformance fixture's first five-cell segment has signature
-`$5ED51FA1`: seed zero, 23 cells total, quantum two, two voices, exact harmony,
+`$34A36C18` under segment boundary version2: seed zero, 23 cells total, quantum
+two, two voices, exact harmony,
 order-four ensemble/rhythm models, and the order-one harmony model built by
 that test. This value identifies that fixture, not arbitrary music with the
 same seed. Segment signatures include versioned boundary/state/token witnesses
