@@ -32,8 +32,8 @@ uses
   wfc_music_ensemble, wfc_music_voices_graph, wfc_music_arrangement;
 
 const
-  WFC_MUSIC_VOICES_STREAM_VERSION = 1;
-  WFC_MUSIC_VOICES_SEGMENT_SIGNATURE_VERSION = 1;
+  WFC_MUSIC_VOICES_STREAM_VERSION = 2;
+  WFC_MUSIC_VOICES_SEGMENT_SIGNATURE_VERSION = 2;
 
 type
   EWfcMusicVoicesStream = class(EWfcMusicVoicesGraph);
@@ -41,6 +41,9 @@ type
   TWfcMusicVoicesStreamConfig = record
     Graph: TWfcMusicVoicesGraphConfig;
     QuantumTicks, SegmentCellCount: Integer;
+    { Zero plans just the returned segment. A positive count bounds a private
+      future window; only SegmentCellCount cells are committed per Next. }
+    LookaheadCellCount: Integer;
     RequestedTicks: TWfcMusicArrangementWide;
     Seed: TGraphSeed;
     Rounding: TWfcMusicArrangementRounding;
@@ -67,13 +70,13 @@ type
   TWfcMusicVoicesSegment = class
   private
     FIndex, FStartTick: TWfcMusicArrangementWide;
-    FCellCount, FQuantumTicks, FModelCount: Integer;
+    FCellCount, FPlanningCellCount, FQuantumTicks, FModelCount: Integer;
     FSeed: TGraphSeed;
     FFinalSegment: Boolean;
     FGenerated: TWfcMusicVoicesGenerated;
     FSignature: Cardinal;
     constructor Create(const AIndex, AStartTick: TWfcMusicArrangementWide;
-      const ACellCount: Integer; const ASeed: TGraphSeed;
+      const ACellCount, APlanningCellCount: Integer; const ASeed: TGraphSeed;
       const AFinal: Boolean; const AConfig: TWfcMusicVoicesStreamConfig;
       const AGenerated: TWfcMusicVoicesGenerated);
   public
@@ -83,6 +86,7 @@ type
     property Index: TWfcMusicArrangementWide read FIndex;
     property StartTick: TWfcMusicArrangementWide read FStartTick;
     property CellCount: Integer read FCellCount;
+    property PlanningCellCount: Integer read FPlanningCellCount;
     property QuantumTicks: Integer read FQuantumTicks;
     property ModelCount: Integer read FModelCount;
     property Seed: TGraphSeed read FSeed;
@@ -94,7 +98,8 @@ type
     frontier linear in model count, one temporary segment graph, and explicit
     sparse future constraints. Previously published history is never retained
     or repaired. Calls are synchronous, non-reentrant, and locally bounded by
-    the caller's segment/search settings, not by a duration policy. }
+    the caller's segment/lookahead/search settings, not by a duration policy.
+    Provisional suffixes are independently validated but never retained. }
   TWfcMusicVoicesStream = class
   strict private
     FConfig: TWfcMusicVoicesStreamConfig;
@@ -118,7 +123,8 @@ type
       TWfcMusicVoicesStreamConstraints;
     procedure SetFailure(const AMessage: String);
   protected
-    { Borrowed graph, valid only during this call. Add restrictions and never
+    { Borrowed graph over ACellCount planned cells, valid only during this call.
+      Add restrictions and never
       retain it. Independent capture checks paths, original boundaries, caller
       domains, rhythm, ranges, pair constraints, collective harmony and coverage.
       Stored global constraints are checked separately even if the hook clears
@@ -127,8 +133,12 @@ type
       const ACellCount: Integer; const AGraph: TGraph); virtual;
   public
     constructor Create(const AConfig: TWfcMusicVoicesStreamConfig);
+    { Optional per-call cap: useful when future application domains are not yet
+      available. Zero uses the config bound. A nonzero cap must fit the actual
+      returned prefix and cannot enlarge the configured planning window. }
     function Next(out ASegment: TWfcMusicVoicesSegment;
-      out AReport: TGraphNegotiationReport): TWfcMusicArrangementStep;
+      out AReport: TGraphNegotiationReport;
+      const AMaximumPlanningCells: Integer = 0): TWfcMusicArrangementStep;
     procedure Cancel;
     function CopyFrontier: TWfcMusicVoicesStreamFrontier;
     function CopyConstraints: TWfcMusicVoicesStreamConstraints;
@@ -250,7 +260,7 @@ end;
 
 constructor TWfcMusicVoicesSegment.Create(
   const AIndex, AStartTick: TWfcMusicArrangementWide;
-  const ACellCount: Integer; const ASeed: TGraphSeed;
+  const ACellCount, APlanningCellCount: Integer; const ASeed: TGraphSeed;
   const AFinal: Boolean; const AConfig: TWfcMusicVoicesStreamConfig;
   const AGenerated: TWfcMusicVoicesGenerated);
 var I, J: Integer;
@@ -259,12 +269,15 @@ begin
   FIndex := AIndex;
   FStartTick := AStartTick;
   FCellCount := ACellCount;
+  FPlanningCellCount := APlanningCellCount;
   FQuantumTicks := AConfig.QuantumTicks;
   FModelCount := Length(AGenerated.Layers);
   FSeed := ASeed;
   FFinalSegment := AFinal;
   SetLength(FGenerated.Layers, FModelCount);
   FGenerated.Coverage := CopyCoverageWitnesses(AGenerated.Coverage);
+  for I := 0 to High(FGenerated.Coverage) do
+    SetLength(FGenerated.Coverage[I].Suppliers, ACellCount);
   FSignature := Cardinal(2166136261);
   HashWide(FSignature, WFC_MUSIC_VOICES_SEGMENT_SIGNATURE_VERSION);
   HashWide(FSignature, WFC_MUSIC_VOICES_STREAM_VERSION);
@@ -274,6 +287,7 @@ begin
   HashWide(FSignature, FIndex);
   HashWide(FSignature, FStartTick);
   HashWide(FSignature, FCellCount);
+  HashWide(FSignature, FPlanningCellCount);
   HashWide(FSignature, FQuantumTicks);
   HashWide(FSignature, Cardinal(FSeed));
   HashWide(FSignature, Ord(FFinalSegment));
@@ -300,11 +314,19 @@ begin
   for I := 0 to FModelCount - 1 do
   begin
     FGenerated.Layers[I] := CopySegment(AGenerated.Layers[I]);
-    HashWide(FSignature, Ord(AGenerated.Layers[I].Boundary.HasPrevious));
-    if AGenerated.Layers[I].Boundary.HasPrevious then
-      HashWide(FSignature, AGenerated.Layers[I].Boundary.PreviousState);
-    HashWide(FSignature, Ord(AGenerated.Layers[I].Boundary.RequireObservedEnd));
-    HashWide(FSignature, AGenerated.Layers[I].Boundary.MinimumFollowingCells);
+    SetLength(FGenerated.Layers[I].Tokens, ACellCount);
+    SetLength(FGenerated.Layers[I].StateIndices, ACellCount);
+    if APlanningCellCount > ACellCount then
+    begin
+      FGenerated.Layers[I].Boundary.RequireObservedEnd := False;
+      Inc(FGenerated.Layers[I].Boundary.MinimumFollowingCells,
+        APlanningCellCount - ACellCount);
+    end;
+    HashWide(FSignature, Ord(FGenerated.Layers[I].Boundary.HasPrevious));
+    if FGenerated.Layers[I].Boundary.HasPrevious then
+      HashWide(FSignature, FGenerated.Layers[I].Boundary.PreviousState);
+    HashWide(FSignature, Ord(FGenerated.Layers[I].Boundary.RequireObservedEnd));
+    HashWide(FSignature, FGenerated.Layers[I].Boundary.MinimumFollowingCells);
     for J := 0 to ACellCount - 1 do
     begin
       HashWide(FSignature, AGenerated.Layers[I].StateIndices[J]);
@@ -372,8 +394,14 @@ begin
   CheckWide(AConfig.RequestedTicks, 'requested ticks');
   CheckInteger(AConfig.QuantumTicks, 1, High(Integer), 'quantum ticks');
   CheckInteger(AConfig.SegmentCellCount, 1, High(Integer), 'segment cell count');
+  CheckInteger(AConfig.LookaheadCellCount, 0, High(Integer), 'lookahead cell count');
+  if (AConfig.LookaheadCellCount <> 0) and
+      (AConfig.LookaheadCellCount < AConfig.SegmentCellCount) then
+    StreamError('lookahead cell count must fit the returned segment');
   if AConfig.SegmentCellCount > High(Integer) div AConfig.QuantumTicks then
     StreamError('local segment ticks exceed Integer capacity');
+  if AConfig.LookaheadCellCount > High(Integer) div AConfig.QuantumTicks then
+    StreamError('local planning ticks exceed Integer capacity');
   CheckInteger(Ord(AConfig.Rounding), Ord(Low(TWfcMusicArrangementRounding)),
     Ord(High(TWfcMusicArrangementRounding)), 'rounding mode');
   CheckInteger(AConfig.Seed, 0, Cardinal($FFFFFFFF), 'seed');
@@ -580,15 +608,16 @@ begin
 end;
 
 function TWfcMusicVoicesStream.Next(out ASegment: TWfcMusicVoicesSegment;
-  out AReport: TGraphNegotiationReport): TWfcMusicArrangementStep;
+  out AReport: TGraphNegotiationReport;
+  const AMaximumPlanningCells: Integer): TWfcMusicArrangementStep;
 var
   LGraph: TGraph;
   LBoundaries: TWfcMusicVoicesBoundaries;
   LGenerated: TWfcMusicVoicesGenerated;
   LCapture: TWfcMusicVoicesValidationReport;
-  I, LCells: Integer;
+  I, LCells, LPlanningCells: Integer;
   LRemainingCells, LEndTick: TWfcMusicArrangementWide;
-  LFinal: Boolean;
+  LFinal, LPlanningFinal: Boolean;
   LSeed: TGraphSeed;
   LCandidate: TWfcMusicVoicesSegment;
   LFrontier: TWfcMusicVoicesStreamFrontier;
@@ -612,23 +641,31 @@ begin
       LCells := FConfig.SegmentCellCount;
       if LRemainingCells < LCells then LCells := Integer(LRemainingCells);
       LFinal := LRemainingCells = LCells;
+      CheckInteger(AMaximumPlanningCells, 0, High(Integer), 'planning cap');
+      LPlanningCells := FConfig.LookaheadCellCount;
+      if LPlanningCells = 0 then LPlanningCells := FConfig.SegmentCellCount;
+      if (AMaximumPlanningCells > 0) and (AMaximumPlanningCells < LPlanningCells) then
+        LPlanningCells := AMaximumPlanningCells;
+      if LRemainingCells < LPlanningCells then LPlanningCells := Integer(LRemainingCells);
+      if LPlanningCells < LCells then StreamError('planning cap does not fit the returned prefix');
+      LPlanningFinal := LRemainingCells = LPlanningCells;
       LSeed := WfcMusicArrangementSectionSeed(FConfig.Seed, FNextIndex);
       SetLength(LBoundaries, Length(FFrontier.StateIndices));
       for I := 0 to High(LBoundaries) do
         if FFrontier.HasPrevious then
           LBoundaries[I] := MakeWfcSequenceContinuingSegmentBoundary(
-            FFrontier.StateIndices[I], LFinal and FConfig.RequireObservedEnd)
+            FFrontier.StateIndices[I], LPlanningFinal and FConfig.RequireObservedEnd)
         else LBoundaries[I] := MakeWfcSequenceInitialSegmentBoundary(
-          LFinal and FConfig.RequireObservedEnd);
-      LGraph := BuildWfcMusicVoicesSegmentGraph(FConfig.Graph, LCells, LSeed,
+          LPlanningFinal and FConfig.RequireObservedEnd);
+      LGraph := BuildWfcMusicVoicesSegmentGraph(FConfig.Graph, LPlanningCells, LSeed,
         LBoundaries);
-      ApplyConstraints(LGraph, LCells);
+      ApplyConstraints(LGraph, LPlanningCells);
       LGraph.SwitchToPass(WfcMusicVoicesPassLabel(0));
-      ConfigureSegment(FNextIndex, FProducedTicks, LCells, LGraph);
+      ConfigureSegment(FNextIndex, FProducedTicks, LPlanningCells, LGraph);
       if FStatus = wmasCancelled then Exit(wmaspCancelled);
       if LGraph.Seed <> LSeed then
         StreamError('application hook changed the derived segment seed');
-      if (LGraph.Dimension.Width <> TGraphCoordinate(LCells)) or
+      if (LGraph.Dimension.Width <> TGraphCoordinate(LPlanningCells)) or
           (LGraph.Dimension.Height <> 1) or (LGraph.Dimension.Depth <> 1) then
         StreamError('application hook changed the segment shape');
       if not LGraph.TrySolveNegotiated(FConfig.Search, AReport) then
@@ -641,9 +678,9 @@ begin
       if not CaptureSolvedWfcMusicVoices(FConfig.Graph, LGraph, LBoundaries,
           LGenerated, LCapture) then
         StreamError('invalid captured voices: ' + LCapture.Issue.Detail);
-      ValidateConstraints(LGenerated.Layers, LCells);
+      ValidateConstraints(LGenerated.Layers, LPlanningCells);
       LCandidate := TWfcMusicVoicesSegment.Create(FNextIndex, FProducedTicks,
-        LCells, LSeed, LFinal, FConfig, LGenerated);
+        LCells, LPlanningCells, LSeed, LFinal, FConfig, LGenerated);
       LEndTick := FProducedTicks + LCells * FConfig.QuantumTicks;
       LFrontier := Default(TWfcMusicVoicesStreamFrontier);
       SetLength(LFrontier.StateIndices, Length(LBoundaries));

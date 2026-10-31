@@ -165,6 +165,7 @@ begin
     5: AGraph.PassGraph[0].ClearAllowedValues(0,0,0);
     6: raise Exception.Create('application fault');
     7: AGraph.Reshape(ACellCount+1,1,1);
+    8: AGraph.PassGraph[2].ClearAllowedValues(2,0,0);
   end;
 end;
 
@@ -281,7 +282,7 @@ begin
         Check((Z[0].PitchClass=0) and (Z[0].Suppliers[0]<>999),
           'coverage diagnostics deeply detach');
         { Big Boss: segment boundary v2 includes the following-cell contract. }
-        if Count=0 then Check(A.Signature=Cardinal($19776A1D),
+        if Count=0 then Check(A.Signature=Cardinal($470576CE),
           'versioned independent voice segment signature golden: '+IntToHex(A.Signature,8));
       finally A.Free; B.Free end;
       Inc(Count);
@@ -421,6 +422,9 @@ begin
     C:=Config(F,20,4); C.RequestedTicks:=0; BadConfig(C,'zero duration');
     C:=Config(F,20,4); C.QuantumTicks:=0; BadConfig(C,'zero quantum');
     C:=Config(F,20,4); C.SegmentCellCount:=High(Integer); BadConfig(C,'local tick overflow');
+    C:=Config(F,20,4); C.LookaheadCellCount:=-1; BadConfig(C,'negative lookahead');
+    C:=Config(F,20,4); C.LookaheadCellCount:=3; BadConfig(C,'lookahead shorter than prefix');
+    C:=Config(F,20,4); C.LookaheadCellCount:=High(Integer); BadConfig(C,'local planning tick overflow');
     C:=Config(F,20,4); C.Graph.Voices:=nil; BadConfig(C,'zero voice count');
     C:=Config(F,20,4); C.Graph.StepsPerOctave:=19; BadConfig(C,'mismatched tuning');
     C:=Config(F,20,4); C.Graph.Voices[0].Model:=nil; BadConfig(C,'nil model');
@@ -488,6 +492,230 @@ begin
   finally Done(F) end;
 end;
 
+procedure InitFork(out F: TFixture);
+var
+  LSamples, LHarmony: TWfcSequenceSamples;
+  LFrames: TWfcMusicEnsembleFrames;
+  LCells: TWfcMusicVoiceCells;
+  I, J, LPitch: Integer;
+begin
+  F := Default(TFixture);
+  SetLength(LSamples, 2);
+  SetLength(LHarmony, 2);
+  SetLength(LFrames, 3);
+  SetLength(LCells, 1);
+  for I := 0 to 1 do
+  begin
+    for J := 0 to 2 do
+    begin
+      if J = 0 then LPitch := 60
+      else if I = 0 then LPitch := 60 + 2 * J
+      else LPitch := 63 + 2 * J;
+      LCells[0] := Voice(wmcaAttack, LPitch);
+      LFrames[J] := MakeWfcMusicEnsembleFrame(LCells);
+    end;
+    LSamples[I] := MakeWfcSequenceSample(VoiceTokens(LFrames, 0));
+    LHarmony[I] := MakeWfcSequenceSample(EncodeWfcMusicPitchClassSets(
+      ProjectWfcMusicEnsembleFramesToPitchClassSets(LFrames, 12)));
+  end;
+  SetLength(F.Models.Voices, 1);
+  { Order two retains the previous emitted token. An order-one overlap model
+    has zero history and does not encode this fork's branch dependency. }
+  F.Models.Voices[0].Model := LearnSequenceModelCorpus(LSamples, 2);
+  F.Models.Voices[0].MaxPitch := 127;
+  F.Models.HarmonyModel := LearnSequenceModelCorpus(LHarmony, 2);
+  F.Models.RhythmModel := LearnSequenceModel(EncodeWfcMusicRhythmFrames(
+    ProjectWfcMusicEnsembleFramesToRhythm(LFrames)), 2);
+  F.Models.StepsPerOctave := 12;
+  F.Models.HarmonyMode := wmehmExact;
+end;
+
+function NoteToken(const APitch: Integer): TWfcModelToken;
+var
+  LCells: TWfcMusicVoiceCells;
+begin
+  SetLength(LCells, 1);
+  LCells[0] := Voice(wmcaAttack, APitch);
+  Result := EncodeWfcMusicEnsembleFrame(MakeWfcMusicEnsembleFrame(LCells));
+end;
+
+procedure TestFuturePlanning;
+var
+  F: TFixture;
+  C: TWfcMusicVoicesStreamConfig;
+  P, Q: TWfcMusicVoicesStream;
+  S, T: TWfcMusicVoicesSegment;
+  R: TGraphNegotiationReport;
+  G, H: TWfcGeneratedSequenceSegment;
+  W: TWfcMusicVoicesCoverageWitnesses;
+  LTarget: TWfcModelToken;
+  LSignature: Cardinal;
+  LStep: TWfcMusicArrangementStep;
+  I: Integer;
+  LRaised: Boolean;
+begin
+  InitFork(F);
+  try
+    C := Config(F, 3, 2);
+    C.RequireObservedEnd := True;
+    P := TWfcMusicVoicesStream.Create(C);
+    try
+      Check(P.Next(S, R) = wmaspProduced, 'unconstrained fork yields a prefix');
+      try
+        G := S.CopyGenerated(2);
+        if G.Tokens[1] = NoteToken(62) then LTarget := NoteToken(67)
+        else LTarget := NoteToken(64);
+        WriteLn('Fork first choice: ', G.Tokens[1], '; future: ', LTarget);
+      finally
+        S.Free;
+      end;
+    finally
+      P.Free;
+    end;
+    { Same seed/models and known future domain: short greedy publication traps
+      the wrong branch. This is distinct from a genuinely impossible graph. }
+    P := TWfcMusicVoicesStream.Create(C);
+    try
+      P.IntersectAllowedTokens(2, 2, Tokens(LTarget));
+      Check(P.Next(S, R) = wmaspProduced, 'short planning cannot see the final domain');
+      S.Free;
+      LStep := P.Next(S, R);
+      WriteLn('Fork short step: ', Ord(LStep), '; ticks: ', P.ProducedTicks,
+        '; detail: ', P.Failure);
+      Check((LStep = wmaspFailed) and (S = nil) and (P.ProducedTicks = 4),
+        'committed incompatible fork cannot be silently repaired');
+      S.Free;
+    finally
+      P.Free;
+    end;
+    C.SegmentCellCount := 3;
+    P := TWfcMusicVoicesStream.Create(C);
+    try
+      P.IntersectAllowedTokens(2, 2, Tokens(LTarget));
+      Check(P.Next(S, R) = wmaspProduced, 'complete finite fork admits the same domain');
+      S.Free;
+      Check(P.Status = wmasCompleted, 'finite proof reaches its required observed end');
+    finally
+      P.Free;
+    end;
+    C.SegmentCellCount := 2;
+    C.LookaheadCellCount := 3;
+    P := TWfcMusicVoicesStream.Create(C);
+    Q := TWfcMusicVoicesStream.Create(C);
+    try
+      P.IntersectAllowedTokens(2, 2, Tokens(LTarget));
+      Q.IntersectAllowedTokens(2, 2, Tokens(LTarget));
+      Check((P.Next(S, R) = wmaspProduced) and (Q.Next(T, R) = wmaspProduced),
+        'bounded future planning selects a compatible prefix');
+      try
+        LSignature := S.Signature;
+        Check((S.CellCount = 2) and (S.PlanningCellCount = 3) and
+          (P.ProducedTicks = 4) and not S.FinalSegment, 'planning and committed extents differ');
+        Check(LSignature = T.Signature, 'lookahead signature replays exactly');
+        for I := 0 to S.ModelCount - 1 do
+        begin
+          G := S.CopyGenerated(I);
+          Check((Length(G.Tokens) = 2) and (Length(G.StateIndices) = 2) and
+            not G.Boundary.RequireObservedEnd and (G.Boundary.MinimumFollowingCells = 1),
+            'published prefix does not inherit the provisional observed-end claim');
+          Check(P.CopyFrontier.StateIndices[I] = G.StateIndices[1],
+            'frontier is the last committed state, not the provisional end');
+          G.StateIndices[0] := -1;
+          H := S.CopyGenerated(I);
+          Check(H.StateIndices[0] >= 0, 'lookahead prefix arrays are detached');
+        end;
+        W := S.CopyCoverage;
+        for I := 0 to High(W) do
+          Check(Length(W[I].Suppliers) = 2, 'coverage is sliced to the published prefix');
+        Check(Length(P.CopyConstraints) = 1, 'provisional future domain is not consumed');
+      finally
+        S.Free;
+        T.Free;
+      end;
+      Check((P.Next(S, R) = wmaspProduced) and (Q.Next(T, R) = wmaspProduced),
+        'compatible frontier reaches the final cell');
+      try
+        G := S.CopyGenerated(2);
+        Check((S.CellCount = 1) and (S.PlanningCellCount = 1) and S.FinalSegment and
+          G.Boundary.RequireObservedEnd and (G.Tokens[0] = LTarget),
+          'short final prefix binds the requested token and observed end');
+        Check(S.Signature = T.Signature, 'final lookahead replay is deterministic');
+      finally
+        S.Free;
+        T.Free;
+      end;
+    finally
+      P.Free;
+      Q.Free;
+    end;
+    { A provisional suffix is not committed history. Changing it after the
+      common first cell must be allowed and affect the next publication. }
+    C.SegmentCellCount := 1;
+    P := TWfcMusicVoicesStream.Create(C);
+    try
+      P.IntersectAllowedTokens(2, 2, Tokens(LTarget));
+      Check(P.Next(S, R) = wmaspProduced, 'provisional future begins after the common first cell');
+      try Check(S.PlanningCellCount = 3, 'actual provisional planning extent is exposed')
+      finally S.Free end;
+      LRaised := False;
+      try P.ClearAllowedTokens(2, 0);
+      except on EWfcMusicVoicesStream do LRaised := True end;
+      Check(LRaised and (P.ProducedTicks = 2), 'lookahead cannot authorize edits to committed music');
+      P.ClearAllowedTokens(2, 2);
+      if LTarget = NoteToken(64) then LTarget := NoteToken(67)
+      else LTarget := NoteToken(64);
+      P.IntersectAllowedTokens(2, 2, Tokens(LTarget));
+      Check(P.Next(S, R) = wmaspProduced, 'future edit replans from the committed frontier');
+      S.Free;
+      Check(P.Next(S, R) = wmaspProduced, 'edited future still reaches an observed end');
+      try
+        G := S.CopyGenerated(2);
+        Check(G.Tokens[0] = LTarget, 'edited future replaces provisional decisions');
+      finally S.Free end;
+    finally P.Free end;
+    P := TWfcMusicVoicesStream.Create(C);
+    try
+      Check(P.Next(S, R, 1) = wmaspProduced, 'caller can cap unavailable future context');
+      try Check(S.PlanningCellCount = 1, 'actual capped planning extent is exposed')
+      finally S.Free end;
+    finally P.Free end;
+    P := TWfcMusicVoicesStream.Create(C);
+    try
+      P.IntersectAllowedTokens(2, 2, nil);
+      Check((P.Next(S, R) = wmaspFailed) and (S = nil) and (P.ProducedTicks = 0),
+        'genuine future contradiction publishes no prefix');
+    finally P.Free end;
+    C.SegmentCellCount := 2;
+    P := TWfcMusicVoicesStream.Create(C);
+    try
+      LRaised := False;
+      try P.Next(S, R, 1);
+      except on EWfcMusicVoicesStream do LRaised := True end;
+      Check(LRaised and (S = nil) and (P.ProducedTicks = 0) and (P.Status = wmasFailed),
+        'cap smaller than the returned prefix fails without publication');
+    finally P.Free end;
+    P := TProbeStream.Create(C);
+    try
+      TProbeStream(P).Mode := 1;
+      Check((P.Next(S, R) = wmaspCancelled) and (S = nil) and (P.ProducedTicks = 0),
+        'cancellation discards the whole provisional lookahead');
+      Check(P.Next(S, R) = wmaspCancelled, 'lookahead cancellation remains terminal');
+    finally P.Free end;
+    P := TProbeStream.Create(C);
+    try
+      TProbeStream(P).Mode := 8;
+      P.IntersectAllowedTokens(2, 2, nil);
+      LRaised := False;
+      try P.Next(S, R);
+      except on EWfcMusicVoicesStream do LRaised := True end;
+      Check(LRaised and (S = nil) and (P.ProducedTicks = 0) and
+        not P.CopyFrontier.HasPrevious, 'hook cannot erase a hard domain in the provisional suffix');
+    finally P.Free end;
+  finally
+    Done(F);
+  end;
+end;
+
 {$IFDEF PAS2JS}
 function MalformedNumber(const AIndex:Integer):NativeInt;
 begin
@@ -506,7 +734,7 @@ begin
   Init(F,4);
   try
     for I:=0 to 3 do
-      for J:=0 to 11 do
+      for J:=0 to 12 do
       begin
         C:=Config(F,20,4);
         V:=MalformedNumber(I);
@@ -523,6 +751,7 @@ begin
           9:asm C.Rounding = V; end;
           10:asm C.RequireObservedEnd = V; end;
           11:asm C.Search.SolveOptions.CaptureTrace = V; end;
+          12:C.LookaheadCellCount:=MalformedNumber(I);
         end;
         BadConfig(C,'malformed browser config '+IntToStr(I)+'/'+IntToStr(J));
       end;
@@ -547,7 +776,7 @@ procedure TestHooks;
 var F:TFixture; C:TWfcMusicVoicesStreamConfig; P:TProbeStream;
   S:TWfcMusicVoicesSegment; R:TGraphNegotiationReport; M:Integer; Raised:Boolean;
 begin
-  Init(F,4); C:=Config(F,12,4);
+  Init(F,4); C:=Config(F,12,4); C.LookaheadCellCount:=8;
   try
     for M:=1 to 7 do
     begin
@@ -582,6 +811,7 @@ begin
   Run('sparse constraints and terminal failure',TestConstraintsAndFailure);
   Run('allowed palettes and exact coverage',TestAllowedPaletteStreams);
   Run('capacity and endpoint policy',TestCapacityAndBoundaries);
+  Run('bounded future planning and prefix ownership',TestFuturePlanning);
   Run('application hook isolation',TestHooks);
   {$IFDEF PAS2JS}Run('malformed browser numbers',TestHostNumbers);{$ENDIF}
   WriteLn('Independent voice stream checks: ',Checks,', failures: ',Failures);

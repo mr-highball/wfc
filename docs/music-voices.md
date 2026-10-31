@@ -190,6 +190,27 @@ those models alive until it is freed. Results and their nested copy-accessor
 arrays are detached and may outlive both. Retaining every result is a caller
 choice that grows memory; the stream itself does not retain emitted history.
 
+`LookaheadCellCount` separates the temporary planning window from the returned
+prefix. Zero (the default) plans exactly `SegmentCellCount`; a positive value
+must be at least that count. For example, a24cell lookahead can honor a known
+restriction at cell20 before returning an8cell prefix. The entire temporary
+candidate passes independent capture and stored-domain validation. Only the
+prefix updates the frontier and consumes constraints; the provisional suffix
+is discarded, so later calls may change its domains. This does not guarantee
+solvability beyond the bounded window or increase the search allowances.
+
+`Segment.CellCount` is the published extent; `PlanningCellCount` reports the
+actual window checked, clipped to the remaining duration. `Next(Segment, Report,
+MaximumPlanningCells)` optionally caps it further when application domains are
+not yet available. The cap cannot enlarge the configured bound or be smaller
+than the actual returned prefix. The protected graph hook sees the planning
+extent. A prefix ending before the planned endpoint does not claim an observed
+end: its boundary records the additional following cells actually proved.
+Coverage, tokens and states contain only the published prefix and are detached.
+Stream/signature versions are2; signatures now bind the actual planning extent
+and prefix boundary. Default musical decisions stay unchanged, but old numeric
+signatures are not the current format.
+
 For direct finite graph control, `BuildWfcMusicVoicesSegmentGraph` accepts one
 `TWfcSequenceSegmentBoundary` per model and returns a caller-owned `TGraph`.
 Use ordinary `TrySolve` or bounded `TrySolveNegotiated`, then
