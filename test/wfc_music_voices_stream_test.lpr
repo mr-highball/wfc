@@ -280,7 +280,8 @@ begin
         Z:=A.CopyCoverage;
         Check((Z[0].PitchClass=0) and (Z[0].Suppliers[0]<>999),
           'coverage diagnostics deeply detach');
-        if Count=0 then Check(A.Signature=Cardinal($10F2F6C8),
+        { Big Boss: segment boundary v2 includes the following-cell contract. }
+        if Count=0 then Check(A.Signature=Cardinal($19776A1D),
           'versioned independent voice segment signature golden: '+IntToHex(A.Signature,8));
       finally A.Free; B.Free end;
       Inc(Count);

@@ -379,6 +379,30 @@ observed start and canonical `PreviousState = -1`. A continuing boundary
 requires the first state to be a structural successor of the exact previous
 latent state. Either can optionally require an observed terminal state.
 
+Version2 adds `MinimumFollowingCells`, default0. Supply a nonnegative third
+argument to either boundary constructor to intersect the last cell with states
+that support at least that many subsequent structural transitions. Capture and
+independent path validation check the same requirement. A finite unsupported
+exit is reported as `wsgikContinuation`; graph solving reports an ordinary
+contradiction if no allowed exit remains. Existing observed-end and caller
+domains still intersect with this requirement.
+
+`AnalyzeSequenceContinuation` in `wfc_sequence_analyze` returns detached capacity
+for each exact latent state: a nonnegative maximum following length, or-1 when
+the state can reach a cycle. It removes terminal branches in reverse topological
+order using O(states) memory and O(states squared) compatibility visits, regardless
+of requested duration. `wspAnalyzeContinuation` reports state rows and supports
+borrowed observer cancellation before result publication. Model text/identity
+and compatibility are unchanged; no terminal-to-start edge is invented.
+
+This proves structural support only. It does not predict future caller masks,
+cross-pass constraints, required final observed ends, musical variation or a
+particular future search budget. Streaming owners decide the remaining-length
+policy and retain their accepted exact predecessor. They must still handle an
+unsolved later constrained segment. The segment conformance test includes finite,
+recurrent, ambiguous-token and wrapped providers, an independent bounded-walk
+oracle, every analysis callback abort, and actual continued graph solves.
+
 Use `MakeWfcSequenceInitialSegmentBoundary` or
 `MakeWfcSequenceContinuingSegmentBoundary`, then
 `ApplySequenceModelSegmentToGraph`. Capture with

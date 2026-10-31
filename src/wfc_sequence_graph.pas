@@ -36,7 +36,7 @@ uses
 
 const
   WFC_SEQUENCE_GRAPH_ADAPTER_VERSION = 1;
-  WFC_SEQUENCE_SEGMENT_VERSION = 1;
+  WFC_SEQUENCE_SEGMENT_VERSION = 2;
   WFC_SEQUENCE_PARTIAL_PROJECTION_VERSION = 1;
 
 type
@@ -52,7 +52,8 @@ type
     wsgikBoundaryState,
     wsgikStartState,
     wsgikEndState,
-    wsgikTransition
+    wsgikTransition,
+    wsgikContinuation
   );
 
   TWfcSequenceGraphIssue = record
@@ -85,6 +86,7 @@ type
     HasPrevious: Boolean;
     PreviousState: Integer;
     RequireObservedEnd: Boolean;
+    MinimumFollowingCells: Integer;
   end;
 
   TWfcGeneratedSequenceSegment = record
@@ -124,9 +126,11 @@ function MakeWfcSequenceProjectionBinding(
   TWfcSequenceProjectionBinding;
 
 function MakeWfcSequenceInitialSegmentBoundary(
-  const ARequireObservedEnd: Boolean): TWfcSequenceSegmentBoundary;
+  const ARequireObservedEnd: Boolean;
+  const AMinimumFollowingCells: Integer = 0): TWfcSequenceSegmentBoundary;
 function MakeWfcSequenceContinuingSegmentBoundary(
-  const APreviousState: Integer; const ARequireObservedEnd: Boolean):
+  const APreviousState: Integer; const ARequireObservedEnd: Boolean;
+  const AMinimumFollowingCells: Integer = 0):
   TWfcSequenceSegmentBoundary;
 
 { New segment APIs leave ordinary extent semantics and exact model identities
@@ -314,7 +318,7 @@ function DescribeSequenceGraphIssue(
 implementation
 
 uses
-  wfc_text_codec, wfc_lattice;
+  wfc_text_codec, wfc_lattice, wfc_sequence_analyze;
 
 type
   TSequenceBooleanArray = array of Boolean;
@@ -352,27 +356,37 @@ begin
 end;
 
 function MakeWfcSequenceInitialSegmentBoundary(
-  const ARequireObservedEnd: Boolean): TWfcSequenceSegmentBoundary;
+  const ARequireObservedEnd: Boolean;
+  const AMinimumFollowingCells: Integer): TWfcSequenceSegmentBoundary;
 begin
+  if AMinimumFollowingCells < 0 then
+    raise ERangeError.Create('sequence following-cell requirement must be nonnegative');
   Result.HasPrevious := False;
   Result.PreviousState := -1;
   Result.RequireObservedEnd := ARequireObservedEnd;
+  Result.MinimumFollowingCells := AMinimumFollowingCells;
 end;
 
 function MakeWfcSequenceContinuingSegmentBoundary(
-  const APreviousState: Integer; const ARequireObservedEnd: Boolean):
+  const APreviousState: Integer; const ARequireObservedEnd: Boolean;
+  const AMinimumFollowingCells: Integer):
   TWfcSequenceSegmentBoundary;
 begin
   if APreviousState < 0 then
     raise ERangeError.Create('sequence segment predecessor must be nonnegative');
+  if AMinimumFollowingCells < 0 then
+    raise ERangeError.Create('sequence following-cell requirement must be nonnegative');
   Result.HasPrevious := True;
   Result.PreviousState := APreviousState;
   Result.RequireObservedEnd := ARequireObservedEnd;
+  Result.MinimumFollowingCells := AMinimumFollowingCells;
 end;
 
 function SegmentBoundaryIsValid(const AModel: TWfcSequenceModel;
   const ABoundary: TWfcSequenceSegmentBoundary): Boolean;
 begin
+  if ABoundary.MinimumFollowingCells < 0 then
+    Exit(False);
   if ABoundary.HasPrevious then
     Result := (ABoundary.PreviousState >= 0) and
       (ABoundary.PreviousState < AModel.StateCount)
@@ -983,6 +997,8 @@ var
   LKeys: TWfcModelTokens;
   LGraphModel: TWfcModel;
   LWork: TWfcPreparationWork;
+  LContinuation: TWfcModelIntegerArray;
+  LBridge: TWfcSequencePreparationBridge;
 begin
   RequireAssigned(AModel, AGraph);
   if ActiveSequencePass(AGraph) <> AGraph then
@@ -1002,8 +1018,15 @@ begin
   //differ from ordinary application; the private keys and directional rules
   //remain exactly those of the existing adapter.
   LWork := TWfcPreparationWork.Create(AObserver, 'sequence_segment_graph_visits');
+  LBridge := nil;
+  LContinuation := nil;
   try
     LWork.Checkpoint;
+    if ABoundary.MinimumFollowingCells > 0 then
+    begin
+      LBridge := TWfcSequencePreparationBridge.Create(AObserver, 'sequence_continuation');
+      LContinuation := AnalyzeSequenceContinuation(AModel, LBridge.SequenceObserver());
+    end;
     LKeys := CopyStateKeys(AModel, LWork);
     LFirstValues := nil;
     LEndValues := nil;
@@ -1019,7 +1042,11 @@ begin
         SetLength(LFirstValues, Length(LFirstValues) + 1);
         LFirstValues[High(LFirstValues)] := ModelTokenToGraphValue(LKeys[I]);
       end;
-      if ABoundary.RequireObservedEnd and (AModel.EndCountAt(I) > 0) then
+      LAllowed := not ABoundary.RequireObservedEnd or (AModel.EndCountAt(I) > 0);
+      if ABoundary.MinimumFollowingCells > 0 then
+        LAllowed := LAllowed and ((LContinuation[I] = -1) or
+          (LContinuation[I] >= ABoundary.MinimumFollowingCells));
+      if LAllowed then
       begin
         SetLength(LEndValues, Length(LEndValues) + 1);
         LEndValues[High(LEndValues)] := ModelTokenToGraphValue(LKeys[I]);
@@ -1032,11 +1059,12 @@ begin
       LGraphModel.Free;
     end;
     IntersectGraphDomain(AGraph, 0, LFirstValues, LWork);
-    if ABoundary.RequireObservedEnd then
+    if ABoundary.RequireObservedEnd or (ABoundary.MinimumFollowingCells > 0) then
       IntersectGraphDomain(AGraph, Integer(AGraph.Dimension.Width) - 1,
         LEndValues, LWork);
     LWork.Finish;
   finally
+    LBridge.Free;
     LWork.Free;
   end;
 end;
@@ -2103,6 +2131,7 @@ var
   LLength: SizeInt;
   LTransitionCount: Integer;
   LDone: Integer;
+  LContinuation: TWfcModelIntegerArray;
 begin
   if not Assigned(AModel) then
     raise EArgumentNilException.Create('sequence model cannot be nil');
@@ -2172,6 +2201,18 @@ begin
     AReport.Issue.Position := LCount - 1;
     AReport.Issue.StateIndex := AStateIndices[LCount - 1];
     Exit(InvalidReport(AReport, wsgikEndState));
+  end;
+  if ABoundary.MinimumFollowingCells > 0 then
+  begin
+    LContinuation := AnalyzeSequenceContinuation(AModel, AObserver);
+    LState := AStateIndices[LCount - 1];
+    if (LContinuation[LState] <> -1) and
+      (LContinuation[LState] < ABoundary.MinimumFollowingCells) then
+    begin
+      AReport.Issue.Position := LCount - 1;
+      AReport.Issue.StateIndex := LState;
+      Exit(InvalidReport(AReport, wsgikContinuation));
+    end;
   end;
   AReport.Valid := True;
   AReport.Issue.Kind := wsgikNone;
@@ -2388,6 +2429,9 @@ begin
     wsgikTransition:
       Result := Format('sequence states %d and %d do not overlap',
         [AIssue.StateIndex, AIssue.RelatedStateIndex]);
+    wsgikContinuation:
+      Result := Format('sequence state %d cannot support the required following cells',
+        [AIssue.StateIndex]);
   end;
 end;
 

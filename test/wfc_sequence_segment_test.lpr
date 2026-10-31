@@ -26,12 +26,29 @@ program wfc_sequence_segment_test;
 {$mode delphi}{$H+}
 
 uses
-  {$IFDEF PAS2JS}wfc_browser_test_host,{$ENDIF}
-  SysUtils, wfc, wfc_model, wfc_sequence, wfc_sequence_learn,
+  {$IF defined(PAS2JS) and not defined(WFC_CONSOLE_TEST)}wfc_browser_test_host,{$ENDIF}
+  SysUtils, wfc, wfc_model, wfc_sequence, wfc_sequence_learn, wfc_sequence_analyze,
   wfc_sequence_graph;
 
 type TTest = procedure;
+type
+  TContinuationObserver = class
+    Calls: Integer;
+    AbortAt: Integer;
+    procedure Observe(const AProgress: TWfcSequencePreparationProgress);
+  end;
 var Checks, Failures: Integer;
+
+procedure TContinuationObserver.Observe(const AProgress: TWfcSequencePreparationProgress);
+begin
+  if AProgress.Phase <> wspAnalyzeContinuation then
+    raise Exception.Create('Unexpected continuation phase');
+  if (AProgress.Done < 0) or (AProgress.Done > AProgress.Total) then
+    raise Exception.Create('Invalid continuation counters');
+  Inc(Calls);
+  if Calls = AbortAt then
+    raise EAbort.Create('continuation observer abort');
+end;
 
 procedure Check(const ACondition: Boolean; const AMessage: String);
 begin
@@ -369,6 +386,173 @@ begin
   finally G.Free; M.Free; end;
 end;
 
+procedure CheckCapacityOracle(const AModel: TWfcSequenceModel);
+var
+  LCapacity: TWfcModelIntegerArray;
+  LPrevious: array of Boolean;
+  LNext: array of Boolean;
+  LLength: Integer;
+  LState: Integer;
+  LTarget: Integer;
+begin
+  LCapacity := AnalyzeSequenceContinuation(AModel);
+  SetLength(LPrevious, AModel.StateCount);
+  SetLength(LNext, AModel.StateCount);
+  for LState := 0 to AModel.StateCount - 1 do
+    LPrevious[LState] := True;
+  for LLength := 1 to AModel.StateCount + 2 do
+  begin
+    for LState := 0 to AModel.StateCount - 1 do
+    begin
+      LNext[LState] := False;
+      for LTarget := 0 to AModel.StateCount - 1 do
+        if IndependentCompatible(AModel, LState, LTarget) and LPrevious[LTarget] then
+          LNext[LState] := True;
+      Check(LNext[LState] = ((LCapacity[LState] = -1) or
+        (LCapacity[LState] >= LLength)), 'capacity agrees with independent bounded path oracle');
+    end;
+    for LState := 0 to AModel.StateCount - 1 do
+      LPrevious[LState] := LNext[LState];
+  end;
+end;
+
+procedure TestContinuationCapacity;
+var
+  LModel: TWfcSequenceModel;
+  LSamples: TWfcSequenceSamples;
+  LOrder: Integer;
+  LObserver: TContinuationObserver;
+  LCapacity: TWfcModelIntegerArray;
+  LCalls: Integer;
+  I: Integer;
+  LAborted: Boolean;
+begin
+  for LOrder := 1 to 5 do
+  begin
+    LModel := LearnSequenceModel(Tokens(['A', 'B', 'C', 'D']), LOrder);
+    try
+      CheckCapacityOracle(LModel);
+    finally
+      LModel.Free;
+    end;
+  end;
+  SetLength(LSamples, 3);
+  LSamples[0] := MakeWfcSequenceSample(Tokens(['A', 'A', 'B']));
+  LSamples[1] := MakeWfcSequenceSample(Tokens(['C', 'X', 'D']));
+  LSamples[2] := MakeWfcSequenceSample(Tokens(['E', 'X', 'X', 'F']));
+  LModel := LearnSequenceModelCorpus(LSamples, 3);
+  LObserver := TContinuationObserver.Create;
+  try
+    CheckCapacityOracle(LModel);
+    LCapacity := AnalyzeSequenceContinuation(LModel, LObserver.Observe);
+    LCalls := LObserver.Calls;
+    for I := 1 to LCalls do
+    begin
+      SetLength(LCapacity, 1);
+      LCapacity[0] := 42;
+      LObserver.Calls := 0;
+      LObserver.AbortAt := I;
+      LAborted := False;
+      try
+        LCapacity := AnalyzeSequenceContinuation(LModel, LObserver.Observe);
+      except
+        on E: EAbort do
+          LAborted := True;
+      end;
+      Check(LAborted and (Length(LCapacity) = 1) and (LCapacity[0] = 42),
+        'every continuation observer abort preserves prior caller result');
+    end;
+    CheckCapacityOracle(LModel);
+  finally
+    LObserver.Free;
+    LModel.Free;
+  end;
+  LModel := LearnSequenceModel(Tokens(['A', 'B', 'C']), 3, wmbWrap);
+  try
+    CheckCapacityOracle(LModel);
+  finally
+    LModel.Free;
+  end;
+end;
+
+procedure TestRequiredContinuation;
+var
+  LModel: TWfcSequenceModel;
+  LGraph: TGraph;
+  LBoundary: TWfcSequenceSegmentBoundary;
+  LSequence: TWfcGeneratedSequenceSegment;
+  LValidation: TWfcSequenceGraphValidationReport;
+  LReport: TGraphSolveReport;
+  LPrevious: Integer;
+  LCell: Integer;
+  LTerminal: Integer;
+  LRejected: Boolean;
+begin
+  LModel := LearnSequenceModel(Tokens(['A', 'A', 'B']), 2);
+  LGraph := nil;
+  LPrevious := -1;
+  try
+    LTerminal := FindState(LModel, 'B');
+    for LCell := 0 to 63 do
+    begin
+      if LCell = 0 then
+        LBoundary := MakeWfcSequenceInitialSegmentBoundary(False, 63 - LCell)
+      else
+        LBoundary := MakeWfcSequenceContinuingSegmentBoundary(LPrevious,
+          LCell = 63, 63 - LCell);
+      LGraph := NewGraph(1);
+      ApplySequenceModelSegmentToGraph(LModel, LGraph, LBoundary);
+      Check(LGraph.TrySolve(DefaultGraphSolveOptions, LReport),
+        'recurrent support continues well beyond source length');
+      Check(CaptureSolvedSequenceSegment(LModel, LGraph, LBoundary, LSequence, LValidation),
+        'captured continuation proves exact latent seam and exit');
+      if LCell < 63 then
+        Check(LSequence.Tokens[0] = 'A', 'terminal branch excluded only while future cells remain')
+      else
+        Check(LSequence.Tokens[0] = 'B', 'final observed terminal is still available');
+      LPrevious := LSequence.StateIndices[0];
+      LGraph.Free;
+      LGraph := nil;
+    end;
+    LBoundary := MakeWfcSequenceContinuingSegmentBoundary(FindState(LModel, 'A'), False, 1);
+    { Authenticate a terminal path from its actual compatible predecessor. }
+    for LPrevious := 0 to LModel.StateCount - 1 do
+      if LModel.StatesCompatible(LPrevious, LTerminal) then
+        LBoundary := MakeWfcSequenceContinuingSegmentBoundary(LPrevious, False, 1);
+    Check(not ValidateSequenceSegmentStatePath(LModel, Path([LTerminal]), LBoundary,
+      LValidation) and (LValidation.Issue.Kind = wsgikContinuation),
+      'path proof rejects an exit that cannot supply required future cells');
+    LRejected := False;
+    try
+      LBoundary := MakeWfcSequenceInitialSegmentBoundary(False, -1);
+    except
+      on E: ERangeError do
+        LRejected := True;
+    end;
+    Check(LRejected, 'negative following requirement rejected before application');
+  finally
+    LGraph.Free;
+    LModel.Free;
+  end;
+  LModel := LearnSequenceModel(Tokens(['A', 'B', 'C']), 2);
+  LGraph := NewGraph(1);
+  try
+    LBoundary := MakeWfcSequenceInitialSegmentBoundary(False, 2);
+    ApplySequenceModelSegmentToGraph(LModel, LGraph, LBoundary);
+    Check(LGraph.TrySolve(DefaultGraphSolveOptions, LReport),
+      'finite source supports its exact remaining length');
+    LGraph.Free;
+    LGraph := NewGraph(1);
+    LBoundary := MakeWfcSequenceInitialSegmentBoundary(False, 3);
+    ApplySequenceModelSegmentToGraph(LModel, LGraph, LBoundary);
+    Check(not LGraph.TrySolve(DefaultGraphSolveOptions, LReport),
+      'finite provider cannot claim unsupported extra duration');
+  finally
+    LGraph.Free;
+    LModel.Free;
+  end;
+end;
+
 begin
   Checks := 0; Failures := 0;
   Run('single-cell segments and early BOS', TestOneCellEarlyBos);
@@ -377,6 +561,9 @@ begin
   Run('legacy initial path parity', TestInitialLegacyParity);
   Run('preflight and failed output reset', TestPreflightAndFailureReset);
   Run('three-pass continuations', TestThreePassContinuations);
+  Run('structural continuation capacity and cancellation', TestContinuationCapacity);
+  Run('required following cells and honest finite rejection', TestRequiredContinuation);
   WriteLn('Sequence segment checks: ', Checks, ', failures: ', Failures);
-  if Failures <> 0 then Halt(1);
+  if Failures <> 0 then
+    {$IFDEF WFC_CONSOLE_TEST}System.ExitCode := 1{$ELSE}Halt(1){$ENDIF};
 end.

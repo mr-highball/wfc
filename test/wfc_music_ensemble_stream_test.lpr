@@ -248,8 +248,9 @@ begin
         X:=A.CopyFrames; X[0].Voices[0].Tones[0].Pitch:=99;
         Y:=A.CopyFrames;
         Check(Y[0].Voices[0].Tones[0].Pitch=48,'nested result frames detach');
-        if Count=0 then Check(A.Signature=Cardinal($5ED51FA1),
-          'versioned first segment signature golden');
+        { Big Boss: segment boundary v2 includes the following-cell contract. }
+        if Count=0 then Check(A.Signature=Cardinal($34A36C18),
+          'versioned first segment signature golden: ' + IntToHex(A.Signature, 8));
       finally A.Free; B.Free end;
       Inc(Count);
     end;

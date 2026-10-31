@@ -304,6 +304,7 @@ begin
     if AGenerated.Layers[I].Boundary.HasPrevious then
       HashWide(FSignature, AGenerated.Layers[I].Boundary.PreviousState);
     HashWide(FSignature, Ord(AGenerated.Layers[I].Boundary.RequireObservedEnd));
+    HashWide(FSignature, AGenerated.Layers[I].Boundary.MinimumFollowingCells);
     for J := 0 to ACellCount - 1 do
     begin
       HashWide(FSignature, AGenerated.Layers[I].StateIndices[J]);

@@ -71,10 +71,86 @@ function AnalyzeSequenceTokenDomains(const AModel: TWfcSequenceModel;
 function DescribeSequenceAnalyzeIssue(
   const AIssue: TWfcSequenceAnalyzeIssue): String;
 
+{ Big Boss: structural capacity after each exact latent state. -1 means a path
+  reaches a cycle; otherwise the value is the maximum number of following cells.
+  Uses O(states) storage and O(states squared) compatibility visits, independent
+  of the requested duration. This does not account for future caller domains,
+  observed-end requirements or constraints from other passes. The model is
+  borrowed; observer abort preserves the caller's previous result. }
+function AnalyzeSequenceContinuation(const AModel: TWfcSequenceModel;
+  const AObserver: TWfcSequencePreparationObserver = nil): TWfcModelIntegerArray;
+
 implementation
 
 type
   TAnalyzeBooleanArray = array of Boolean;
+
+function AnalyzeSequenceContinuation(const AModel: TWfcSequenceModel;
+  const AObserver: TWfcSequencePreparationObserver): TWfcModelIntegerArray;
+var
+  LOutDegree: TWfcModelIntegerArray;
+  LQueue: TWfcModelIntegerArray;
+  LCapacity: TWfcModelIntegerArray;
+  LHead: Integer;
+  LTail: Integer;
+  LState: Integer;
+  LTarget: Integer;
+  LDone: Integer;
+  LTotal: Integer;
+begin
+  if AModel = nil then
+    raise EArgumentNilException.Create('sequence continuation requires a model');
+  SetLength(LOutDegree, AModel.StateCount);
+  SetLength(LQueue, AModel.StateCount);
+  SetLength(LCapacity, AModel.StateCount);
+  LHead := 0;
+  LTail := 0;
+  LTotal := AModel.StateCount * 2;
+  ReportSequencePreparation(AObserver, wspAnalyzeContinuation, 0, LTotal);
+  for LState := 0 to AModel.StateCount - 1 do
+  begin
+    for LTarget := 0 to AModel.StateCount - 1 do
+    begin
+      if AModel.StatesCompatible(LState, LTarget) then
+        Inc(LOutDegree[LState]);
+      if LTarget mod 64 = 0 then
+        ReportSequencePreparation(AObserver, wspAnalyzeContinuation, LState, LTotal);
+    end;
+    if LOutDegree[LState] = 0 then
+    begin
+      LQueue[LTail] := LState;
+      Inc(LTail);
+    end;
+  end;
+  while LHead < LTail do
+  begin
+    LTarget := LQueue[LHead];
+    for LState := 0 to AModel.StateCount - 1 do
+    begin
+      if (LOutDegree[LState] > 0) and AModel.StatesCompatible(LState, LTarget) then
+      begin
+        if LCapacity[LState] < LCapacity[LTarget] + 1 then
+          LCapacity[LState] := LCapacity[LTarget] + 1;
+        Dec(LOutDegree[LState]);
+        if LOutDegree[LState] = 0 then
+        begin
+          LQueue[LTail] := LState;
+          Inc(LTail);
+        end;
+      end;
+      if LState mod 64 = 0 then
+        ReportSequencePreparation(AObserver, wspAnalyzeContinuation,
+          AModel.StateCount + LHead, LTotal);
+    end;
+    Inc(LHead);
+  end;
+  for LState := 0 to AModel.StateCount - 1 do
+    if LOutDegree[LState] > 0 then
+      LCapacity[LState] := -1;
+  LDone := LTotal;
+  ReportSequencePreparation(AObserver, wspAnalyzeContinuation, LDone, LTotal);
+  Result := LCapacity;
+end;
 
 procedure InitializeAnalysis(const AExtent: TWfcSequenceExtent;
   out AAnalysis: TWfcSequenceDomainAnalysis);

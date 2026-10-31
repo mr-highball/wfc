@@ -55,7 +55,7 @@ type
     wspSnapshotDomains, wspIntersectDomains, wspLearnTokenRows, wspLearnStateRows,
     wspModelBuildVisits, wspCaptureSequenceCells, wspValidatePathStates,
     wspValidatePathTransitions, wspValidateEntryCells, wspValidateProjectionStates,
-    wspProjectStateTokens, wspCaptureReady);
+    wspProjectStateTokens, wspCaptureReady, wspAnalyzeContinuation);
   { Units are completed rows/masks/cells or marked model-construction loop visits
     according to Phase. A checkpoint within one row can repeat
     Done. Total=0 means unknown or empty, not a completion percentage.
@@ -311,6 +311,7 @@ begin
     wspValidateProjectionStates: LStage := 'sequence_projection_states';
     wspProjectStateTokens: LStage := 'sequence_project_tokens';
     wspCaptureReady: LStage := 'sequence_capture_ready';
+    wspAnalyzeContinuation: LStage := 'sequence_continuation_states';
   else
     raise EWfcSequence.Create('Unknown sequence preparation phase');
   end;
