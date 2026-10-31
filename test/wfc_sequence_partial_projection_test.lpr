@@ -177,7 +177,8 @@ end;
 begin
   try
     Check(WFC_SEQUENCE_PARTIAL_PROJECTION_VERSION = 1, 'partial relation version');
-    Check((WFC_SEQUENCE_GRAPH_ADAPTER_VERSION = 1) and (WFC_SEQUENCE_SEGMENT_VERSION = 1), 'old versions unchanged');
+    Check((WFC_SEQUENCE_GRAPH_ADAPTER_VERSION = 1) and (WFC_SEQUENCE_SEGMENT_VERSION = 2),
+      'ordinary adapter remains v1; continued boundary explicitly versions following-cell support');
     TestPartialRelations;
     TestAtomicPreflightAndPlainWitness;
   except on E: Exception do begin Inc(Failures); WriteLn(E.ClassName, ': ', E.Message); end; end;

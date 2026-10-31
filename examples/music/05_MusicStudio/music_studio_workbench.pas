@@ -825,7 +825,7 @@ const MUSIC_STATUS_NAMES: array[TWfcMusicPassStatus] of String =
   ('not-run','completed','solve-failed','capture-failed','validation-failed');
   CAPTURE_NAMES: array[TWfcSequenceGraphIssueKind] of String =
   ('none','graph-shape','model-identity','empty-cell','unknown-state',
-   'state-index','boundary','start','end','transition');
+   'state-index','boundary','start','end','transition','continuation');
 var I: Integer; P: TGraphPassSolveReport; L: TWfcMusicPassLayer;
 begin
   Result := MusicStudioStatusName(FStatus) + ' seed=' + UIntToStr(FSeed) +

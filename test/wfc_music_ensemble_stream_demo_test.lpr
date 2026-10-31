@@ -203,8 +203,9 @@ begin
       'frame source reaches the exact transport-neutral duration');
     Check((LStream.SegmentsProduced = 5) and
       (LStream.SeamHoldCount = 5) and
-      (LStream.LastSegmentSignature = Cardinal($433EDED7)),
-      'frame source retains segment and held-seam evidence');
+      (LStream.LastSegmentSignature = Cardinal($45E2E4C6)),
+      'frame source retains segment and held-seam evidence: ' +
+        IntToHex(LStream.LastSegmentSignature, 8));
     Check((LStream.NextFrame(LFrame) = wmaspCompleted) and
       (LFrame.Voices = nil), 'frame completion is terminal and clears output');
   finally
@@ -301,8 +302,9 @@ begin
   Check((Blocks1 = Blocks2) and (Blocks1 > 80),
     'stream uses many bounded pulls rather than one song buffer');
   Check((H1 = Cardinal($7230FCDD)) and
-    (Last1 = Cardinal($3705EC24)) and (Holds1 = 4),
-    'versioned four-second PCM, segment, and seam goldens');
+    (Last1 = Cardinal($321A82CD)) and (Holds1 = 4),
+    'versioned four-second PCM, segment, and seam goldens: PCM=' +
+      IntToHex(H1, 8) + ' segment=' + IntToHex(Last1, 8));
 
   Drain('0.001', 7, H2, Frames2, Blocks2, Segments2, Holds2, Last2);
   Check((Frames2 = 11025) and (Segments2 = 1) and (Holds2 = 0),
@@ -311,8 +313,9 @@ begin
   Check((Frames2 = 231525) and (Segments2 = 5) and (Holds2 > 0),
     'stream continues beyond the finite authored sample');
   Check((H2 = Cardinal($8701A89B)) and
-    (Last2 = Cardinal($433EDED7)) and (Holds2 = 5),
-    'continued-stream PCM, segment, and seam goldens');
+    (Last2 = Cardinal($45E2E4C6)) and (Holds2 = 5),
+    'continued-stream PCM, segment, and seam goldens: PCM=' +
+      IntToHex(H2, 8) + ' segment=' + IntToHex(Last2, 8));
 end;
 
 procedure TestCancelAndForgedInput;

@@ -16,8 +16,8 @@ checks with no heap leaks. Matched actual pas2js2.3.1/RTL, executed as a console
 consumer under Node, passes the same1137 checks. `WFC_CONSOLE_TEST` selects this
 host-free test entry; the ordinary browser gate keeps its existing DOM host.
 Generated commands/logs live in the consuming project's dedicated E-drive
-`sequence-continuation-20261031-boss` packet. Full remote CI and affected stream
-remote CI remains to be recorded; these local checks do not imply its success.
+`sequence-continuation-20261031-boss` packet. Full remote CI remains to be recorded;
+these local checks do not imply its success.
 Affected ensemble and independent-voice streams pass1559 and1792 native checks
 with clean heaps. Their old signature goldens initially failed because segment
 boundary version2 now contributes the following-cell contract. The intentionally
@@ -32,3 +32,12 @@ analysis checkpoint, renders graph segments through64 cells from a three-token
 source, allows the final terminal, and rejects an overlong genuinely finite source.
 These are generic structural checks, not musical-quality or infinite-solvability
 claims under arbitrary future cross-pass constraints.
+
+CI60 (`41186750033`) exposed remaining integration consumers: the music workbench's
+diagnostic-name array lacked the new continuation issue, the partial-projection
+fixture still asserted segment version1, and three ensemble-demo segment goldens
+retained version1 signatures. Repair the label/version expectations and retain
+the original PCM goldens7230FCDD/8701A89B. The demo now passes430/430 with clean
+heap, partial projections29/29, and the actual browser music-workbench consumer
+compiles with matched pas2js/RTL. Original CI/focused failure evidence remains;
+the complete replacement run must pass before downstream acceptance.
