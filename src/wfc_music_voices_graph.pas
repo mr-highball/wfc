@@ -30,7 +30,9 @@ interface
 uses SysUtils, wfc, wfc_model, wfc_sequence, wfc_sequence_graph,
   wfc_music_ensemble, wfc_music_ensemble_graph, wfc_preparation;
 
-const WFC_MUSIC_VOICES_GRAPH_VERSION = 1;
+const
+  WFC_MUSIC_VOICES_GRAPH_VERSION = 1;
+  WFC_MUSIC_VOICES_COMPOSITION_VERSION = 1;
 
 type
   EWfcMusicVoicesGraph = class(EWfcMusicEnsembleGraph);
@@ -49,7 +51,20 @@ type
     RestPolicy: TWfcMusicVoicePairRestPolicy;
   end;
   TWfcMusicVoicePairConstraints = array of TWfcMusicVoicePairConstraint;
-  { Models are borrowed immutable objects. Copy detaches the role/pair vectors.
+  { Caller-owned symbolic sequence passes. No application codec is interpreted.
+    Auxiliary models follow H/R/voices in the public model/boundary vectors. }
+  TWfcMusicVoicesAuxiliary = record
+    Name: String;
+    Model: TWfcSequenceModel;
+  end;
+  TWfcMusicVoicesAuxiliaries = array of TWfcMusicVoicesAuxiliary;
+  TWfcMusicVoicesProjection = record
+    SourceModelIndex, TargetModelIndex: Integer;
+    Rules: TWfcSequenceProjectionRules;
+  end;
+  TWfcMusicVoicesProjections = array of TWfcMusicVoicesProjection;
+  { Models are borrowed immutable objects. Copy detaches all managed vectors.
+    Inputs must remain unchanged during preparation callbacks.
     Rhythm is a shared ordered action vector. Each voice model emits existing
     one-voice ensemble frame tokens, including complete chords and velocities. }
   TWfcMusicVoicesGraphConfig = record
@@ -58,6 +73,8 @@ type
     StepsPerOctave: Integer;
     HarmonyMode: TWfcMusicEnsembleHarmonyMode;
     PairConstraints: TWfcMusicVoicePairConstraints;
+    Auxiliary: TWfcMusicVoicesAuxiliaries;
+    Projections: TWfcMusicVoicesProjections;
   end;
   TWfcMusicVoicesBoundaries = array of TWfcSequenceSegmentBoundary;
   TWfcMusicVoicesGeneratedLayers = array of TWfcGeneratedSequenceSegment;
@@ -80,7 +97,7 @@ type
   TWfcMusicVoicesIssueKind = (wmvikNone, wmvikConfiguration, wmvikGraphShape,
     wmvikSequence, wmvikBoundary, wmvikToken, wmvikEntryConstraint,
     wmvikFrame, wmvikRhythm, wmvikHarmony, wmvikRange, wmvikPair,
-    wmvikWitness, wmvikInternal);
+    wmvikWitness, wmvikInternal, wmvikProjection);
   TWfcMusicVoicesValidationIssue = record
     Kind: TWfcMusicVoicesIssueKind;
     ModelIndex, VoiceIndex, RelatedVoiceIndex, Position, PitchClass: Integer;
@@ -101,6 +118,9 @@ function WfcMusicVoicesModelCount(const AConfig: TWfcMusicVoicesGraphConfig): In
 function WfcMusicVoicesModelAt(const AConfig: TWfcMusicVoicesGraphConfig;
   const AModelIndex: Integer): TWfcSequenceModel;
 function WfcMusicVoicesPassLabel(const AModelIndex: Integer): String;
+  overload;
+function WfcMusicVoicesPassLabel(const AConfig: TWfcMusicVoicesGraphConfig;
+  const AModelIndex: Integer): String; overload;
 function WfcMusicVoicesCoveragePassLabel(const APitchClass: Integer): String;
 function WfcMusicVoicesCoverageClasses(const AConfig: TWfcMusicVoicesGraphConfig;
   const AObserver: TWfcPreparationObserver = nil): TWfcMusicPitchClasses;
@@ -160,7 +180,9 @@ end;
 function WfcMusicVoicesModelCount(const AConfig: TWfcMusicVoicesGraphConfig): Integer;
 begin
   CheckInteger(Length(AConfig.Voices), 1, High(Integer) - 2, 'voice count');
-  Result := Length(AConfig.Voices) + 2;
+  CheckInteger(Length(AConfig.Auxiliary), 0,
+    High(Integer) - Length(AConfig.Voices) - 2, 'auxiliary count');
+  Result := Length(AConfig.Voices) + 2 + Length(AConfig.Auxiliary);
 end;
 
 function WfcMusicVoicesModelAt(const AConfig: TWfcMusicVoicesGraphConfig;
@@ -170,8 +192,20 @@ begin
   case AModelIndex of
     0: Result := AConfig.HarmonyModel;
     1: Result := AConfig.RhythmModel;
-  else Result := AConfig.Voices[AModelIndex - 2].Model;
+  else
+    if AModelIndex < Length(AConfig.Voices) + 2 then
+      Result := AConfig.Voices[AModelIndex - 2].Model
+    else Result := AConfig.Auxiliary[AModelIndex - Length(AConfig.Voices) - 2].Model;
   end;
+end;
+
+function WfcMusicVoicesPassLabel(const AConfig: TWfcMusicVoicesGraphConfig;
+  const AModelIndex: Integer): String;
+begin
+  CheckInteger(AModelIndex, 0, WfcMusicVoicesModelCount(AConfig) - 1, 'model index');
+  if AModelIndex < Length(AConfig.Voices) + 2 then
+    Result := WfcMusicVoicesPassLabel(AModelIndex)
+  else Result := AConfig.Auxiliary[AModelIndex - Length(AConfig.Voices) - 2].Name;
 end;
 
 function WfcMusicVoicesPassLabel(const AModelIndex: Integer): String;
@@ -193,7 +227,7 @@ end;
 function CopyWfcMusicVoicesGraphConfig(const AConfig: TWfcMusicVoicesGraphConfig;
   const AObserver: TWfcPreparationObserver): TWfcMusicVoicesGraphConfig;
 var
-  I: Integer;
+  I, J, K: Integer;
   LCandidate: TWfcMusicVoicesGraphConfig;
   LWork: TWfcPreparationWork;
 begin
@@ -216,6 +250,25 @@ begin
       LCandidate.PairConstraints[I] := AConfig.PairConstraints[I];
       LWork.Visit;
     end;
+    LCandidate.Auxiliary := Copy(AConfig.Auxiliary);
+    LCandidate.Projections := Copy(AConfig.Projections);
+    for I := 0 to High(LCandidate.Projections) do
+    begin
+      LCandidate.Projections[I].Rules := Copy(AConfig.Projections[I].Rules);
+      for J := 0 to High(LCandidate.Projections[I].Rules) do
+      begin
+        LCandidate.Projections[I].Rules[J].SourceTokens := nil;
+        SetLength(LCandidate.Projections[I].Rules[J].SourceTokens,
+          Length(AConfig.Projections[I].Rules[J].SourceTokens));
+        for K := 0 to High(LCandidate.Projections[I].Rules[J].SourceTokens) do
+        begin
+          LCandidate.Projections[I].Rules[J].SourceTokens[K] :=
+            AConfig.Projections[I].Rules[J].SourceTokens[K];
+          LWork.Visit;
+        end;
+      end;
+      LWork.Visit;
+    end;
     LWork.Finish;
     Result := LCandidate;
   finally
@@ -233,7 +286,8 @@ begin
   LWork := TWfcSequencePreparationBridge.Create(AObserver, 'voice_config_visits');
   try
     LWork.Checkpoint;
-    N := WfcMusicVoicesModelCount(AConfig) - 2;
+    WfcMusicVoicesModelCount(AConfig);
+    N := Length(AConfig.Voices);
     CheckInteger(AConfig.StepsPerOctave, 1, High(Integer), 'steps per octave');
     CheckInteger(Ord(AConfig.HarmonyMode), Ord(Low(TWfcMusicEnsembleHarmonyMode)),
       Ord(High(TWfcMusicEnsembleHarmonyMode)), 'harmony mode');
@@ -271,6 +325,46 @@ begin
           (P.UpperVoice = AConfig.PairConstraints[J].UpperVoice) then
           VoiceError('duplicate voice pair; intersect its gap bounds explicitly');
       end;
+    end;
+    for I := 0 to High(AConfig.Auxiliary) do
+    begin
+      LWork.Visit;
+      if (AConfig.Auxiliary[I].Name = '') or
+        (AConfig.Auxiliary[I].Name = 'harmony') or
+        (AConfig.Auxiliary[I].Name = 'rhythm') or
+        (Copy(AConfig.Auxiliary[I].Name, 1, 6) = 'voice.') or
+        (Copy(AConfig.Auxiliary[I].Name, 1, 9) = 'coverage.') then
+        VoiceError('auxiliary name is empty or reserved');
+      if (AConfig.Auxiliary[I].Model = nil) or
+        (AConfig.Auxiliary[I].Model.StateCount < 1) then
+        VoiceError('auxiliary needs an immutable sequence model');
+      for J := 0 to I - 1 do
+        if AConfig.Auxiliary[I].Name = AConfig.Auxiliary[J].Name then
+          VoiceError('duplicate auxiliary name');
+    end;
+    for I := 0 to High(AConfig.Projections) do
+    begin
+      LWork.Visit;
+      CheckInteger(AConfig.Projections[I].SourceModelIndex, 0,
+        WfcMusicVoicesModelCount(AConfig) - 1, 'projection source');
+      CheckInteger(AConfig.Projections[I].TargetModelIndex, 0,
+        WfcMusicVoicesModelCount(AConfig) - 1, 'projection target');
+      if AConfig.Projections[I].SourceModelIndex = AConfig.Projections[I].TargetModelIndex then
+        VoiceError('projection cannot depend on itself');
+      if (AConfig.Projections[I].TargetModelIndex >= 2) and
+        (AConfig.Projections[I].TargetModelIndex < N + 2) then
+      begin
+        if AConfig.Projections[I].SourceModelIndex < 2 then
+          VoiceError('projection duplicates the built-in harmony/rhythm dependency');
+        for J := 0 to High(AConfig.PairConstraints) do
+          if (AConfig.Projections[I].SourceModelIndex = AConfig.PairConstraints[J].LowerVoice + 2) and
+            (AConfig.Projections[I].TargetModelIndex = AConfig.PairConstraints[J].UpperVoice + 2) then
+            VoiceError('projection duplicates a built-in voice pair dependency');
+      end;
+      for J := 0 to I - 1 do
+        if (AConfig.Projections[I].SourceModelIndex = AConfig.Projections[J].SourceModelIndex) and
+          (AConfig.Projections[I].TargetModelIndex = AConfig.Projections[J].TargetModelIndex) then
+          VoiceError('duplicate source/target projection; intersect explicitly');
     end;
     LWork.Finish;
   finally
@@ -581,8 +675,8 @@ begin
       begin
         LWork.Visit;
         LWork.SequencePassIndex := I;
-        if I = 0 then Result.CurrentPass := WfcMusicVoicesPassLabel(I)
-        else Result.SwitchToPass(WfcMusicVoicesPassLabel(I));
+        if I = 0 then Result.CurrentPass := WfcMusicVoicesPassLabel(AConfig, I)
+        else Result.SwitchToPass(WfcMusicVoicesPassLabel(AConfig, I));
         Result.PassMode := gpmOverlay; Result.ClearDependencies;
         ApplySequenceModelSegmentToGraph(WfcMusicVoicesModelAt(AConfig, I), Result,
           ABoundaries[I], PreparationObserver(LWork));
@@ -595,6 +689,31 @@ begin
         Bindings := VoiceBindings(AConfig, P, I, LWork);
         RequireSequencePartialProjectionMapsFromPasses(AConfig.Voices[I].Model, Result,
           Bindings, PreparationObserver(LWork));
+      end;
+      { One conjunctive bundle per target; the primary sequence API validates
+        identities, complete token maps, duplicate edges and dependency cycles. }
+      for I := 0 to N - 1 do
+      begin
+        Bindings := nil;
+        for J := 0 to High(AConfig.Projections) do
+        begin
+          LWork.Visit;
+          if AConfig.Projections[J].TargetModelIndex = I then
+          begin
+            K := AConfig.Projections[J].SourceModelIndex;
+            SetLength(Bindings, Length(Bindings) + 1);
+            Bindings[High(Bindings)] := MakeWfcSequenceProjectionBinding(
+              WfcMusicVoicesModelAt(AConfig, K), WfcMusicVoicesPassLabel(AConfig, K),
+              AConfig.Projections[J].Rules);
+          end;
+        end;
+        if Length(Bindings) > 0 then
+        begin
+          LWork.SequencePassIndex := I;
+          Result.SwitchToPass(WfcMusicVoicesPassLabel(AConfig, I));
+          RequireSequencePartialProjectionMapsFromPasses(WfcMusicVoicesModelAt(AConfig, I),
+            Result, Bindings, PreparationObserver(LWork));
+        end;
       end;
       for K := 0 to High(P.Classes) do
       begin
@@ -669,7 +788,8 @@ begin R.Valid := False; R.Issue.Kind := Kind; R.Issue.Detail := Detail; Result :
 function SameBoundary(const A, B: TWfcSequenceSegmentBoundary): Boolean;
 begin
   Result := (A.HasPrevious = B.HasPrevious) and (A.PreviousState = B.PreviousState) and
-    (A.RequireObservedEnd = B.RequireObservedEnd);
+    (A.RequireObservedEnd = B.RequireObservedEnd) and
+    (A.MinimumFollowingCells = B.MinimumFollowingCells);
 end;
 
 function GraphLayout(const C: TWfcMusicVoicesGraphConfig; const G: TGraph;
@@ -688,7 +808,7 @@ begin
   for I := 0 to G.TotalPassCount - 1 do
   begin
     PreparationVisit(AWork);
-    if I < N then LabelText := WfcMusicVoicesPassLabel(I)
+    if I < N then LabelText := WfcMusicVoicesPassLabel(C, I)
     else LabelText := WfcMusicVoicesCoveragePassLabel(Classes[I - N]);
     P := G.PassGraph[I];
     if (P.CurrentPass <> LabelText) or (P.Dimension.Width <> G.Dimension.Width) or
@@ -759,6 +879,21 @@ begin
         Exit(Invalid(AReport, wmvikEntryConstraint, 'state violates caller domain or lock'));
       end;
       Inc(AReport.CheckedModels);
+    end;
+    for I := 0 to High(AConfig.Projections) do
+    begin
+      LWork.Visit;
+      J := AConfig.Projections[I].TargetModelIndex;
+      K := AConfig.Projections[I].SourceModelIndex;
+      AReport.Issue.ModelIndex := J;
+      if not SequenceTokensSatisfyPartialProjectionMap(WfcMusicVoicesModelAt(AConfig, J),
+        WfcMusicVoicesModelAt(AConfig, K), AConfig.Projections[I].Rules,
+        AGenerated.Layers[J].Tokens, AGenerated.Layers[K].Tokens, BadPosition,
+        PreparationObserver(LWork)) then
+      begin
+        AReport.Issue.Position := BadPosition;
+        Exit(Invalid(AReport, wmvikProjection, 'declared sequence projection is not satisfied'));
+      end;
     end;
     AReport.Issue.ModelIndex := -1;
     for J := 0 to Width - 1 do

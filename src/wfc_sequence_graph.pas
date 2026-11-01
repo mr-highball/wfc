@@ -125,6 +125,16 @@ function MakeWfcSequenceProjectionBinding(
   const ARules: TWfcSequenceProjectionRules):
   TWfcSequenceProjectionBinding;
 
+{ Independent public-token proof. Validates the entire partial map, including
+  unused rules and empty (forbidden) source alternatives; no live graph
+  requirement registry is consulted. Invalid declarations raise. }
+function SequenceTokensSatisfyPartialProjectionMap(
+  const ATargetModel, ASourceModel: TWfcSequenceModel;
+  const ARules: TWfcSequenceProjectionRules;
+  const ATargetTokens, ASourceTokens: TWfcModelTokens;
+  out ABadPosition: Integer;
+  const AObserver: TWfcPreparationObserver = nil): Boolean;
+
 function MakeWfcSequenceInitialSegmentBoundary(
   const ARequireObservedEnd: Boolean;
   const AMinimumFollowingCells: Integer = 0): TWfcSequenceSegmentBoundary;
@@ -325,6 +335,7 @@ type
   TSequenceByteArray = array of Byte;
   TSequenceGraphValueArrays = array of TGraphValues;
   TSequenceIntegerArray = array of Integer;
+  TSequenceIntegerArrays = array of TSequenceIntegerArray;
 
   TPreparedSequenceProjectionBinding = record
     SourcePass: String;
@@ -1613,57 +1624,24 @@ begin
   end;
 end;
 
-procedure PrepareSequenceProjectionMap(
+procedure PrepareSequenceProjectionRules(
   const ATargetModel, ASourceModel: TWfcSequenceModel;
-  const ATargetGraph: TGraph; const ASourcePass: String;
-  const ARules: TWfcSequenceProjectionRules;
-  out ATargetSalt: Integer;
-  out ASourceValuesByTarget: TSequenceGraphValueArrays;
-  const AAllowEmpty: Boolean = False;
-  const AWork: TWfcSequencePreparationBridge = nil);
-var
-  I: Integer;
-  J: Integer;
-  K: Integer;
-  LAllowedSourceIndices: TSequenceIntegerArray;
+  const ARules: TWfcSequenceProjectionRules; const AAllowEmpty: Boolean;
+  out AAllowed: TSequenceIntegerArrays;
+  const AWork: TWfcPreparationWork);
+var I, J, K, LSourceTokenIndex, LTargetTokenIndex: Integer;
   LSeenTargets: TSequenceBooleanArray;
-  LSourceGraph: TGraph;
-  LSourceSalt: Integer;
-  LSourceTokenIndex: Integer;
-  LTargetGraph: TGraph;
-  LTargetTokenIndex: Integer;
 begin
-  ATargetSalt := 0;
-  ASourceValuesByTarget := nil;
-  RequireAssigned(ATargetModel, ATargetGraph);
-  RequireAssigned(ASourceModel, ATargetGraph);
-  if ATargetGraph.Running then
-    raise EWfcSequenceGraph.Create(
-      'sequence projection maps cannot change while the pipeline is running');
-
-  LTargetGraph := ActiveSequencePass(ATargetGraph);
-  ValidateGraphShape(LTargetGraph, 'sequence projection map');
-  ValidateAppliedModel(ATargetModel, LTargetGraph,
-    'sequence projection map target', SequencePreparationObserver(AWork));
-  LSourceGraph := FindPassGraph(ATargetGraph, ASourcePass,
-    'sequence projection map');
-  ValidateGraphShape(LSourceGraph, 'sequence projection map source');
-  ValidateAppliedModel(ASourceModel, LSourceGraph,
-    'sequence projection map source', SequencePreparationObserver(AWork));
-  ValidateProjectionDependencyEdge(ATargetGraph,
-    LSourceGraph, ASourcePass, AWork);
-
-  RequireIdenticalBridgeLayout(LTargetGraph, LSourceGraph,
-    'sequence projection map');
-
+  if (ATargetModel = nil) or (ASourceModel = nil) then
+    raise EArgumentNilException.Create('sequence projection models cannot be nil');
   if Length(ARules) <> ATargetModel.PublicTokenCount then
     raise EArgumentException.CreateFmt(
       'sequence projection map must cover %d target public tokens',
       [ATargetModel.PublicTokenCount]);
 
   SetLength(LSeenTargets, ATargetModel.PublicTokenCount);
-  SetLength(ASourceValuesByTarget, ATargetModel.PublicTokenCount);
-  LSourceSalt := SequenceKeySalt(ASourceModel);
+  AAllowed := nil;
+  SetLength(AAllowed, ATargetModel.PublicTokenCount);
   for I := 0 to Length(ARules) - 1 do
   begin
     PreparationVisit(AWork);
@@ -1680,7 +1658,7 @@ begin
     if (Length(ARules[I].SourceTokens) = 0) and not AAllowEmpty then
       raise EArgumentException.CreateFmt(
         'sequence projection rule %d needs a source alternative', [I]);
-    SetLength(LAllowedSourceIndices,
+    SetLength(AAllowed[LTargetTokenIndex],
       Length(ARules[I].SourceTokens));
     for J := 0 to Length(ARules[I].SourceTokens) - 1 do
     begin
@@ -1694,30 +1672,13 @@ begin
       for K := 0 to J - 1 do
       begin
         PreparationVisit(AWork);
-        if LAllowedSourceIndices[K] = LSourceTokenIndex then
+        if AAllowed[LTargetTokenIndex][K] = LSourceTokenIndex then
           raise EArgumentException.CreateFmt(
             'duplicate source sequence public token in projection rule %d alternative %d',
             [I, J]);
       end;
-      LAllowedSourceIndices[J] := LSourceTokenIndex;
+      AAllowed[LTargetTokenIndex][J] := LSourceTokenIndex;
     end;
-
-    SetLength(ASourceValuesByTarget[LTargetTokenIndex], 0);
-    for J := 0 to ASourceModel.StateCount - 1 do
-      for K := 0 to Length(LAllowedSourceIndices) - 1 do
-      begin
-        PreparationVisit(AWork);
-        if ASourceModel.StateEmittedTokenIndexAt(J) =
-            LAllowedSourceIndices[K] then
-        begin
-          SetLength(ASourceValuesByTarget[LTargetTokenIndex],
-            Length(ASourceValuesByTarget[LTargetTokenIndex]) + 1);
-          ASourceValuesByTarget[LTargetTokenIndex][
-            High(ASourceValuesByTarget[LTargetTokenIndex])] :=
-              SaltedStateGraphValue(LSourceSalt, J, ASourceModel);
-          Break;
-        end;
-      end;
   end;
 
   for I := 0 to ATargetModel.PublicTokenCount - 1 do
@@ -1728,6 +1689,85 @@ begin
         'sequence projection map is missing target public token %d', [I]);
   end;
 
+end;
+
+function SequenceTokensSatisfyPartialProjectionMap(
+  const ATargetModel, ASourceModel: TWfcSequenceModel;
+  const ARules: TWfcSequenceProjectionRules;
+  const ATargetTokens, ASourceTokens: TWfcModelTokens;
+  out ABadPosition: Integer; const AObserver: TWfcPreparationObserver): Boolean;
+var Allowed: TSequenceIntegerArrays; I, J, T, S: Integer; Found: Boolean;
+  Work: TWfcPreparationWork;
+begin
+  Result := False; ABadPosition := -1;
+  Work := TWfcPreparationWork.Create(AObserver, 'sequence_projection_proof_visits');
+  try
+    Work.Checkpoint;
+    PrepareSequenceProjectionRules(ATargetModel, ASourceModel, ARules, True, Allowed, Work);
+    if Length(ATargetTokens) <> Length(ASourceTokens) then Exit;
+    for I := 0 to High(ATargetTokens) do
+    begin
+      Work.Visit;
+      ABadPosition := I;
+      T := ATargetModel.FindPublicToken(ATargetTokens[I]);
+      S := ASourceModel.FindPublicToken(ASourceTokens[I]);
+      if (T < 0) or (S < 0) then Exit;
+      Found := False;
+      for J := 0 to High(Allowed[T]) do
+      begin
+        Work.Visit;
+        if Allowed[T][J] = S then Found := True;
+      end;
+      if not Found then Exit;
+    end;
+    ABadPosition := -1; Work.Finish; Result := True;
+  finally Work.Free; end;
+end;
+
+procedure PrepareSequenceProjectionMap(
+  const ATargetModel, ASourceModel: TWfcSequenceModel;
+  const ATargetGraph: TGraph; const ASourcePass: String;
+  const ARules: TWfcSequenceProjectionRules;
+  out ATargetSalt: Integer;
+  out ASourceValuesByTarget: TSequenceGraphValueArrays;
+  const AAllowEmpty: Boolean = False;
+  const AWork: TWfcSequencePreparationBridge = nil);
+var I, J, K, LSourceSalt: Integer;
+  Allowed: TSequenceIntegerArrays;
+  LTargetGraph, LSourceGraph: TGraph;
+begin
+  ATargetSalt := 0; ASourceValuesByTarget := nil;
+  RequireAssigned(ATargetModel, ATargetGraph);
+  RequireAssigned(ASourceModel, ATargetGraph);
+  if ATargetGraph.Running then
+    raise EWfcSequenceGraph.Create(
+      'sequence projection maps cannot change while the pipeline is running');
+  LTargetGraph := ActiveSequencePass(ATargetGraph);
+  ValidateGraphShape(LTargetGraph, 'sequence projection map');
+  ValidateAppliedModel(ATargetModel, LTargetGraph,
+    'sequence projection map target', SequencePreparationObserver(AWork));
+  LSourceGraph := FindPassGraph(ATargetGraph, ASourcePass, 'sequence projection map');
+  ValidateGraphShape(LSourceGraph, 'sequence projection map source');
+  ValidateAppliedModel(ASourceModel, LSourceGraph,
+    'sequence projection map source', SequencePreparationObserver(AWork));
+  ValidateProjectionDependencyEdge(ATargetGraph, LSourceGraph, ASourcePass, AWork);
+  RequireIdenticalBridgeLayout(LTargetGraph, LSourceGraph, 'sequence projection map');
+  PrepareSequenceProjectionRules(ATargetModel, ASourceModel, ARules, AAllowEmpty, Allowed, AWork);
+  SetLength(ASourceValuesByTarget, ATargetModel.PublicTokenCount);
+  LSourceSalt := SequenceKeySalt(ASourceModel);
+  for I := 0 to High(Allowed) do
+    for J := 0 to ASourceModel.StateCount - 1 do
+      for K := 0 to High(Allowed[I]) do
+      begin
+        PreparationVisit(AWork);
+        if ASourceModel.StateEmittedTokenIndexAt(J) = Allowed[I][K] then
+        begin
+          SetLength(ASourceValuesByTarget[I], Length(ASourceValuesByTarget[I]) + 1);
+          ASourceValuesByTarget[I][High(ASourceValuesByTarget[I])] :=
+            SaltedStateGraphValue(LSourceSalt, J, ASourceModel);
+          Break;
+        end;
+      end;
   ATargetSalt := SequenceKeySalt(ATargetModel);
 end;
 

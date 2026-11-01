@@ -79,6 +79,7 @@ The model/pass order is stable:
 | 0 | `harmony` |
 | 1 | `rhythm` |
 | 2 + I | `voice.I` |
+| 2 + voice count + I | `Auxiliary[I].Name`, when declared |
 
 Every voice's action must match its rhythm slot. Every sounding pitch must lie
 in that role's range, and its pitch class must belong to the selected harmony
@@ -118,6 +119,66 @@ Duplicate pairs are rejected: intersect their bounds explicitly. There is no
 general melodic-leap, parallel-motion, spelling, or counterpoint rule API in
 this version. The small corpus's smooth motion is a tested property of that
 corpus, not a general graph guarantee.
+
+## Declared sequence composition
+
+An application may declare additional symbolic sequence passes in `Auxiliary`
+and projected dependencies in `Projections`. Each auxiliary borrows an immutable
+`TWfcSequenceModel` and has a unique nonempty name. `harmony`, `rhythm`, `voice.*`
+and `coverage.*` are reserved. WFC does not interpret an application's context,
+percussion or other auxiliary token codec.
+
+For example, with three voices, the first auxiliary has model index 5. An
+upstream context relation can be declared as follows (models already learned):
+
+```pascal
+SetLength(GraphConfig.Auxiliary, 1);
+GraphConfig.Auxiliary[0].Name := 'caller-context';
+GraphConfig.Auxiliary[0].Model := ContextModel;
+SetLength(GraphConfig.Projections, 1);
+GraphConfig.Projections[0].SourceModelIndex := 5;
+GraphConfig.Projections[0].TargetModelIndex := 0; // harmony
+GraphConfig.Projections[0].Rules := ContextToHarmonyRules;
+```
+
+Each relation covers every target public token exactly once. Source alternatives
+within a rule are OR; distinct sources are AND. An empty alternative list
+explicitly forbids that target token. Unknown/duplicate tokens, duplicate
+source/target edges, self dependencies and cycles are rejected. A declared edge
+must not duplicate a built-in harmony/rhythm-to-voice or voice-pair dependency;
+intersect that application restriction before declaring the map instead of
+accidentally widening an existing same-source relation.
+
+Auxiliaries may be upstream or downstream of the musical models. Their storage
+index does not fix execution order: the primary graph's dependency plan does.
+No joint Cartesian vocabulary is created. Ordinary H/R/voice/coverage relations
+and declared relations participate in the same bounded negotiated transaction.
+Search can still exhaust its budget; composition is not an unlimited feasibility
+guarantee.
+
+Finite boundary and generated-layer vectors include all auxiliary models after
+the voices. Frames still contain only the declared pitched voices; coverage
+passes follow all models and are not additional model states. Independent
+capture requires exactly this declared layout and checks each model identity,
+latent path, boundary, caller domain and declared token relation. It does not
+trust editable live requirements. `SequenceTokensSatisfyPartialProjectionMap`
+reuses the primary sequence map validation for that independent relation proof.
+
+The primary voice stream copies nested configuration arrays and commits every
+model frontier at the same returned prefix boundary. It checks the entire
+lookahead window, discards the provisional suffix and retains no speculative
+context frontier. Sparse future constraints also accept auxiliary model indices.
+Failure or cancellation publishes no partial context/music result. Inputs must
+remain unchanged during preparation callbacks; borrowed models stay immutable
+and outlive the graph/stream. Later edits to the caller's copied configuration
+do not alter an existing stream.
+
+`WFC_MUSIC_VOICES_COMPOSITION_VERSION = 1` versions this opt-in contract. Segment
+signatures additionally bind auxiliary names and declared maps when present.
+Omitting both arrays preserves the existing no-composition graph and signature
+path. The maintained `wfc_music_voices_composition_test` exercises negotiated
+source rejection, independent proof, ownership, future windows, cancellation and
+shared prefix failure. See the [implementation record](research/voices-composition-v1.md).
 
 ## A bounded generation loop
 

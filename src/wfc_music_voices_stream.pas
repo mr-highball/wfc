@@ -263,7 +263,7 @@ constructor TWfcMusicVoicesSegment.Create(
   const ACellCount, APlanningCellCount: Integer; const ASeed: TGraphSeed;
   const AFinal: Boolean; const AConfig: TWfcMusicVoicesStreamConfig;
   const AGenerated: TWfcMusicVoicesGenerated);
-var I, J: Integer;
+var I, J, K: Integer;
 begin
   inherited Create;
   FIndex := AIndex;
@@ -310,6 +310,29 @@ begin
     HashWide(FSignature, TWfcMusicArrangementWide(
       AConfig.Graph.PairConstraints[I].MaxGap) - Low(Integer));
     HashWide(FSignature, Ord(AConfig.Graph.PairConstraints[I].RestPolicy));
+  end;
+  { Preserve the original no-composition replay identity. Opt-in compositions
+    also bind declared names and relations, not only selected state tokens. }
+  if (Length(AConfig.Graph.Auxiliary) > 0) or (Length(AConfig.Graph.Projections) > 0) then
+  begin
+    HashWide(FSignature, WFC_MUSIC_VOICES_COMPOSITION_VERSION);
+    HashWide(FSignature, Length(AConfig.Graph.Auxiliary));
+    for I := 0 to High(AConfig.Graph.Auxiliary) do
+      HashText(FSignature, AConfig.Graph.Auxiliary[I].Name);
+    HashWide(FSignature, Length(AConfig.Graph.Projections));
+    for I := 0 to High(AConfig.Graph.Projections) do
+    begin
+      HashWide(FSignature, AConfig.Graph.Projections[I].SourceModelIndex);
+      HashWide(FSignature, AConfig.Graph.Projections[I].TargetModelIndex);
+      HashWide(FSignature, Length(AConfig.Graph.Projections[I].Rules));
+      for J := 0 to High(AConfig.Graph.Projections[I].Rules) do
+      begin
+        HashText(FSignature, AConfig.Graph.Projections[I].Rules[J].TargetToken);
+        HashWide(FSignature, Length(AConfig.Graph.Projections[I].Rules[J].SourceTokens));
+        for K := 0 to High(AConfig.Graph.Projections[I].Rules[J].SourceTokens) do
+          HashText(FSignature, AConfig.Graph.Projections[I].Rules[J].SourceTokens[K]);
+      end;
+    end;
   end;
   for I := 0 to FModelCount - 1 do
   begin
