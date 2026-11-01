@@ -34,8 +34,13 @@ Current focused evidence: 136 new native checks with zero unfreed blocks and
 136 actual pas2js checks. Four no-composition signatures also match a fresh
 standalone build against unchanged448b2a3 exactly on both targets. Existing
 graph187, partial-projection29 and stream1834
-native checks pass with clean heaps. Preparation/cancellation and complete CI
-remain pending at this record's first publication. Actual downstream musical
+native checks pass with clean heaps. The complete preparation suite also passes
+533791 checks, 132 original abort/retries and 456086 actual callbacks with zero
+unfreed blocks. Complete [upstream CI65](https://github.com/mr-highball/wfc/actions/runs/41277896792)
+passes all five Linux/Windows/macOS stable, official trunk and actual-browser
+jobs at37c2755. The Pythian typed-context finite/stream consumer also passes44
+native and actual pas2js checks, including an extracted-package pas2js build.
+Its own CI/package completion gates remain separate. Actual downstream musical
 integration and its original failure are separate acceptance gates; no useful
 musical outcome follows automatically from these generic checks.
 
