@@ -214,6 +214,14 @@ function PropagateReferenceModel(const AModel: TReferenceModel;
   var ADomains: TReferenceByteArray; out AReport: TReferenceDomainReport;
   const AWork: TWfcSolveWork = nil): Boolean;
 
+{ Internal shared binary-arc support test. Offsets/counts and relation stride
+  are compiled/validated by the owning adapter, never external graph keys.
+  A stride of one reads a row; a transposed arc reads the same matrix column. }
+function ReferenceArcHasSupport(const ADomains: TReferenceByteArray;
+  const ADomainOffset, ACount: Integer;
+  const ACompatibility: TReferenceByteArray;
+  const ARelationOffset, ARelationStride: Integer): Boolean;
+
 function SolveReferenceModel(const AModel: TReferenceModel;
   const AMaxBacktracks: Integer; const ARandomIndex: TReferenceRandomIndex;
   out AAssignment: TReferenceIntegerArray;
@@ -1269,12 +1277,24 @@ begin
   Result := True;
 end;
 
+function ReferenceArcHasSupport(const ADomains: TReferenceByteArray;
+  const ADomainOffset, ACount: Integer;
+  const ACompatibility: TReferenceByteArray;
+  const ARelationOffset, ARelationStride: Integer): Boolean;
+var I: Integer;
+begin
+  for I := 0 to ACount - 1 do
+    if (ADomains[ADomainOffset + I] <> 0) and
+        (ACompatibility[ARelationOffset + I * ARelationStride] <> 0) then
+      Exit(True);
+  Result := False;
+end;
+
 function TReferenceSolver.ReviseArc(const ACell,
   ADirection: Integer): Boolean;
 var
   LCauseEventId: Integer;
   LNeighbor: Integer;
-  LNeighborValue: Integer;
   LSupported: Boolean;
   LValue: Integer;
 begin
@@ -1294,14 +1314,9 @@ begin
       LSupported := FModel.Compatibility[
         RelationIndex(ADirection, LValue, LValue)] <> 0
     else
-      for LNeighborValue := 0 to Pred(FModel.ValueCount) do
-        if (FDomains[DomainIndex(LNeighbor, LNeighborValue)] <> 0)
-          and (FModel.Compatibility[
-            RelationIndex(ADirection, LValue, LNeighborValue)] <> 0) then
-        begin
-          LSupported := True;
-          Break;
-        end;
+      LSupported := ReferenceArcHasSupport(FDomains,
+        DomainIndex(LNeighbor, 0), FModel.ValueCount, FModel.Compatibility,
+        RelationIndex(ADirection, LValue, 0), 1);
 
     if not LSupported then
     begin

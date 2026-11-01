@@ -35,7 +35,8 @@ uses
   SysUtils,
   Generics.Collections,
   wfc_lattice,
-  wfc_solve_progress;
+  wfc_solve_progress,
+  wfc_solver_reference;
 
 type
 
@@ -769,6 +770,20 @@ type
   (*
     a graph used to perform the wave function collapse algorithm
   *)
+  TGraphValueMatrix = array of TGraphValues;
+  TGraphTraceCauseArray = array of TGraphTraceCauseKind;
+  { Detached local-consistency domains; not assignments or a feasibility proof. }
+  TGraphPreparedPassDomains = record
+    LabelText: String;
+    Cells: TGraphValueMatrix;
+  end;
+  TGraphPreparedDomains = array of TGraphPreparedPassDomains;
+  TGraphDomainPreparationReport = record
+    Consistent: Boolean;
+    Iterations, RemovedCandidates: Integer;
+    FailedPassIndex, FailedEntryIndex: Integer;
+  end;
+
   TGraph = class(TObject)
   public
     type
@@ -856,6 +871,32 @@ type
       TValueIndexMatrix = array of TGraphValueIndices;
       TAssignmentExclusionSet = array of TGraphValueIndices;
       TPassAssignmentExclusions = array of TAssignmentExclusionSet;
+      { One graph-to-kernel compiler for search and detached domain preparation. }
+      TGraphReferenceCompiler = class
+      public
+        FRoot: TGraph;
+        FWork: TWfcSolveWork;
+        FTraceEnabled: Boolean;
+        function CheckedProduct(const A, B: Integer; const ALabel: String): Integer;
+        function FindValueIndex(const AGraph: TGraph; const AValue: TGraphValue): Integer;
+        procedure ValidateDefinedModel(const AGraph: TGraph);
+        function RuleAllows(const AGraph: TGraph; const ASourceValue: Integer;
+          const ADirection: TGraphDirection; const ATargetValue: Integer;
+          out ARequiredEdge: Boolean): Boolean;
+        function RelationIndex(const AValueCount: Integer;
+          const ADirection: TGraphDirection; const ACurrentValue,
+          ANeighborValue: Integer): Integer;
+        procedure BuildCellOrder(const AGraph: TGraph; out AOrder: TReferenceIntegerArray);
+        function BuildReferenceModel(const AGraph: TGraph;
+          const AStaged: TGraphValueMatrix; out AModel: TReferenceModel;
+          out AInvalidLockEntry: Integer;
+          out ARequirementFailurePass: TReferenceIntegerArray;
+          out ARequirementFailureNamed: TReferenceByteArray;
+          out AInitialTraceCauses: TGraphTraceCauseArray;
+          out AInitialTraceDependencyPasses: TReferenceIntegerArray;
+          const AIncludeDependencies: Boolean = True): Boolean;
+      end;
+
   strict private
     FDimension: TDimension;
     FLayout: TWfcLatticeLayout;
@@ -1314,6 +1355,16 @@ type
       order. Derived previous-value dependency roles may be synchronized.
       No ancestor is added implicitly. Returned arrays are detached.
     *)
+    { Opt-in preparation for defined overlay passes with identical lattices and
+      same-cell single-term any/merged/count dependencies. Other forms raise.
+      Reuses primary compilation, temporal propagation and arc support, without
+      choosing values, advancing randomness or changing this graph. False clears
+      ADomains; exceptions preserve it. Observer must not mutate/reenter graph.
+      Domains can still contain globally infeasible combinations. }
+    function PrepareProjectedDomains(var ADomains: TGraphPreparedDomains;
+      out AReport: TGraphDomainPreparationReport;
+      const AObserver: TWfcSolveObserver = nil): Boolean;
+
     procedure ResolveRegenerationScope(const ARequestedRoots: TGraphPassLabels;
       out ACanonicalRoots, AActivePasses: TGraphPassIndices);
 
@@ -1471,7 +1522,7 @@ const
 implementation
 
 uses
-  wfc_solver_reference, wfc_timing;
+  wfc_timing;
 
 type
   TGraphTraversalFrame = record
@@ -1479,8 +1530,6 @@ type
     NextDirection: Integer;
   end;
 
-  TGraphValueMatrix = array of TGraphValues;
-  TGraphTraceCauseArray = array of TGraphTraceCauseKind;
   TGraphStreamCause = record
     EventId: Integer;
     Kind: TGraphTraceCauseKind;
@@ -7529,6 +7578,832 @@ begin
     LCompletedChoices, LAssignments, AReport, AObserver);
 end;
 
+function TGraph.TGraphReferenceCompiler.CheckedProduct(const A, B: Integer;
+  const ALabel: String): Integer;
+begin
+  if (A < 0) or (B < 0) then
+    raise ERangeError.Create(ALabel + ' cannot be negative');
+  if (A <> 0) and (B > High(Integer) div A) then
+    raise ERangeError.Create(ALabel + ' is too large');
+  Result := A * B;
+end;
+
+
+function TGraph.TGraphReferenceCompiler.FindValueIndex(const AGraph: TGraph;
+  const AValue: TGraphValue): Integer;
+var
+  I: Integer;
+begin
+  for I := 0 to High(AGraph.FValues) do
+    if AGraph.FValues[I] = AValue then
+      Exit(I);
+  Result := -1;
+end;
+
+
+procedure TGraph.TGraphReferenceCompiler.ValidateDefinedModel(const AGraph: TGraph);
+var
+  I, J, K: Integer;
+  LDirectionOrdinal: Integer;
+  LGroup: TGraphRuleGroup;
+  LRule: TGraphRule;
+  LSeenDirections: TGraphDirections;
+begin
+  if AGraph.FRuleGroups.Count <> Length(AGraph.FValues) then
+    raise EInvalidOperation.CreateFmt(
+      'TrySolve::pass %d has an inconsistent value registry',
+      [AGraph.FPassIndex]);
+
+  for I := 0 to High(AGraph.FValues) do
+  begin
+    VisitSolveWork(FWork);
+    if AGraph.FValues[I] = TGraphValue.Empty then
+      raise EInvalidOperation.CreateFmt(
+        'TrySolve::pass %d contains the reserved empty value',
+        [AGraph.FPassIndex]);
+    if not AGraph.FRuleGroups.TryGetValue(AGraph.FValues[I], LGroup) then
+      raise EInvalidOperation.CreateFmt(
+        'TrySolve::pass %d has no rule group for value "%s"',
+        [AGraph.FPassIndex, AGraph.FValues[I]]);
+
+    if not Assigned(LGroup) then
+      raise EInvalidOperation.CreateFmt(
+        'TrySolve::pass %d has a nil rule group for value "%s"',
+        [AGraph.FPassIndex, AGraph.FValues[I]]);
+    if LGroup.Value <> AGraph.FValues[I] then
+      raise EInvalidOperation.CreateFmt(
+        'TrySolve::pass %d rule-group identity "%s" does not match value "%s"',
+        [AGraph.FPassIndex, LGroup.Value, AGraph.FValues[I]]);
+    if LGroup.Weight < 1 then
+      raise EInvalidOperation.CreateFmt(
+        'TrySolve::pass %d value "%s" has invalid weight %d',
+        [AGraph.FPassIndex, AGraph.FValues[I], LGroup.Weight]);
+    LSeenDirections := [];
+    for J := 0 to High(LGroup.Rules) do
+    begin
+      VisitSolveWork(FWork);
+      LRule := LGroup.Rules[J];
+      LDirectionOrdinal := Ord(LRule.Key);
+      if (LDirectionOrdinal < Ord(Low(TGraphDirection)))
+        or (LDirectionOrdinal > Ord(High(TGraphDirection))) then
+        raise EInvalidOperation.CreateFmt(
+          'TrySolve::pass %d rule "%s" has invalid direction %d',
+          [AGraph.FPassIndex, AGraph.FValues[I], LDirectionOrdinal]);
+      if LRule.Key in LSeenDirections then
+        raise EInvalidOperation.CreateFmt(
+          'TrySolve::pass %d rule "%s" repeats direction %d',
+          [AGraph.FPassIndex, AGraph.FValues[I], LDirectionOrdinal]);
+      if LGroup.Denied[LRule.Key] then
+        raise EInvalidOperation.CreateFmt(
+          'TrySolve::pass %d value "%s" both denies and defines direction %d',
+          [AGraph.FPassIndex, AGraph.FValues[I], LDirectionOrdinal]);
+      Include(LSeenDirections, LRule.Key);
+      for K := 0 to High(LRule.Value) do
+        if FindValueIndex(AGraph, LRule.Value[K]) < 0 then
+          raise EInvalidOperation.CreateFmt(
+            'TrySolve::pass %d rule "%s" references unknown value "%s"',
+            [AGraph.FPassIndex, AGraph.FValues[I],
+             LRule.Value[K]]);
+    end;
+  end;
+end;
+
+
+function TGraph.TGraphReferenceCompiler.RuleAllows(const AGraph: TGraph; const ASourceValue: Integer;
+  const ADirection: TGraphDirection; const ATargetValue: Integer;
+  out ARequiredEdge: Boolean): Boolean;
+var
+  LGroup: TGraphRuleGroup;
+  LRule: TGraphRule;
+begin
+  ARequiredEdge := False;
+  LGroup := AGraph.FRuleGroups[AGraph.FValues[ASourceValue]];
+  if LGroup.Denied[ADirection] then
+    Exit(False);
+  if not LGroup.Exists[ADirection] then
+    Exit(True);
+  LRule := LGroup.Rule[ADirection];
+  if Length(LRule.Value) = 0 then
+    Exit(True);
+  Result := ContainsGraphValue(LRule.Value,
+    AGraph.FValues[ATargetValue]);
+  ARequiredEdge := Result and TRequireRule(LRule.Info);
+end;
+
+
+function TGraph.TGraphReferenceCompiler.RelationIndex(const AValueCount: Integer;
+  const ADirection: TGraphDirection; const ACurrentValue,
+  ANeighborValue: Integer): Integer;
+begin
+  Result := ((Ord(ADirection) * AValueCount + ACurrentValue)
+    * AValueCount) + ANeighborValue;
+end;
+
+
+procedure TGraph.TGraphReferenceCompiler.BuildCellOrder(const AGraph: TGraph;
+  out AOrder: TReferenceIntegerArray);
+var
+  I: Integer;
+  LOrderIndex: Integer;
+  LPlaneSize: Integer;
+  LZ: Integer;
+begin
+  SetLength(AOrder, AGraph.FEntries.Count);
+  if Length(AOrder) = 0 then
+    Exit;
+  LOrderIndex := 0;
+  LPlaneSize := CheckedProduct(Integer(AGraph.FDimension.Width),
+    Integer(AGraph.FDimension.Height), 'TrySolve::plane size');
+  if AGraph.FMode = rmBottomUp then
+    for LZ := 0 to Integer(AGraph.FDimension.Depth) - 1 do
+      for I := 0 to Pred(LPlaneSize) do
+      begin
+        VisitSolveWork(FWork);
+        AOrder[LOrderIndex] := (LZ * LPlaneSize) + I;
+        Inc(LOrderIndex);
+      end
+  else if AGraph.FMode = rmTopDown then
+    for LZ := Integer(AGraph.FDimension.Depth) - 1 downto 0 do
+      for I := 0 to Pred(LPlaneSize) do
+      begin
+        VisitSolveWork(FWork);
+        AOrder[LOrderIndex] := (LZ * LPlaneSize) + I;
+        Inc(LOrderIndex);
+      end
+  else
+    raise EInvalidOperation.Create(
+      'TrySolve::run mode is not implemented');
+end;
+
+
+function TGraph.TGraphReferenceCompiler.BuildReferenceModel(const AGraph: TGraph;
+  const AStaged: TGraphValueMatrix; out AModel: TReferenceModel;
+  out AInvalidLockEntry: Integer;
+  out ARequirementFailurePass: TReferenceIntegerArray;
+  out ARequirementFailureNamed: TReferenceByteArray;
+  out AInitialTraceCauses: TGraphTraceCauseArray;
+  out AInitialTraceDependencyPasses: TReferenceIntegerArray;
+  const AIncludeDependencies: Boolean): Boolean;
+var
+  LAllowed: Boolean;
+  LAllowedForward: Boolean;
+  LAllowedReverse: Boolean;
+  LAllowedCount: Integer;
+  LCell: Integer;
+  LCellValueCount: Integer;
+  LDirection: TGraphDirection;
+  LDirectRequired: Boolean;
+  LGroup: TGraphRuleGroup;
+  LFailureNamed: Boolean;
+  LFailurePass: Integer;
+  LHasPreviousValues: Boolean;
+  LIndex: Integer;
+  LLockValue: Integer;
+  LNeighbor: TGraphEntry;
+  LNeighborIndex: Integer;
+  LNeighborValue: Integer;
+  LRelationCount: Integer;
+  LRequirementIndex: Integer;
+  LRequirementsAllowed: Boolean;
+  LSourceAllowed: Boolean;
+  LSourceNamed: Boolean;
+  LReverseRequired: Boolean;
+  LSourcePassIndex: Integer;
+  LSourceValue: TGraphValue;
+  LTraceIndex: Integer;
+  LValue: Integer;
+  LValueFailurePass: Integer;
+  LConnectivityIndex, LProfileIndex, LPositionIndex: Integer;
+  LConnectivity: TGraphConnectivityConstraint;
+  LQuotaIndex, LQuotaValueIndex: Integer;
+  LPriorIndex: Integer;
+  LQuota: TGraphValueQuotaConstraint;
+
+  function RequirementMatches(
+    const ARequirementIndex: Integer): Boolean;
+  var
+    LCount, LResolvedIndex, LTermIndex: Integer;
+    LIsCount: Boolean;
+    LMatchedIndices: TGraphPassIndices;
+    LRequirement: TGraphRuleGroup.TPassRequirement;
+    LTermSourcePass: Integer;
+    LTermSourceValue: TGraphValue;
+  begin
+    Result := False;
+    LRequirement := LGroup.FPassRequirements[ARequirementIndex];
+    LTermSourcePass := LRequirement.PassIndex;
+    if LRequirement.Kind = prkMapped then
+      Exit(AGraph.MappedRequirementMatches(LCell,
+        FRoot.FPasses[LTermSourcePass], LRequirement.MappedQuery,
+        AStaged[LTermSourcePass], True));
+    LIsCount := LRequirement.Kind = prkCount;
+    LCount := 0;
+    if LIsCount and (LRequirement.CountMode = gpcmDistinctCells) then
+      SetLength(LMatchedIndices, Length(LRequirement.Terms));
+    for LTermIndex := 0 to High(LRequirement.Terms) do
+      if AGraph.ResolveOffsetIndex(LCell,
+        LRequirement.Terms[LTermIndex].Offset, LResolvedIndex) then
+      begin
+        LTermSourceValue := AStaged[LTermSourcePass][LResolvedIndex];
+        if (LTermSourceValue <> TGraphValue.Empty)
+          and ContainsGraphValue(
+            LRequirement.Terms[LTermIndex].Values,
+            LTermSourceValue) then
+        begin
+          if not LIsCount then
+            Exit(True);
+          RecordGraphPassCountMatch(LRequirement.CountMode,
+            LResolvedIndex, LCount, LMatchedIndices);
+          if LCount > LRequirement.MaximumMatches then
+            Exit(False);
+        end;
+      end;
+    if LIsCount then
+      Result := LCount >= LRequirement.MinimumMatches;
+  end;
+
+  function IsMergedPreviousZero(
+    const ARequirementIndex, APreviousPassIndex: Integer): Boolean;
+  begin
+    Result := (LGroup.FPassRequirements[ARequirementIndex].PassIndex
+        = APreviousPassIndex)
+      and (LGroup.FPassRequirements[ARequirementIndex].Kind
+        = prkMergedOffset)
+      and (Length(LGroup.FPassRequirements[ARequirementIndex].Terms)
+        = 1)
+      and IsZeroGraphOffset(
+        LGroup.FPassRequirements[ARequirementIndex].Terms[0].Offset);
+  end;
+
+  procedure RecordRequirementFailure(const APassIndex: Integer;
+    const ANamed: Boolean);
+  begin
+    //The public terminal contradiction retains the earliest provider pass
+    //across the whole cell, while tracing also retains that cause for each
+    //individual candidate removed from the initial domain.
+    if (LFailurePass < 0) or (APassIndex < LFailurePass) then
+    begin
+      LFailurePass := APassIndex;
+      LFailureNamed := ANamed;
+    end
+    else if (APassIndex = LFailurePass) and ANamed then
+      LFailureNamed := True;
+
+    if (LValueFailurePass < 0)
+      or (APassIndex < LValueFailurePass) then
+      LValueFailurePass := APassIndex;
+  end;
+begin
+  Result := False;
+  AInvalidLockEntry := -1;
+  AModel := Default(TReferenceModel);
+  ValidateDefinedModel(AGraph);
+
+  AModel.CellCount := AGraph.FEntries.Count;
+  AModel.ValueCount := Length(AGraph.FValues);
+  LCellValueCount := CheckedProduct(AModel.CellCount,
+    AModel.ValueCount, 'TrySolve::domain matrix');
+  LRelationCount := CheckedProduct(
+    CheckedProduct(AModel.ValueCount, AModel.ValueCount,
+      'TrySolve::relation matrix'),
+    WFC_REFERENCE_DIRECTION_COUNT, 'TrySolve::relation matrix');
+
+  SetLength(AModel.Neighbors, CheckedProduct(AModel.CellCount,
+    WFC_REFERENCE_DIRECTION_COUNT, 'TrySolve::neighbor matrix'));
+  SetLength(AModel.Compatibility, LRelationCount);
+  SetLength(AModel.ValueWeights, AModel.ValueCount);
+  for LCell := 0 to AModel.CellCount - 1 do
+  begin
+    VisitSolveWork(FWork);
+    if Length(AGraph.FEntries[LCell].FCellValueWeights) = 0 then Continue;
+    if Length(AModel.CellValueWeights) = 0 then
+      SetLength(AModel.CellValueWeights, LCellValueCount);
+    for LPriorIndex := 0 to High(AGraph.FEntries[LCell].FCellValueWeights) do
+    begin
+      VisitSolveWork(FWork);
+      LValue := FindValueIndex(AGraph,
+        AGraph.FEntries[LCell].FCellValueWeights[LPriorIndex].Value);
+      AModel.CellValueWeights[LCell * AModel.ValueCount + LValue] :=
+        AGraph.FEntries[LCell].FCellValueWeights[LPriorIndex].Weight;
+    end;
+  end;
+  SetLength(AModel.RequiredValues, AModel.ValueCount);
+  SetLength(AModel.RequiredSupport, LRelationCount);
+  SetLength(AModel.InitialAllowed, LCellValueCount);
+  SetLength(AModel.InitialFailureKinds, AModel.CellCount);
+  SetLength(AModel.LockedValues, AModel.CellCount);
+  SetLength(ARequirementFailurePass, AModel.CellCount);
+  SetLength(ARequirementFailureNamed, AModel.CellCount);
+  if FTraceEnabled then
+  begin
+    SetLength(AInitialTraceCauses, LCellValueCount);
+    SetLength(AInitialTraceDependencyPasses, LCellValueCount);
+    for LIndex := 0 to High(AInitialTraceDependencyPasses) do
+      AInitialTraceDependencyPasses[LIndex] := -1;
+  end
+  else
+  begin
+    SetLength(AInitialTraceCauses, 0);
+    SetLength(AInitialTraceDependencyPasses, 0);
+  end;
+  BuildCellOrder(AGraph, AModel.CellOrder);
+
+  AGraph.ValidateConnectivityShape(AGraph.FDimension.Width,
+    AGraph.FDimension.Height, AGraph.FDimension.Depth);
+  SetLength(AModel.Connectivity, Length(AGraph.FConnectivity));
+  for LConnectivityIndex := 0 to High(AGraph.FConnectivity) do
+  begin
+    VisitSolveWork(FWork);
+    LConnectivity := AGraph.FConnectivity[LConnectivityIndex];
+    with AModel.Connectivity[LConnectivityIndex] do
+    begin
+      RootCell := AGraph.CoordToIndex(LConnectivity.Root.X,
+        LConnectivity.Root.Y, LConnectivity.Root.Z);
+      RequireAllParticipants := LConnectivity.RequireAllParticipants;
+      SetLength(RequiredCells, Length(LConnectivity.RequiredPositions));
+      for LPositionIndex := 0 to High(RequiredCells) do
+        with LConnectivity.RequiredPositions[LPositionIndex] do
+          RequiredCells[LPositionIndex] := AGraph.CoordToIndex(X, Y, Z);
+      SetLength(Profiles, Length(LConnectivity.Values));
+      for LProfileIndex := 0 to High(Profiles) do
+      begin
+        VisitSolveWork(FWork);
+        Profiles[LProfileIndex].ValueIndex := FindValueIndex(AGraph,
+          LConnectivity.Values[LProfileIndex].Value);
+        Profiles[LProfileIndex].RequiredByValue :=
+          LConnectivity.Values[LProfileIndex].RequiredByValue;
+        Profiles[LProfileIndex].Ports := 0;
+        for LDirection := Low(TGraphDirection) to High(TGraphDirection) do
+          if LDirection in LConnectivity.Values[LProfileIndex].Openings then
+            Profiles[LProfileIndex].Ports := Profiles[LProfileIndex].Ports
+              or Byte(1 shl Ord(LDirection));
+      end;
+    end;
+  end;
+
+  SetLength(AModel.ValueQuotas, Length(AGraph.FValueQuotas));
+  for LQuotaIndex := 0 to High(AGraph.FValueQuotas) do
+  begin
+    VisitSolveWork(FWork);
+    LQuota := AGraph.FValueQuotas[LQuotaIndex];
+    with AModel.ValueQuotas[LQuotaIndex] do
+    begin
+      MinimumCount := LQuota.MinimumCount;
+      MaximumCount := LQuota.MaximumCount;
+      SetLength(Values, Length(LQuota.Values));
+      for LQuotaValueIndex := 0 to High(Values) do
+        Values[LQuotaValueIndex] := FindValueIndex(AGraph,
+          LQuota.Values[LQuotaValueIndex]);
+    end;
+  end;
+
+  for LCell := 0 to Pred(AModel.CellCount) do
+  begin
+    VisitSolveWork(FWork);
+    AModel.LockedValues[LCell] := -1;
+    AModel.InitialFailureKinds[LCell] := rckEmptyDomain;
+    ARequirementFailurePass[LCell] := -1;
+    for LDirection := Low(TGraphDirection) to High(TGraphDirection) do
+    begin
+      VisitSolveWork(FWork);
+      LNeighbor := AGraph.FEntries[LCell][LDirection];
+      LIndex := (LCell * WFC_REFERENCE_DIRECTION_COUNT)
+        + Ord(LDirection);
+      if not Assigned(LNeighbor) then
+        AModel.Neighbors[LIndex] := -1
+      else
+      begin
+        LNeighborIndex := LNeighbor.Index;
+        if (LNeighborIndex < 0)
+          or (LNeighborIndex >= AGraph.FEntries.Count)
+          or (AGraph.FEntries[LNeighborIndex] <> LNeighbor) then
+          raise EInvalidOperation.CreateFmt(
+            'TrySolve::pass %d entry %d has an external neighbor',
+            [AGraph.FPassIndex, LCell]);
+        AModel.Neighbors[LIndex] := LNeighborIndex;
+      end;
+    end;
+  end;
+
+  for LValue := 0 to Pred(AModel.ValueCount) do
+  begin
+    VisitSolveWork(FWork);
+    LGroup := AGraph.FRuleGroups[AGraph.FValues[LValue]];
+    AModel.ValueWeights[LValue] := LGroup.Weight;
+    if LGroup.HasRequired then
+      AModel.RequiredValues[LValue] := 1;
+    if (AGraph.FPassIndex > 0)
+      and (Length(LGroup.PreviousValues) > 0) then
+    begin
+      LSourcePassIndex := Pred(AGraph.FPassIndex);
+      if AGraph.DependencySlot(LSourcePassIndex) < 0 then
+        raise EInvalidOperation.CreateFmt(
+          'TrySolve::pass %d value "%s" reads undeclared dependency %d',
+          [AGraph.FPassIndex, AGraph.FValues[LValue],
+            LSourcePassIndex]);
+      if Length(AStaged[LSourcePassIndex]) <> AModel.CellCount then
+        raise EInvalidOperation.CreateFmt(
+          'TrySolve::dependency %d for pass %d has a different shape',
+          [LSourcePassIndex, AGraph.FPassIndex]);
+    end;
+    for LRequirementIndex := 0 to High(LGroup.FPassRequirements) do
+    begin
+      VisitSolveWork(FWork);
+      LSourcePassIndex :=
+        LGroup.FPassRequirements[LRequirementIndex].PassIndex;
+      if (LSourcePassIndex < 0)
+        or (LSourcePassIndex >= Length(AStaged)) then
+        raise EInvalidOperation.CreateFmt(
+          'TrySolve::pass %d value "%s" has invalid dependency %d',
+          [AGraph.FPassIndex, AGraph.FValues[LValue],
+            LSourcePassIndex]);
+      if AGraph.DependencySlot(LSourcePassIndex) < 0 then
+        raise EInvalidOperation.CreateFmt(
+          'TrySolve::pass %d value "%s" reads undeclared dependency %d',
+          [AGraph.FPassIndex, AGraph.FValues[LValue],
+            LSourcePassIndex]);
+      if Length(AStaged[LSourcePassIndex]) <>
+        FRoot.FPasses[LSourcePassIndex].FEntries.Count then
+        raise EInvalidOperation.CreateFmt(
+          'TrySolve::dependency %d for pass %d has a different shape',
+          [LSourcePassIndex, AGraph.FPassIndex]);
+    end;
+  end;
+
+  //Compile a two-sided compatibility relation. The legacy rule builder
+  //creates inverse edges, while the conjunction also protects the reference
+  //solver from assignment-order dependence after direct rule-array edits.
+  for LDirection := Low(TGraphDirection) to High(TGraphDirection) do
+    for LValue := 0 to Pred(AModel.ValueCount) do
+      for LNeighborValue := 0 to Pred(AModel.ValueCount) do
+      begin
+        VisitSolveWork(FWork);
+        LAllowedForward := RuleAllows(AGraph, LNeighborValue,
+          LDirection, LValue, LDirectRequired);
+        LAllowedReverse := RuleAllows(AGraph, LValue,
+          InverseOfDir(LDirection), LNeighborValue,
+          LReverseRequired);
+        LIndex := RelationIndex(AModel.ValueCount, LDirection,
+          LValue, LNeighborValue);
+        if LAllowedForward and LAllowedReverse then
+          AModel.Compatibility[LIndex] := 1;
+        if LAllowedForward and LAllowedReverse and LDirectRequired then
+          AModel.RequiredSupport[LIndex] := 1;
+      end;
+
+  for LCell := 0 to Pred(AModel.CellCount) do
+  begin
+    VisitSolveWork(FWork);
+    LLockValue := -1;
+    if (not AGraph.FEntries[LCell].Empty)
+      and (not AGraph.FEntries[LCell].Generated) then
+    begin
+      LLockValue := FindValueIndex(AGraph,
+        AGraph.FEntries[LCell].Value);
+      if LLockValue < 0 then
+      begin
+        AInvalidLockEntry := LCell;
+        Exit(False);
+      end;
+      AModel.LockedValues[LCell] := LLockValue;
+      //Legacy locked entries bypass required-trigger eligibility, but still
+      //have to satisfy adjacency and previous-pass constraints.
+    end;
+
+    if AGraph.FEntries[LCell].FHasAllowedValues
+      and ((Length(AGraph.FEntries[LCell].FAllowedValues) = 0)
+        or ((LLockValue >= 0)
+          and (not ContainsGraphValue(
+            AGraph.FEntries[LCell].FAllowedValues,
+            AGraph.FValues[LLockValue])))) then
+      AModel.InitialFailureKinds[LCell] := rckEntryDomain;
+
+    LAllowedCount := 0;
+    LFailurePass := -1;
+    LFailureNamed := False;
+    for LValue := 0 to Pred(AModel.ValueCount) do
+    begin
+      VisitSolveWork(FWork);
+      LTraceIndex := (LCell * AModel.ValueCount) + LValue;
+      LValueFailurePass := -1;
+      LAllowed := (LLockValue < 0) or (LLockValue = LValue);
+      if FTraceEnabled and (not LAllowed) then
+        AInitialTraceCauses[LTraceIndex] := gtckCallerLock;
+      if LAllowed and AGraph.FEntries[LCell].FHasAllowedValues then
+      begin
+        LAllowed := ContainsGraphValue(
+          AGraph.FEntries[LCell].FAllowedValues,
+          AGraph.FValues[LValue]);
+        if FTraceEnabled and (not LAllowed) then
+          AInitialTraceCauses[LTraceIndex] := gtckCallerDomain;
+      end;
+      LGroup := AGraph.FRuleGroups[AGraph.FValues[LValue]];
+      if LAllowed and AIncludeDependencies then
+      begin
+        LRequirementsAllowed := True;
+        LHasPreviousValues := (AGraph.FPassIndex > 0)
+          and (Length(LGroup.PreviousValues) > 0);
+
+        if LHasPreviousValues then
+        begin
+          LSourcePassIndex := Pred(AGraph.FPassIndex);
+          LSourceValue := AStaged[LSourcePassIndex][LCell];
+          LSourceAllowed := (LSourceValue <> TGraphValue.Empty)
+            and ContainsGraphValue(LGroup.PreviousValues,
+              LSourceValue);
+          LSourceNamed := False;
+          for LRequirementIndex := 0 to
+            High(LGroup.FPassRequirements) do
+            if IsMergedPreviousZero(LRequirementIndex,
+              LSourcePassIndex) then
+            begin
+              if proNamed in
+                LGroup.FPassRequirements[LRequirementIndex].Origins then
+                LSourceNamed := True;
+              LSourceAllowed := LSourceAllowed
+                or RequirementMatches(LRequirementIndex);
+            end;
+          if not LSourceAllowed then
+          begin
+            LRequirementsAllowed := False;
+            RecordRequirementFailure(LSourcePassIndex, LSourceNamed);
+          end;
+        end;
+
+        for LRequirementIndex := 0 to
+          High(LGroup.FPassRequirements) do
+        begin
+          VisitSolveWork(FWork);
+          LSourcePassIndex :=
+            LGroup.FPassRequirements[LRequirementIndex].PassIndex;
+          if LHasPreviousValues and IsMergedPreviousZero(
+            LRequirementIndex, Pred(AGraph.FPassIndex)) then
+            Continue;
+          if not RequirementMatches(LRequirementIndex) then
+          begin
+            LRequirementsAllowed := False;
+            RecordRequirementFailure(LSourcePassIndex,
+              proNamed in
+                LGroup.FPassRequirements[LRequirementIndex].Origins);
+          end;
+        end;
+        LAllowed := LRequirementsAllowed;
+        if FTraceEnabled and (not LAllowed) then
+        begin
+          AInitialTraceCauses[LTraceIndex] := gtckPassDependency;
+          AInitialTraceDependencyPasses[LTraceIndex] :=
+            LValueFailurePass;
+        end;
+      end;
+      if LAllowed then
+      begin
+        AModel.InitialAllowed[
+          (LCell * AModel.ValueCount) + LValue] := 1;
+        Inc(LAllowedCount);
+      end;
+    end;
+    if (LAllowedCount = 0) and (LFailurePass >= 0)
+      and (AModel.InitialFailureKinds[LCell] <> rckEntryDomain) then
+    begin
+      AModel.InitialFailureKinds[LCell] := rckPreviousPass;
+      ARequirementFailurePass[LCell] := LFailurePass;
+      if LFailureNamed then
+        ARequirementFailureNamed[LCell] := 1;
+    end;
+  end;
+  Result := True;
+end;
+
+
+function TGraph.PrepareProjectedDomains(var ADomains: TGraphPreparedDomains;
+  out AReport: TGraphDomainPreparationReport;
+  const AObserver: TWfcSolveObserver): Boolean;
+type
+  TModels = array of TReferenceModel;
+  TDomains = array of TReferenceByteArray;
+  TProjectedArc = record
+    TargetPass, SourcePass: Integer;
+    Compatibility: TReferenceByteArray;
+  end;
+  TProjectedArcs = array of TProjectedArc;
+var
+  LCompiler: TGraphReferenceCompiler;
+  LWork: TWfcSolveWork;
+  LModels: TModels;
+  LDomains: TDomains;
+  LArcs: TProjectedArcs;
+  LCandidate: TGraphPreparedDomains;
+  LStaged: TGraphValueMatrix;
+  LFailures, LTraceDependencies, LOrder: TReferenceIntegerArray;
+  LNamed: TReferenceByteArray;
+  LCauses: TGraphTraceCauseArray;
+  LDomainReport: TReferenceDomainReport;
+  LGroup: TGraphRuleGroup;
+  LRequirement: TGraphRuleGroup.TPassRequirement;
+  P, S, V, W, R, I, C, A, N, LLock, LMatch, LBefore, LTotalCandidates: Integer;
+  LTCount, LSCount, LTOffset, LSOffset: Integer;
+  LChanged, LAllowed, LReadsSource: Boolean;
+
+  function Fail(const APass, ACell: Integer): Boolean;
+  begin
+    AReport.FailedPassIndex := APass;
+    AReport.FailedEntryIndex := ACell;
+    ADomains := nil;
+    Result := False;
+  end;
+
+  function RetainArc(const ATargetSide: Boolean): Boolean;
+  var PassIndex, OtherPass, Count, OtherCount, Offset, OtherOffset: Integer;
+    ValueIndex, RowOffset, Stride, Remaining: Integer;
+  begin
+    if ATargetSide then
+    begin
+      PassIndex := LArcs[A].TargetPass; OtherPass := LArcs[A].SourcePass;
+      Count := LTCount; OtherCount := LSCount;
+      Offset := LTOffset; OtherOffset := LSOffset;
+    end
+    else
+    begin
+      PassIndex := LArcs[A].SourcePass; OtherPass := LArcs[A].TargetPass;
+      Count := LSCount; OtherCount := LTCount;
+      Offset := LSOffset; OtherOffset := LTOffset;
+    end;
+    Remaining := 0;
+    for ValueIndex := 0 to Count - 1 do
+    begin
+      VisitSolveWork(LWork);
+      if LDomains[PassIndex][Offset + ValueIndex] = 0 then Continue;
+      if ATargetSide then
+      begin RowOffset := ValueIndex * LSCount; Stride := 1 end
+      else
+      begin RowOffset := ValueIndex; Stride := LSCount end;
+      if ReferenceArcHasSupport(LDomains[OtherPass], OtherOffset, OtherCount,
+          LArcs[A].Compatibility, RowOffset, Stride) then
+        Inc(Remaining)
+      else
+      begin
+        LDomains[PassIndex][Offset + ValueIndex] := 0;
+        Inc(AReport.RemovedCandidates);
+        LChanged := True;
+      end;
+    end;
+    Result := Remaining > 0;
+    if not Result then Fail(PassIndex, C);
+  end;
+begin
+  if Assigned(FPassRoot) then
+    Exit(FPassRoot.PrepareProjectedDomains(ADomains, AReport, AObserver));
+  if FRunning then
+    raise EInvalidOperation.Create('PrepareProjectedDomains::graph is running');
+  AReport := Default(TGraphDomainPreparationReport);
+  AReport.FailedPassIndex := -1; AReport.FailedEntryIndex := -1;
+  LWork := nil; LCompiler := nil;
+  FRunning := True;
+  try
+    if Assigned(AObserver) then LWork := TWfcSolveWork.Create(AObserver);
+    BeginSolveWork(LWork, wspPrepare, -1);
+    LCompiler := TGraphReferenceCompiler.Create;
+    LCompiler.FRoot := Self; LCompiler.FWork := LWork;
+    BuildPassExecutionOrder(LOrder);
+    N := FPasses.Count;
+    SetLength(LModels, N); SetLength(LDomains, N); SetLength(LStaged, N);
+    for P := 0 to N - 1 do
+    begin
+      VisitSolveWork(LWork);
+      if not FPasses[P].HasDefinition or (FPasses[P].FPassMode <> gpmOverlay) or
+          not GraphLayoutsEqual(FPasses[P].FLayout, FPasses[0].FLayout) then
+        raise EInvalidOperation.Create(
+          'PrepareProjectedDomains::requires defined identical overlay passes');
+      SetLength(LStaged[P], FPasses[P].FEntries.Count);
+      for V := 0 to High(FPasses[P].FValues) do
+      begin
+        VisitSolveWork(LWork);
+        LGroup := FPasses[P].FRuleGroups[FPasses[P].FValues[V]];
+        if Length(LGroup.PreviousValues) > 0 then
+          raise EInvalidOperation.Create(
+            'PrepareProjectedDomains::legacy previous-value unions are unsupported');
+        for R := 0 to High(LGroup.FPassRequirements) do
+        begin
+          LRequirement := LGroup.FPassRequirements[R];
+          if (LRequirement.Kind = prkMapped) or
+              (Length(LRequirement.Terms) <> 1) or
+              not IsZeroGraphOffset(LRequirement.Terms[0].Offset) then
+            raise EInvalidOperation.Create(
+              'PrepareProjectedDomains::requires same-cell single-term requirements');
+        end;
+      end;
+    end;
+    LTotalCandidates := 0;
+    for P := 0 to N - 1 do
+    begin
+      if not LCompiler.BuildReferenceModel(FPasses[P], LStaged, LModels[P],
+          LLock, LFailures, LNamed, LCauses, LTraceDependencies, False) then
+        Exit(Fail(P, LLock));
+      if Length(LModels[P].InitialAllowed) > High(Integer) - LTotalCandidates then
+        raise ERangeError.Create('PrepareProjectedDomains::total candidates exceed Integer');
+      Inc(LTotalCandidates, Length(LModels[P].InitialAllowed));
+    end;
+
+    { Compile each conjunctive binary relation once. Absent clauses on a value
+      impose no restriction. Same-source clauses intersect; one-term count
+      clauses use their exact inclusive bounds (including explicit denial). }
+    for P := 0 to N - 1 do
+      for S := 0 to N - 1 do
+      begin
+        LReadsSource := False;
+        for V := 0 to High(FPasses[P].FValues) do
+        begin
+          LGroup := FPasses[P].FRuleGroups[FPasses[P].FValues[V]];
+          for R := 0 to High(LGroup.FPassRequirements) do
+            if LGroup.FPassRequirements[R].PassIndex = S then LReadsSource := True;
+        end;
+        if not LReadsSource then Continue;
+        A := Length(LArcs); SetLength(LArcs, A + 1);
+        LArcs[A].TargetPass := P; LArcs[A].SourcePass := S;
+        LSCount := LModels[S].ValueCount;
+        SetLength(LArcs[A].Compatibility, LCompiler.CheckedProduct(
+          LModels[P].ValueCount, LSCount, 'PrepareProjectedDomains::relation'));
+        for V := 0 to High(FPasses[P].FValues) do
+        begin
+          LGroup := FPasses[P].FRuleGroups[FPasses[P].FValues[V]];
+          for W := 0 to High(FPasses[S].FValues) do
+          begin
+            VisitSolveWork(LWork);
+            LAllowed := True;
+            for R := 0 to High(LGroup.FPassRequirements) do
+            begin
+              LRequirement := LGroup.FPassRequirements[R];
+              if LRequirement.PassIndex <> S then Continue;
+              LMatch := Ord(ContainsGraphValue(LRequirement.Terms[0].Values,
+                FPasses[S].FValues[W]));
+              if LRequirement.Kind = prkCount then
+                LAllowed := LAllowed and (LMatch >= LRequirement.MinimumMatches)
+                  and (LMatch <= LRequirement.MaximumMatches)
+              else LAllowed := LAllowed and (LMatch <> 0);
+            end;
+            if LAllowed then LArcs[A].Compatibility[V * LSCount + W] := 1;
+          end;
+        end;
+      end;
+
+    repeat
+      Inc(AReport.Iterations);
+      LChanged := False;
+      for P := 0 to N - 1 do
+      begin
+        if Length(LDomains[P]) > 0 then
+          LModels[P].InitialAllowed := Copy(LDomains[P], 0, Length(LDomains[P]));
+        if not PropagateReferenceModel(LModels[P], LDomains[P], LDomainReport,
+            LWork) then Exit(Fail(P, LDomainReport.Contradiction.EntryIndex));
+        LBefore := 0;
+        for I := 0 to High(LDomains[P]) do
+          if (LModels[P].InitialAllowed[I] <> 0) and (LDomains[P][I] = 0) then
+            Inc(LBefore);
+        if LBefore > 0 then
+        begin
+          Inc(AReport.RemovedCandidates, LBefore);
+          LChanged := True;
+        end;
+      end;
+      for A := 0 to High(LArcs) do
+      begin
+        LTCount := LModels[LArcs[A].TargetPass].ValueCount;
+        LSCount := LModels[LArcs[A].SourcePass].ValueCount;
+        for C := 0 to LModels[LArcs[A].TargetPass].CellCount - 1 do
+        begin
+          LTOffset := C * LTCount; LSOffset := C * LSCount;
+          if not RetainArc(True) then Exit(False);
+          if not RetainArc(False) then Exit(False);
+        end;
+      end;
+    until not LChanged;
+    SetLength(LCandidate, N);
+    for P := 0 to N - 1 do
+    begin
+      LCandidate[P].LabelText := PassLabelFromIndex(P);
+      SetLength(LCandidate[P].Cells, LModels[P].CellCount);
+      for C := 0 to LModels[P].CellCount - 1 do
+      begin
+        VisitSolveWork(LWork);
+        I := 0;
+        for V := 0 to LModels[P].ValueCount - 1 do
+          if LDomains[P][C * LModels[P].ValueCount + V] <> 0 then Inc(I);
+        SetLength(LCandidate[P].Cells[C], I); I := 0;
+        for V := 0 to LModels[P].ValueCount - 1 do
+          if LDomains[P][C * LModels[P].ValueCount + V] <> 0 then
+          begin LCandidate[P].Cells[C][I] := FPasses[P].FValues[V]; Inc(I) end;
+      end;
+    end;
+    FinishSolveWork(LWork);
+    ADomains := LCandidate;
+    AReport.Consistent := True;
+    Result := True;
+  finally
+    LCompiler.Free; LWork.Free;
+    FRunning := False;
+  end;
+end;
+
 function TGraph.TrySolveAttempt(const AOptions: TGraphSolveOptions;
   const ADirty: TPassSelection;
   const AExclusions: TPassAssignmentExclusions;
@@ -7552,6 +8427,7 @@ type
 var
   LAssignment: TReferenceIntegerArray;
   LCommitted: Boolean;
+  LCompiler: TGraphReferenceCompiler;
   LWork: TWfcSolveWork;
   LDefinitionlessFailureFromSource: Boolean;
   LDefinitionlessSourcePass: Integer;
@@ -7584,16 +8460,6 @@ var
   LTraceEvent: TGraphTraceEvent;
   LRequirementFailureNamed: TReferenceByteArray;
   LRequirementFailurePass: TReferenceIntegerArray;
-
-  function CheckedProduct(const A, B: Integer;
-    const ALabel: String): Integer;
-  begin
-    if (A < 0) or (B < 0) then
-      raise ERangeError.Create(ALabel + ' cannot be negative');
-    if (A <> 0) and (B > High(Integer) div A) then
-      raise ERangeError.Create(ALabel + ' is too large');
-    Result := A * B;
-  end;
 
   function NewTraceEvent(const AKind: TGraphTraceEventKind;
     const ACauseKind: TGraphTraceCauseKind;
@@ -7670,113 +8536,6 @@ var
     end;
   end;
 
-  function FindValueIndex(const AGraph: TGraph;
-    const AValue: TGraphValue): Integer;
-  var
-    I: Integer;
-  begin
-    for I := 0 to High(AGraph.FValues) do
-      if AGraph.FValues[I] = AValue then
-        Exit(I);
-    Result := -1;
-  end;
-
-  procedure ValidateDefinedModel(const AGraph: TGraph);
-  var
-    I, J, K: Integer;
-    LDirectionOrdinal: Integer;
-    LGroup: TGraphRuleGroup;
-    LRule: TGraphRule;
-    LSeenDirections: TGraphDirections;
-  begin
-    if AGraph.FRuleGroups.Count <> Length(AGraph.FValues) then
-      raise EInvalidOperation.CreateFmt(
-        'TrySolve::pass %d has an inconsistent value registry',
-        [AGraph.FPassIndex]);
-
-    for I := 0 to High(AGraph.FValues) do
-    begin
-      VisitSolveWork(LWork);
-      if AGraph.FValues[I] = TGraphValue.Empty then
-        raise EInvalidOperation.CreateFmt(
-          'TrySolve::pass %d contains the reserved empty value',
-          [AGraph.FPassIndex]);
-      if not AGraph.FRuleGroups.TryGetValue(AGraph.FValues[I], LGroup) then
-        raise EInvalidOperation.CreateFmt(
-          'TrySolve::pass %d has no rule group for value "%s"',
-          [AGraph.FPassIndex, AGraph.FValues[I]]);
-
-      if not Assigned(LGroup) then
-        raise EInvalidOperation.CreateFmt(
-          'TrySolve::pass %d has a nil rule group for value "%s"',
-          [AGraph.FPassIndex, AGraph.FValues[I]]);
-      if LGroup.Value <> AGraph.FValues[I] then
-        raise EInvalidOperation.CreateFmt(
-          'TrySolve::pass %d rule-group identity "%s" does not match value "%s"',
-          [AGraph.FPassIndex, LGroup.Value, AGraph.FValues[I]]);
-      if LGroup.Weight < 1 then
-        raise EInvalidOperation.CreateFmt(
-          'TrySolve::pass %d value "%s" has invalid weight %d',
-          [AGraph.FPassIndex, AGraph.FValues[I], LGroup.Weight]);
-      LSeenDirections := [];
-      for J := 0 to High(LGroup.Rules) do
-      begin
-        VisitSolveWork(LWork);
-        LRule := LGroup.Rules[J];
-        LDirectionOrdinal := Ord(LRule.Key);
-        if (LDirectionOrdinal < Ord(Low(TGraphDirection)))
-          or (LDirectionOrdinal > Ord(High(TGraphDirection))) then
-          raise EInvalidOperation.CreateFmt(
-            'TrySolve::pass %d rule "%s" has invalid direction %d',
-            [AGraph.FPassIndex, AGraph.FValues[I], LDirectionOrdinal]);
-        if LRule.Key in LSeenDirections then
-          raise EInvalidOperation.CreateFmt(
-            'TrySolve::pass %d rule "%s" repeats direction %d',
-            [AGraph.FPassIndex, AGraph.FValues[I], LDirectionOrdinal]);
-        if LGroup.Denied[LRule.Key] then
-          raise EInvalidOperation.CreateFmt(
-            'TrySolve::pass %d value "%s" both denies and defines direction %d',
-            [AGraph.FPassIndex, AGraph.FValues[I], LDirectionOrdinal]);
-        Include(LSeenDirections, LRule.Key);
-        for K := 0 to High(LRule.Value) do
-          if FindValueIndex(AGraph, LRule.Value[K]) < 0 then
-            raise EInvalidOperation.CreateFmt(
-              'TrySolve::pass %d rule "%s" references unknown value "%s"',
-              [AGraph.FPassIndex, AGraph.FValues[I],
-               LRule.Value[K]]);
-      end;
-    end;
-  end;
-
-  function RuleAllows(const AGraph: TGraph; const ASourceValue: Integer;
-    const ADirection: TGraphDirection; const ATargetValue: Integer;
-    out ARequiredEdge: Boolean): Boolean;
-  var
-    LGroup: TGraphRuleGroup;
-    LRule: TGraphRule;
-  begin
-    ARequiredEdge := False;
-    LGroup := AGraph.FRuleGroups[AGraph.FValues[ASourceValue]];
-    if LGroup.Denied[ADirection] then
-      Exit(False);
-    if not LGroup.Exists[ADirection] then
-      Exit(True);
-    LRule := LGroup.Rule[ADirection];
-    if Length(LRule.Value) = 0 then
-      Exit(True);
-    Result := ContainsGraphValue(LRule.Value,
-      AGraph.FValues[ATargetValue]);
-    ARequiredEdge := Result and TRequireRule(LRule.Info);
-  end;
-
-  function RelationIndex(const AValueCount: Integer;
-    const ADirection: TGraphDirection; const ACurrentValue,
-    ANeighborValue: Integer): Integer;
-  begin
-    Result := ((Ord(ADirection) * AValueCount + ACurrentValue)
-      * AValueCount) + ANeighborValue;
-  end;
-
   function ValidateStagedValueQuotas(const AGraph: TGraph;
     const AValues: TGraphValues; out AConstraintIndex,
     AEntryIndex: Integer): Boolean;
@@ -7790,7 +8549,7 @@ var
     AEntryIndex := -1;
     Result := True;
     if Length(AGraph.FValueQuotas) = 0 then Exit;
-    ValidateDefinedModel(AGraph);
+    LCompiler.ValidateDefinedModel(AGraph);
     if Length(AValues) <> AGraph.FEntries.Count then
       raise EInvalidOperation.Create('TrySolve::value quota assignment shape mismatch');
     for I := 0 to High(AValues) do
@@ -7839,7 +8598,7 @@ var
     AEntryIndex := -1;
     Result := True;
     if Length(AGraph.FConnectivity) = 0 then Exit;
-    ValidateDefinedModel(AGraph);
+    LCompiler.ValidateDefinedModel(AGraph);
     AGraph.ValidateConnectivityShape(AGraph.FDimension.Width,
       AGraph.FDimension.Height, AGraph.FDimension.Depth);
     if Length(AValues) <> AGraph.FEntries.Count then
@@ -7865,7 +8624,7 @@ var
     SetLength(LReached, Length(AValues));
     SetLength(LRequired, Length(AValues));
     for I := 0 to High(AValues) do
-      LValueIndices[I] := FindValueIndex(AGraph, AValues[I]);
+      LValueIndices[I] := LCompiler.FindValueIndex(AGraph, AValues[I]);
     for C := 0 to High(AGraph.FConnectivity) do
     begin
       VisitSolveWork(LWork);
@@ -7920,9 +8679,9 @@ var
           if LNeighbor[LInverse] <> AGraph.FEntries[LCell] then Continue;
           if not (LInverse in LConstraint.Values[LProfiles[LNext]].Openings) then
             Continue;
-          if not RuleAllows(AGraph, LValueIndices[LNext], LDirection,
+          if not LCompiler.RuleAllows(AGraph, LValueIndices[LNext], LDirection,
             LValueIndices[LCell], LUnusedRequired) then Continue;
-          if not RuleAllows(AGraph, LValueIndices[LCell], LInverse,
+          if not LCompiler.RuleAllows(AGraph, LValueIndices[LCell], LInverse,
             LValueIndices[LNext], LUnusedRequired) then Continue;
           LReached[LNext] := 1;
           LQueue[LTail] := LNext;
@@ -7937,478 +8696,6 @@ var
           Exit(False);
         end;
     end;
-  end;
-
-  procedure BuildCellOrder(const AGraph: TGraph;
-    out AOrder: TReferenceIntegerArray);
-  var
-    I: Integer;
-    LOrderIndex: Integer;
-    LPlaneSize: Integer;
-    LZ: Integer;
-  begin
-    SetLength(AOrder, AGraph.FEntries.Count);
-    if Length(AOrder) = 0 then
-      Exit;
-    LOrderIndex := 0;
-    LPlaneSize := CheckedProduct(Integer(AGraph.FDimension.Width),
-      Integer(AGraph.FDimension.Height), 'TrySolve::plane size');
-    if AGraph.FMode = rmBottomUp then
-      for LZ := 0 to Integer(AGraph.FDimension.Depth) - 1 do
-        for I := 0 to Pred(LPlaneSize) do
-        begin
-          VisitSolveWork(LWork);
-          AOrder[LOrderIndex] := (LZ * LPlaneSize) + I;
-          Inc(LOrderIndex);
-        end
-    else if AGraph.FMode = rmTopDown then
-      for LZ := Integer(AGraph.FDimension.Depth) - 1 downto 0 do
-        for I := 0 to Pred(LPlaneSize) do
-        begin
-          VisitSolveWork(LWork);
-          AOrder[LOrderIndex] := (LZ * LPlaneSize) + I;
-          Inc(LOrderIndex);
-        end
-    else
-      raise EInvalidOperation.Create(
-        'TrySolve::run mode is not implemented');
-  end;
-
-  function BuildReferenceModel(const AGraph: TGraph;
-    const AStaged: TGraphValueMatrix; out AModel: TReferenceModel;
-    out AInvalidLockEntry: Integer;
-    out ARequirementFailurePass: TReferenceIntegerArray;
-    out ARequirementFailureNamed: TReferenceByteArray;
-    out AInitialTraceCauses: TGraphTraceCauseArray;
-    out AInitialTraceDependencyPasses: TReferenceIntegerArray): Boolean;
-  var
-    LAllowed: Boolean;
-    LAllowedForward: Boolean;
-    LAllowedReverse: Boolean;
-    LAllowedCount: Integer;
-    LCell: Integer;
-    LCellValueCount: Integer;
-    LDirection: TGraphDirection;
-    LDirectRequired: Boolean;
-    LGroup: TGraphRuleGroup;
-    LFailureNamed: Boolean;
-    LFailurePass: Integer;
-    LHasPreviousValues: Boolean;
-    LIndex: Integer;
-    LLockValue: Integer;
-    LNeighbor: TGraphEntry;
-    LNeighborIndex: Integer;
-    LNeighborValue: Integer;
-    LRelationCount: Integer;
-    LRequirementIndex: Integer;
-    LRequirementsAllowed: Boolean;
-    LSourceAllowed: Boolean;
-    LSourceNamed: Boolean;
-    LReverseRequired: Boolean;
-    LSourcePassIndex: Integer;
-    LSourceValue: TGraphValue;
-    LTraceIndex: Integer;
-    LValue: Integer;
-    LValueFailurePass: Integer;
-    LConnectivityIndex, LProfileIndex, LPositionIndex: Integer;
-    LConnectivity: TGraphConnectivityConstraint;
-    LQuotaIndex, LQuotaValueIndex: Integer;
-    LPriorIndex: Integer;
-    LQuota: TGraphValueQuotaConstraint;
-
-    function RequirementMatches(
-      const ARequirementIndex: Integer): Boolean;
-    var
-      LCount, LResolvedIndex, LTermIndex: Integer;
-      LIsCount: Boolean;
-      LMatchedIndices: TGraphPassIndices;
-      LRequirement: TGraphRuleGroup.TPassRequirement;
-      LTermSourcePass: Integer;
-      LTermSourceValue: TGraphValue;
-    begin
-      Result := False;
-      LRequirement := LGroup.FPassRequirements[ARequirementIndex];
-      LTermSourcePass := LRequirement.PassIndex;
-      if LRequirement.Kind = prkMapped then
-        Exit(AGraph.MappedRequirementMatches(LCell,
-          FPasses[LTermSourcePass], LRequirement.MappedQuery,
-          AStaged[LTermSourcePass], True));
-      LIsCount := LRequirement.Kind = prkCount;
-      LCount := 0;
-      if LIsCount and (LRequirement.CountMode = gpcmDistinctCells) then
-        SetLength(LMatchedIndices, Length(LRequirement.Terms));
-      for LTermIndex := 0 to High(LRequirement.Terms) do
-        if AGraph.ResolveOffsetIndex(LCell,
-          LRequirement.Terms[LTermIndex].Offset, LResolvedIndex) then
-        begin
-          LTermSourceValue := AStaged[LTermSourcePass][LResolvedIndex];
-          if (LTermSourceValue <> TGraphValue.Empty)
-            and ContainsGraphValue(
-              LRequirement.Terms[LTermIndex].Values,
-              LTermSourceValue) then
-          begin
-            if not LIsCount then
-              Exit(True);
-            RecordGraphPassCountMatch(LRequirement.CountMode,
-              LResolvedIndex, LCount, LMatchedIndices);
-            if LCount > LRequirement.MaximumMatches then
-              Exit(False);
-          end;
-        end;
-      if LIsCount then
-        Result := LCount >= LRequirement.MinimumMatches;
-    end;
-
-    function IsMergedPreviousZero(
-      const ARequirementIndex, APreviousPassIndex: Integer): Boolean;
-    begin
-      Result := (LGroup.FPassRequirements[ARequirementIndex].PassIndex
-          = APreviousPassIndex)
-        and (LGroup.FPassRequirements[ARequirementIndex].Kind
-          = prkMergedOffset)
-        and (Length(LGroup.FPassRequirements[ARequirementIndex].Terms)
-          = 1)
-        and IsZeroGraphOffset(
-          LGroup.FPassRequirements[ARequirementIndex].Terms[0].Offset);
-    end;
-
-    procedure RecordRequirementFailure(const APassIndex: Integer;
-      const ANamed: Boolean);
-    begin
-      //The public terminal contradiction retains the earliest provider pass
-      //across the whole cell, while tracing also retains that cause for each
-      //individual candidate removed from the initial domain.
-      if (LFailurePass < 0) or (APassIndex < LFailurePass) then
-      begin
-        LFailurePass := APassIndex;
-        LFailureNamed := ANamed;
-      end
-      else if (APassIndex = LFailurePass) and ANamed then
-        LFailureNamed := True;
-
-      if (LValueFailurePass < 0)
-        or (APassIndex < LValueFailurePass) then
-        LValueFailurePass := APassIndex;
-    end;
-  begin
-    Result := False;
-    AInvalidLockEntry := -1;
-    AModel := Default(TReferenceModel);
-    ValidateDefinedModel(AGraph);
-
-    AModel.CellCount := AGraph.FEntries.Count;
-    AModel.ValueCount := Length(AGraph.FValues);
-    LCellValueCount := CheckedProduct(AModel.CellCount,
-      AModel.ValueCount, 'TrySolve::domain matrix');
-    LRelationCount := CheckedProduct(
-      CheckedProduct(AModel.ValueCount, AModel.ValueCount,
-        'TrySolve::relation matrix'),
-      WFC_REFERENCE_DIRECTION_COUNT, 'TrySolve::relation matrix');
-
-    SetLength(AModel.Neighbors, CheckedProduct(AModel.CellCount,
-      WFC_REFERENCE_DIRECTION_COUNT, 'TrySolve::neighbor matrix'));
-    SetLength(AModel.Compatibility, LRelationCount);
-    SetLength(AModel.ValueWeights, AModel.ValueCount);
-    for LCell := 0 to AModel.CellCount - 1 do
-    begin
-      VisitSolveWork(LWork);
-      if Length(AGraph.FEntries[LCell].FCellValueWeights) = 0 then Continue;
-      if Length(AModel.CellValueWeights) = 0 then
-        SetLength(AModel.CellValueWeights, LCellValueCount);
-      for LPriorIndex := 0 to High(AGraph.FEntries[LCell].FCellValueWeights) do
-      begin
-        VisitSolveWork(LWork);
-        LValue := FindValueIndex(AGraph,
-          AGraph.FEntries[LCell].FCellValueWeights[LPriorIndex].Value);
-        AModel.CellValueWeights[LCell * AModel.ValueCount + LValue] :=
-          AGraph.FEntries[LCell].FCellValueWeights[LPriorIndex].Weight;
-      end;
-    end;
-    SetLength(AModel.RequiredValues, AModel.ValueCount);
-    SetLength(AModel.RequiredSupport, LRelationCount);
-    SetLength(AModel.InitialAllowed, LCellValueCount);
-    SetLength(AModel.InitialFailureKinds, AModel.CellCount);
-    SetLength(AModel.LockedValues, AModel.CellCount);
-    SetLength(ARequirementFailurePass, AModel.CellCount);
-    SetLength(ARequirementFailureNamed, AModel.CellCount);
-    if LTraceRecorder.Enabled then
-    begin
-      SetLength(AInitialTraceCauses, LCellValueCount);
-      SetLength(AInitialTraceDependencyPasses, LCellValueCount);
-      for LIndex := 0 to High(AInitialTraceDependencyPasses) do
-        AInitialTraceDependencyPasses[LIndex] := -1;
-    end
-    else
-    begin
-      SetLength(AInitialTraceCauses, 0);
-      SetLength(AInitialTraceDependencyPasses, 0);
-    end;
-    BuildCellOrder(AGraph, AModel.CellOrder);
-
-    AGraph.ValidateConnectivityShape(AGraph.FDimension.Width,
-      AGraph.FDimension.Height, AGraph.FDimension.Depth);
-    SetLength(AModel.Connectivity, Length(AGraph.FConnectivity));
-    for LConnectivityIndex := 0 to High(AGraph.FConnectivity) do
-    begin
-      VisitSolveWork(LWork);
-      LConnectivity := AGraph.FConnectivity[LConnectivityIndex];
-      with AModel.Connectivity[LConnectivityIndex] do
-      begin
-        RootCell := AGraph.CoordToIndex(LConnectivity.Root.X,
-          LConnectivity.Root.Y, LConnectivity.Root.Z);
-        RequireAllParticipants := LConnectivity.RequireAllParticipants;
-        SetLength(RequiredCells, Length(LConnectivity.RequiredPositions));
-        for LPositionIndex := 0 to High(RequiredCells) do
-          with LConnectivity.RequiredPositions[LPositionIndex] do
-            RequiredCells[LPositionIndex] := AGraph.CoordToIndex(X, Y, Z);
-        SetLength(Profiles, Length(LConnectivity.Values));
-        for LProfileIndex := 0 to High(Profiles) do
-        begin
-          VisitSolveWork(LWork);
-          Profiles[LProfileIndex].ValueIndex := FindValueIndex(AGraph,
-            LConnectivity.Values[LProfileIndex].Value);
-          Profiles[LProfileIndex].RequiredByValue :=
-            LConnectivity.Values[LProfileIndex].RequiredByValue;
-          Profiles[LProfileIndex].Ports := 0;
-          for LDirection := Low(TGraphDirection) to High(TGraphDirection) do
-            if LDirection in LConnectivity.Values[LProfileIndex].Openings then
-              Profiles[LProfileIndex].Ports := Profiles[LProfileIndex].Ports
-                or Byte(1 shl Ord(LDirection));
-        end;
-      end;
-    end;
-
-    SetLength(AModel.ValueQuotas, Length(AGraph.FValueQuotas));
-    for LQuotaIndex := 0 to High(AGraph.FValueQuotas) do
-    begin
-      VisitSolveWork(LWork);
-      LQuota := AGraph.FValueQuotas[LQuotaIndex];
-      with AModel.ValueQuotas[LQuotaIndex] do
-      begin
-        MinimumCount := LQuota.MinimumCount;
-        MaximumCount := LQuota.MaximumCount;
-        SetLength(Values, Length(LQuota.Values));
-        for LQuotaValueIndex := 0 to High(Values) do
-          Values[LQuotaValueIndex] := FindValueIndex(AGraph,
-            LQuota.Values[LQuotaValueIndex]);
-      end;
-    end;
-
-    for LCell := 0 to Pred(AModel.CellCount) do
-    begin
-      VisitSolveWork(LWork);
-      AModel.LockedValues[LCell] := -1;
-      AModel.InitialFailureKinds[LCell] := rckEmptyDomain;
-      ARequirementFailurePass[LCell] := -1;
-      for LDirection := Low(TGraphDirection) to High(TGraphDirection) do
-      begin
-        VisitSolveWork(LWork);
-        LNeighbor := AGraph.FEntries[LCell][LDirection];
-        LIndex := (LCell * WFC_REFERENCE_DIRECTION_COUNT)
-          + Ord(LDirection);
-        if not Assigned(LNeighbor) then
-          AModel.Neighbors[LIndex] := -1
-        else
-        begin
-          LNeighborIndex := LNeighbor.Index;
-          if (LNeighborIndex < 0)
-            or (LNeighborIndex >= AGraph.FEntries.Count)
-            or (AGraph.FEntries[LNeighborIndex] <> LNeighbor) then
-            raise EInvalidOperation.CreateFmt(
-              'TrySolve::pass %d entry %d has an external neighbor',
-              [AGraph.FPassIndex, LCell]);
-          AModel.Neighbors[LIndex] := LNeighborIndex;
-        end;
-      end;
-    end;
-
-    for LValue := 0 to Pred(AModel.ValueCount) do
-    begin
-      VisitSolveWork(LWork);
-      LGroup := AGraph.FRuleGroups[AGraph.FValues[LValue]];
-      AModel.ValueWeights[LValue] := LGroup.Weight;
-      if LGroup.HasRequired then
-        AModel.RequiredValues[LValue] := 1;
-      if (AGraph.FPassIndex > 0)
-        and (Length(LGroup.PreviousValues) > 0) then
-      begin
-        LSourcePassIndex := Pred(AGraph.FPassIndex);
-        if AGraph.DependencySlot(LSourcePassIndex) < 0 then
-          raise EInvalidOperation.CreateFmt(
-            'TrySolve::pass %d value "%s" reads undeclared dependency %d',
-            [AGraph.FPassIndex, AGraph.FValues[LValue],
-              LSourcePassIndex]);
-        if Length(AStaged[LSourcePassIndex]) <> AModel.CellCount then
-          raise EInvalidOperation.CreateFmt(
-            'TrySolve::dependency %d for pass %d has a different shape',
-            [LSourcePassIndex, AGraph.FPassIndex]);
-      end;
-      for LRequirementIndex := 0 to High(LGroup.FPassRequirements) do
-      begin
-        VisitSolveWork(LWork);
-        LSourcePassIndex :=
-          LGroup.FPassRequirements[LRequirementIndex].PassIndex;
-        if (LSourcePassIndex < 0)
-          or (LSourcePassIndex >= Length(AStaged)) then
-          raise EInvalidOperation.CreateFmt(
-            'TrySolve::pass %d value "%s" has invalid dependency %d',
-            [AGraph.FPassIndex, AGraph.FValues[LValue],
-              LSourcePassIndex]);
-        if AGraph.DependencySlot(LSourcePassIndex) < 0 then
-          raise EInvalidOperation.CreateFmt(
-            'TrySolve::pass %d value "%s" reads undeclared dependency %d',
-            [AGraph.FPassIndex, AGraph.FValues[LValue],
-              LSourcePassIndex]);
-        if Length(AStaged[LSourcePassIndex]) <>
-          FPasses[LSourcePassIndex].FEntries.Count then
-          raise EInvalidOperation.CreateFmt(
-            'TrySolve::dependency %d for pass %d has a different shape',
-            [LSourcePassIndex, AGraph.FPassIndex]);
-      end;
-    end;
-
-    //Compile a two-sided compatibility relation. The legacy rule builder
-    //creates inverse edges, while the conjunction also protects the reference
-    //solver from assignment-order dependence after direct rule-array edits.
-    for LDirection := Low(TGraphDirection) to High(TGraphDirection) do
-      for LValue := 0 to Pred(AModel.ValueCount) do
-        for LNeighborValue := 0 to Pred(AModel.ValueCount) do
-        begin
-          VisitSolveWork(LWork);
-          LAllowedForward := RuleAllows(AGraph, LNeighborValue,
-            LDirection, LValue, LDirectRequired);
-          LAllowedReverse := RuleAllows(AGraph, LValue,
-            InverseOfDir(LDirection), LNeighborValue,
-            LReverseRequired);
-          LIndex := RelationIndex(AModel.ValueCount, LDirection,
-            LValue, LNeighborValue);
-          if LAllowedForward and LAllowedReverse then
-            AModel.Compatibility[LIndex] := 1;
-          if LAllowedForward and LAllowedReverse and LDirectRequired then
-            AModel.RequiredSupport[LIndex] := 1;
-        end;
-
-    for LCell := 0 to Pred(AModel.CellCount) do
-    begin
-      VisitSolveWork(LWork);
-      LLockValue := -1;
-      if (not AGraph.FEntries[LCell].Empty)
-        and (not AGraph.FEntries[LCell].Generated) then
-      begin
-        LLockValue := FindValueIndex(AGraph,
-          AGraph.FEntries[LCell].Value);
-        if LLockValue < 0 then
-        begin
-          AInvalidLockEntry := LCell;
-          Exit(False);
-        end;
-        AModel.LockedValues[LCell] := LLockValue;
-        //Legacy locked entries bypass required-trigger eligibility, but still
-        //have to satisfy adjacency and previous-pass constraints.
-      end;
-
-      if AGraph.FEntries[LCell].FHasAllowedValues
-        and ((Length(AGraph.FEntries[LCell].FAllowedValues) = 0)
-          or ((LLockValue >= 0)
-            and (not ContainsGraphValue(
-              AGraph.FEntries[LCell].FAllowedValues,
-              AGraph.FValues[LLockValue])))) then
-        AModel.InitialFailureKinds[LCell] := rckEntryDomain;
-
-      LAllowedCount := 0;
-      LFailurePass := -1;
-      LFailureNamed := False;
-      for LValue := 0 to Pred(AModel.ValueCount) do
-      begin
-        VisitSolveWork(LWork);
-        LTraceIndex := (LCell * AModel.ValueCount) + LValue;
-        LValueFailurePass := -1;
-        LAllowed := (LLockValue < 0) or (LLockValue = LValue);
-        if LTraceRecorder.Enabled and (not LAllowed) then
-          AInitialTraceCauses[LTraceIndex] := gtckCallerLock;
-        if LAllowed and AGraph.FEntries[LCell].FHasAllowedValues then
-        begin
-          LAllowed := ContainsGraphValue(
-            AGraph.FEntries[LCell].FAllowedValues,
-            AGraph.FValues[LValue]);
-          if LTraceRecorder.Enabled and (not LAllowed) then
-            AInitialTraceCauses[LTraceIndex] := gtckCallerDomain;
-        end;
-        LGroup := AGraph.FRuleGroups[AGraph.FValues[LValue]];
-        if LAllowed then
-        begin
-          LRequirementsAllowed := True;
-          LHasPreviousValues := (AGraph.FPassIndex > 0)
-            and (Length(LGroup.PreviousValues) > 0);
-
-          if LHasPreviousValues then
-          begin
-            LSourcePassIndex := Pred(AGraph.FPassIndex);
-            LSourceValue := AStaged[LSourcePassIndex][LCell];
-            LSourceAllowed := (LSourceValue <> TGraphValue.Empty)
-              and ContainsGraphValue(LGroup.PreviousValues,
-                LSourceValue);
-            LSourceNamed := False;
-            for LRequirementIndex := 0 to
-              High(LGroup.FPassRequirements) do
-              if IsMergedPreviousZero(LRequirementIndex,
-                LSourcePassIndex) then
-              begin
-                if proNamed in
-                  LGroup.FPassRequirements[LRequirementIndex].Origins then
-                  LSourceNamed := True;
-                LSourceAllowed := LSourceAllowed
-                  or RequirementMatches(LRequirementIndex);
-              end;
-            if not LSourceAllowed then
-            begin
-              LRequirementsAllowed := False;
-              RecordRequirementFailure(LSourcePassIndex, LSourceNamed);
-            end;
-          end;
-
-          for LRequirementIndex := 0 to
-            High(LGroup.FPassRequirements) do
-          begin
-            VisitSolveWork(LWork);
-            LSourcePassIndex :=
-              LGroup.FPassRequirements[LRequirementIndex].PassIndex;
-            if LHasPreviousValues and IsMergedPreviousZero(
-              LRequirementIndex, Pred(AGraph.FPassIndex)) then
-              Continue;
-            if not RequirementMatches(LRequirementIndex) then
-            begin
-              LRequirementsAllowed := False;
-              RecordRequirementFailure(LSourcePassIndex,
-                proNamed in
-                  LGroup.FPassRequirements[LRequirementIndex].Origins);
-            end;
-          end;
-          LAllowed := LRequirementsAllowed;
-          if LTraceRecorder.Enabled and (not LAllowed) then
-          begin
-            AInitialTraceCauses[LTraceIndex] := gtckPassDependency;
-            AInitialTraceDependencyPasses[LTraceIndex] :=
-              LValueFailurePass;
-          end;
-        end;
-        if LAllowed then
-        begin
-          AModel.InitialAllowed[
-            (LCell * AModel.ValueCount) + LValue] := 1;
-          Inc(LAllowedCount);
-        end;
-      end;
-      if (LAllowedCount = 0) and (LFailurePass >= 0)
-        and (AModel.InitialFailureKinds[LCell] <> rckEntryDomain) then
-      begin
-        AModel.InitialFailureKinds[LCell] := rckPreviousPass;
-        ARequirementFailurePass[LCell] := LFailurePass;
-        if LFailureNamed then
-          ARequirementFailureNamed[LCell] := 1;
-      end;
-    end;
-    Result := True;
   end;
 
   function PublicContradictionKind(
@@ -8780,145 +9067,187 @@ var
 var
   I, LExecutionCount: Integer;
 begin
-  //Retained-provider preflight also reaches shared validation helpers before
-  //the guarded observer lifetime starts. Keep that early scope explicitly nil.
-  LWork := nil;
-  if FInitializingPass then
-    raise EInvalidOperation.Create(
-      'TrySolve::cannot solve during pass initialization');
-  EnsureInitialPass;
-  if FRunning then
-    raise EInvalidOperation.Create(
-      'TrySolve::the pass pipeline is already running');
-  if Length(ADirty) <> FPasses.Count then
-    raise EInvalidOperation.Create(
-      'TrySolve::pass selection does not match the pipeline');
-  if (Length(AExclusions) <> 0)
-    and (Length(AExclusions) <> FPasses.Count) then
-    raise EInvalidOperation.Create(
-      'TrySolve::pass exclusions do not match the pipeline');
-
-  SetLength(ACompletedChoices, FPasses.Count);
-  SetLength(AAssignments, FPasses.Count);
-  //Dynamic-array resizing preserves existing elements when the length is
-  //unchanged. Every round must publish only choices completed in that round;
-  //otherwise an exhausted pass could masquerade as a stale choice frame.
-  for I := 0 to Pred(FPasses.Count) do
-  begin
-    ACompletedChoices[I] := 0;
-    AAssignments[I] := nil;
-  end;
-
-  Result := False;
-  LCommitted := False;
-  InitializeReport;
-  BuildPassExecutionOrder(LFullExecutionPlan);
-  LExecutionCount := 0;
-  for I := 0 to High(LFullExecutionPlan) do
-    if ADirty[LFullExecutionPlan[I]] <> 0 then
-      Inc(LExecutionCount);
-  SetLength(LExecutionPlan, LExecutionCount);
-  LExecutionCount := 0;
-  for I := 0 to High(LFullExecutionPlan) do
-    if ADirty[LFullExecutionPlan[I]] <> 0 then
-    begin
-      LExecutionPlan[LExecutionCount] := LFullExecutionPlan[I];
-      Inc(LExecutionCount);
-    end;
-  SetLength(LStaged, FPasses.Count);
-  for I := 0 to Pred(FPasses.Count) do
-    if ADirty[I] = 0 then
-    begin
-      StageExistingPass(I, FPasses[I]);
-      AReport.Passes[I].Disposition := gpdReused;
-    end;
-  LSavedPassIndex := FCurPassIndex;
-  LRootRandomState := FRandomState;
-  SetLength(LRandomStates, FPasses.Count);
-  for I := 0 to Pred(FPasses.Count) do
-    LRandomStates[I] := FPasses[I].FRandomState;
-  LTraceRecorder := TGraphTraceRecorder.Create(AOptions.CaptureTrace,
-    FTraceSink, AReport);
-  LTraceInterrupted := False;
-  LWork := nil;
-  FRunning := True;
-  FExecutingPassIndex := -1;
+  LCompiler := TGraphReferenceCompiler.Create;
   try
-   try
-    //Establish diagnostic delivery before any cancellable work callback can
-    //unwind into rollback/footer delivery. Trace receiver failures stay contained.
-    LTraceRecorder.BeginDelivery;
-    if Assigned(AObserver) then LWork := TWfcSolveWork.Create(AObserver);
-    BeginSolveWork(LWork, wspPrepare, -1);
-    //Reused-provider events are still the same chronological prefix, but
-    //observers now run inside the non-reentrant transaction boundary.
+    LCompiler.FRoot := Self;
+    //Retained-provider preflight also reaches shared validation helpers before
+    //the guarded observer lifetime starts. Keep that early scope explicitly nil.
+    LWork := nil;
+    if FInitializingPass then
+      raise EInvalidOperation.Create(
+        'TrySolve::cannot solve during pass initialization');
+    EnsureInitialPass;
+    if FRunning then
+      raise EInvalidOperation.Create(
+        'TrySolve::the pass pipeline is already running');
+    if Length(ADirty) <> FPasses.Count then
+      raise EInvalidOperation.Create(
+        'TrySolve::pass selection does not match the pipeline');
+    if (Length(AExclusions) <> 0)
+      and (Length(AExclusions) <> FPasses.Count) then
+      raise EInvalidOperation.Create(
+        'TrySolve::pass exclusions do not match the pipeline');
+
+    SetLength(ACompletedChoices, FPasses.Count);
+    SetLength(AAssignments, FPasses.Count);
+    //Dynamic-array resizing preserves existing elements when the length is
+    //unchanged. Every round must publish only choices completed in that round;
+    //otherwise an exhausted pass could masquerade as a stale choice frame.
+    for I := 0 to Pred(FPasses.Count) do
+    begin
+      ACompletedChoices[I] := 0;
+      AAssignments[I] := nil;
+    end;
+
+    Result := False;
+    LCommitted := False;
+    InitializeReport;
+    BuildPassExecutionOrder(LFullExecutionPlan);
+    LExecutionCount := 0;
+    for I := 0 to High(LFullExecutionPlan) do
+      if ADirty[LFullExecutionPlan[I]] <> 0 then
+        Inc(LExecutionCount);
+    SetLength(LExecutionPlan, LExecutionCount);
+    LExecutionCount := 0;
+    for I := 0 to High(LFullExecutionPlan) do
+      if ADirty[LFullExecutionPlan[I]] <> 0 then
+      begin
+        LExecutionPlan[LExecutionCount] := LFullExecutionPlan[I];
+        Inc(LExecutionCount);
+      end;
+    SetLength(LStaged, FPasses.Count);
     for I := 0 to Pred(FPasses.Count) do
       if ADirty[I] = 0 then
       begin
-        LTraceEvent := NewTraceEvent(gtekPassSkipped, gtckTransaction, I);
-        AppendTraceEvent(LTraceEvent);
+        StageExistingPass(I, FPasses[I]);
+        AReport.Passes[I].Disposition := gpdReused;
       end;
-    EnsureSeedInitialized;
+    LSavedPassIndex := FCurPassIndex;
+    LRootRandomState := FRandomState;
+    SetLength(LRandomStates, FPasses.Count);
     for I := 0 to Pred(FPasses.Count) do
-      if ADirty[I] <> 0 then
+      LRandomStates[I] := FPasses[I].FRandomState;
+    LTraceRecorder := TGraphTraceRecorder.Create(AOptions.CaptureTrace,
+      FTraceSink, AReport);
+    LTraceInterrupted := False;
+    LWork := nil;
+    FRunning := True;
+    FExecutingPassIndex := -1;
+    try
+     try
+      //Establish diagnostic delivery before any cancellable work callback can
+      //unwind into rollback/footer delivery. Trace receiver failures stay contained.
+      LTraceRecorder.BeginDelivery;
+      if Assigned(AObserver) then LWork := TWfcSolveWork.Create(AObserver);
+      LCompiler.FWork := LWork;
+      LCompiler.FTraceEnabled := LTraceRecorder.Enabled;
+      BeginSolveWork(LWork, wspPrepare, -1);
+      //Reused-provider events are still the same chronological prefix, but
+      //observers now run inside the non-reentrant transaction boundary.
+      for I := 0 to Pred(FPasses.Count) do
+        if ADirty[I] = 0 then
+        begin
+          LTraceEvent := NewTraceEvent(gtekPassSkipped, gtckTransaction, I);
+          AppendTraceEvent(LTraceEvent);
+        end;
+      EnsureSeedInitialized;
+      for I := 0 to Pred(FPasses.Count) do
+        if ADirty[I] <> 0 then
+        begin
+          BuildPassRandomState(I, AEffectiveSeed, FPasses[I].FRandomState);
+          FPasses[I].FSeed := FSeed;
+          FPasses[I].FSeedInitialized := True;
+        end;
+      for LExecutionOrdinal := 0 to High(LExecutionPlan) do
       begin
-        BuildPassRandomState(I, AEffectiveSeed, FPasses[I].FRandomState);
-        FPasses[I].FSeed := FSeed;
-        FPasses[I].FSeedInitialized := True;
-      end;
-    for LExecutionOrdinal := 0 to High(LExecutionPlan) do
-    begin
-      LPassIndex := LExecutionPlan[LExecutionOrdinal];
-      //Execution reporting describes work that was actually attempted, not
-      //the whole selected closure.  In particular, a contradiction leaves
-      //later dirty dependents as not-run rather than implying that they were
-      //visited before the failure.
-      AReport.Passes[LPassIndex].Executed := True;
-      AReport.Passes[LPassIndex].ExecutionOrdinal :=
-        Length(AReport.ExecutionOrder);
-      SetLength(AReport.ExecutionOrder,
-        Succ(Length(AReport.ExecutionOrder)));
-      AReport.ExecutionOrder[High(AReport.ExecutionOrder)] := LPassIndex;
-      FExecutingPassIndex := LPassIndex;
-      FCurPassIndex := LPassIndex;
-      FCurPass := PassLabelFromIndex(LPassIndex);
-      LGraph := FPasses[LPassIndex];
-      LTraceEvent := NewTraceEvent(gtekPassBegin,
-        gtckTransaction, LPassIndex);
-      LPassBeginEvent := AppendTraceEvent(LTraceEvent);
+        LPassIndex := LExecutionPlan[LExecutionOrdinal];
+        //Execution reporting describes work that was actually attempted, not
+        //the whole selected closure.  In particular, a contradiction leaves
+        //later dirty dependents as not-run rather than implying that they were
+        //visited before the failure.
+        AReport.Passes[LPassIndex].Executed := True;
+        AReport.Passes[LPassIndex].ExecutionOrdinal :=
+          Length(AReport.ExecutionOrder);
+        SetLength(AReport.ExecutionOrder,
+          Succ(Length(AReport.ExecutionOrder)));
+        AReport.ExecutionOrder[High(AReport.ExecutionOrder)] := LPassIndex;
+        FExecutingPassIndex := LPassIndex;
+        FCurPassIndex := LPassIndex;
+        FCurPass := PassLabelFromIndex(LPassIndex);
+        LGraph := FPasses[LPassIndex];
+        LTraceEvent := NewTraceEvent(gtekPassBegin,
+          gtckTransaction, LPassIndex);
+        LPassBeginEvent := AppendTraceEvent(LTraceEvent);
 
-      if not LGraph.HasDefinition then
-      begin
-        if not StageDefinitionlessPass(LPassIndex, LGraph,
-          LInvalidLockEntry, LDefinitionlessSourcePass,
-          LDefinitionlessFailureFromSource) then
+        if not LGraph.HasDefinition then
+        begin
+          if not StageDefinitionlessPass(LPassIndex, LGraph,
+            LInvalidLockEntry, LDefinitionlessSourcePass,
+            LDefinitionlessFailureFromSource) then
+          begin
+            AReport.Status := gssContradiction;
+            AReport.FailedPassIndex := LPassIndex;
+            AReport.Contradiction.Kind := gckEntryDomain;
+            AReport.Contradiction.PassIndex := LPassIndex;
+            AReport.Contradiction.EntryIndex := LInvalidLockEntry;
+            AReport.Contradiction.NeighborIndex := -1;
+            AReport.Contradiction.HasDirection := False;
+            AReport.Contradiction.Direction := gdNorth;
+            AReport.Contradiction.DependencyPassIndex := -1;
+            AReport.Passes[LPassIndex].Contradictions := 1;
+            AReport.Passes[LPassIndex].Disposition := gpdFailed;
+            if LDefinitionlessFailureFromSource then
+              LTraceEvent := NewTraceEvent(gtekContradiction,
+                gtckPassDependency, LPassIndex)
+            else
+              LTraceEvent := NewTraceEvent(gtekContradiction,
+                gtckCallerDomain, LPassIndex);
+            if LDefinitionlessFailureFromSource then
+            begin
+              LTraceEvent.DependencyPassIndex :=
+                LDefinitionlessSourcePass;
+              LTraceEvent.CauseEventId := LastPassTraceEvent(
+                LDefinitionlessSourcePass);
+            end
+            else
+              LTraceEvent.CauseEventId := -1;
+            LTraceEvent.EntryIndex := LInvalidLockEntry;
+            LTraceCauseEventId := AppendTraceEvent(LTraceEvent);
+            LTraceEvent := NewTraceEvent(gtekPassFailed,
+              gtckTransaction, LPassIndex);
+            LTraceEvent.CauseEventId := LTraceCauseEventId;
+            AppendTraceEvent(LTraceEvent);
+            Exit(False);
+          end;
+          LTraceEvent := NewTraceEvent(gtekPassStaged,
+            gtckTransaction, LPassIndex);
+          if LDefinitionlessSourcePass >= 0 then
+            LTraceEvent.CauseEventId := LastPassTraceEvent(
+              LDefinitionlessSourcePass)
+          else
+            LTraceEvent.CauseEventId := LPassBeginEvent;
+          AppendTraceEvent(LTraceEvent);
+          Continue;
+        end;
+
+        FinishSolveWork(LWork);
+        BeginSolveWork(LWork, wspPrepare, LPassIndex);
+        if not LCompiler.BuildReferenceModel(LGraph, LStaged, LModel,
+          LInvalidLockEntry, LRequirementFailurePass,
+          LRequirementFailureNamed, LInitialTraceCauses,
+          LInitialTraceDependencyPasses) then
         begin
           AReport.Status := gssContradiction;
           AReport.FailedPassIndex := LPassIndex;
-          AReport.Contradiction.Kind := gckEntryDomain;
+          AReport.Contradiction.Kind := gckInvalidLock;
           AReport.Contradiction.PassIndex := LPassIndex;
           AReport.Contradiction.EntryIndex := LInvalidLockEntry;
-          AReport.Contradiction.NeighborIndex := -1;
-          AReport.Contradiction.HasDirection := False;
-          AReport.Contradiction.Direction := gdNorth;
           AReport.Contradiction.DependencyPassIndex := -1;
           AReport.Passes[LPassIndex].Contradictions := 1;
           AReport.Passes[LPassIndex].Disposition := gpdFailed;
-          if LDefinitionlessFailureFromSource then
-            LTraceEvent := NewTraceEvent(gtekContradiction,
-              gtckPassDependency, LPassIndex)
-          else
-            LTraceEvent := NewTraceEvent(gtekContradiction,
-              gtckCallerDomain, LPassIndex);
-          if LDefinitionlessFailureFromSource then
-          begin
-            LTraceEvent.DependencyPassIndex :=
-              LDefinitionlessSourcePass;
-            LTraceEvent.CauseEventId := LastPassTraceEvent(
-              LDefinitionlessSourcePass);
-          end
-          else
-            LTraceEvent.CauseEventId := -1;
+          LTraceEvent := NewTraceEvent(gtekContradiction,
+            gtckCallerLock, LPassIndex);
+          LTraceEvent.CauseEventId := -1;
           LTraceEvent.EntryIndex := LInvalidLockEntry;
           LTraceCauseEventId := AppendTraceEvent(LTraceEvent);
           LTraceEvent := NewTraceEvent(gtekPassFailed,
@@ -8927,219 +9256,185 @@ begin
           AppendTraceEvent(LTraceEvent);
           Exit(False);
         end;
-        LTraceEvent := NewTraceEvent(gtekPassStaged,
-          gtckTransaction, LPassIndex);
-        if LDefinitionlessSourcePass >= 0 then
-          LTraceEvent.CauseEventId := LastPassTraceEvent(
-            LDefinitionlessSourcePass)
-        else
-          LTraceEvent.CauseEventId := LPassBeginEvent;
-        AppendTraceEvent(LTraceEvent);
-        Continue;
+
+        if Length(AExclusions) <> 0 then
+        begin
+          SetLength(LModel.ExcludedAssignments,
+            Length(AExclusions[LPassIndex]));
+          for I := 0 to High(AExclusions[LPassIndex]) do
+            LModel.ExcludedAssignments[I] := Copy(
+              AExclusions[LPassIndex][I], 0,
+              Length(AExclusions[LPassIndex][I]));
+        end;
+
+        LTraceRecorder.ConfigurePass(LPassIndex, LPassBeginEvent,
+          LGraph.FEntries.Count, LGraph.FValues, LInitialTraceCauses,
+          LInitialTraceDependencyPasses);
+        LReferenceSink := nil;
+        if LTraceRecorder.Enabled then
+          LReferenceSink := LTraceRecorder.ReceiveReferenceEvent;
+        FinishSolveWork(LWork);
+        BeginSolveWork(LWork, wspSearch, LPassIndex);
+        if not SolveReferenceModel(LModel, AOptions.MaxBacktracks,
+          False, LReferenceSink, LGraph.RandomIndex,
+          LAssignment, LReferenceReport, LWork) then
+        begin
+          CopyPassReport(LPassIndex, LReferenceReport);
+          SetReferenceFailure(LPassIndex, LReferenceReport);
+          LTraceEvent := NewTraceEvent(gtekPassFailed,
+            gtckTransaction, LPassIndex);
+          LTraceEvent.CauseEventId := LastPassTraceEvent(LPassIndex);
+          AppendTraceEvent(LTraceEvent);
+          Exit(False);
+        end;
+        FinishSolveWork(LWork);
+        BeginSolveWork(LWork, wspPrepare, LPassIndex);
+        CopyPassReport(LPassIndex, LReferenceReport);
+        AReport.Passes[LPassIndex].Disposition := gpdSolved;
+
+        //Ordinary TrySolve passes no exclusion matrix and must not retain an
+        //extra O(passes * cells) assignment copy. Negotiated round one passes a
+        //full matrix whose rows are initially empty, enabling choice capture.
+        if Length(AExclusions) <> 0 then
+        begin
+          //A pass made entirely of caller-owned locks is not a choice frame: an
+          //exact exclusion could never change it and would only spend budget.
+          //Generated prior output remains negotiable on a fresh transaction.
+          LHasNegotiableEntry := False;
+          for LEntryIndex := 0 to Pred(LGraph.FEntries.Count) do
+            if LGraph.FEntries[LEntryIndex].Empty
+              or LGraph.FEntries[LEntryIndex].Generated then
+            begin
+              LHasNegotiableEntry := True;
+              Break;
+            end;
+          if LHasNegotiableEntry then
+          begin
+            ACompletedChoices[LPassIndex] := 1;
+            AAssignments[LPassIndex] := Copy(LAssignment, 0,
+              Length(LAssignment));
+          end;
+        end;
+
+        SetLength(LStaged[LPassIndex], LGraph.FEntries.Count);
+        for LEntryIndex := 0 to Pred(LGraph.FEntries.Count) do
+          LStaged[LPassIndex][LEntryIndex] :=
+            LGraph.FValues[LAssignment[LEntryIndex]];
       end;
 
+      ReserveTerminalTraceSlot;
+      LFinalValidationPass := -1;
+      LFinalValidationEntry := -1;
       FinishSolveWork(LWork);
-      BeginSolveWork(LWork, wspPrepare, LPassIndex);
-      if not BuildReferenceModel(LGraph, LStaged, LModel,
-        LInvalidLockEntry, LRequirementFailurePass,
-        LRequirementFailureNamed, LInitialTraceCauses,
-        LInitialTraceDependencyPasses) then
+      BeginSolveWork(LWork, wspCommit, -1);
+      LFinalValidationValid := CommitStagedEntries(
+        LFinalValidationPass, LFinalValidationEntry);
+      if not LFinalValidationValid then
       begin
+        RestoreEntries;
+        if (LFinalValidationPass < 0)
+          or (LFinalValidationPass >= FPasses.Count) then
+          raise EInvalidOperation.CreateFmt(
+            'TrySolve::final validator returned invalid pass %d',
+            [LFinalValidationPass]);
+        if ADirty[LFinalValidationPass] = 0 then
+          raise EInvalidOperation.CreateFmt(
+            'TrySolve::final validator returned inactive pass %d',
+            [LFinalValidationPass]);
+        if (LFinalValidationEntry < -1)
+          or (LFinalValidationEntry >=
+            FPasses[LFinalValidationPass].FEntries.Count) then
+          raise EInvalidOperation.CreateFmt(
+            'TrySolve::final validator returned invalid entry %d',
+            [LFinalValidationEntry]);
+
         AReport.Status := gssContradiction;
-        AReport.FailedPassIndex := LPassIndex;
-        AReport.Contradiction.Kind := gckInvalidLock;
-        AReport.Contradiction.PassIndex := LPassIndex;
-        AReport.Contradiction.EntryIndex := LInvalidLockEntry;
+        AReport.FailedPassIndex := LFinalValidationPass;
+        AReport.Contradiction.Kind := gckFinalValidation;
+        AReport.Contradiction.PassIndex := LFinalValidationPass;
+        AReport.Contradiction.EntryIndex := LFinalValidationEntry;
+        AReport.Contradiction.NeighborIndex := -1;
+        AReport.Contradiction.HasDirection := False;
+        AReport.Contradiction.Direction := gdNorth;
         AReport.Contradiction.DependencyPassIndex := -1;
-        AReport.Passes[LPassIndex].Contradictions := 1;
-        AReport.Passes[LPassIndex].Disposition := gpdFailed;
+        Inc(AReport.Passes[LFinalValidationPass].Contradictions);
+        AReport.Passes[LFinalValidationPass].Disposition := gpdFailed;
+
         LTraceEvent := NewTraceEvent(gtekContradiction,
-          gtckCallerLock, LPassIndex);
-        LTraceEvent.CauseEventId := -1;
-        LTraceEvent.EntryIndex := LInvalidLockEntry;
+          gtckFinalValidation, LFinalValidationPass);
+        LTraceEvent.CauseEventId := LastPassTraceEvent(
+          LFinalValidationPass);
+        LTraceEvent.EntryIndex := LFinalValidationEntry;
         LTraceCauseEventId := AppendTraceEvent(LTraceEvent);
         LTraceEvent := NewTraceEvent(gtekPassFailed,
-          gtckTransaction, LPassIndex);
+          gtckTransaction, LFinalValidationPass);
         LTraceEvent.CauseEventId := LTraceCauseEventId;
         AppendTraceEvent(LTraceEvent);
         Exit(False);
       end;
-
-      if Length(AExclusions) <> 0 then
-      begin
-        SetLength(LModel.ExcludedAssignments,
-          Length(AExclusions[LPassIndex]));
-        for I := 0 to High(AExclusions[LPassIndex]) do
-          LModel.ExcludedAssignments[I] := Copy(
-            AExclusions[LPassIndex][I], 0,
-            Length(AExclusions[LPassIndex][I]));
-      end;
-
-      LTraceRecorder.ConfigurePass(LPassIndex, LPassBeginEvent,
-        LGraph.FEntries.Count, LGraph.FValues, LInitialTraceCauses,
-        LInitialTraceDependencyPasses);
-      LReferenceSink := nil;
-      if LTraceRecorder.Enabled then
-        LReferenceSink := LTraceRecorder.ReceiveReferenceEvent;
-      FinishSolveWork(LWork);
-      BeginSolveWork(LWork, wspSearch, LPassIndex);
-      if not SolveReferenceModel(LModel, AOptions.MaxBacktracks,
-        False, LReferenceSink, LGraph.RandomIndex,
-        LAssignment, LReferenceReport, LWork) then
-      begin
-        CopyPassReport(LPassIndex, LReferenceReport);
-        SetReferenceFailure(LPassIndex, LReferenceReport);
-        LTraceEvent := NewTraceEvent(gtekPassFailed,
-          gtckTransaction, LPassIndex);
-        LTraceEvent.CauseEventId := LastPassTraceEvent(LPassIndex);
-        AppendTraceEvent(LTraceEvent);
-        Exit(False);
-      end;
-      FinishSolveWork(LWork);
-      BeginSolveWork(LWork, wspPrepare, LPassIndex);
-      CopyPassReport(LPassIndex, LReferenceReport);
-      AReport.Passes[LPassIndex].Disposition := gpdSolved;
-
-      //Ordinary TrySolve passes no exclusion matrix and must not retain an
-      //extra O(passes * cells) assignment copy. Negotiated round one passes a
-      //full matrix whose rows are initially empty, enabling choice capture.
-      if Length(AExclusions) <> 0 then
-      begin
-        //A pass made entirely of caller-owned locks is not a choice frame: an
-        //exact exclusion could never change it and would only spend budget.
-        //Generated prior output remains negotiable on a fresh transaction.
-        LHasNegotiableEntry := False;
-        for LEntryIndex := 0 to Pred(LGraph.FEntries.Count) do
-          if LGraph.FEntries[LEntryIndex].Empty
-            or LGraph.FEntries[LEntryIndex].Generated then
-          begin
-            LHasNegotiableEntry := True;
-            Break;
-          end;
-        if LHasNegotiableEntry then
-        begin
-          ACompletedChoices[LPassIndex] := 1;
-          AAssignments[LPassIndex] := Copy(LAssignment, 0,
-            Length(LAssignment));
-        end;
-      end;
-
-      SetLength(LStaged[LPassIndex], LGraph.FEntries.Count);
-      for LEntryIndex := 0 to Pred(LGraph.FEntries.Count) do
-        LStaged[LPassIndex][LEntryIndex] :=
-          LGraph.FValues[LAssignment[LEntryIndex]];
-    end;
-
-    ReserveTerminalTraceSlot;
-    LFinalValidationPass := -1;
-    LFinalValidationEntry := -1;
-    FinishSolveWork(LWork);
-    BeginSolveWork(LWork, wspCommit, -1);
-    LFinalValidationValid := CommitStagedEntries(
-      LFinalValidationPass, LFinalValidationEntry);
-    if not LFinalValidationValid then
-    begin
-      RestoreEntries;
-      if (LFinalValidationPass < 0)
-        or (LFinalValidationPass >= FPasses.Count) then
-        raise EInvalidOperation.CreateFmt(
-          'TrySolve::final validator returned invalid pass %d',
-          [LFinalValidationPass]);
-      if ADirty[LFinalValidationPass] = 0 then
-        raise EInvalidOperation.CreateFmt(
-          'TrySolve::final validator returned inactive pass %d',
-          [LFinalValidationPass]);
-      if (LFinalValidationEntry < -1)
-        or (LFinalValidationEntry >=
-          FPasses[LFinalValidationPass].FEntries.Count) then
-        raise EInvalidOperation.CreateFmt(
-          'TrySolve::final validator returned invalid entry %d',
-          [LFinalValidationEntry]);
-
-      AReport.Status := gssContradiction;
-      AReport.FailedPassIndex := LFinalValidationPass;
-      AReport.Contradiction.Kind := gckFinalValidation;
-      AReport.Contradiction.PassIndex := LFinalValidationPass;
-      AReport.Contradiction.EntryIndex := LFinalValidationEntry;
+      //A successful selective commit may execute user entry hooks.  A hook can
+      //address a reused pass directly and draw from its stream; skipped layers
+      //must remain observationally untouched, including their RNG position.
+      for I := 0 to Pred(FPasses.Count) do
+        if ADirty[I] = 0 then
+          FPasses[I].FRandomState := LRandomStates[I];
+      LCommitted := True;
+      AReport.Status := gssSolved;
+      AReport.FailedPassIndex := -1;
+      AReport.Contradiction.Kind := gckNone;
+      AReport.Contradiction.PassIndex := -1;
+      AReport.Contradiction.EntryIndex := -1;
       AReport.Contradiction.NeighborIndex := -1;
       AReport.Contradiction.HasDirection := False;
-      AReport.Contradiction.Direction := gdNorth;
       AReport.Contradiction.DependencyPassIndex := -1;
-      Inc(AReport.Passes[LFinalValidationPass].Contradictions);
-      AReport.Passes[LFinalValidationPass].Disposition := gpdFailed;
-
-      LTraceEvent := NewTraceEvent(gtekContradiction,
-        gtckFinalValidation, LFinalValidationPass);
-      LTraceEvent.CauseEventId := LastPassTraceEvent(
-        LFinalValidationPass);
-      LTraceEvent.EntryIndex := LFinalValidationEntry;
-      LTraceCauseEventId := AppendTraceEvent(LTraceEvent);
-      LTraceEvent := NewTraceEvent(gtekPassFailed,
-        gtckTransaction, LFinalValidationPass);
-      LTraceEvent.CauseEventId := LTraceCauseEventId;
+      LTraceEvent := NewTraceEvent(gtekPipelineCommit,
+        gtckTransaction, -1);
+      LTraceEvent.CauseEventId := Pred(LTraceRecorder.EventCount);
       AppendTraceEvent(LTraceEvent);
-      Exit(False);
-    end;
-    //A successful selective commit may execute user entry hooks.  A hook can
-    //address a reused pass directly and draw from its stream; skipped layers
-    //must remain observationally untouched, including their RNG position.
-    for I := 0 to Pred(FPasses.Count) do
-      if ADirty[I] = 0 then
-        FPasses[I].FRandomState := LRandomStates[I];
-    LCommitted := True;
-    AReport.Status := gssSolved;
-    AReport.FailedPassIndex := -1;
-    AReport.Contradiction.Kind := gckNone;
-    AReport.Contradiction.PassIndex := -1;
-    AReport.Contradiction.EntryIndex := -1;
-    AReport.Contradiction.NeighborIndex := -1;
-    AReport.Contradiction.HasDirection := False;
-    AReport.Contradiction.DependencyPassIndex := -1;
-    LTraceEvent := NewTraceEvent(gtekPipelineCommit,
-      gtckTransaction, -1);
-    LTraceEvent.CauseEventId := Pred(LTraceRecorder.EventCount);
-    AppendTraceEvent(LTraceEvent);
-    Result := True;
-   except
-    LTraceInterrupted := True;
-    raise;
-   end;
-  finally
-    try
+      Result := True;
+     except
+      LTraceInterrupted := True;
+      raise;
+     end;
+    finally
       try
         try
-          if not LCommitted then
-          begin
-            LTraceEvent := NewTraceEvent(gtekPipelineRollback,
-              gtckTransaction, -1);
-            LTraceEvent.CauseEventId := Pred(LTraceRecorder.EventCount);
-            AppendTraceEvent(LTraceEvent);
+          try
+            if not LCommitted then
+            begin
+              LTraceEvent := NewTraceEvent(gtekPipelineRollback,
+                gtckTransaction, -1);
+              LTraceEvent.CauseEventId := Pred(LTraceRecorder.EventCount);
+              AppendTraceEvent(LTraceEvent);
+            end;
+          except
+            LTraceInterrupted := True;
+            raise;
           end;
-        except
-          LTraceInterrupted := True;
-          raise;
+        finally
+          //An exhausted event identity cannot encode another rollback event,
+          //but the delivery footer must still identify the interrupted prefix.
+          LTraceRecorder.Finish(AReport, LTraceInterrupted);
         end;
       finally
-        //An exhausted event identity cannot encode another rollback event,
-        //but the delivery footer must still identify the interrupted prefix.
-        LTraceRecorder.Finish(AReport, LTraceInterrupted);
+        //Observer failures are contained above, and even a producer allocation
+        //or event-identity exception cannot strand RNG or Running state here.
+        if not LCommitted then
+        begin
+          FRandomState := LRootRandomState;
+          for I := 0 to Pred(FPasses.Count) do
+            FPasses[I].FRandomState := LRandomStates[I];
+        end;
+        FExecutingPassIndex := -1;
+        FCurPassIndex := LSavedPassIndex;
+        FCurPass := PassLabelFromIndex(LSavedPassIndex);
+        FRunning := False;
+        LTraceRecorder.Free;
+        LWork.Free;
       end;
-    finally
-      //Observer failures are contained above, and even a producer allocation
-      //or event-identity exception cannot strand RNG or Running state here.
-      if not LCommitted then
-      begin
-        FRandomState := LRootRandomState;
-        for I := 0 to Pred(FPasses.Count) do
-          FPasses[I].FRandomState := LRandomStates[I];
-      end;
-      FExecutingPassIndex := -1;
-      FCurPassIndex := LSavedPassIndex;
-      FCurPass := PassLabelFromIndex(LSavedPassIndex);
-      FRunning := False;
-      LTraceRecorder.Free;
-      LWork.Free;
     end;
+  finally
+    LCompiler.Free;
   end;
 end;
 

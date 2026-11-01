@@ -21,6 +21,30 @@ states the exact representation proof, reproducible fixtures, and limitations.
 
 ## Models, tokens, and provenance
 
+### Optional domain preparation
+
+Set `TWfcMusicVoicesStreamConfig.PrepareProjectedDomains := True` to propagate
+known full-window restrictions backward and forward across the declared passes
+before choosing complete source sequences. This reuses primary temporal and
+binary-arc propagation; it does not pin a voice to an authored example or retry
+another seed. The default is false and preserves previous replay/signatures.
+Only the published segment prefix advances the shared frontier.
+
+The corresponding generic `TGraph.PrepareProjectedDomains` API returns detached
+per-cell domains without changing the graph or RNG. It supports defined overlay
+passes with identical lattices and same-cell single-term any/merged/count
+requirements. Unsupported mapped, offset, multi-term, previous-union and
+transform forms raise explicitly. Consistent domains are not a global solution
+or a promise that bounded negotiated search will succeed. Original independent
+capture still validates the solved result. See the
+[implementation and retained failure evidence](research/projected-domains-v1.md).
+
+`Next` accepts an optional solve observer covering preparation and search.
+`LastPreparation` reports local consistency/removal/failure information separately
+from the negotiation report; a preparation failure has no solver attempt trace.
+
+## Model documents
+
 `BuildWfcMusicVoicesTrainingBundle` borrows an immutable `TWfcMusicScore`, an
 ordered `TWfcMusicVoiceTrainingRoles` vector, common named excerpts, a positive
 quantum, provider orders, and ordinary training metadata. A role contains its

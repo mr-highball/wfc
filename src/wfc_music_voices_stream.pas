@@ -28,12 +28,13 @@ unit wfc_music_voices_stream;
 interface
 
 uses
-  SysUtils, wfc, wfc_model, wfc_sequence, wfc_sequence_graph,
+  SysUtils, wfc, wfc_model, wfc_sequence, wfc_sequence_graph, wfc_solve_progress,
   wfc_music_ensemble, wfc_music_voices_graph, wfc_music_arrangement;
 
 const
   WFC_MUSIC_VOICES_STREAM_VERSION = 2;
   WFC_MUSIC_VOICES_SEGMENT_SIGNATURE_VERSION = 2;
+  WFC_MUSIC_VOICES_PROJECTED_DOMAINS_VERSION = 1;
 
 type
   EWfcMusicVoicesStream = class(EWfcMusicVoicesGraph);
@@ -44,6 +45,9 @@ type
     { Zero plans just the returned segment. A positive count bounds a private
       future window; only SegmentCellCount cells are committed per Next. }
     LookaheadCellCount: Integer;
+    { Opt in to shared cross-pass/temporal domain preparation after all future
+      constraints and ConfigureSegment. False preserves historical replay. }
+    PrepareProjectedDomains: Boolean;
     RequestedTicks: TWfcMusicArrangementWide;
     Seed: TGraphSeed;
     Rounding: TWfcMusicArrangementRounding;
@@ -108,6 +112,7 @@ type
     FConstraints: TWfcMusicVoicesStreamConstraints;
     FStatus: TWfcMusicArrangementStatus;
     FFailure: String;
+    FLastPreparation: TGraphDomainPreparationReport;
     FRunning: Boolean;
     procedure CheckModelIndex(const AModelIndex: Integer);
     function ModelAt(const AModelIndex: Integer): TWfcSequenceModel;
@@ -138,7 +143,8 @@ type
       returned prefix and cannot enlarge the configured planning window. }
     function Next(out ASegment: TWfcMusicVoicesSegment;
       out AReport: TGraphNegotiationReport;
-      const AMaximumPlanningCells: Integer = 0): TWfcMusicArrangementStep;
+      const AMaximumPlanningCells: Integer = 0;
+      const AObserver: TWfcSolveObserver = nil): TWfcMusicArrangementStep;
     procedure Cancel;
     function CopyFrontier: TWfcMusicVoicesStreamFrontier;
     function CopyConstraints: TWfcMusicVoicesStreamConstraints;
@@ -148,6 +154,7 @@ type
     function ClearAllowedTokens(const AModelIndex: Integer;
       const APosition: TWfcMusicArrangementWide): TWfcMusicVoicesStream;
     property RequestedTicks: TWfcMusicArrangementWide read GetRequestedTicks;
+    property LastPreparation: TGraphDomainPreparationReport read FLastPreparation;
     property ActualTicks: TWfcMusicArrangementWide read FActualTicks;
     property ProducedTicks: TWfcMusicArrangementWide read FProducedTicks;
     property RemainingTicks: TWfcMusicArrangementWide read GetRemainingTicks;
@@ -295,6 +302,11 @@ begin
   HashWide(FSignature, FModelCount);
   HashWide(FSignature, AConfig.Graph.StepsPerOctave);
   HashWide(FSignature, Ord(AConfig.Graph.HarmonyMode));
+  if AConfig.PrepareProjectedDomains then
+  begin
+    HashText(FSignature, 'projected-domains');
+    HashWide(FSignature, WFC_MUSIC_VOICES_PROJECTED_DOMAINS_VERSION);
+  end;
   for I := 0 to High(AConfig.Graph.Voices) do
   begin
     HashWide(FSignature, AConfig.Graph.Voices[I].MinPitch);
@@ -436,6 +448,8 @@ begin
   {$IFDEF PAS2JS}
   if ((AConfig.RequireObservedEnd <> True) and
       (AConfig.RequireObservedEnd <> False)) or
+      ((AConfig.PrepareProjectedDomains <> True) and
+      (AConfig.PrepareProjectedDomains <> False)) or
       ((AConfig.Search.SolveOptions.CaptureTrace <> True) and
       (AConfig.Search.SolveOptions.CaptureTrace <> False)) then
     StreamError('endpoint and trace flags must be Boolean');
@@ -633,13 +647,15 @@ end;
 
 function TWfcMusicVoicesStream.Next(out ASegment: TWfcMusicVoicesSegment;
   out AReport: TGraphNegotiationReport;
-  const AMaximumPlanningCells: Integer): TWfcMusicArrangementStep;
+  const AMaximumPlanningCells: Integer;
+  const AObserver: TWfcSolveObserver): TWfcMusicArrangementStep;
 var
   LGraph: TGraph;
   LBoundaries: TWfcMusicVoicesBoundaries;
   LGenerated: TWfcMusicVoicesGenerated;
   LCapture: TWfcMusicVoicesValidationReport;
-  I, LCells, LPlanningCells: Integer;
+  I, J, LCells, LPlanningCells: Integer;
+  LPrepared: TGraphPreparedDomains;
   LRemainingCells, LEndTick: TWfcMusicArrangementWide;
   LFinal, LPlanningFinal: Boolean;
   LSeed: TGraphSeed;
@@ -649,6 +665,9 @@ var
 begin
   ASegment := nil;
   AReport := Default(TGraphNegotiationReport);
+  FLastPreparation := Default(TGraphDomainPreparationReport);
+  FLastPreparation.FailedPassIndex := -1;
+  FLastPreparation.FailedEntryIndex := -1;
   if FRunning then StreamError('Next cannot be reentered');
   case FStatus of
     wmasCompleted: Exit(wmaspCompleted);
@@ -692,7 +711,28 @@ begin
       if (LGraph.Dimension.Width <> TGraphCoordinate(LPlanningCells)) or
           (LGraph.Dimension.Height <> 1) or (LGraph.Dimension.Depth <> 1) then
         StreamError('application hook changed the segment shape');
-      if not LGraph.TrySolveNegotiated(FConfig.Search, AReport) then
+      if FConfig.PrepareProjectedDomains then
+      begin
+        if not LGraph.PrepareProjectedDomains(LPrepared, FLastPreparation,
+            AObserver) then
+        begin
+          { No negotiated attempt ran. LastPreparation owns its diagnostics;
+            do not fabricate a solver trace or an assignment proof. }
+          AReport.Status := gnsContradiction;
+          AReport.FinalReport.Status := gssContradiction;
+          AReport.FinalReport.FailedPassIndex := FLastPreparation.FailedPassIndex;
+          SetFailure('projected-domain preparation found a contradiction in pass ' +
+            IntToStr(FLastPreparation.FailedPassIndex) + ' at cell ' +
+            IntToStr(FLastPreparation.FailedEntryIndex));
+          Exit(wmaspFailed);
+        end;
+        if FStatus = wmasCancelled then Exit(wmaspCancelled);
+        for I := 0 to High(LPrepared) do
+          for J := 0 to High(LPrepared[I].Cells) do
+            LGraph.PassGraph[I].SetAllowedValues(TGraphCoordinate(J), 0, 0,
+              LPrepared[I].Cells[J]);
+      end;
+      if not LGraph.TrySolveNegotiated(FConfig.Search, AReport, AObserver) then
       begin
         SetFailure('finite segment search failed (status ' +
           IntToStr(Ord(AReport.Status)) + ') at segment ' + IntToStr(FNextIndex));

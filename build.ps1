@@ -2104,6 +2104,7 @@ foreach ($voicesTestName in @(
     'wfc_music_voices_preparation_test',
     'wfc_music_voices_composition_test',
     'wfc_domain_prepare_test',
+    'wfc_projected_domains_test',
     'wfc_music_voices_training_test', 'wfc_music_voices_stream_test',
     'wfc_music_voices_demo_test')) {
   Write-Host "Building and running '$voicesTestName'."
