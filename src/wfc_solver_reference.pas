@@ -173,6 +173,10 @@ type
     //positive raw frequencies in value-index order and are GCD-normalized by
     //the solver without modifying the caller's model.
     ValueWeights: TReferenceIntegerArray;
+    //Optional cell-major absolute overrides. Zero uses the corresponding raw
+    //ValueWeights frequency (or one). Positive values remain soft. Each complete
+    //effective row is normalized independently; the caller's arrays stay exact.
+    CellValueWeights: TReferenceIntegerArray;
     Neighbors: TReferenceIntegerArray;
     Compatibility: TReferenceByteArray;
     RequiredValues: TReferenceByteArray;
@@ -248,6 +252,8 @@ type
     FRandomIndex: TReferenceRandomIndex;
     FValueWeights: TReferenceIntegerArray;
     FValueWeightLogTerms: TReferenceExactDoubleArray;
+    FCellValueWeights: TReferenceIntegerArray;
+    FCellValueWeightLogTerms: TReferenceExactDoubleArray;
     FAllUnitWeights: Boolean;
     FDomains: TReferenceByteArray;
     FDomainCounts: TReferenceIntegerArray;
@@ -291,6 +297,11 @@ type
       ANeighborValue: Integer): Integer; inline;
     function Log2Q16(const AValue: Integer): Integer;
     procedure InitializeWeights;
+    procedure PrepareWeightRow(const ARaw: TReferenceIntegerArray;
+      out AWeights: TReferenceIntegerArray;
+      out ALogTerms: TReferenceExactDoubleArray; out AAllUnit: Boolean);
+    function WeightAt(const ACell, AValue: Integer): Integer; inline;
+    function WeightLogAt(const ACell, AValue: Integer): Double; inline;
     function EntropyQ16(const ACell: Integer): Integer;
     function AppendTraceEvent(const AKind: TReferenceTraceEventKind;
       const ACauseKind: TReferenceTraceCauseKind;
@@ -434,6 +445,13 @@ begin
   ValidateReferenceConnectivity(AModel.CellCount, AModel.ValueCount,
     AModel.Connectivity);
   ValidateValueQuotas(AModel);
+  if Length(AModel.CellValueWeights) <> 0 then
+  begin
+    RequireReferenceConnectivityInteger(AModel.CellCount, 0, High(Integer),
+      'cell-prior model cell count');
+    RequireReferenceConnectivityInteger(AModel.ValueCount, 0, High(Integer),
+      'cell-prior model value count');
+  end;
   if AModel.CellCount < 0 then
     raise ERangeError.Create('reference model cell count cannot be negative');
   if AModel.ValueCount < 0 then
@@ -478,12 +496,15 @@ begin
         'value-quota failure classification is reserved for descriptor analysis');
   end;
 
-  if (Length(AModel.Connectivity) <> 0) or (Length(AModel.ValueQuotas) <> 0) then
+  if (Length(AModel.Connectivity) <> 0) or (Length(AModel.ValueQuotas) <> 0) or
+    (Length(AModel.CellValueWeights) <> 0) then
   begin
     if Length(AModel.Connectivity) <> 0 then
       LGlobalLabel := 'connectivity'
+    else if Length(AModel.ValueQuotas) <> 0 then
+      LGlobalLabel := 'value-quota'
     else
-      LGlobalLabel := 'value-quota';
+      LGlobalLabel := 'cell-prior';
     for I := 0 to High(AModel.Neighbors) do
       RequireReferenceConnectivityInteger(AModel.Neighbors[I], -1,
         AModel.CellCount - 1, LGlobalLabel + ' model neighbor');
@@ -550,10 +571,19 @@ begin
     RequireLength(Length(AModel.ValueWeights), AModel.ValueCount,
       'ValueWeights');
     for I := 0 to High(AModel.ValueWeights) do
-      if AModel.ValueWeights[I] <= 0 then
-        raise ERangeError.CreateFmt(
-          'reference value weight must be positive [%d at %d]',
-          [AModel.ValueWeights[I], I]);
+      RequireReferenceConnectivityInteger(AModel.ValueWeights[I], 1,
+        High(Integer), 'reference value weight');
+  end;
+
+  if Length(AModel.CellValueWeights) <> 0 then
+  begin
+    RequireLength(Length(AModel.CellValueWeights), LCellValueCount, 'CellValueWeights');
+    for I := 0 to High(AModel.CellValueWeights) do
+    begin
+      VisitSolveWork(AWork);
+      RequireReferenceConnectivityInteger(AModel.CellValueWeights[I], 0,
+        High(Integer), 'reference cell weight');
+    end;
   end;
 
   for I := 0 to High(AModel.Neighbors) do
@@ -673,7 +703,9 @@ begin
   end;
 end;
 
-procedure TReferenceSolver.InitializeWeights;
+procedure TReferenceSolver.PrepareWeightRow(const ARaw: TReferenceIntegerArray;
+  out AWeights: TReferenceIntegerArray;
+  out ALogTerms: TReferenceExactDoubleArray; out AAllUnit: Boolean);
 var
   I: Integer;
   LGCD: Integer;
@@ -700,41 +732,106 @@ var
   end;
 
 begin
-  SetLength(FValueWeights, FModel.ValueCount);
-  SetLength(FValueWeightLogTerms, FModel.ValueCount);
-  FAllUnitWeights := True;
+  SetLength(AWeights, FModel.ValueCount);
+  SetLength(ALogTerms, FModel.ValueCount);
+  AAllUnit := True;
   if FModel.ValueCount = 0 then
     Exit;
 
-  if Length(FModel.ValueWeights) = 0 then
+  if Length(ARaw) = 0 then
     LGCD := 1
   else
   begin
     LGCD := 0;
     for I := 0 to Pred(FModel.ValueCount) do
-      LGCD := GreatestCommonDivisor(LGCD, FModel.ValueWeights[I]);
+      LGCD := GreatestCommonDivisor(LGCD, ARaw[I]);
   end;
 
   LTotal := 0;
   for I := 0 to Pred(FModel.ValueCount) do
   begin
     VisitSolveWork(FWork);
-    if Length(FModel.ValueWeights) = 0 then
+    if Length(ARaw) = 0 then
       LWeight := 1
     else
-      LWeight := FModel.ValueWeights[I];
+      LWeight := ARaw[I];
     LNormalized := LWeight div LGCD;
     if LNormalized > High(Integer) - LTotal then
       raise ERangeError.Create(
         'reference normalized value-weight sum is too large');
     Inc(LTotal, LNormalized);
-    FValueWeights[I] := LNormalized;
+    AWeights[I] := LNormalized;
     if LNormalized <> 1 then
-      FAllUnitWeights := False;
-    FValueWeightLogTerms[I] := LNormalized;
-    FValueWeightLogTerms[I] := FValueWeightLogTerms[I]
+      AAllUnit := False;
+    ALogTerms[I] := LNormalized;
+    ALogTerms[I] := ALogTerms[I]
       * Log2Q16(LNormalized);
   end;
+end;
+
+procedure TReferenceSolver.InitializeWeights;
+var
+  LRaw: TReferenceIntegerArray;
+  LWeights: TReferenceIntegerArray;
+  LLogs: TReferenceExactDoubleArray;
+  LRowUnit: Boolean;
+  LHasOverride: Boolean;
+  LCell: Integer;
+  LValue: Integer;
+  LIndex: Integer;
+begin
+  PrepareWeightRow(FModel.ValueWeights, FValueWeights,
+    FValueWeightLogTerms, FAllUnitWeights);
+  LHasOverride := False;
+  for LIndex := 0 to High(FModel.CellValueWeights) do
+  begin
+    VisitSolveWork(FWork);
+    if FModel.CellValueWeights[LIndex] <> 0 then
+    begin
+      LHasOverride := True;
+      Break;
+    end;
+  end;
+  if not LHasOverride then Exit;
+  SetLength(FCellValueWeights, Length(FModel.CellValueWeights));
+  SetLength(FCellValueWeightLogTerms, Length(FModel.CellValueWeights));
+  SetLength(LRaw, FModel.ValueCount);
+  FAllUnitWeights := True;
+  for LCell := 0 to FModel.CellCount - 1 do
+  begin
+    for LValue := 0 to FModel.ValueCount - 1 do
+    begin
+      VisitSolveWork(FWork);
+      LIndex := DomainIndex(LCell, LValue);
+      LRaw[LValue] := FModel.CellValueWeights[LIndex];
+      if LRaw[LValue] = 0 then
+      begin
+        if Length(FModel.ValueWeights) = 0 then LRaw[LValue] := 1
+        else LRaw[LValue] := FModel.ValueWeights[LValue];
+      end;
+    end;
+    PrepareWeightRow(LRaw, LWeights, LLogs, LRowUnit);
+    FAllUnitWeights := FAllUnitWeights and LRowUnit;
+    for LValue := 0 to FModel.ValueCount - 1 do
+    begin
+      VisitSolveWork(FWork);
+      LIndex := DomainIndex(LCell, LValue);
+      FCellValueWeights[LIndex] := LWeights[LValue];
+      FCellValueWeightLogTerms[LIndex] := LLogs[LValue];
+    end;
+  end;
+end;
+
+function TReferenceSolver.WeightAt(const ACell, AValue: Integer): Integer;
+begin
+  if Length(FCellValueWeights) = 0 then Result := FValueWeights[AValue]
+  else Result := FCellValueWeights[DomainIndex(ACell, AValue)];
+end;
+
+function TReferenceSolver.WeightLogAt(const ACell, AValue: Integer): Double;
+begin
+  if Length(FCellValueWeightLogTerms) = 0 then Result := FValueWeightLogTerms[AValue]
+  else Result := FCellValueWeightLogTerms[DomainIndex(ACell, AValue)];
 end;
 
 function TReferenceSolver.EntropyQ16(const ACell: Integer): Integer;
@@ -933,9 +1030,9 @@ begin
   Inc(FTrailCount);
   FDomains[LIndex] := 0;
   Dec(FDomainCounts[ACell]);
-  Dec(FDomainWeightSums[ACell], FValueWeights[AValue]);
+  Dec(FDomainWeightSums[ACell], WeightAt(ACell, AValue));
   FDomainWeightLogSums[ACell] := FDomainWeightLogSums[ACell]
-    - FValueWeightLogTerms[AValue];
+    - WeightLogAt(ACell, AValue);
   MarkDecisionDirty(ACell);
   if ACauseKind in [rtckAdjacency, rtckRequiredSupport, rtckConnectivity,
       rtckValueQuota] then
@@ -969,9 +1066,9 @@ begin
       LBefore := FDomainCounts[LCell];
       FDomains[LIndex] := 1;
       Inc(FDomainCounts[LCell]);
-      Inc(FDomainWeightSums[LCell], FValueWeights[LValue]);
+      Inc(FDomainWeightSums[LCell], WeightAt(LCell, LValue));
       FDomainWeightLogSums[LCell] := FDomainWeightLogSums[LCell]
-        + FValueWeightLogTerms[LValue];
+        + WeightLogAt(LCell, LValue);
       MarkDecisionDirty(LCell);
       LEventId := AppendTraceEvent(rtekCandidateRestored,
         rtckBacktrack, ABacktrackEventId, LCell, LValue, -1, -1,
@@ -1120,9 +1217,9 @@ begin
       begin
         FDomains[LIndex] := 1;
         Inc(FDomainCounts[LCell]);
-        Inc(FDomainWeightSums[LCell], FValueWeights[LValue]);
+        Inc(FDomainWeightSums[LCell], WeightAt(LCell, LValue));
         FDomainWeightLogSums[LCell] := FDomainWeightLogSums[LCell]
-          + FValueWeightLogTerms[LValue];
+          + WeightLogAt(LCell, LValue);
       end;
       if FDomains[LIndex] = 0 then
       begin
@@ -1659,12 +1756,12 @@ begin
   begin
     VisitSolveWork(FWork);
     LValue := LValues[I];
-    if LTicket < FValueWeights[LValue] then
+    if LTicket < WeightAt(ACell, LValue) then
     begin
       LStart := I;
       Break;
     end;
-    Dec(LTicket, FValueWeights[LValue]);
+    Dec(LTicket, WeightAt(ACell, LValue));
   end;
   if LStart < 0 then
     raise EInvalidOperation.CreateFmt(

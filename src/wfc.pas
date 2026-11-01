@@ -62,6 +62,11 @@ type
   //Positive relative frequency used by the reference solver. Integer weights
   //keep model identity and native/pas2js replay independent of host floats.
   TGraphWeight = Integer;
+  TGraphValueWeight = record
+    Value: TGraphValue;
+    Weight: TGraphWeight;
+  end;
+  TGraphValueWeights = array of TGraphValueWeight;
   //native builds retain the original UInt64 API; pas2js uses Cardinal because
   //its RTL does not implement UInt64. storage is bounded by Integer on both.
   {$IFDEF PAS2JS}
@@ -104,6 +109,9 @@ const
   //Opt-in whole-pass value-set cardinality. Models without quotas retain
   //their existing solver, random-stream, and trace replay.
   WFC_GRAPH_VALUE_QUOTA_VERSION = 1;
+  //Optional positive position-specific choice frequencies for TrySolve.
+  //Models without these inputs retain existing random/solver/trace replay.
+  WFC_GRAPH_CELL_PRIOR_VERSION = 1;
   //Identifies the public causal-trace event schema. Trace capture is opt-in,
   //so adding this observability surface does not change solver replay.
   WFC_TRACE_VERSION = 1;
@@ -238,6 +246,7 @@ type
     //cannot be bypassed through an entry reference.
     FAllowedValues: TGraphValues;
     FHasAllowedValues: Boolean;
+    FCellValueWeights: TGraphValueWeights;
     procedure AssignValue(const AValue: TGraphValue;
       const AGenerated: Boolean);
     procedure InitializePosition(const AIndex: Integer;
@@ -1204,6 +1213,15 @@ type
       Z: TGraphCoordinate): Boolean;
     function CopyAllowedValues(const X, Y,
       Z: TGraphCoordinate): TGraphValues;
+    //Pass-local soft absolute weight overrides in AddValue order. Omitted
+    //values use their ordinary rule weight; every candidate remains positive.
+    //Bulk replacement is atomic and detached. Empty input clears the row.
+    //These affect TrySolve/negotiation, not the legacy Run selection callback.
+    function SetCellValueWeights(const X, Y, Z: TGraphCoordinate;
+      const AWeights: TGraphValueWeights): TGraph;
+    function ClearCellValueWeights(const X, Y, Z: TGraphCoordinate): TGraph;
+    function CopyCellValueWeights(const X, Y, Z: TGraphCoordinate): TGraphValueWeights;
+    function HasCellValueWeights(const X, Y, Z: TGraphCoordinate): Boolean;
 
     (*
       executes ACallback for each pass including the default first pass
@@ -1300,7 +1318,7 @@ type
       out ACanonicalRoots, AActivePasses: TGraphPassIndices);
 
     { Capture/restore assignment ownership without running the solver. The caller
-      supplies the same configured graph, rules, domains and seed; this is not a
+      supplies the same graph, rules, domains, cell priors and seed; this is not a
       complete recipe, RNG checkpoint or independent validity certificate.
       Restore requires all target entries empty, and validates version1, matching
       pass labels/layouts, known values and target domains before publication.
@@ -1374,6 +1392,8 @@ var
   *)
   function InverseOfDir(const ADirection : TGraphDirection) : TGraphDirection; inline;
 
+  function MakeGraphValueWeight(const AValue: TGraphValue;
+    const AWeight: TGraphWeight): TGraphValueWeight;
   function MakeGraphOffset(const ADeltaX, ADeltaY,
     ADeltaZ: Integer): TGraphOffset;
   function MakeGraphPassPointQuery(const AOffset: TGraphOffset;
@@ -1640,17 +1660,18 @@ begin
   Result := True;
 end;
 
-procedure CheckConnectivityPosition(const APosition: TGraphPosition;
-  const AWidth, AHeight, ADepth: TGraphCoordinate);
+procedure CheckGraphPosition(const APosition: TGraphPosition;
+  const AWidth, AHeight, ADepth: TGraphCoordinate;
+  const AContext: String = 'connectivity');
 
   procedure CheckAxis(const AValue, ASize: TGraphCoordinate);
   begin
     if not ((AValue >= 0) and (AValue < ASize)
       and (AValue <= TGraphCoordinate(High(Integer)))) then
-      raise ERangeError.Create('connectivity::position is outside the graph');
+      raise ERangeError.Create(AContext + '::position is outside the graph');
     {$IFDEF PAS2JS}
     if AValue <> Trunc(AValue) then
-      raise ERangeError.Create('connectivity::coordinates must be exact integers');
+      raise ERangeError.Create(AContext + '::coordinates must be exact integers');
     {$ENDIF}
   end;
 begin
@@ -2063,6 +2084,39 @@ begin
     AMatchedIndices[ACount] := AResolvedIndex;
   end;
   Inc(ACount);
+end;
+
+procedure RequireGraphInteger(const AValue, AMinimum, AMaximum: Integer;
+  const AName: String);
+begin
+  if not ((AValue >= AMinimum) and (AValue <= AMaximum) and
+    (AValue = Trunc(AValue))) then
+    raise ERangeError.Create(AName + ' must be a bounded exact integer');
+end;
+
+procedure RequireGraphWeight(const AWeight: TGraphWeight);
+begin
+  RequireGraphInteger(AWeight, 1, High(Integer), 'Choice weight');
+end;
+
+procedure RequirePriorCoordinates(const AGraph: TGraph;
+  const X, Y, Z: TGraphCoordinate);
+var
+  LPosition: TGraphPosition;
+begin
+  LPosition.X := X;
+  LPosition.Y := Y;
+  LPosition.Z := Z;
+  CheckGraphPosition(LPosition, AGraph.Dimension.Width, AGraph.Dimension.Height,
+    AGraph.Dimension.Depth, 'cell prior');
+end;
+
+function MakeGraphValueWeight(const AValue: TGraphValue;
+  const AWeight: TGraphWeight): TGraphValueWeight;
+begin
+  RequireGraphWeight(AWeight);
+  Result.Value := AValue;
+  Result.Weight := AWeight;
 end;
 
 function MakeGraphOffset(const ADeltaX, ADeltaY,
@@ -3476,9 +3530,7 @@ end;
 
 procedure TGraphRuleGroup.SetWeight(const AValue: TGraphWeight);
 begin
-  if AValue < 1 then
-    raise ERangeError.CreateFmt(
-      'SetWeight::weight must be positive [%d]', [AValue]);
+  RequireGraphWeight(AValue);
   FWeight := AValue;
 end;
 
@@ -3855,6 +3907,7 @@ begin
   SetLength(FNeighbors, Succ(Ord(High(TGraphDirection))));
   FAllowedValues := Default(TGraphValues);
   FHasAllowedValues := False;
+  FCellValueWeights := nil;
   FIndex := -1;
   Reset;
   FID := DoGenerateID;
@@ -5336,7 +5389,7 @@ begin
   if Ord(AConstraint.RequireAllParticipants) > 1 then
     raise ERangeError.Create('RequireConnectivity::all-participants flag must be Boolean');
   {$ENDIF}
-  CheckConnectivityPosition(AConstraint.Root, LGraph.FDimension.Width,
+  CheckGraphPosition(AConstraint.Root, LGraph.FDimension.Width,
     LGraph.FDimension.Height, LGraph.FDimension.Depth);
   if Length(AConstraint.Values) = 0 then
     raise EArgumentException.Create('RequireConnectivity::participating profiles are required');
@@ -5365,7 +5418,7 @@ begin
       raise ERangeError.Create('RequireConnectivity::invalid opening direction');
   end;
   for I := 0 to High(AConstraint.RequiredPositions) do
-    CheckConnectivityPosition(AConstraint.RequiredPositions[I],
+    CheckGraphPosition(AConstraint.RequiredPositions[I],
       LGraph.FDimension.Width, LGraph.FDimension.Height, LGraph.FDimension.Depth);
 
   LCanonical := MakeGraphConnectivityConstraint(AConstraint.LabelText,
@@ -5550,9 +5603,9 @@ var
 begin
   for I := 0 to High(FConnectivity) do
   begin
-    CheckConnectivityPosition(FConnectivity[I].Root, AWidth, AHeight, ADepth);
+    CheckGraphPosition(FConnectivity[I].Root, AWidth, AHeight, ADepth);
     for J := 0 to High(FConnectivity[I].RequiredPositions) do
-      CheckConnectivityPosition(FConnectivity[I].RequiredPositions[J],
+      CheckGraphPosition(FConnectivity[I].RequiredPositions[J],
         AWidth, AHeight, ADepth);
   end;
 end;
@@ -6413,9 +6466,7 @@ function TGraph.AddValue(const AValue: TGraphValue;
 begin
   //Validate before AddValue so a rejected registration cannot create a rule
   //group or change the pass's deterministic value order.
-  if AWeight < 1 then
-    raise ERangeError.CreateFmt(
-      'AddValue::weight must be positive [%d]', [AWeight]);
+  RequireGraphWeight(AWeight);
   Result := AddValue(AValue);
   Result.Weight := AWeight;
 end;
@@ -6510,6 +6561,68 @@ begin
   SetLength(Result, Length(LEntry.FAllowedValues));
   for I := 0 to High(Result) do
     Result[I] := LEntry.FAllowedValues[I];
+end;
+
+function TGraph.SetCellValueWeights(const X, Y, Z: TGraphCoordinate;
+  const AWeights: TGraphValueWeights): TGraph;
+var
+  LRoot: TGraph;
+  LGraph: TGraph;
+  LEntry: TGraphEntry;
+  LCanonical: TGraphValueWeights;
+  I, J, LCount: Integer;
+begin
+  Result := Self;
+  if Assigned(FPassRoot) then LRoot := FPassRoot else LRoot := Self;
+  if LRoot.FRunning then
+    raise EInvalidOperation.Create('Cannot change cell choice weights while the pipeline is running');
+  LGraph := GetActivePassGraph;
+  RequirePriorCoordinates(LGraph, X, Y, Z);
+  LEntry := LGraph.GetEntry(X, Y, Z);
+  if Length(AWeights) > Length(LGraph.FValues) then
+    raise EArgumentException.Create('Too many cell choice weight overrides');
+  for I := 0 to High(AWeights) do
+  begin
+    MakeGraphValueWeight(AWeights[I].Value, AWeights[I].Weight);
+    if not ContainsGraphValue(LGraph.FValues, AWeights[I].Value) then
+      raise EArgumentException.CreateFmt('Unknown cell choice weight value "%s"', [AWeights[I].Value]);
+    for J := 0 to I - 1 do
+      if AWeights[J].Value = AWeights[I].Value then
+        raise EArgumentException.Create('Duplicate cell choice weight value');
+  end;
+  SetLength(LCanonical, Length(AWeights));
+  LCount := 0;
+  for I := 0 to High(LGraph.FValues) do
+    for J := 0 to High(AWeights) do
+      if LGraph.FValues[I] = AWeights[J].Value then
+      begin
+        LCanonical[LCount] := AWeights[J];
+        Inc(LCount);
+      end;
+  LEntry.FCellValueWeights := LCanonical;
+end;
+
+function TGraph.ClearCellValueWeights(const X, Y, Z: TGraphCoordinate): TGraph;
+begin
+  Result := SetCellValueWeights(X, Y, Z, nil);
+end;
+
+function TGraph.CopyCellValueWeights(const X, Y, Z: TGraphCoordinate): TGraphValueWeights;
+var
+  LGraph: TGraph;
+begin
+  LGraph := GetActivePassGraph;
+  RequirePriorCoordinates(LGraph, X, Y, Z);
+  Result := Copy(LGraph.GetEntry(X, Y, Z).FCellValueWeights);
+end;
+
+function TGraph.HasCellValueWeights(const X, Y, Z: TGraphCoordinate): Boolean;
+var
+  LGraph: TGraph;
+begin
+  LGraph := GetActivePassGraph;
+  RequirePriorCoordinates(LGraph, X, Y, Z);
+  Result := Length(LGraph.GetEntry(X, Y, Z).FCellValueWeights) > 0;
 end;
 
 function TGraph.ForEachPass(const ACallback: TForEachPassCallback): TGraph;
@@ -7900,6 +8013,7 @@ var
     LConnectivityIndex, LProfileIndex, LPositionIndex: Integer;
     LConnectivity: TGraphConnectivityConstraint;
     LQuotaIndex, LQuotaValueIndex: Integer;
+    LPriorIndex: Integer;
     LQuota: TGraphValueQuotaConstraint;
 
     function RequirementMatches(
@@ -7995,6 +8109,21 @@ var
       WFC_REFERENCE_DIRECTION_COUNT, 'TrySolve::neighbor matrix'));
     SetLength(AModel.Compatibility, LRelationCount);
     SetLength(AModel.ValueWeights, AModel.ValueCount);
+    for LCell := 0 to AModel.CellCount - 1 do
+    begin
+      VisitSolveWork(LWork);
+      if Length(AGraph.FEntries[LCell].FCellValueWeights) = 0 then Continue;
+      if Length(AModel.CellValueWeights) = 0 then
+        SetLength(AModel.CellValueWeights, LCellValueCount);
+      for LPriorIndex := 0 to High(AGraph.FEntries[LCell].FCellValueWeights) do
+      begin
+        VisitSolveWork(LWork);
+        LValue := FindValueIndex(AGraph,
+          AGraph.FEntries[LCell].FCellValueWeights[LPriorIndex].Value);
+        AModel.CellValueWeights[LCell * AModel.ValueCount + LValue] :=
+          AGraph.FEntries[LCell].FCellValueWeights[LPriorIndex].Weight;
+      end;
+    end;
     SetLength(AModel.RequiredValues, AModel.ValueCount);
     SetLength(AModel.RequiredSupport, LRelationCount);
     SetLength(AModel.InitialAllowed, LCellValueCount);

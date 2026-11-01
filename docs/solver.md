@@ -225,6 +225,43 @@ its weight. Zero and negative weights raise `ERangeError` and do not change the
 group. Weights bias choices only in `TrySolve`; legacy `Run` remains uniform
 unless its caller supplies a custom selection callback.
 
+`WFC_GRAPH_CELL_PRIOR_VERSION = 1` adds optional per-position soft preferences
+to the same solver. After selecting a pass, for example:
+
+```pascal
+Graph.SetCellValueWeights(0, 0, 0,
+  [MakeGraphValueWeight('land', 31), MakeGraphValueWeight('water', 1)]);
+Graph.SetCellValueWeights(1, 0, 0,
+  [MakeGraphValueWeight('land', 1), MakeGraphValueWeight('water', 31)]);
+```
+
+Each supplied weight is an absolute positive integer override for that cell;
+omitted values retain their ordinary rule weight. These preferences never
+remove candidates or override allowed domains, caller locks, adjacency, paths,
+quotas or downstream requirements. Entropy, random tickets and restoration use
+the effective weight row at the actual position. Negotiation retains the same
+inputs while reopening choices. This does not affect legacy `Run`.
+
+`SetCellValueWeights` atomically replaces and copies a row in canonical AddValue
+order. Unknown/duplicate values, nonpositive or nonintegral weights and invalid
+coordinates reject before replacement. `CopyCellValueWeights` returns a detached
+array; `HasCellValueWeights` inspects the selected pass. Empty input or
+`ClearCellValueWeights` restores ordinary weights. All changes reject while the
+pipeline is running, including calls through a child pass. Clearing assignments
+retains priors; reshape/layout replacement and full reset clear them alongside
+other cell inputs. Assignment snapshots contain values/ownership, not these
+inputs: recreate the same priors when recreating a graph for restoration.
+
+Each complete effective row uses the same normalization and checked integer sum
+as ordinary weights. Absent rows and relative-neutral rows preserve default
+seeded decisions and causal trace. The numeric `TReferenceModel.CellValueWeights`
+input is optional, flattened cell-major `CellCount * ValueCount`; zero means use
+the raw global weight (or one), positive means override. It is validated before
+random draws, borrowed without mutation, and normalized into solver-owned rows.
+The checked domain-matrix size also bounds the optional weight/log matrices;
+callers retain their normal graph/resource limits. No full-duration allocation
+or implicit musical meaning is introduced.
+
 Before solving a defined pass, the solver divides the complete raw weight
 vector by its greatest common divisor. Consequently `[1, 2]` and `[2, 4]` have
 the same replay identity, random bounds, reports, and output. The normalized
@@ -307,7 +344,9 @@ semantics without reinterpreting legacy wildcard rules. A replay identity for
 seed, graph topology and mode, pass order, value/rule construction order,
 denied directions, caller domains in canonical value order, Pipeline v2
 cross-pass clauses with signed offsets and ordered any-terms, canonical
-normalized weights, locks, and solve options. Every call rewinds its streams,
+normalized global/effective cell weights, locks, and solve options. When used,
+include `WFC_GRAPH_CELL_PRIOR_VERSION` and the canonical positioned rows as well.
+Every call rewinds its streams,
 so an unchanged graph and seed replay on both native FPC and pas2js. A failed
 call restores the stream state that existed before the call.
 

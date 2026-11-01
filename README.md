@@ -13,6 +13,8 @@ FPC server hosts them locally.
 **Status:** an expanding 0.x ecosystem, not a finished 1.0 release. The core
 supports deterministic propagation, weighted observation, backtracking,
 transactional pass DAGs, selective regeneration, and bounded pass negotiation.
+Optional [cell priors](docs/solver.md#deterministic-algorithm) give actual
+positions different positive soft preferences without changing hard constraints.
 Count-range clauses, rooted port connectivity, and opt-in deterministic restarts extend those contracts
 without changing existing replay behavior. Domain libraries, learners,
 portable artifacts, native tools, and interactive browser demos have
