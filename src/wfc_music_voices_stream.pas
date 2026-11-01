@@ -70,7 +70,7 @@ type
   TWfcMusicVoicesSegment = class
   private
     FIndex, FStartTick: TWfcMusicArrangementWide;
-    FCellCount, FPlanningCellCount, FQuantumTicks, FModelCount: Integer;
+    FCellCount, FPlanningCellCount, FQuantumTicks, FModelCount, FVoiceCount: Integer;
     FSeed: TGraphSeed;
     FFinalSegment: Boolean;
     FGenerated: TWfcMusicVoicesGenerated;
@@ -272,6 +272,7 @@ begin
   FPlanningCellCount := APlanningCellCount;
   FQuantumTicks := AConfig.QuantumTicks;
   FModelCount := Length(AGenerated.Layers);
+  FVoiceCount := Length(AConfig.Graph.Voices);
   FSeed := ASeed;
   FFinalSegment := AFinal;
   SetLength(FGenerated.Layers, FModelCount);
@@ -379,11 +380,11 @@ begin
   SetLength(Result, FCellCount);
   for I := 0 to FCellCount - 1 do
   begin
-    SetLength(Result[I].Voices, FModelCount - 2);
-    for J := 2 to FModelCount - 1 do
+    SetLength(Result[I].Voices, FVoiceCount);
+    for J := 0 to FVoiceCount - 1 do
     begin
-      LVoice := DecodeWfcMusicEnsembleFrame(FGenerated.Layers[J].Tokens[I]);
-      Result[I].Voices[J - 2] := LVoice.Voices[0];
+      LVoice := DecodeWfcMusicEnsembleFrame(FGenerated.Layers[J + 2].Tokens[I]);
+      Result[I].Voices[J] := LVoice.Voices[0];
     end;
   end;
 end;

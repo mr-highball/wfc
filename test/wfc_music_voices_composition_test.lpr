@@ -240,6 +240,7 @@ var C: TWfcMusicVoicesGraphConfig; Config: TWfcMusicVoicesStreamConfig;
   P, Q: TWfcMusicVoicesStream; Cancelled: TCancelStream;
   S, T: TWfcMusicVoicesSegment; R: TGraphNegotiationReport;
   Before, After: TWfcMusicVoicesStreamFrontier; Layer: TWfcGeneratedSequenceSegment;
+  Frames: TWfcMusicEnsembleFrames;
   I, J: Integer; Signature: Cardinal; Step: TWfcMusicArrangementStep;
 begin
   C := Fixture;
@@ -269,6 +270,12 @@ begin
           Check(Q.Next(T, R) = wmaspProduced, 'replay produces same prefix');
           try Check(S.Signature = T.Signature, 'composition replay is deterministic'); finally T.Free; end;
           Check((S.ModelCount = 5) and (S.CellCount = 2), 'prefix contains all declared models');
+          Frames := S.CopyFrames;
+          Check((Length(Frames) = 2) and (Length(Frames[0].Voices) = 1),
+            'frame copy decodes only pitched voices, never auxiliary tokens');
+          Frames[0].Voices[0].Tones[0].Pitch := 61;
+          Check(S.CopyFrames[0].Voices[0].Tones[0].Pitch = 60,
+            'frame copy stays detached with auxiliary passes');
           if I < 3 then Check(S.PlanningCellCount = 4, 'full future window is retained for checking');
           After := P.CopyFrontier;
           for J := 0 to S.ModelCount - 1 do

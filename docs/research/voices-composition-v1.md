@@ -49,3 +49,13 @@ Generated local evidence is retained outside source control in the dedicated
 four rejected compatibility-filter candidates and minimal reproduction remain
 in its separate `unguided-form-20261101-boss` packet. No recordings or saved
 operator answers are fixtures in this repository.
+
+The first downstream instrumental stream exposed an additional acceptance
+defect at37c2755: `CopyFrames` still used total model count minus two as its
+pitched voice count. A percussion auxiliary was decoded as an ensemble token,
+raising before any audio. Finite proof and the initial generated-layer checks
+had missed that endpoint. The segment now retains the actual declared voice
+count; frame copies exclude auxiliary tokens and remain detached. The expanded
+native/actual pas2js fixture passes144 checks, including the original default
+signature oracle. Preserve CI65 as success for its exact source; qualify this
+repair with its own CI before accepting the downstream task.
