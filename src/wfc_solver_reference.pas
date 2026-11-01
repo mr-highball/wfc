@@ -156,6 +156,14 @@ type
     Trace: TReferenceTraceEvents;
   end;
 
+  { A local consistency result, not a solved assignment or feasibility proof.
+    Complete-assignment exclusions remain the searcher's responsibility. }
+  TReferenceDomainReport = record
+    Consistent: Boolean;
+    Candidates, Propagations, Contradictions: Integer;
+    Contradiction: TReferenceContradiction;
+  end;
+
   TReferenceRandomIndex = function(const ACount: Integer): Integer of object;
 
   (*
@@ -196,6 +204,15 @@ type
     //the historical propagation, decision order, trace, or random draws.
     ValueQuotas: TReferenceValueQuotaConstraints;
   end;
+
+{ Internal graph-adapter preparation using the same initializer/propagator as
+  SolveReferenceModel. No decisions or random draws. Domains are cell-major
+  bytes (zero/one), detached from inputs. False clears ADomains; exceptions,
+  including cancellation, preserve its previous value. Models are borrowed
+  read-only for this call. True is local consistency, not a complete proof. }
+function PropagateReferenceModel(const AModel: TReferenceModel;
+  var ADomains: TReferenceByteArray; out AReport: TReferenceDomainReport;
+  const AWork: TWfcSolveWork = nil): Boolean;
 
 function SolveReferenceModel(const AModel: TReferenceModel;
   const AMaxBacktracks: Integer; const ARandomIndex: TReferenceRandomIndex;
@@ -333,6 +350,7 @@ type
     function Dequeue(out ACell: Integer): Boolean;
     procedure BuildIncomingArcs;
     function InitializeDomains: Boolean;
+    function PrepareDomains: Boolean;
     function ReviseArc(const ACell, ADirection: Integer): Boolean;
     function ReviseRequired(const ACell: Integer): Boolean;
     function ReviseConnectivity: Boolean;
@@ -367,6 +385,8 @@ type
       const ARandomIndex: TReferenceRandomIndex;
       const AWork: TWfcSolveWork);
     destructor Destroy; override;
+    function PrepareOnly(out ADomains: TReferenceByteArray;
+      out AReport: TReferenceDomainReport): Boolean;
     function Execute(out AAssignment: TReferenceIntegerArray;
       out AReport: TReferenceSolveReport): Boolean;
   end;
@@ -1981,18 +2001,9 @@ begin
   end;
 end;
 
-function TReferenceSolver.Execute(out AAssignment: TReferenceIntegerArray;
-  out AReport: TReferenceSolveReport): Boolean;
-var
-  I: Integer;
-  LCell: Integer;
-  LFinalContradiction: TReferenceContradiction;
-  LRecovery: TReferenceRecoveryResult;
-  LSolvedDomainCount: Integer;
-  LSolvedEntry: Integer;
-  LFinalCause: TReferenceTraceCauseKind;
+function TReferenceSolver.PrepareDomains: Boolean;
+var I, LCell: Integer;
 begin
-  AAssignment := nil;
   FReport.Status := rssContradiction;
   FReport.Decisions := 0;
   FReport.Propagations := 0;
@@ -2009,7 +2020,6 @@ begin
 
   if not InitializeDomains then
   begin
-    PublishReport(AReport);
     Exit(False);
   end;
   BuildIncomingArcs;
@@ -2022,12 +2032,58 @@ begin
     LCell := FModel.CellOrder[I];
     if not ReviseRequired(LCell) then
     begin
-      PublishReport(AReport);
       Exit(False);
     end;
   end;
   for I := 0 to Pred(FModel.CellCount) do
     Enqueue(FModel.CellOrder[I]);
+
+  Result := True;
+end;
+
+function TReferenceSolver.PrepareOnly(out ADomains: TReferenceByteArray;
+  out AReport: TReferenceDomainReport): Boolean;
+var I: Integer;
+begin
+  ADomains := nil;
+  AReport := Default(TReferenceDomainReport);
+  Result := PrepareDomains;
+  if Result then
+  begin
+    VisitSolveWork(FWork);
+    Result := Propagate;
+  end;
+  AReport.Consistent := Result;
+  AReport.Propagations := FReport.Propagations;
+  AReport.Contradictions := FReport.Contradictions;
+  AReport.Contradiction := FReport.Contradiction;
+  if Result then
+  begin
+    ADomains := Copy(FDomains);
+    for I := 0 to High(ADomains) do
+    begin
+      VisitSolveWork(FWork);
+      if ADomains[I] <> 0 then Inc(AReport.Candidates);
+    end;
+  end;
+end;
+
+function TReferenceSolver.Execute(out AAssignment: TReferenceIntegerArray;
+  out AReport: TReferenceSolveReport): Boolean;
+var
+  LCell: Integer;
+  LFinalContradiction: TReferenceContradiction;
+  LRecovery: TReferenceRecoveryResult;
+  LSolvedDomainCount: Integer;
+  LSolvedEntry: Integer;
+  LFinalCause: TReferenceTraceCauseKind;
+begin
+  AAssignment := nil;
+  if not PrepareDomains then
+  begin
+    PublishReport(AReport);
+    Exit(False);
+  end;
 
   while True do
   begin
@@ -2139,6 +2195,25 @@ begin
       LSolvedDomainCount, LSolvedDomainCount);
     PublishReport(AReport);
     Exit(True);
+  end;
+end;
+
+function PropagateReferenceModel(const AModel: TReferenceModel;
+  var ADomains: TReferenceByteArray; out AReport: TReferenceDomainReport;
+  const AWork: TWfcSolveWork): Boolean;
+var
+  LSolver: TReferenceSolver;
+  LCandidate: TReferenceByteArray;
+  LReport: TReferenceDomainReport;
+begin
+  ValidateModel(AModel, AWork);
+  LSolver := TReferenceSolver.Create(AModel, 0, False, nil, nil, AWork);
+  try
+    Result := LSolver.PrepareOnly(LCandidate, LReport);
+    ADomains := LCandidate;
+    AReport := LReport;
+  finally
+    LSolver.Free;
   end;
 end;
 
